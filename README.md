@@ -20,6 +20,24 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Pi sandbox
+
+Pi is only enabled in the container defined by `docker-compose.pi.yml`. The
+container mounts `~/Dev` at `/workspace` and does not mount the host home
+directory, Docker socket, or SSH agent.
+
+1. Copy `env.sample` to `.env.local` and set the Supabase and Pi credentials.
+2. Set `SEMLA_DEV_ROOT` to the absolute path of your `~/Dev` directory.
+3. Start Semla through the sandbox:
+
+```bash
+docker compose -f docker-compose.pi.yml up --build
+```
+
+For local-only development, you can set `PI_ALLOW_HOST_DEV=true` in
+`.env.local` and run `npm run dev`. This bypasses the container boundary and
+must never be enabled outside development.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -1,0 +1,26 @@
+services:
+  semla:
+    build:
+      context: .
+      dockerfile: Dockerfile.pi
+    cap_drop:
+      - ALL
+    environment:
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      PI_MODEL_API_KEY: ${PI_MODEL_API_KEY}
+      PI_MODEL_ID: ${PI_MODEL_ID}
+      PI_MODEL_PROVIDER: ${PI_MODEL_PROVIDER}
+      PI_SANDBOXED: "true"
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    ports:
+      - "3000:3000"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /app/.next
+    user: node
+    volumes:
+      - ${SEMLA_DEV_ROOT:?Set SEMLA_DEV_ROOT to your absolute ~/Dev path}:/workspace:rw
