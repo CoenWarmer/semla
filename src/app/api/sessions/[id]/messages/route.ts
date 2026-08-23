@@ -1,6 +1,7 @@
-import { createClient } from "@/app/utils/supabase/server";
+import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { getTranscript } from "@/lib/pi/transcript";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -15,16 +16,6 @@ export async function GET(
     const supabase = await createClient();
     return Response.json({ messages: await getTranscript(supabase, id) });
   } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Unable to load session.",
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Unable to load session.");
   }
 }

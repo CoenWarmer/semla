@@ -3,11 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export type UserSettings = {
   default_model_id: string | null;
   default_model_provider: string | null;
+  system_prompt: string | null;
 };
 
 type UpdateUserSettingsInput = {
   defaultModelId: string;
   defaultModelProvider: string;
+};
+
+type UpdateSystemPromptInput = {
+  systemPrompt: string | null;
 };
 
 export const userSettingsQueryKey = ["user-settings"] as const;
@@ -50,6 +55,50 @@ export const useUserSettings = () =>
     queryKey: userSettingsQueryKey,
   });
 
+const updateSystemPrompt = async ({ systemPrompt }: UpdateSystemPromptInput): Promise<UserSettings> => {
+  const response = await fetch("/api/user-settings", {
+    body: JSON.stringify({ systemPrompt }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to save system prompt.");
+  }
+
+  const { settings } = (await response.json()) as { settings: UserSettings };
+  return settings;
+};
+
+export const useUpdateSystemPrompt = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    UserSettings,
+    Error,
+    UpdateSystemPromptInput,
+    { previousSettings: UserSettings | null | undefined }
+  >({
+    mutationFn: updateSystemPrompt,
+    onError: (_error, _variables, context) => {
+      if (context) {
+        queryClient.setQueryData(userSettingsQueryKey, context.previousSettings);
+      }
+    },
+    onMutate: async ({ systemPrompt }) => {
+      await queryClient.cancelQueries({ queryKey: userSettingsQueryKey });
+      const previousSettings = queryClient.getQueryData<UserSettings | null>(userSettingsQueryKey);
+      queryClient.setQueryData<UserSettings | null>(userSettingsQueryKey, (prev) =>
+        prev ? { ...prev, system_prompt: systemPrompt } : prev
+      );
+      return { previousSettings };
+    },
+    onSuccess: (settings) => {
+      queryClient.setQueryData(userSettingsQueryKey, settings);
+    },
+  });
+};
+
 export const useUpdateUserSettings = () => {
   const queryClient = useQueryClient();
 
@@ -74,10 +123,11 @@ export const useUpdateUserSettings = () => {
         userSettingsQueryKey
       );
 
-      queryClient.setQueryData<UserSettings>(userSettingsQueryKey, {
-        default_model_id: defaultModelId,
-        default_model_provider: defaultModelProvider,
-      });
+      queryClient.setQueryData<UserSettings | null>(userSettingsQueryKey, (prev) =>
+        prev
+          ? { ...prev, default_model_id: defaultModelId, default_model_provider: defaultModelProvider }
+          : { default_model_id: defaultModelId, default_model_provider: defaultModelProvider, system_prompt: null }
+      );
 
       return { previousSettings };
     },

@@ -21,6 +21,7 @@ services:
     tmpfs:
       - /tmp
       - /app/.next
+      - /home/node/.pi:rw,mode=1777
     user: node
     volumes:
       - ${SEMLA_DEV_ROOT:?Set SEMLA_DEV_ROOT to your absolute ~/Dev path}:/workspace:rw

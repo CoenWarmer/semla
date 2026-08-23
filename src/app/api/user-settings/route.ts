@@ -1,26 +1,13 @@
-import { createClient } from "@/app/utils/supabase/server";
+import { handleRouteError, requireUser } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
-
-const requireUser = async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Response("Authentication required.", { status: 401 });
-  }
-
-  return { supabase, user };
-};
 
 export async function GET() {
   try {
     const { supabase, user } = await requireUser();
     const { data, error } = await supabase
       .from("user_settings")
-      .select("default_model_id, default_model_provider")
+      .select("default_model_id, default_model_provider, system_prompt")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -30,14 +17,7 @@ export async function GET() {
 
     return Response.json({ settings: data });
   } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-
-    return Response.json(
-      { error: "Unable to load user settings." },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Unable to load user settings.");
   }
 }
 
@@ -45,32 +25,50 @@ export async function PUT(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     defaultModelId?: unknown;
     defaultModelProvider?: unknown;
+    systemPrompt?: unknown;
   } | null;
-  const defaultModelId =
-    typeof body?.defaultModelId === "string" ? body.defaultModelId : "";
-  const defaultModelProvider =
-    typeof body?.defaultModelProvider === "string"
-      ? body.defaultModelProvider
-      : "";
 
-  if (!defaultModelId || !defaultModelProvider) {
-    return Response.json({ error: "A model is required." }, { status: 400 });
+  const hasModel =
+    body?.defaultModelId !== undefined || body?.defaultModelProvider !== undefined;
+  const hasSystemPrompt = body?.systemPrompt !== undefined;
+
+  if (!hasModel && !hasSystemPrompt) {
+    return Response.json({ error: "Nothing to update." }, { status: 400 });
   }
+
+  const defaultModelId =
+    typeof body?.defaultModelId === "string" ? body.defaultModelId : null;
+  const defaultModelProvider =
+    typeof body?.defaultModelProvider === "string" ? body.defaultModelProvider : null;
+
+  if (hasModel && (!defaultModelId || !defaultModelProvider)) {
+    return Response.json({ error: "Both model ID and provider are required." }, { status: 400 });
+  }
+
+  const systemPrompt =
+    typeof body?.systemPrompt === "string"
+      ? body.systemPrompt
+      : body?.systemPrompt === null
+        ? null
+        : undefined;
 
   try {
     const { supabase, user } = await requireUser();
+
     const { data, error } = await supabase
       .from("user_settings")
       .upsert(
         {
-          default_model_id: defaultModelId,
-          default_model_provider: defaultModelProvider,
           updated_at: new Date().toISOString(),
           user_id: user.id,
+          ...(hasModel
+            ? { default_model_id: defaultModelId, default_model_provider: defaultModelProvider }
+            : {}),
+          ...(hasSystemPrompt ? { system_prompt: systemPrompt ?? null } : {}),
         },
         { onConflict: "user_id" }
       )
-      .select("default_model_id, default_model_provider")
+      .select("default_model_id, default_model_provider, system_prompt")
       .single();
 
     if (error) {
@@ -79,13 +77,6 @@ export async function PUT(request: Request) {
 
     return Response.json({ settings: data });
   } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-
-    return Response.json(
-      { error: "Unable to save the default model." },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Unable to save settings.");
   }
 }

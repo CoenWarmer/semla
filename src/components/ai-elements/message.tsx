@@ -28,7 +28,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Streamdown } from "streamdown";
+import { Streamdown, type PluginConfig } from "streamdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -321,7 +321,7 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = { cjk, code, math, mermaid };
+const streamdownPlugins: PluginConfig = { cjk, code: code as PluginConfig["code"], math, mermaid };
 
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (

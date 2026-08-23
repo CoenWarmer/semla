@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
   sessionMessagesQueryKey,
   type SessionMessage,
 } from "@/hooks/use-session-messages";
+import type { WorkflowSnapshot } from "@/types/workflow";
 
 export type PromptModel = {
   modelId: string;
@@ -14,19 +16,25 @@ export type PromptModel = {
 type PromptInput = {
   model: PromptModel;
   text: string;
+  tools: string[];
 };
 
 type PiStreamEvent =
   | { delta: string; type: "assistant-delta" }
   | { message: string; type: "error" }
   | { toolName: string; type: "tool-end" | "tool-start" }
+  | { runId: string; type: "workflow-started" }
+  | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  | { title: string; type: "title-updated" }
   | { type: "complete" };
 
 export const usePromptMutation = (sessionId: string) => {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [streamingText, setStreamingText] = useState("");
   const [activeTool, setActiveTool] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
+  const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
 
   const mutation = useMutation<
     void,
@@ -34,9 +42,9 @@ export const usePromptMutation = (sessionId: string) => {
     PromptInput,
     { previousMessages: SessionMessage[] }
   >({
-    mutationFn: async ({ model, text }) => {
+    mutationFn: async ({ model, text, tools }) => {
       const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
-        body: JSON.stringify({ model, text }),
+        body: JSON.stringify({ model, text, tools }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -75,6 +83,21 @@ export const usePromptMutation = (sessionId: string) => {
             setActiveTool(piEvent.toolName);
           } else if (piEvent.type === "tool-end") {
             setActiveTool(undefined);
+          } else if (piEvent.type === "workflow-snapshot") {
+            setWorkflowSnapshot(piEvent.snapshot);
+          } else if (piEvent.type === "workflow-started") {
+            setWorkflowSnapshot({
+              agentCount: 0,
+              agents: [],
+              doneCount: 0,
+              errorCount: 0,
+              name: "Background workflow",
+              phases: [],
+              runId: piEvent.runId,
+              runningCount: 0,
+            });
+          } else if (piEvent.type === "title-updated") {
+            router.refresh();
           } else if (piEvent.type === "error") {
             piError = new Error(piEvent.message);
             setStreamError(piEvent.message);
@@ -107,6 +130,7 @@ export const usePromptMutation = (sessionId: string) => {
       setStreamError(undefined);
       setStreamingText("");
       setActiveTool(undefined);
+      setWorkflowSnapshot(undefined);
       await queryClient.cancelQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
@@ -139,5 +163,5 @@ export const usePromptMutation = (sessionId: string) => {
     },
   });
 
-  return { activeTool, mutation, streamError, streamingText };
+  return { activeTool, mutation, streamError, streamingText, workflowSnapshot };
 };

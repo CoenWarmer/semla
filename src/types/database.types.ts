@@ -39,18 +39,21 @@ export type Database = {
         Row: {
           default_model_id: string | null
           default_model_provider: string | null
+          system_prompt: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           default_model_id?: string | null
           default_model_provider?: string | null
+          system_prompt?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           default_model_id?: string | null
           default_model_provider?: string | null
+          system_prompt?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -149,6 +152,53 @@ export type Database = {
             foreignKeyName: "pi_sessions_semla_session_id_fkey"
             columns: ["semla_session_id"]
             isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_runs: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          mode: string
+          result: Json | null
+          run_id: string
+          semla_session_id: string
+          snapshot: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode: string
+          result?: Json | null
+          run_id: string
+          semla_session_id: string
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode?: string
+          result?: Json | null
+          run_id?: string
+          semla_session_id?: string
+          snapshot?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_runs_semla_session_id_fkey"
+            columns: ["semla_session_id"]
+            isOneToOne: false
             referencedRelation: "sessions"
             referencedColumns: ["id"]
           },

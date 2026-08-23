@@ -1,5 +1,8 @@
+import { handleRouteError } from "@/lib/api-helpers";
 import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
+import { createClient } from "@/lib/supabase/server";
+import { PI_TOOLS } from "@/lib/pi/runtime-config";
 
 export const runtime = "nodejs";
 
@@ -16,12 +19,24 @@ export async function POST(
   const body = (await request.json().catch(() => null)) as {
     model?: { modelId?: unknown; provider?: unknown };
     text?: unknown;
+    tools?: unknown;
   } | null;
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const modelId =
     typeof body?.model?.modelId === "string" ? body.model.modelId : "";
   const provider =
     typeof body?.model?.provider === "string" ? body.model.provider : "";
+  const selectedTools =
+    body?.tools === undefined
+      ? [...PI_TOOLS]
+      : Array.isArray(body.tools) &&
+    body.tools.every(
+      (tool): tool is string =>
+        typeof tool === "string" &&
+        (PI_TOOLS as readonly string[]).includes(tool),
+    )
+      ? [...new Set(body.tools)]
+      : undefined;
 
   if (!text) {
     return Response.json({ error: "A prompt is required." }, { status: 400 });
@@ -31,21 +46,25 @@ export async function POST(
     return Response.json({ error: "A model is required." }, { status: 400 });
   }
 
-  try {
-    await requireSessionOwner(id);
-  } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Unable to authorize session.",
-      },
-      { status: 500 }
-    );
+  if (!selectedTools) {
+    return Response.json({ error: "Invalid tool selection." }, { status: 400 });
   }
+
+  let userId: string;
+  try {
+    const { user } = await requireSessionOwner(id);
+    userId = user.id;
+  } catch (error) {
+    return handleRouteError(error, "Unable to authorize session.");
+  }
+
+  const supabase = await createClient();
+  const { data: settingsData } = await supabase
+    .from("user_settings")
+    .select("system_prompt")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const systemPrompt = settingsData?.system_prompt ?? null;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -55,7 +74,9 @@ export async function POST(
         model: { modelId, provider },
         onEvent: send,
         semlaSessionId: id,
+        systemPrompt,
         text,
+        tools: selectedTools,
       })
         .catch((error: unknown) => {
           send({

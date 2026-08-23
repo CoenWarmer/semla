@@ -1,17 +1,22 @@
-import { createClient } from "@/app/utils/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 
-export const requireSessionOwner = async (sessionId: string) => {
-  const supabase = await createClient();
+export const requireSessionOwner = async (
+  sessionId: string,
+  supabase?: SupabaseClient<Database>,
+) => {
+  const client = supabase ?? (await createClient());
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = await client.auth.getUser();
 
   if (userError || !user) {
     throw new Response("Authentication required.", { status: 401 });
   }
 
-  const { data: session, error: sessionError } = await supabase
+  const { data: session, error: sessionError } = await client
     .from("sessions")
     .select("id")
     .eq("id", sessionId)

@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes } from "react";
-import { createContext, useContext, useMemo } from "react";
+import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
+import React, { createContext, useContext, useMemo } from "react";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -90,6 +90,28 @@ export const SchemaDisplayMethod = ({
 
 export type SchemaDisplayPathProps = HTMLAttributes<HTMLSpanElement>;
 
+const renderHighlightedPath = (path: string) => {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const match of path.matchAll(/\{([^}]+)\}/g)) {
+    if (match.index > last) {
+      parts.push(path.slice(last, match.index));
+    }
+    parts.push(
+      <span className="text-blue-600 dark:text-blue-400" key={key++}>
+        {match[0]}
+      </span>
+    );
+    last = match.index + match[0].length;
+    key++;
+  }
+  if (last < path.length) {
+    parts.push(path.slice(last));
+  }
+  return parts;
+};
+
 export const SchemaDisplayPath = ({
   className,
   children,
@@ -97,19 +119,10 @@ export const SchemaDisplayPath = ({
 }: SchemaDisplayPathProps) => {
   const { path } = useContext(SchemaDisplayContext);
 
-  // Highlight path parameters
-  const highlightedPath = path.replaceAll(
-    /\{([^}]+)\}/g,
-    '<span class="text-blue-600 dark:text-blue-400">{$1}</span>'
-  );
-
   return (
-    <span
-      className={cn("font-mono text-sm", className)}
-      // oxlint-disable-next-line eslint-plugin-react(no-danger)
-      dangerouslySetInnerHTML={{ __html: children ?? highlightedPath }}
-      {...props}
-    />
+    <span className={cn("font-mono text-sm", className)} {...props}>
+      {children ?? renderHighlightedPath(path)}
+    </span>
   );
 };
 

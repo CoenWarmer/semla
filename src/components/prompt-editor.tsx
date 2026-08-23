@@ -41,8 +41,8 @@ import {
   useUpdateUserSettings,
   useUserSettings,
 } from "@/hooks/use-user-settings";
-import { CheckIcon, GlobeIcon } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 export type PromptEditorModel = Pick<PiModel, "modelId" | "provider">;
 
@@ -140,11 +140,13 @@ const PromptInputAttachmentsDisplay = () => {
 interface PromptEditorProps {
   onSubmit?: (
     message: PromptInputMessage,
-    model: PromptEditorModel
+    model: PromptEditorModel,
+    tools: string[],
   ) => Promise<void> | void;
+  defaultTools: string[];
 }
 
-export function PromptEditor({ onSubmit }: PromptEditorProps) {
+export function PromptEditor({ defaultTools, onSubmit }: PromptEditorProps) {
   const {
     data: models = [],
     error: modelsError,
@@ -161,9 +163,13 @@ export function PromptEditor({ onSubmit }: PromptEditorProps) {
   } = useUpdateUserSettings();
   const [model, setModel] = useState("");
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
+  const [toolPickerOpen, setToolPickerOpen] = useState(false);
+  const [toolQuery, setToolQuery] = useState("");
+  const [tools, setTools] = useState(defaultTools);
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
+  const toolPickerRef = useRef<HTMLDivElement>(null);
 
   const defaultModelKey =
     userSettings?.default_model_id && userSettings.default_model_provider
@@ -189,6 +195,37 @@ export function PromptEditor({ onSubmit }: PromptEditorProps) {
     (candidate) =>
       `${candidate.provider}:${candidate.modelId}` === selectedModelKey
   );
+  const matchingTools = defaultTools.filter((tool) =>
+    tool.toLowerCase().includes(toolQuery.toLowerCase()),
+  );
+
+  const toggleTool = useCallback((tool: string) => {
+    setTools((current) =>
+      current.includes(tool)
+        ? current.filter((currentTool) => currentTool !== tool)
+        : [...current, tool],
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!toolPickerOpen) {
+      return;
+    }
+
+    const closeWhenClickingOutside = (event: PointerEvent) => {
+      if (
+        toolPickerRef.current &&
+        event.target instanceof Node &&
+        !toolPickerRef.current.contains(event.target)
+      ) {
+        setToolPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeWhenClickingOutside);
+    return () =>
+      document.removeEventListener("pointerdown", closeWhenClickingOutside);
+  }, [toolPickerOpen]);
 
   const handleModelSelect = useCallback((modelKey: string) => {
     const selectedModel = models.find(
@@ -222,12 +259,12 @@ export function PromptEditor({ onSubmit }: PromptEditorProps) {
         throw new Error("Select a Pi model before submitting a prompt.");
       }
 
-      await onSubmit?.(message, selectedModelData);
+      await onSubmit?.(message, selectedModelData, tools);
       setStatus("ready");
     } catch {
       setStatus("error");
     }
-  }, [onSubmit, selectedModelData]);
+  }, [onSubmit, selectedModelData, tools]);
 
   const configurationError =
     modelsError ?? userSettingsError ?? updateUserSettingsError;
@@ -240,7 +277,7 @@ export function PromptEditor({ onSubmit }: PromptEditorProps) {
         </p>
       )}
       <PromptInputProvider>
-        <PromptInput globalDrop multiple onSubmit={handleSubmit}>
+        <PromptInput globalDrop multiple onSubmit={handleSubmit} overflowVisible>
           <PromptInputAttachmentsDisplay />
           <PromptInputBody>
             <PromptInputTextarea />
@@ -258,6 +295,54 @@ export function PromptEditor({ onSubmit }: PromptEditorProps) {
                 <GlobeIcon size={16} />
                 <span>Search</span>
               </PromptInputButton>
+              <div className="relative" ref={toolPickerRef}>
+                <PromptInputButton
+                  aria-expanded={toolPickerOpen}
+                  aria-haspopup="listbox"
+                  onClick={() => setToolPickerOpen((open) => !open)}
+                >
+                  <WrenchIcon size={16} />
+                  <span>{tools.length} tools</span>
+                </PromptInputButton>
+                {toolPickerOpen && (
+                  <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
+                    <input
+                      aria-label="Search tools"
+                      className="mb-1 h-8 w-full rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
+                      onChange={(event) => setToolQuery(event.target.value)}
+                      placeholder="Search tools..."
+                      value={toolQuery}
+                    />
+                    <div className="max-h-56 overflow-y-auto" role="listbox">
+                      {matchingTools.length > 0 ? (
+                        matchingTools.map((tool) => {
+                          const selected = tools.includes(tool);
+
+                          return (
+                            <button
+                              aria-selected={selected}
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                              key={tool}
+                              onClick={() => toggleTool(tool)}
+                              role="option"
+                              type="button"
+                            >
+                              <span className="flex size-4 items-center justify-center">
+                                {selected && <CheckIcon className="size-4" />}
+                              </span>
+                              {tool}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                          No tools found.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <ModelSelector
                 onOpenChange={setModelSelectorOpen}
                 open={modelSelectorOpen}

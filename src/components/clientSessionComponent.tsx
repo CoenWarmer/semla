@@ -15,20 +15,111 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
+import type { WorkflowSnapshot } from "@/types/workflow";
+import { Spinner } from "@/components/ui/spinner";
+import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
+import { SessionWorkflowPanel } from "./session-workflow-panel";
 import type { UIMessage } from "ai";
 import { MessageSquareIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-export function ClientSessionComponent({ sessionId }: { sessionId: string }) {
-  const messagesQuery = useSessionMessages(sessionId);
+export function ClientSessionComponent({
+  defaultTools,
+  sessionId,
+}: {
+  defaultTools: string[];
+  sessionId: string;
+}) {
   const {
     activeTool,
     mutation: promptMutation,
     streamError,
     streamingText,
+    workflowSnapshot,
   } = usePromptMutation(sessionId);
+
+  const messagesQuery = useSessionMessages(sessionId);
+  const workflowRunsQuery = useWorkflowRuns(sessionId);
   const messages = messagesQuery.data ?? [];
+
+  // Use the most recent run's snapshot if it has detail; fall back to a
+  // minimal placeholder so the panel is visible for background workflows
+  // whose snapshot hasn't been populated yet.
+  const mostRecentRun = workflowRunsQuery.data?.[0];
+  const persistedWorkflowSnapshot = mostRecentRun
+    ? typeof mostRecentRun.snapshot?.name === "string" &&
+      Array.isArray(mostRecentRun.snapshot?.agents)
+      ? mostRecentRun.snapshot
+      : {
+          agentCount: 0,
+          agents: [],
+          doneCount: 0,
+          errorCount: 0,
+          name: `Workflow (${mostRecentRun.status})`,
+          phases: [],
+          runId: mostRecentRun.run_id,
+          runningCount: mostRecentRun.status === "running" ? 1 : 0,
+        }
+    : undefined;
+
+  // Synthetic snapshot for non-workflow sessions: shows the main agent as a
+  // single node so the panel always has something to display.
+  const sessionAgentSnapshot = useMemo((): WorkflowSnapshot => {
+    const isActive = promptMutation.isPending;
+    const hasMessages = messages.length > 0;
+    return {
+      agentCount: 1,
+      agents: [
+        {
+          id: 0,
+          label: activeTool ? `${activeTool}…` : "Session agent",
+          status: isActive ? "running" : hasMessages ? "done" : "queued",
+        },
+      ],
+      doneCount: isActive ? 0 : hasMessages ? 1 : 0,
+      errorCount: 0,
+      name: "Session",
+      phases: [],
+      runningCount: isActive ? 1 : 0,
+    };
+  }, [promptMutation.isPending, messages.length, activeTool]);
+
+  // Track elapsed time while a prompt is in-flight.
+  const startTimeRef = useRef<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (promptMutation.isPending) {
+      if (!startTimeRef.current) startTimeRef.current = Date.now();
+      const id = setInterval(
+        () => setElapsedMs(Date.now() - (startTimeRef.current ?? Date.now())),
+        500,
+      );
+      return () => clearInterval(id);
+    }
+    startTimeRef.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setElapsedMs(0);
+  }, [promptMutation.isPending]);
+
+  const elapsedLabel =
+    elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : null;
+  // Rough estimate: ~4 chars per token for output only.
+  const estimatedTokens =
+    streamingText.length > 0
+      ? `~${Math.round(streamingText.length / 4).toLocaleString()} tokens`
+      : null;
+
+  const [selectedAgent, setSelectedAgent] = useState<{
+    agentId: number;
+    runId: string;
+  } | null>(null);
+
+  const handleAgentClick = useCallback((agentId: number, runId: string) => {
+    setSelectedAgent({ agentId, runId });
+  }, []);
+
   const errorMessage =
     streamError ??
     (messagesQuery.error instanceof Error
@@ -36,20 +127,37 @@ export function ClientSessionComponent({ sessionId }: { sessionId: string }) {
       : undefined);
 
   const handleSubmit = useCallback(
-    async (message: PromptInputMessage, model: PromptEditorModel) => {
+    async (
+      message: PromptInputMessage,
+      model: PromptEditorModel,
+      tools: string[],
+    ) => {
       if (!message.text.trim()) {
         return;
       }
 
-      await promptMutation.mutateAsync({ model, text: message.text });
+      await promptMutation.mutateAsync({ model, text: message.text, tools });
     },
     [promptMutation],
   );
 
   return (
-    <div className="flex size-full min-h-0 flex-col p-20">
-      <Conversation>
-        <ConversationContent>
+    <div className="flex h-full min-h-0 w-full flex-col gap-4 px-20 py-4">
+      <AgentTranscriptDrawer
+        agentId={selectedAgent?.agentId ?? null}
+        onClose={() => setSelectedAgent(null)}
+        open={selectedAgent !== null}
+        runId={selectedAgent?.runId ?? null}
+        sessionId={sessionId}
+      />
+      <div className="shrink-0">
+        <SessionWorkflowPanel
+          onAgentClick={handleAgentClick}
+          snapshot={workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot}
+        />
+      </div>
+      <Conversation className="min-h-0 w-full">
+        <ConversationContent className="w-full">
           {messages.length === 0 ? (
             <ConversationEmptyState
               description="Send a message to start this session."
@@ -72,10 +180,13 @@ export function ClientSessionComponent({ sessionId }: { sessionId: string }) {
               </MessageContent>
             </Message>
           )}
-          {activeTool && (
-            <p className="text-muted-foreground text-sm">
-              Running {activeTool}…
-            </p>
+          {promptMutation.isPending && !streamingText && (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Spinner />
+              <span>{activeTool ? `Running ${activeTool}…` : "Thinking…"}</span>
+              {elapsedLabel && <span className="tabular-nums">{elapsedLabel}</span>}
+              {estimatedTokens && <span className="tabular-nums">{estimatedTokens}</span>}
+            </div>
           )}
           {errorMessage && (
             <p className="text-destructive text-sm">{errorMessage}</p>
@@ -94,7 +205,9 @@ export function ClientSessionComponent({ sessionId }: { sessionId: string }) {
         )}
         <ConversationScrollButton />
       </Conversation>
-      <PromptEditor onSubmit={handleSubmit} />
+      <div className="shrink-0">
+        <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
+      </div>
     </div>
   );
 }

@@ -27,9 +27,12 @@ import { SidebarIcon } from "@phosphor-icons/react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH_DEFAULT = 256
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_MIN = 160
+const SIDEBAR_WIDTH_MAX = 600
+const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-px"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
@@ -40,6 +43,8 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  widthPx: number
+  setWidthPx: (w: number) => void
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -68,6 +73,23 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+
+  const [widthPx, _setWidthPx] = React.useState(SIDEBAR_WIDTH_DEFAULT)
+  // useLayoutEffect reads localStorage to restore the persisted width before
+  // first paint (skipped on server, so no hydration mismatch). The setState
+  // call is intentional — this is the correct pattern for browser-only init.
+  React.useLayoutEffect(() => {
+    const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    if (stored) {
+      const n = parseInt(stored, 10)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (!isNaN(n)) _setWidthPx(n)
+    }
+  }, [])
+  const setWidthPx = React.useCallback((w: number) => {
+    _setWidthPx(w)
+    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(w))
+  }, [])
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -122,8 +144,10 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      widthPx,
+      setWidthPx,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, widthPx, setWidthPx]
   )
 
   return (
@@ -132,7 +156,7 @@ function SidebarProvider({
         data-slot="sidebar-wrapper"
         style={
           {
-            "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-width": `${widthPx}px`,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
             ...style,
           } as React.CSSProperties
@@ -162,7 +186,26 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, widthPx, setWidthPx } = useSidebar()
+
+  const handleResizeMouseDown = React.useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startWidth = widthPx
+      const onMouseMove = (ev: MouseEvent) => {
+        const next = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, startWidth + ev.clientX - startX))
+        setWidthPx(next)
+      }
+      const onMouseUp = () => {
+        window.removeEventListener("mousemove", onMouseMove)
+        window.removeEventListener("mouseup", onMouseUp)
+      }
+      window.addEventListener("mousemove", onMouseMove)
+      window.addEventListener("mouseup", onMouseUp)
+    },
+    [widthPx, setWidthPx]
+  )
 
   if (collapsible === "none") {
     return (
@@ -246,6 +289,15 @@ function Sidebar({
         >
           {children}
         </div>
+        {state === "expanded" && side === "left" && (
+          <div
+            data-slot="sidebar-resize-handle"
+            onMouseDown={handleResizeMouseDown}
+            className="absolute inset-y-0 right-0 w-1 cursor-col-resize group/resize z-20"
+          >
+            <div className="absolute inset-y-0 right-0 w-px bg-sidebar-border opacity-0 group-hover/resize:opacity-100 group-active/resize:opacity-100 transition-opacity" />
+          </div>
+        )}
       </div>
     </div>
   )

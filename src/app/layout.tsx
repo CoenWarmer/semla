@@ -35,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={cn(
         "h-full",
+        "dark",
         "antialiased",
         geistSans.variable,
         geistMono.variable,
@@ -43,14 +44,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         jetbrainsMonoHeading.variable,
       )}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="h-full flex flex-col">
         <QueryProvider>
           <TooltipProvider>
-            <SidebarProvider>
+            <SidebarProvider className="flex-1 min-h-0">
               <AppSidebar />
-              <main>
-                <SidebarTrigger />
-                {children}
+              <main className="flex w-full flex-col">
+                <SidebarTrigger className="shrink-0" />
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  {children}
+                </div>
               </main>
             </SidebarProvider>
           </TooltipProvider>

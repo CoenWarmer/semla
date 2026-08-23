@@ -10,7 +10,8 @@ import {
   getPiCredentialProviders,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
-import { getInstalledPiPackages } from "../utils/pi/packages";
+import { getInstalledPiPackages } from "@/lib/pi/packages";
+import { SystemPromptEditor } from "@/components/system-prompt-editor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,18 @@ export default async function SettingsPage() {
           Runtime information for Semla&apos;s Pi agent loop.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>System prompt</CardTitle>
+          <CardDescription>
+            Instructions appended to pi&apos;s system prompt on every session. Defines how the orchestrator agent should approach tasks.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SystemPromptEditor />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

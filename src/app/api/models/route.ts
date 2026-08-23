@@ -1,19 +1,11 @@
-import { createClient } from "@/app/utils/supabase/server";
+import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return Response.json({ error: "Authentication required." }, { status: 401 });
-  }
-
   try {
+    await requireUser();
     const modelRuntime = await ModelRuntime.create({ refreshOnCreate: false });
     const models = await modelRuntime.getAvailable();
 
@@ -25,14 +17,6 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load Pi models.",
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Unable to load Pi models.");
   }
 }
