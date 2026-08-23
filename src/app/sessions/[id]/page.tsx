@@ -12,11 +12,16 @@ export default async function Page({
 
   const supabase = await createClient();
 
-  const { data: session } = await supabase
+  const { data: session, error } = await supabase
     .from("sessions")
     .select("id, title")
     .eq("id", id)
     .maybeSingle();
+
+  if (error) {
+    console.error(`[sessions/${id}] Failed to fetch session:`, error);
+    throw new Error(`Unable to load session: ${error.message}`);
+  }
 
   if (!session) {
     notFound();

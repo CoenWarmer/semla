@@ -16,7 +16,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = (await request.json().catch(() => null)) as {
+  const body = (await request.json().catch((error: unknown) => {
+    console.error("[api:sessions/prompt] Invalid JSON body:", error);
+    return null;
+  })) as {
     model?: { modelId?: unknown; provider?: unknown };
     text?: unknown;
     tools?: unknown;
@@ -68,7 +71,14 @@ export async function POST(
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = (event: unknown) => controller.enqueue(eventPayload(event));
+      // Guard against enqueue-after-close when the client disconnects mid-stream.
+      const send = (event: unknown) => {
+        try {
+          controller.enqueue(eventPayload(event));
+        } catch {
+          // Client disconnected — drop the event silently.
+        }
+      };
 
       void runPiPrompt({
         model: { modelId, provider },
@@ -85,7 +95,13 @@ export async function POST(
             type: "error",
           });
         })
-        .finally(() => controller.close());
+        .finally(() => {
+          try {
+            controller.close();
+          } catch {
+            // Already closed (client disconnected before runPiPrompt finished).
+          }
+        });
     },
   });
 

@@ -17,10 +17,17 @@ export const updateSessionTitle = async (
   title: string,
 ) => {
   const admin = createAdminClient();
-  await admin
+  const { error } = await admin
     .from("sessions")
     .update({ title })
     .eq("id", semlaSessionId);
+
+  if (error) {
+    console.error(
+      `[pi:session-persistence] Unable to update session title for ${semlaSessionId}:`,
+      error,
+    );
+  }
 };
 
 export const toJson = (value: unknown): Json =>
@@ -186,9 +193,16 @@ export const fetchPersistedEntries = async (piSessionId: string) => {
 
 export const finalizeBackgroundRun = async (runId: string) => {
   const admin = createAdminClient();
-  await admin
+  const { error } = await admin
     .from("workflow_runs")
     .update({ status: "completed", updated_at: new Date().toISOString() })
     .eq("run_id", runId)
     .eq("status", "running");
+
+  if (error) {
+    console.error(
+      `[pi:session-persistence] Unable to finalize background run ${runId}:`,
+      error,
+    );
+  }
 };

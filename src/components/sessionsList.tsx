@@ -19,11 +19,20 @@ export async function SessionsList() {
     return null;
   }
 
-  const { data: sessions } = await supabase
+  const { data: sessions, error } = await supabase
     .from("sessions")
     .select("id, created_at, title")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[sessionsList] Failed to load sessions:", error);
+    return (
+      <p className="text-destructive text-sm">
+        Failed to load sessions. Please refresh the page.
+      </p>
+    );
+  }
 
   if (!sessions?.length) {
     return null;

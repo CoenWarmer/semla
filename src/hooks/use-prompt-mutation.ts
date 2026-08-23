@@ -75,7 +75,13 @@ export const usePromptMutation = (sessionId: string) => {
             continue;
           }
 
-          const piEvent = JSON.parse(data) as PiStreamEvent;
+          let piEvent: PiStreamEvent;
+          try {
+            piEvent = JSON.parse(data) as PiStreamEvent;
+          } catch (parseError) {
+            console.error("Malformed SSE event from Pi stream:", data, parseError);
+            continue;
+          }
 
           if (piEvent.type === "assistant-delta") {
             setStreamingText((current) => current + piEvent.delta);

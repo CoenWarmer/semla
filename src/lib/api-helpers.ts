@@ -16,13 +16,17 @@ export const requireUser = async () => {
 export const handleRouteError = (
   error: unknown,
   fallbackMessage = "An unexpected error occurred.",
-): Response =>
-  error instanceof Response
-    ? error
-    : Response.json(
-        {
-          error:
-            error instanceof Error ? error.message : fallbackMessage,
-        },
-        { status: 500 },
-      );
+): Response => {
+  if (error instanceof Response) {
+    return error;
+  }
+
+  console.error("[api:error]", error);
+
+  return Response.json(
+    {
+      error: error instanceof Error ? error.message : fallbackMessage,
+    },
+    { status: 500 },
+  );
+};

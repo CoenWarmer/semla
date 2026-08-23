@@ -261,7 +261,8 @@ export function PromptEditor({ defaultTools, onSubmit }: PromptEditorProps) {
 
       await onSubmit?.(message, selectedModelData, tools);
       setStatus("ready");
-    } catch {
+    } catch (error) {
+      console.error("Failed to submit prompt:", error);
       setStatus("error");
     }
   }, [onSubmit, selectedModelData, tools]);
