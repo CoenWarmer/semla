@@ -7,7 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useSessionCost } from "@/hooks/use-session-cost";
+import { useGlobalCost } from "@/hooks/use-global-cost";
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -19,15 +19,15 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(3)}`;
 }
 
-function SessionCostBadge({ sessionId }: { sessionId: string }) {
-  const { cost } = useSessionCost(sessionId);
-  if (cost <= 0) return null;
+function GlobalCostBadge() {
+  const { data } = useGlobalCost();
+  if (!data || data.cost <= 0) return null;
   return (
     <span
       className="text-xs tabular-nums text-muted-foreground"
-      title="Total session cost"
+      title="Total cost across all sessions"
     >
-      {formatCost(cost)}
+      {formatCost(data.cost)}
     </span>
   );
 }
@@ -37,32 +37,34 @@ export function HeaderActions() {
   const sessionId = typeof params?.id === "string" ? params.id : null;
   const [filesOpen, setFilesOpen] = useState(false);
 
-  if (!sessionId) return null;
-
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
-        <FolderOpenIcon />
-        Files
-      </Button>
+      {sessionId && (
+        <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
+          <FolderOpenIcon />
+          Files
+        </Button>
+      )}
 
       <div className="ml-auto">
-        <SessionCostBadge sessionId={sessionId} />
+        <GlobalCostBadge />
       </div>
 
-      <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
-        <SheetContent
-          className="flex flex-col gap-0 p-0 sm:max-w-2xl"
-          side="right"
-        >
-          <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle>Files</SheetTitle>
-          </SheetHeader>
-          <div className="min-h-0 flex-1">
-            <SessionFilesPanel sessionId={sessionId} />
-          </div>
-        </SheetContent>
-      </Sheet>
+      {sessionId && (
+        <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
+          <SheetContent
+            className="flex flex-col gap-0 p-0 sm:max-w-2xl"
+            side="right"
+          >
+            <SheetHeader className="shrink-0 border-b px-6 py-4">
+              <SheetTitle>Files</SheetTitle>
+            </SheetHeader>
+            <div className="min-h-0 flex-1">
+              <SessionFilesPanel sessionId={sessionId} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </>
   );
 }
