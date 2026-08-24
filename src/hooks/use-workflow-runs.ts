@@ -27,7 +27,12 @@ const fetchWorkflowRuns = async (sessionId: string) => {
 
 const STALE_RUNNING_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes without an update
 
-export const useWorkflowRuns = (sessionId: string) =>
+/**
+ * @param expectedRunId - When provided, keeps polling even if the run isn't in the
+ * DB yet. Background workflows create their DB entry a few seconds after the
+ * SSE "workflow-started" event, so we need to keep trying until it appears.
+ */
+export const useWorkflowRuns = (sessionId: string, expectedRunId?: string) =>
   useQuery({
     queryFn: () => fetchWorkflowRuns(sessionId),
     queryKey: workflowRunsQueryKey(sessionId),
@@ -40,6 +45,8 @@ export const useWorkflowRuns = (sessionId: string) =>
           run.status === "running" &&
           now - new Date(run.updated_at).getTime() < STALE_RUNNING_THRESHOLD_MS,
       );
-      return hasActiveRun ? 2_000 : false;
+      const expectingRun =
+        !!expectedRunId && !runs.some((r) => r.run_id === expectedRunId);
+      return hasActiveRun || expectingRun ? 2_000 : false;
     },
   });

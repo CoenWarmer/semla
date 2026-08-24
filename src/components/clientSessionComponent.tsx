@@ -15,7 +15,7 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
+import { useWorkflowRuns, workflowRunsQueryKey } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
@@ -23,6 +23,7 @@ import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 import type { UIMessage } from "ai";
 import { MessageSquareIcon } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
@@ -40,9 +41,20 @@ export function ClientSessionComponent({
     workflowSnapshot,
   } = usePromptMutation(sessionId);
 
+  const queryClient = useQueryClient();
   const messagesQuery = useSessionMessages(sessionId);
-  const workflowRunsQuery = useWorkflowRuns(sessionId);
+  const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data ?? [];
+
+  // Trigger an immediate re-fetch of workflow runs when a background workflow
+  // is started. The initial poll may have returned empty because the DB entry
+  // is created a few seconds after the "workflow-started" SSE event fires.
+  const workflowRunId = workflowSnapshot?.runId;
+  useEffect(() => {
+    if (workflowRunId) {
+      void queryClient.invalidateQueries({ queryKey: workflowRunsQueryKey(sessionId) });
+    }
+  }, [workflowRunId, sessionId, queryClient]);
 
   // Use the most recent run's snapshot if it has detail; fall back to a
   // minimal placeholder so the panel is visible for background workflows
