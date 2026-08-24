@@ -15,7 +15,13 @@ import {
  * file on disk is the authoritative source of live agent state.
  */
 export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
-  const runState = readWorkflowRun(PI_WORKSPACE_ROOT, runId);
+  // The workflow extension falls back to process.cwd() when ctx.cwd isn't
+  // propagated from the agent session (PI_WORKSPACE_ROOT may differ).
+  const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
+  const runState = cwds.reduce<ReturnType<typeof readWorkflowRun>>(
+    (found, cwd) => found ?? readWorkflowRun(cwd, runId),
+    null,
+  );
   if (!runState) return null;
 
   const agents = runState.agents.map((a) => ({
