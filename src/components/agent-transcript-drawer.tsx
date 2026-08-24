@@ -12,6 +12,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const DRAWER_WIDTH_DEFAULT = 520
 const DRAWER_WIDTH_MIN = 320
@@ -149,8 +151,12 @@ export function AgentTranscriptDrawer({
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
           {agent?.prompt && (
             <div className="mb-4 rounded-md border bg-card px-3 py-2 text-sm">
-              <p className="text-muted-foreground text-xs mb-1">Prompt</p>
-              <p className="whitespace-pre-wrap break-words">{agent.prompt}</p>
+              <p className="text-muted-foreground text-xs mb-2">Prompt</p>
+              <div className="prose prose-sm prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:text-xs [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {agent.prompt}
+                </ReactMarkdown>
+              </div>
             </div>
           )}
 

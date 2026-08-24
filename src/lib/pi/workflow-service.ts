@@ -19,15 +19,18 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
   if (!runState) return null;
 
   const agents = runState.agents.map((a) => ({
+    endedAt: a.endedAt,
     error: a.error,
     id: a.id,
     label: a.label,
     model: a.model,
     phase: a.phase,
+    prompt: a.prompt ? a.prompt.slice(0, 200) : undefined,
     resultPreview:
       typeof a.result === "string"
         ? (a.result as string).slice(0, 300)
         : a.resultPreview,
+    startedAt: a.startedAt,
     status: a.status,
     tokens: a.tokens,
   }));
@@ -35,6 +38,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
   return {
     agentCount: agents.length,
     agents,
+    completedAt: runState.completedAt,
     currentPhase: runState.currentPhase,
     doneCount: agents.filter((a) => a.status === "done").length,
     errorCount: agents.filter((a) => a.status === "error").length,
@@ -42,6 +46,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     phases: runState.phases,
     runId,
     runningCount: agents.filter((a) => a.status === "running").length,
+    startedAt: runState.startedAt,
     tokenUsage: runState.tokenUsage
       ? { cost: runState.tokenUsage.cost, total: runState.tokenUsage.total }
       : undefined,
