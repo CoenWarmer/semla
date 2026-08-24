@@ -185,6 +185,16 @@ const getConfiguredModel = async ({
   provider: string;
 }) => {
   const runtime = await ModelRuntime.create({ refreshOnCreate: false });
+
+  // Workflow subagents resolve their own model through this runtime, and that
+  // path reads the availability snapshot rather than models.json directly.
+  // refreshOnCreate:false leaves the snapshot empty, which makes
+  // hasConfiguredAuth() report false for a provider whose credentials are in
+  // fact present — the subagent then fails with "No API key found for the
+  // selected model" while this session's own model works fine. Warming it once
+  // here is what pi-dynamic-workflows does for its own fallback runtime.
+  await runtime.getAvailable().catch(() => {});
+
   const apiKey = process.env.PI_MODEL_API_KEY;
 
   if (apiKey) {
