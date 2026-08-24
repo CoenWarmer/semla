@@ -10,9 +10,8 @@ import {
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
-import { FolderOpenIcon, ScanSearchIcon } from "lucide-react";
+import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
-import { SessionFilesPanel } from "./session-files-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 
 interface SessionTopbarProps {
@@ -46,7 +45,6 @@ export function SessionTopbar({
   sessionRunning,
   snapshot,
 }: SessionTopbarProps) {
-  const [filesOpen, setFilesOpen] = useState(false);
   const [inspectOpen, setInspectOpen] = useState(false);
 
   const totalCost = allRuns.reduce(
@@ -66,10 +64,6 @@ export function SessionTopbar({
         </h1>
 
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
-            <FolderOpenIcon />
-            Files
-          </Button>
           <Button size="sm" variant="ghost" onClick={() => setInspectOpen(true)}>
             <ScanSearchIcon />
             Inspect
@@ -89,20 +83,6 @@ export function SessionTopbar({
           )}
         </div>
       </div>
-
-      <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
-        <SheetContent
-          className="flex flex-col gap-0 p-0 sm:max-w-2xl"
-          side="right"
-        >
-          <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle>Files</SheetTitle>
-          </SheetHeader>
-          <div className="min-h-0 flex-1">
-            <SessionFilesPanel sessionId={sessionId} />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       <Sheet open={inspectOpen} onOpenChange={setInspectOpen}>
         <SheetContent
