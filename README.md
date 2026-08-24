@@ -1,6 +1,6 @@
 # Semla
 
-**Semla is a web-based agent harness built for reliability and traceability.** It provides a persistent session interface for a coding agent, with first-class support for workflow orchestration, observability, and multi-repository workspaces.
+**Semla is a web-based agent Pi agent harness built for reliability and traceability.** It provides a persistent session interface for a coding agent, with first-class support for workflow orchestration, observability, and multi-repository workspaces.
 
 The core design principle is that every agent run should be inspectable, repeatable, and correct. Semla does not optimise for autonomy at the expense of auditability — it records what the agent does, surfaces timing and token data, and keeps a full transcript of every subagent in every workflow.
 
