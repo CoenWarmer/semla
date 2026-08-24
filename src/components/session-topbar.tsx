@@ -62,14 +62,6 @@ export function SessionTopbar({
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {title ?? "Untitled session"}
         </h1>
-
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setInspectOpen(true)}>
-            <ScanSearchIcon />
-            Inspect
-          </Button>
-        </div>
-
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {totalCost > 0 && (
             <span title="Total session cost">
@@ -82,6 +74,13 @@ export function SessionTopbar({
             </span>
           )}
         </div>
+      </div>
+
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/40 px-4">
+        <Button size="sm" variant="ghost" onClick={() => setInspectOpen(true)}>
+          <ScanSearchIcon />
+          Inspect
+        </Button>
       </div>
 
       <Sheet open={inspectOpen} onOpenChange={setInspectOpen}>
