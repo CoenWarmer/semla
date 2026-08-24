@@ -191,11 +191,14 @@ export const fetchPersistedEntries = async (piSessionId: string) => {
   return data;
 };
 
-export const finalizeBackgroundRun = async (runId: string) => {
+export const finalizeBackgroundRun = async (
+  runId: string,
+  status: "completed" | "failed" = "completed",
+) => {
   const admin = createAdminClient();
   const { error } = await admin
     .from("workflow_runs")
-    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .update({ status, updated_at: new Date().toISOString() })
     .eq("run_id", runId)
     .eq("status", "running");
 
@@ -205,4 +208,24 @@ export const finalizeBackgroundRun = async (runId: string) => {
       error,
     );
   }
+};
+
+export const fetchStuckBackgroundRuns = async (
+  semlaSessionId: string,
+): Promise<Array<{ run_id: string }>> => {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("workflow_runs")
+    .select("run_id")
+    .eq("semla_session_id", semlaSessionId)
+    .eq("status", "running");
+
+  if (error) {
+    console.error(
+      `[pi:session-persistence] Unable to fetch stuck background runs: ${error.message}`,
+    );
+    return [];
+  }
+
+  return data ?? [];
 };

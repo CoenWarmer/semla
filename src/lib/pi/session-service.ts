@@ -22,12 +22,14 @@ import {
   createSessionFile,
   ensurePiSession,
   fetchPersistedEntries,
+  fetchStuckBackgroundRuns,
   finalizeBackgroundRun,
   persistBackgroundWorkflowStart,
   persistEntry,
   persistWorkflowSnapshot,
   updateSessionTitle,
 } from "@/lib/pi/session-persistence";
+import { readWorkflowRun } from "@/lib/pi/workflow-run-reader";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 const workflowExtensionPath = join(
@@ -234,6 +236,32 @@ export const runPiPrompt = async ({
         ? `Pi workflow extension failed to load.\n${extensionErrors.join("\n")}`
         : "Pi workflow extension did not register its workflow tool.",
     );
+  }
+
+  // Recover background workflows whose delivery was lost (e.g. server restart mid-run).
+  // Inject the result as a context message so Pi sees the completed workflow in this prompt.
+  const stuckRuns = await fetchStuckBackgroundRuns(semlaSessionId);
+  for (const { run_id } of stuckRuns) {
+    const runState = readWorkflowRun(PI_WORKSPACE_ROOT, run_id);
+    if (!runState || runState.status !== "completed") continue;
+    const done = runState.agents.filter((a) => a.status === "done").length;
+    const total = runState.agents.length;
+    const content =
+      `✓ Background workflow "${runState.workflowName}" finished (${done}/${total} agents). ` +
+      `The result is available at ~/.pi/workflows/projects/*/runs/${run_id}.json`;
+    try {
+      await session.sendCustomMessage(
+        { customType: "workflow-result", content, display: true },
+        { triggerTurn: false },
+      );
+      void finalizeBackgroundRun(run_id);
+      log(semlaSessionId, "recovered stuck bg run", { run: run_id });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[pi:session:${semlaSessionId.slice(0, 8)}] bg run recovery failed for ${run_id}: ${msg}`,
+      );
+    }
   }
 
   let hasBackgroundWorkflow = false;
