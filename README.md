@@ -1,54 +1,129 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Semla
+
+**Semla is a web-based agent harness built for reliability and traceability.** It provides a persistent session interface for a coding agent, with first-class support for workflow orchestration, observability, and multi-repository workspaces.
+
+The core design principle is that every agent run should be inspectable, repeatable, and correct. Semla does not optimise for autonomy at the expense of auditability — it records what the agent does, surfaces timing and token data, and keeps a full transcript of every subagent in every workflow.
+
+---
+
+## Features
+
+- **Sessions** — Persistent conversations backed by Supabase. Resume any session from where it left off; full message history is retained across page reloads.
+- **Workflow orchestration** — The agent can decompose tasks into parallel subagents. Progress is tracked in real time and surfaced in a panel alongside the conversation.
+- **Timeline view** — Workflows are rendered as an OTel-style trace waterfall: phases, agents, and conversation events on a shared time axis. Conversation messages appear as inline event markers that scroll the chat when clicked.
+- **Workspace project browser** — Semla scans the configured workspace root for git repositories and shows them on the home page as cards (branch, staleness). Clicking a card opens a new session pre-titled with the project name. A searchable combobox in the sidebar offers quick access to any repo.
+- **Agent transcript viewer** — Drill into any subagent's full transcript, including its prompt rendered as markdown.
+- **Model selection** — Models are loaded dynamically from the pi runtime; the active model is stored per user in user settings.
+- **System prompt editor** — Override the orchestrator's system prompt from the settings page without a redeploy.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js (App Router, Node.js runtime) |
+| Auth & persistence | Supabase (Postgres + Auth) |
+| Agent runtime | `@earendil-works/pi-coding-agent` |
+| UI | Tailwind CSS, base-ui, shadcn components |
+| State | TanStack Query |
+| Workflow graph | React Flow (`@xyflow/react`) |
+| Timeline view | `react-otel-trace-waterfall` |
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- A Supabase project with the sessions, user_settings, and workflow tables provisioned
+- An API key for the model provider (Anthropic, or any provider supported by the pi runtime)
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Configure environment
+
+Copy the example below into `.env.local` and fill in the values:
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
+
+# Agent runtime
+PI_MODEL_API_KEY=sk-ant-...          # model provider API key
+
+# Workspace
+PI_WORKSPACE_ROOT=/Users/you/Dev     # directory scanned for git repositories
+
+# Development only — allows the agent to access the host filesystem directly
+PI_ALLOW_HOST_DEV=true
+```
+
+#### Environment variable reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase anon/publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key (server-side only) |
+| `PI_MODEL_API_KEY` | Yes | API key passed to the pi model runtime |
+| `PI_WORKSPACE_ROOT` | No | Path the agent uses as its working directory. Defaults to `process.cwd()` when `PI_ALLOW_HOST_DEV=true`, or `/workspace` in sandboxed mode. Set this explicitly when developing — `process.cwd()` will be the Semla directory itself, not your projects root. |
+| `PI_ALLOW_HOST_DEV` | No | When `true`, the agent runs directly on the host filesystem instead of inside a sandbox. Intended for local development only. |
+| `PI_SANDBOXED` | No | When `true`, enforces sandboxed execution. Mutually exclusive with `PI_ALLOW_HOST_DEV`. |
+
+### Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Log in with your Supabase credentials.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture
 
-## Pi sandbox
+```
+src/
+  app/
+    page.tsx                  Home page — workspace project browser
+    sessions/[id]/            Session view
+    settings/                 Runtime config, system prompt, packages
+    api/
+      sessions/               Create sessions, stream agent responses
+      projects/               List workspace git repositories
+      models/                 Available models from the pi runtime
+  components/
+    clientSessionComponent    Main session UI (conversation + workflow panel)
+    session-workflow-panel    Workflow graph and timeline toggle
+    projects-grid             Home page project cards
+    projects-combobox         Sidebar project launcher
+    agent-transcript-drawer   Per-agent transcript with markdown prompt
+  lib/
+    pi/
+      session-service         Connects Supabase sessions to the pi agent loop
+      workflow-service        Translates pi run state into WorkflowSnapshot
+      workspace               Scans PI_WORKSPACE_ROOT for git repositories
+      runtime-config          Central source for PI_* environment variables
+    workflow-spans            Converts WorkflowSnapshot → OTel spans for the waterfall
+```
 
-Pi is only enabled in the container defined by `docker-compose.pi.yml`. The
-container mounts `~/Dev` at `/workspace` and does not mount the host home
-directory, Docker socket, or SSH agent.
+The agent loop lives in `session-service.ts`. Each prompt streams events (assistant deltas, tool calls, workflow snapshots) over SSE to the client. Workflow progress is also polled from Supabase so background runs stay up to date after a page reload.
 
-1. Copy `env.sample` to `.env.local` and set the Supabase and Pi credentials.
-2. Set `SEMLA_DEV_ROOT` to the absolute path of your `~/Dev` directory.
-3. Start Semla through the sandbox:
+---
+
+## Validation
+
+Before committing, run:
 
 ```bash
-docker compose -f docker-compose.pi.yml up --build
+npm run tsc    # type check
+npm run lint   # eslint
 ```
-
-For local-only development, you can set `PI_ALLOW_HOST_DEV=true` in
-`.env.local` and run `npm run dev`. This bypasses the container boundary and
-must never be enabled outside development.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
