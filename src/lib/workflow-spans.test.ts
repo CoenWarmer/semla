@@ -94,6 +94,57 @@ test("an errored agent keeps its measured duration", () => {
   assert.equal(span?.status?.code, "ERROR");
 });
 
+test("tool calls become event markers folded into the Conversation row", () => {
+  const spans = workflowSnapshotToSpans(snapshot([]), messages, {
+    now: NOW,
+    toolCalls: [
+      {
+        createdAt: new Date(T0 + 2_000).toISOString(),
+        id: "toolu_1",
+        messageId: "m1",
+        name: "bash",
+        summary: "npm test",
+      },
+      {
+        createdAt: new Date(T0 + 4_000).toISOString(),
+        id: "toolu_2",
+        messageId: "m1",
+        name: "read",
+      },
+    ],
+  });
+
+  // EVENT spans are folded into the parent, so they get no row of their own.
+  assert.equal(spans.filter((s) => s.kind === "EVENT").length, 0);
+
+  const conversation = spans.find((s) => s.name === "Conversation");
+  const events = JSON.parse(
+    (conversation?.attributes?._events as string) ?? "[]",
+  ) as Array<{ name: string; service: string }>;
+
+  const tools = events.filter((e) => e.service === "tool");
+  assert.deepEqual(
+    tools.map((e) => e.name),
+    ["⚙ bash: npm test", "⚙ read"],
+  );
+});
+
+test("a tool call extends the trace past the last message", () => {
+  const spans = workflowSnapshotToSpans(snapshot([]), messages, {
+    now: NOW,
+    toolCalls: [
+      {
+        createdAt: new Date(T0 + 30_000).toISOString(),
+        id: "toolu_1",
+        messageId: "m1",
+        name: "bash",
+      },
+    ],
+  });
+
+  assert.equal(widthOf(spans, "Session"), 30_000);
+});
+
 test("the workflow span spans its agents rather than the whole trace", () => {
   const snap = snapshot(
     [

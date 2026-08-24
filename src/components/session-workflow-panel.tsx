@@ -11,7 +11,7 @@ import {
   NodeHeader,
   NodeTitle,
 } from "@/components/ai-elements/node";
-import type { SessionMessage } from "@/hooks/use-session-messages";
+import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { WorkflowAgentSnapshot, WorkflowSnapshot } from "@/types/workflow";
 import type {
   Edge as FlowEdge,
@@ -352,12 +352,14 @@ export function SessionWorkflowPanel({
   sessionId,
   sessionRunning,
   snapshot,
+  toolCalls,
 }: {
   messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
   sessionId?: string;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
+  toolCalls?: SessionToolCall[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
@@ -578,7 +580,11 @@ export function SessionWorkflowPanel({
           {viewMode === "timeline" ? (
             <TraceWaterfall
               key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
-              spans={workflowSnapshotToSpans(snapshot, messages ?? [], { sessionRunning, now: liveNow })}
+              spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
+                now: liveNow,
+                sessionRunning,
+                toolCalls,
+              })}
               theme={darkTheme}
               liveMode={snapshot.runningCount > 0}
               initialState="expanded"

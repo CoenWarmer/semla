@@ -127,6 +127,7 @@ export const usePromptMutation = (sessionId: string) => {
           (prev) => ({
             contextWindow: prev?.contextWindow ?? null,
             messages: context.previousMessages,
+            toolCalls: prev?.toolCalls ?? [],
           })
         );
       }
@@ -154,6 +155,9 @@ export const usePromptMutation = (sessionId: string) => {
         sessionMessagesQueryKey(sessionId),
         {
           contextWindow: previous?.contextWindow ?? null,
+          // Preserve the tool-call markers already on the timeline; the refetch
+          // after this turn brings in the ones this prompt produces.
+          toolCalls: previous?.toolCalls ?? [],
           messages: [
             ...previousMessages,
             {

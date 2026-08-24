@@ -49,6 +49,7 @@ export function ClientSessionComponent({
   const messagesQuery = useSessionMessages(sessionId);
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data?.messages ?? [];
+  const toolCalls = messagesQuery.data?.toolCalls ?? [];
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
 
   // Trigger an immediate re-fetch of workflow runs when a background workflow
@@ -197,6 +198,7 @@ export function ClientSessionComponent({
               persistedWorkflowSnapshot ??
               sessionAgentSnapshot)
         }
+        toolCalls={toolCalls}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
         <AgentTranscriptDrawer

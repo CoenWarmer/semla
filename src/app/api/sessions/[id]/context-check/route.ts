@@ -21,7 +21,7 @@ export async function POST(
   try {
     await requireSessionOwner(id);
     const supabase = await createClient();
-    const allMessages = await getTranscript(supabase, id);
+    const { messages: allMessages } = await getTranscript(supabase, id);
 
     // Only last 20 messages to keep prompt small
     const recent = allMessages.slice(-20);
