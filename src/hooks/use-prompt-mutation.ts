@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   sessionMessagesQueryKey,
   type SessionMessage,
+  type SessionMessagesResult,
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
@@ -121,9 +122,12 @@ export const usePromptMutation = (sessionId: string) => {
     },
     onError: (mutationError, _variables, context) => {
       if (context?.previousMessages) {
-        queryClient.setQueryData(
+        queryClient.setQueryData<SessionMessagesResult>(
           sessionMessagesQueryKey(sessionId),
-          context.previousMessages
+          (prev) => ({
+            contextWindow: prev?.contextWindow ?? null,
+            messages: context.previousMessages,
+          })
         );
       }
       setStreamError(
@@ -141,21 +145,25 @@ export const usePromptMutation = (sessionId: string) => {
         queryKey: sessionMessagesQueryKey(sessionId),
       });
 
-      const previousMessages =
-        queryClient.getQueryData<SessionMessage[]>(
+      const previous =
+        queryClient.getQueryData<SessionMessagesResult>(
           sessionMessagesQueryKey(sessionId)
-        ) ?? [];
-      queryClient.setQueryData<SessionMessage[]>(
+        );
+      const previousMessages = previous?.messages ?? [];
+      queryClient.setQueryData<SessionMessagesResult>(
         sessionMessagesQueryKey(sessionId),
-        [
-          ...previousMessages,
-          {
-            createdAt: new Date().toISOString(),
-            id: `optimistic-${crypto.randomUUID()}`,
-            role: "user",
-            text,
-          },
-        ]
+        {
+          contextWindow: previous?.contextWindow ?? null,
+          messages: [
+            ...previousMessages,
+            {
+              createdAt: new Date().toISOString(),
+              id: `optimistic-${crypto.randomUUID()}`,
+              role: "user",
+              text,
+            },
+          ],
+        }
       );
 
       return { previousMessages };
