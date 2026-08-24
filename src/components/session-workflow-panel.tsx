@@ -341,11 +341,13 @@ function InlineSpanRow({
 export function SessionWorkflowPanel({
   messages,
   onAgentClick,
+  sessionId,
   sessionRunning,
   snapshot,
 }: {
   messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
+  sessionId?: string;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
 }) {
@@ -555,7 +557,7 @@ export function SessionWorkflowPanel({
         <div className="flex-1 min-h-0">
           {viewMode === "timeline" ? (
             <TraceWaterfall
-              key={snapshot.runId ?? "no-run"}
+              key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
               spans={workflowSnapshotToSpans(snapshot, messages ?? [], { sessionRunning })}
               theme={darkTheme}
               liveMode={snapshot.runningCount > 0}

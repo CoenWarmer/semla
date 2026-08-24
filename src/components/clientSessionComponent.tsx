@@ -166,6 +166,7 @@ export function ClientSessionComponent({
         <SessionWorkflowPanel
           messages={messages}
           onAgentClick={handleAgentClick}
+          sessionId={sessionId}
           sessionRunning={promptMutation.isPending}
           snapshot={
             // When both snapshots reference the same run, prefer the one with
