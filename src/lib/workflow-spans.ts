@@ -43,6 +43,7 @@ const TRACE_ID = "73656d6c61736573730000000000006f"; // "semlasess....o" padded 
 export function workflowSnapshotToSpans(
   snapshot: WorkflowSnapshot,
   messages: SessionMessage[],
+  options?: { sessionRunning?: boolean },
 ): OtelSpan[] {
   const now = Date.now();
   const spans: OtelSpan[] = [];
@@ -74,6 +75,7 @@ export function workflowSnapshotToSpans(
     endTimeUnixNano: msToNano(traceEnd),
     resource: { "service.name": "session" },
     kind: "INTERNAL",
+    attributes: options?.sessionRunning ? { "pi.status": "running" } : undefined,
   });
 
   // ── Conversation branch ───────────────────────────────────────────────────
