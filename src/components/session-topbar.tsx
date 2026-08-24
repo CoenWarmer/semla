@@ -47,14 +47,26 @@ export function SessionTopbar({
 }: SessionTopbarProps) {
   const [inspectOpen, setInspectOpen] = useState(false);
 
-  const totalCost = allRuns.reduce(
+  // For workflow sessions use the run-level token accounting (most accurate).
+  // For plain sessions fall back to per-message usage recorded in entries.
+  const runCost = allRuns.reduce(
     (sum, run) => sum + (run.snapshot?.tokenUsage?.cost ?? 0),
     0,
   );
-  const totalTokens = allRuns.reduce(
+  const runTokens = allRuns.reduce(
     (sum, run) => sum + (run.snapshot?.tokenUsage?.total ?? 0),
     0,
   );
+  const msgCost = messages.reduce(
+    (sum, m) => sum + (m.tokenUsage?.cost ?? 0),
+    0,
+  );
+  const msgTokens = messages.reduce(
+    (sum, m) => sum + (m.tokenUsage?.total ?? 0),
+    0,
+  );
+  const totalCost = runCost > 0 ? runCost : msgCost;
+  const totalTokens = runTokens > 0 ? runTokens : msgTokens;
 
   return (
     <>

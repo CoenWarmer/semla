@@ -5,6 +5,7 @@ export type SessionMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  tokenUsage?: { cost: number; total: number };
 };
 
 export const sessionMessagesQueryKey = (sessionId: string) =>

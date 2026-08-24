@@ -2,9 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
 
+type PiUsage = {
+  cost?: { total: number };
+  totalTokens?: number;
+};
+
 type PiMessage = {
   content: unknown;
   role: string;
+  usage?: PiUsage;
 };
 
 export type SessionTranscriptEntry = {
@@ -12,6 +18,7 @@ export type SessionTranscriptEntry = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  tokenUsage?: { cost: number; total: number };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -88,12 +95,17 @@ export const getTranscript = async (
     // behind the real event time when entries are written asynchronously.
     const createdAt = payload.entry?.timestamp ?? entry.created_at;
 
+    const cost = message.usage?.cost?.total;
+    const total = message.usage?.totalTokens;
     return [
       {
         createdAt,
         id: entry.id,
         role: message.role,
         text: getMessageText(message),
+        ...(message.role === "assistant" && cost != null && total != null
+          ? { tokenUsage: { cost, total } }
+          : {}),
       },
     ];
   });
