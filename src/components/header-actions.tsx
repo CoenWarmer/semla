@@ -7,10 +7,27 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useSessionCost } from "@/hooks/use-session-cost";
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { SessionFilesPanel } from "./session-files-panel";
+
+function formatCost(cost: number): string {
+  if (cost < 0.001) return `$${cost.toFixed(5)}`;
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(3)}`;
+}
+
+function SessionCostBadge({ sessionId }: { sessionId: string }) {
+  const { cost } = useSessionCost(sessionId);
+  if (cost <= 0) return null;
+  return (
+    <span className="text-xs tabular-nums text-muted-foreground" title="Total session cost">
+      {formatCost(cost)}
+    </span>
+  );
+}
 
 export function HeaderActions() {
   const params = useParams();
@@ -21,6 +38,7 @@ export function HeaderActions() {
 
   return (
     <>
+      <SessionCostBadge sessionId={sessionId} />
       <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
         <FolderOpenIcon />
         Files

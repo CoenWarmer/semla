@@ -160,7 +160,6 @@ export function ClientSessionComponent({
       <SessionTopbar
         title={title}
         sessionId={sessionId}
-        allRuns={workflowRunsQuery.data ?? []}
         messages={messages}
         onAgentClick={handleAgentClick}
         sessionRunning={promptMutation.isPending}

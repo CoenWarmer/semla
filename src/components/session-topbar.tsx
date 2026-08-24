@@ -7,8 +7,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useSessionCost } from "@/hooks/use-session-cost";
 import type { SessionMessage } from "@/hooks/use-session-messages";
-import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
@@ -17,7 +17,6 @@ import { SessionWorkflowPanel } from "./session-workflow-panel";
 interface SessionTopbarProps {
   title: string | null;
   sessionId: string;
-  allRuns: WorkflowRun[];
   messages: SessionMessage[];
   onAgentClick: (agentId: number, runId: string) => void;
   sessionRunning?: boolean;
@@ -39,34 +38,13 @@ function formatTokens(n: number): string {
 export function SessionTopbar({
   title,
   sessionId,
-  allRuns,
   messages,
   onAgentClick,
   sessionRunning,
   snapshot,
 }: SessionTopbarProps) {
   const [inspectOpen, setInspectOpen] = useState(false);
-
-  // For workflow sessions use the run-level token accounting (most accurate).
-  // For plain sessions fall back to per-message usage recorded in entries.
-  const runCost = allRuns.reduce(
-    (sum, run) => sum + (run.snapshot?.tokenUsage?.cost ?? 0),
-    0,
-  );
-  const runTokens = allRuns.reduce(
-    (sum, run) => sum + (run.snapshot?.tokenUsage?.total ?? 0),
-    0,
-  );
-  const msgCost = messages.reduce(
-    (sum, m) => sum + (m.tokenUsage?.cost ?? 0),
-    0,
-  );
-  const msgTokens = messages.reduce(
-    (sum, m) => sum + (m.tokenUsage?.total ?? 0),
-    0,
-  );
-  const totalCost = runCost > 0 ? runCost : msgCost;
-  const totalTokens = runTokens > 0 ? runTokens : msgTokens;
+  const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
 
   return (
     <>
