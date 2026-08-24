@@ -4,6 +4,7 @@ import type { Database } from "@/types/database.types";
 
 type PiUsage = {
   cost?: { total: number };
+  input?: number;
   totalTokens?: number;
 };
 
@@ -16,6 +17,7 @@ type PiMessage = {
 export type SessionTranscriptEntry = {
   createdAt: string;
   id: string;
+  inputTokens?: number;
   role: "assistant" | "user";
   text: string;
   tokenUsage?: { cost: number; total: number };
@@ -97,6 +99,7 @@ export const getTranscript = async (
 
     const cost = message.usage?.cost?.total;
     const total = message.usage?.totalTokens;
+    const inputTokens = message.usage?.input;
     return [
       {
         createdAt,
@@ -105,6 +108,9 @@ export const getTranscript = async (
         text: getMessageText(message),
         ...(message.role === "assistant" && cost != null && total != null
           ? { tokenUsage: { cost, total } }
+          : {}),
+        ...(message.role === "assistant" && inputTokens != null
+          ? { inputTokens }
           : {}),
       },
     ];

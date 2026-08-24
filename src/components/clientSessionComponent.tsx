@@ -14,6 +14,7 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,
   workflowRunsQueryKey,
@@ -47,7 +48,8 @@ export function ClientSessionComponent({
   const queryClient = useQueryClient();
   const messagesQuery = useSessionMessages(sessionId);
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
-  const messages = messagesQuery.data ?? [];
+  const messages = messagesQuery.data?.messages ?? [];
+  const contextCheckTrigger = useTriggerContextCheck(sessionId);
 
   // Trigger an immediate re-fetch of workflow runs when a background workflow
   // is started. The initial poll may have returned empty because the DB entry
@@ -102,6 +104,18 @@ export function ClientSessionComponent({
       runningCount: isActive ? 1 : 0,
     };
   }, [promptMutation.isPending, messages.length, activeTool]);
+
+  // After every 10th user prompt, trigger a background context-quality check.
+  const prevPendingRef = useRef(false);
+  useEffect(() => {
+    const wasJustPending = prevPendingRef.current && !promptMutation.isPending;
+    prevPendingRef.current = promptMutation.isPending;
+    if (!wasJustPending) return;
+    const userMsgCount = messages.filter((m) => m.role === "user").length;
+    if (userMsgCount > 0 && userMsgCount % 10 === 0) {
+      void contextCheckTrigger.mutate();
+    }
+  }, [promptMutation.isPending, messages, contextCheckTrigger]);
 
   // Track elapsed time while a prompt is in-flight.
   const startTimeRef = useRef<number | null>(null);
