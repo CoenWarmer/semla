@@ -50,7 +50,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <SidebarProvider className="flex-1 min-h-0">
               <AppSidebar />
               <main className="flex w-full flex-col">
-                <SidebarTrigger className="shrink-0" />
+                <header className="flex h-11 shrink-0 items-center border-b border-border/40 px-2">
+                  <SidebarTrigger />
+                </header>
                 <div className="flex-1 min-h-0 overflow-y-auto">
                   {children}
                 </div>

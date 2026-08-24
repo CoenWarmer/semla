@@ -20,7 +20,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
-import { SessionWorkflowPanel } from "./session-workflow-panel";
+import { SessionTopbar } from "./session-topbar";
 import type { UIMessage } from "ai";
 import { MessageSquareIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,9 +29,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export function ClientSessionComponent({
   defaultTools,
   sessionId,
+  title,
 }: {
   defaultTools: string[];
   sessionId: string;
+  title: string | null;
 }) {
   const {
     activeTool,
@@ -154,7 +156,29 @@ export function ClientSessionComponent({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-4 px-20 py-4">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <SessionTopbar
+        title={title}
+        sessionId={sessionId}
+        allRuns={workflowRunsQuery.data ?? []}
+        messages={messages}
+        onAgentClick={handleAgentClick}
+        sessionRunning={promptMutation.isPending}
+        snapshot={
+          // When both snapshots reference the same run, prefer the one with
+          // more agent data. Background workflows set workflowSnapshot to an
+          // empty shell via "workflow-started" and never update it — the DB
+          // polling snapshot has the real agent progress.
+          workflowSnapshot &&
+          persistedWorkflowSnapshot &&
+          workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
+          persistedWorkflowSnapshot.agents.length >
+            workflowSnapshot.agents.length
+            ? persistedWorkflowSnapshot
+            : (workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot)
+        }
+      />
+      <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
       <AgentTranscriptDrawer
         agentId={selectedAgent?.agentId ?? null}
         onClose={() => setSelectedAgent(null)}
@@ -162,29 +186,6 @@ export function ClientSessionComponent({
         runId={selectedAgent?.runId ?? null}
         sessionId={sessionId}
       />
-      <div className="shrink-0">
-        <SessionWorkflowPanel
-          messages={messages}
-          onAgentClick={handleAgentClick}
-          sessionId={sessionId}
-          sessionRunning={promptMutation.isPending}
-          snapshot={
-            // When both snapshots reference the same run, prefer the one with
-            // more agent data. Background workflows set workflowSnapshot to an
-            // empty shell via "workflow-started" and never update it — the DB
-            // polling snapshot has the real agent progress.
-            workflowSnapshot &&
-            persistedWorkflowSnapshot &&
-            workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
-            persistedWorkflowSnapshot.agents.length >
-              workflowSnapshot.agents.length
-              ? persistedWorkflowSnapshot
-              : (workflowSnapshot ??
-                persistedWorkflowSnapshot ??
-                sessionAgentSnapshot)
-          }
-        />
-      </div>
       <Conversation className="min-h-0 w-full">
         <ConversationContent className="w-full">
           {messages.length === 0 ? (
@@ -240,6 +241,7 @@ export function ClientSessionComponent({
       </Conversation>
       <div className="shrink-0">
         <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
+      </div>
       </div>
     </div>
   );
