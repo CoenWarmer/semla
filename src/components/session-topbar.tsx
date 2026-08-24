@@ -52,16 +52,14 @@ export function SessionTopbar({
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {title ?? "Untitled session"}
         </h1>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {totalCost > 0 && (
-            <span title="Total session cost">
-              {formatCost(totalCost)}
-            </span>
-          )}
+        <div className="flex items-center gap-3 text-xs text-foreground">
           {totalTokens > 0 && (
             <span className="tabular-nums" title="Total tokens used">
               {formatTokens(totalTokens)} tokens
             </span>
+          )}
+          {totalCost > 0 && (
+            <span title="Total session cost">{formatCost(totalCost)}</span>
           )}
         </div>
       </div>

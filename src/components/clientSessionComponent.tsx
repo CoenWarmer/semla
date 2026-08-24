@@ -3,7 +3,6 @@
 import {
   Conversation,
   ConversationContent,
-  ConversationDownload,
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
@@ -15,13 +14,15 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import { useWorkflowRuns, workflowRunsQueryKey } from "@/hooks/use-workflow-runs";
+import {
+  useWorkflowRuns,
+  workflowRunsQueryKey,
+} from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
-import type { UIMessage } from "ai";
 import { MessageSquareIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,7 +55,9 @@ export function ClientSessionComponent({
   const workflowRunId = workflowSnapshot?.runId;
   useEffect(() => {
     if (workflowRunId) {
-      void queryClient.invalidateQueries({ queryKey: workflowRunsQueryKey(sessionId) });
+      void queryClient.invalidateQueries({
+        queryKey: workflowRunsQueryKey(sessionId),
+      });
     }
   }, [workflowRunId, sessionId, queryClient]);
 
@@ -174,58 +177,62 @@ export function ClientSessionComponent({
           persistedWorkflowSnapshot.agents.length >
             workflowSnapshot.agents.length
             ? persistedWorkflowSnapshot
-            : (workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot)
+            : (workflowSnapshot ??
+              persistedWorkflowSnapshot ??
+              sessionAgentSnapshot)
         }
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
-      <AgentTranscriptDrawer
-        agentId={selectedAgent?.agentId ?? null}
-        onClose={() => setSelectedAgent(null)}
-        open={selectedAgent !== null}
-        runId={selectedAgent?.runId ?? null}
-        sessionId={sessionId}
-      />
-      <Conversation className="min-h-0 w-full">
-        <ConversationContent className="w-full">
-          {messages.length === 0 ? (
-            <ConversationEmptyState
-              description="Send a message to start this session."
-              icon={<MessageSquareIcon className="size-12" />}
-              title="Start a conversation"
-            />
-          ) : (
-            messages.map((message) => (
-              <Message from={message.role} id={message.id} key={message.id}>
+        <AgentTranscriptDrawer
+          agentId={selectedAgent?.agentId ?? null}
+          onClose={() => setSelectedAgent(null)}
+          open={selectedAgent !== null}
+          runId={selectedAgent?.runId ?? null}
+          sessionId={sessionId}
+        />
+        <Conversation className="min-h-0 w-full">
+          <ConversationContent className="w-full">
+            {messages.length === 0 ? (
+              <ConversationEmptyState
+                description="Send a message to start this session."
+                icon={<MessageSquareIcon className="size-12" />}
+                title="Start a conversation"
+              />
+            ) : (
+              messages.map((message) => (
+                <Message from={message.role} id={message.id} key={message.id}>
+                  <MessageContent>
+                    <MessageResponse>{message.text}</MessageResponse>
+                  </MessageContent>
+                </Message>
+              ))
+            )}
+            {streamingText && (
+              <Message from="assistant">
                 <MessageContent>
-                  <MessageResponse>{message.text}</MessageResponse>
+                  <MessageResponse isAnimating>{streamingText}</MessageResponse>
                 </MessageContent>
               </Message>
-            ))
-          )}
-          {streamingText && (
-            <Message from="assistant">
-              <MessageContent>
-                <MessageResponse isAnimating>{streamingText}</MessageResponse>
-              </MessageContent>
-            </Message>
-          )}
-          {promptMutation.isPending && !streamingText && (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Spinner />
-              <span>{activeTool ? `Running ${activeTool}…` : "Thinking…"}</span>
-              {elapsedLabel && (
-                <span className="tabular-nums">{elapsedLabel}</span>
-              )}
-              {estimatedTokens && (
-                <span className="tabular-nums">{estimatedTokens}</span>
-              )}
-            </div>
-          )}
-          {errorMessage && (
-            <p className="text-destructive text-sm">{errorMessage}</p>
-          )}
-        </ConversationContent>
-        {/* {messages.length > 0 && (
+            )}
+            {promptMutation.isPending && !streamingText && (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Spinner />
+                <span>
+                  {activeTool ? `Running ${activeTool}…` : "Thinking…"}
+                </span>
+                {elapsedLabel && (
+                  <span className="tabular-nums">{elapsedLabel}</span>
+                )}
+                {estimatedTokens && (
+                  <span className="tabular-nums">{estimatedTokens}</span>
+                )}
+              </div>
+            )}
+            {errorMessage && (
+              <p className="text-destructive text-sm">{errorMessage}</p>
+            )}
+          </ConversationContent>
+          {/* {messages.length > 0 && (
           <ConversationDownload
             messages={
               messages.map((message) => ({
@@ -236,11 +243,11 @@ export function ClientSessionComponent({
             }
           />
         )} */}
-        <ConversationScrollButton />
-      </Conversation>
-      <div className="shrink-0">
-        <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
-      </div>
+          <ConversationScrollButton />
+        </Conversation>
+        <div className="shrink-0">
+          <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
+        </div>
       </div>
     </div>
   );

@@ -46,7 +46,7 @@ export function HeaderActions() {
         </Button>
       )}
 
-      <div className="ml-auto">
+      <div className="ml-auto px-4">
         <GlobalCostBadge />
       </div>
 
