@@ -11,7 +11,10 @@ import {
   NodeHeader,
   NodeTitle,
 } from "@/components/ai-elements/node";
-import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
+import type {
+  SessionMessage,
+  SessionToolCall,
+} from "@/hooks/use-session-messages";
 import type { WorkflowAgentSnapshot, WorkflowSnapshot } from "@/types/workflow";
 import type {
   Edge as FlowEdge,
@@ -27,9 +30,17 @@ import {
   Maximize2Icon,
   Minimize2Icon,
   NetworkIcon,
+  XIcon,
 } from "lucide-react";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
 
 function FitViewOnChange({
@@ -194,7 +205,6 @@ function InlineSpanRow({
   isSelected,
   isFocused,
   onToggle,
-  onSelect,
 }: SpanComponentProps) {
   const { span, hasChildren, isExpanded } = row;
   const t = darkTheme;
@@ -226,7 +236,10 @@ function InlineSpanRow({
         cursor: "pointer",
         userSelect: "none",
       }}
-      onClick={() => onSelect(span.spanId)}
+      // Deliberately no onClick: the waterfall wraps this row in a div
+      // that already selects on click. Calling onSelect here too ran the
+      // library's toggle twice in one batch — set then unset — so the
+      // selection never changed and the detail panel never opened.
     >
       <div
         style={{
@@ -277,7 +290,9 @@ function InlineSpanRow({
           </span>
         )}
         {isQueued && (
-          <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.4, fontSize: 10 }}>
+          <span
+            style={{ flexShrink: 0, marginLeft: 6, opacity: 0.4, fontSize: 10 }}
+          >
             ·
           </span>
         )}
@@ -346,6 +361,151 @@ function InlineSpanRow({
   );
 }
 
+function formatDuration(startNano: string, endNano: string): string {
+  const ms = (Number(endNano) - Number(startNano)) / 1_000_000;
+  if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
+  if (ms < 1000) return `${ms.toFixed(1)}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function AttrRow({
+  label,
+  mono,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="flex gap-2 text-xs">
+      <span className="text-muted-foreground shrink-0 w-28 truncate" title={label}>
+        {label}
+      </span>
+      <span className={`flex-1 break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+type FoldedEvent = { name: string; service: string; t: string };
+
+/** The markers folded into this row (messages and tool calls), oldest first. */
+function foldedEvents(span: SpanNode | null): FoldedEvent[] {
+  const raw = span?.attributes?.["_events"];
+  if (typeof raw !== "string") return [];
+
+  try {
+    const events = JSON.parse(raw) as FoldedEvent[];
+    return [...events].sort((a, b) => Number(a.t) - Number(b.t));
+  } catch {
+    return [];
+  }
+}
+
+function SpanDetailDrawer({
+  onClose,
+  span,
+}: {
+  onClose: () => void;
+  span: SpanNode | null;
+}) {
+  const service = span?.resource?.["service.name"] as string | undefined;
+  const duration = span
+    ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
+    : null;
+  const statusCode = span?.status?.code;
+  const attrs = span
+    ? Object.entries(span.attributes ?? {}).filter(([key]) => key !== "_events")
+    : [];
+  const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
+  const events = foldedEvents(span);
+  const spanStart = span ? Number(span.startTimeUnixNano) : 0;
+
+  return (
+    <Drawer
+      modal={false}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open={span !== null}
+      swipeDirection="right"
+    >
+      <DrawerContent
+        className="flex flex-col overflow-hidden"
+        style={{ "--drawer-content-width": "320px" } as React.CSSProperties}
+      >
+        <DrawerHeader className="flex flex-row items-start justify-between gap-2 pb-3">
+          <DrawerTitle className="truncate text-sm">{span?.name ?? ""}</DrawerTitle>
+          <DrawerClose className="shrink-0 rounded-sm p-1 opacity-70 hover:opacity-100">
+            <XIcon className="size-4" />
+            <span className="sr-only">Close</span>
+          </DrawerClose>
+        </DrawerHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-4">
+          <div className="space-y-1.5">
+            {service && <AttrRow label="service" value={service} />}
+            {duration && <AttrRow label="duration" value={duration} />}
+            {statusCode && statusCode !== "UNSET" && (
+              <div className="flex gap-2 text-xs">
+                <span className="text-muted-foreground shrink-0 w-28">status</span>
+                <span
+                  className={`flex-1 ${statusCode === "ERROR" ? "text-destructive" : "text-green-500"}`}
+                >
+                  {statusCode}
+                  {span?.status?.message ? ` — ${span.status.message}` : ""}
+                </span>
+              </div>
+            )}
+            {span?.kind && span.kind !== "UNSPECIFIED" && (
+              <AttrRow label="kind" value={span.kind} />
+            )}
+          </div>
+          {events.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Events ({events.length})
+              </p>
+              <div className="space-y-1.5">
+                {events.map((event, index) => (
+                  <AttrRow
+                    key={`${event.t}-${index}`}
+                    label={formatDuration(String(spanStart), event.t)}
+                    value={event.name}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {attrs.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Attributes
+              </p>
+              <div className="space-y-1.5">
+                {attrs.map(([key, value]) => (
+                  <AttrRow key={key} label={key} mono value={String(value)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {resourceAttrs.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Resource
+              </p>
+              <div className="space-y-1.5">
+                {resourceAttrs.map(([key, value]) => (
+                  <AttrRow key={key} label={key} mono value={String(value)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 export function SessionWorkflowPanel({
   messages,
   onAgentClick,
@@ -363,6 +523,7 @@ export function SessionWorkflowPanel({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
+  const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null);
   const [liveNow, setLiveNow] = useState(() => Date.now());
 
   const hasActiveAgents =
@@ -592,13 +753,29 @@ export function SessionWorkflowPanel({
               timelinePadding={10}
               SpanComponent={InlineSpanRow}
               TooltipComponent={InlineEventTooltip}
+              // We render our own panel below, so switch the built-in one off
+              // rather than showing both. Ours also portals to the body, which
+              // the 260px overflow-auto inspect container would otherwise clip.
+              disableInspectPanel
               onSelectSpan={(span: SpanNode | null) => {
-                if (!span || !onAgentClick) return;
+                if (!span) {
+                  setSelectedSpan(null);
+                  return;
+                }
+                // Agent rows have a richer drawer of their own (the transcript).
                 const agentId = span.attributes?.["pi.agent_id"];
                 const runId = span.attributes?.["pi.run_id"];
-                if (typeof agentId === "number" && typeof runId === "string") {
+                if (
+                  onAgentClick &&
+                  typeof agentId === "number" &&
+                  typeof runId === "string"
+                ) {
                   onAgentClick(agentId, runId);
+                  return;
                 }
+                setSelectedSpan((prev) =>
+                  prev?.spanId === span.spanId ? null : span,
+                );
               }}
             />
           ) : (
@@ -619,6 +796,10 @@ export function SessionWorkflowPanel({
           )}
         </div>
       </section>
+      <SpanDetailDrawer
+        onClose={() => setSelectedSpan(null)}
+        span={selectedSpan}
+      />
     </div>
   );
 }
