@@ -1,40 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
-import type { WorkflowAgentStatus, WorkflowSnapshot } from "@/types/workflow";
+import type { WorkflowSnapshot } from "@/types/workflow";
 import { PI_WORKSPACE_ROOT } from "./runtime-config";
 import {
   readWorkflowRun,
   type PersistedAgentState,
 } from "./workflow-run-reader";
 import { getActiveManager } from "./workflow-manager-registry";
-
-const TERMINAL_AGENT_STATUSES = new Set(["done", "error", "skipped"]);
-
-/**
- * Agents reported by the in-memory manager carry no timestamps, and the disk
- * file only gains them once an agent completes. Remember when this process
- * first saw each agent — and when it first saw it finish — so a running bar
- * grows from the agent's own start instead of collapsing to a point or
- * anchoring to the start of the workflow.
- *
- * Process-local and best-effort: entries are only ever read for the run they
- * belong to, and a restart simply falls back to the disk timestamps.
- */
-type AgentClock = { firstSeenAt: string; terminalAt?: string };
-const agentClocks = new Map<string, AgentClock>();
-
-function agentClock(runId: string, agentId: number, status: string): AgentClock {
-  const key = `${runId}:${agentId}`;
-  let clock = agentClocks.get(key);
-  if (!clock) {
-    clock = { firstSeenAt: new Date().toISOString() };
-    agentClocks.set(key, clock);
-  }
-  if (!clock.terminalAt && TERMINAL_AGENT_STATUSES.has(status)) {
-    clock.terminalAt = new Date().toISOString();
-  }
-  return clock;
-}
+import { mergeLiveSnapshot } from "./workflow-snapshot-merge";
 
 /**
  * Build a live WorkflowSnapshot for a run.
@@ -56,55 +29,10 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
   );
 
   // The manager is the only source for agents that are queued or running, so
-  // prefer it for status and membership while taking timing from disk.
+  // merge its status over the timestamps the run file has recorded so far.
   const live = getActiveManager(runId)?.getSnapshot(runId) ?? null;
-
   if (live) {
-    const onDisk = new Map((runState?.agents ?? []).map((a) => [a.id, a]));
-    const agents = live.agents.map((a) => {
-      const disk = onDisk.get(a.id);
-      const clock = agentClock(runId, a.id, a.status);
-      return {
-        endedAt:
-          disk?.endedAt ??
-          (TERMINAL_AGENT_STATUSES.has(a.status) ? clock.terminalAt : undefined),
-        error: a.error,
-        id: a.id,
-        label: a.label,
-        model: a.model,
-        phase: a.phase,
-        prompt: a.prompt ? a.prompt.slice(0, 200) : undefined,
-        resultPreview:
-          typeof a.result === "string"
-            ? (a.result as string).slice(0, 300)
-            : a.resultPreview,
-        startedAt: disk?.startedAt ?? clock.firstSeenAt,
-        status: a.status as WorkflowAgentStatus,
-        tokens: a.tokens,
-      };
-    });
-
-    const earliestStart = agents
-      .map((a) => a.startedAt)
-      .filter((t): t is string => Boolean(t))
-      .sort()[0];
-
-    return {
-      agentCount: live.agentCount,
-      agents,
-      completedAt: runState?.completedAt,
-      currentPhase: live.currentPhase,
-      doneCount: live.doneCount,
-      errorCount: live.errorCount,
-      name: live.name,
-      phases: live.phases,
-      runId,
-      runningCount: live.runningCount,
-      startedAt: runState?.startedAt ?? earliestStart,
-      tokenUsage: live.tokenUsage
-        ? { cost: live.tokenUsage.cost, total: live.tokenUsage.total }
-        : undefined,
-    };
+    return mergeLiveSnapshot({ disk: runState, live, runId });
   }
 
   if (!runState) return null;

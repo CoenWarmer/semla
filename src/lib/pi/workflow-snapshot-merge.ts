@@ -1,0 +1,132 @@
+import type { WorkflowAgentStatus, WorkflowSnapshot } from "@/types/workflow";
+import type { PersistedAgentState, PersistedRunState } from "./workflow-run-reader";
+
+/** Statuses after which an agent does no further work. */
+export const TERMINAL_AGENT_STATUSES = new Set(["done", "error", "skipped"]);
+
+/**
+ * The subset of the in-memory WorkflowManager snapshot we consume. It is the
+ * only source for agents that are queued or running, and it carries no
+ * timestamps at all.
+ */
+export type LiveSnapshot = {
+  agentCount: number;
+  agents: Array<{
+    error?: string;
+    id: number;
+    label: string;
+    model?: string;
+    phase?: string;
+    prompt?: string;
+    result?: unknown;
+    resultPreview?: string;
+    status: string;
+    tokens?: number;
+  }>;
+  currentPhase?: string;
+  doneCount: number;
+  errorCount: number;
+  name: string;
+  phases: string[];
+  runningCount: number;
+  tokenUsage?: { cost?: number; total: number };
+};
+
+/**
+ * When this process first saw an agent, and first saw it finish. The manager
+ * reports no timestamps and the disk file only gains them once an agent
+ * completes, so without this a live agent has no start: its bar would either
+ * collapse to a point or anchor to the start of the workflow.
+ *
+ * Keyed by `runId:agentId`, so entries never collide across runs. Process-local
+ * and best-effort — after a restart the disk timestamps take over.
+ */
+type AgentClock = { firstSeenAt: string; terminalAt?: string };
+const agentClocks = new Map<string, AgentClock>();
+
+function agentClock(
+  runId: string,
+  agentId: number,
+  status: string,
+  now: () => string,
+): AgentClock {
+  const key = `${runId}:${agentId}`;
+  let clock = agentClocks.get(key);
+  if (!clock) {
+    clock = { firstSeenAt: now() };
+    agentClocks.set(key, clock);
+  }
+  if (!clock.terminalAt && TERMINAL_AGENT_STATUSES.has(status)) {
+    clock.terminalAt = now();
+  }
+  return clock;
+}
+
+/**
+ * Combine the live manager snapshot with the persisted run file.
+ *
+ * Membership and status come from the manager (the only place a queued or
+ * running agent appears); timing comes from the disk record for the same agent
+ * id, falling back to the first-seen clock. Choosing one source instead of
+ * merging is what made running bars render with no duration.
+ */
+export function mergeLiveSnapshot({
+  disk,
+  live,
+  now = () => new Date().toISOString(),
+  runId,
+}: {
+  disk: PersistedRunState | null;
+  live: LiveSnapshot;
+  now?: () => string;
+  runId: string;
+}): WorkflowSnapshot {
+  const onDisk = new Map<number, PersistedAgentState>(
+    (disk?.agents ?? []).map((agent) => [agent.id, agent]),
+  );
+
+  const agents = live.agents.map((agent) => {
+    const persisted = onDisk.get(agent.id);
+    const clock = agentClock(runId, agent.id, agent.status, now);
+    return {
+      endedAt:
+        persisted?.endedAt ??
+        (TERMINAL_AGENT_STATUSES.has(agent.status) ? clock.terminalAt : undefined),
+      error: agent.error,
+      id: agent.id,
+      label: agent.label,
+      model: agent.model,
+      phase: agent.phase,
+      prompt: agent.prompt ? agent.prompt.slice(0, 200) : undefined,
+      resultPreview:
+        typeof agent.result === "string"
+          ? agent.result.slice(0, 300)
+          : agent.resultPreview,
+      startedAt: persisted?.startedAt ?? clock.firstSeenAt,
+      status: agent.status as WorkflowAgentStatus,
+      tokens: agent.tokens,
+    };
+  });
+
+  const earliestStart = agents
+    .map((agent) => agent.startedAt)
+    .filter((at): at is string => Boolean(at))
+    .sort()[0];
+
+  return {
+    agentCount: live.agentCount,
+    agents,
+    completedAt: disk?.completedAt,
+    currentPhase: live.currentPhase,
+    doneCount: live.doneCount,
+    errorCount: live.errorCount,
+    name: live.name,
+    phases: live.phases,
+    runId,
+    runningCount: live.runningCount,
+    startedAt: disk?.startedAt ?? earliestStart,
+    tokenUsage: live.tokenUsage
+      ? { cost: live.tokenUsage.cost, total: live.tokenUsage.total }
+      : undefined,
+  };
+}
