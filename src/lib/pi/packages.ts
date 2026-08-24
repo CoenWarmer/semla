@@ -1,7 +1,6 @@
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_AGENT_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import {
   DefaultPackageManager,
-  getAgentDir,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
@@ -14,7 +13,9 @@ type PiPackage = {
 
 export function getInstalledPiPackages(): PiPackage[] {
   try {
-    const agentDir = getAgentDir();
+    // Same dir the session resource loader uses, so this reports the packages
+    // sessions actually load rather than the developer's global pi install.
+    const agentDir = PI_AGENT_DIR;
     const settingsManager = SettingsManager.create(
       PI_WORKSPACE_ROOT,
       agentDir,

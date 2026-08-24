@@ -1,10 +1,10 @@
 import {
   createAgentSession,
   DefaultResourceLoader,
-  getAgentDir,
   ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -17,6 +17,7 @@ import {
   type SessionDebugWriter,
 } from "@/lib/pi/debug-writer";
 import {
+  PI_AGENT_DIR,
   PI_SESSION_DIR,
   PI_WORKSPACE_ROOT,
   getPiRuntimeConfig,
@@ -47,6 +48,11 @@ const workflowExtensionPath = join(
 const workflowProgressBridgePath = join(
   process.cwd(),
   "src/lib/pi/extensions/workflow-progress-bridge.ts",
+);
+
+const workflowSkillsPath = join(
+  process.cwd(),
+  "node_modules/@quintinshaw/pi-dynamic-workflows/skills",
 );
 
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.
@@ -251,9 +257,15 @@ export const runPiPrompt = async ({
     PI_SESSION_DIR,
     PI_WORKSPACE_ROOT,
   );
+  await mkdir(PI_AGENT_DIR, { recursive: true });
   const resourceLoader = new DefaultResourceLoader({
     additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath],
-    agentDir: getAgentDir(),
+    // The workflow skills ship inside the package but are only contributed when
+    // it is loaded as a package. We load the extension file directly, so point
+    // at this repo's copy explicitly rather than inheriting them from whatever
+    // is installed in the developer's agent dir.
+    additionalSkillPaths: [workflowSkillsPath],
+    agentDir: PI_AGENT_DIR,
     cwd: PI_WORKSPACE_ROOT,
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
   });
