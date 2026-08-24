@@ -30,8 +30,40 @@ export const updateSessionTitle = async (
   }
 };
 
+// A UTF-16 surrogate without its pair. JSON.stringify emits these verbatim as
+// \udXXX escapes, which PostgREST's parser rejects outright — the whole request
+// fails with "Empty or invalid json" rather than just dropping the character.
+//
+// This is reachable from ordinary agent output: pi-dynamic-workflows truncates
+// each agent's resultPreview to a fixed number of UTF-16 code units, so a
+// preview ending in an emoji is cut between the emoji's two halves.
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+// NUL cannot be stored in a Postgres text or jsonb value at all.
+const sanitizeText = (value: string): string =>
+  value.replace(LONE_SURROGATE, "\uFFFD").replaceAll("\u0000", "");
+
+const jsonWithStrings = (
+  value: unknown,
+  transform: (text: string) => string,
+): Json =>
+  JSON.parse(
+    JSON.stringify(value, (_key, entry: unknown) =>
+      typeof entry === "string" ? transform(entry) : entry,
+    ),
+  ) as Json;
+
 export const toJson = (value: unknown): Json =>
-  JSON.parse(JSON.stringify(value)) as Json;
+  jsonWithStrings(value, sanitizeText);
+
+// Last-resort transliteration for a payload Postgres refused for reasons
+// sanitizeText does not cover. Structure and field types are preserved — only
+// the characters degrade — so the entry still restores as a valid Pi entry.
+const toAsciiJson = (value: unknown): Json =>
+  jsonWithStrings(value, (text) =>
+    sanitizeText(text).replace(/[^\t\n\r\x20-\x7E]/g, "?"),
+  );
 
 export const persistWorkflowSnapshot = async (
   semlaSessionId: string,
@@ -146,21 +178,35 @@ export const ensurePiSession = async (
 
 export const persistEntry = async (piSessionId: string, entry: PiSessionEntry) => {
   const admin = createAdminClient();
-  const { error: entryError } = await admin.from("pi_session_entries").upsert(
-    {
-      event_type: entry.type,
-      id: entry.id,
-      parent_entry_id: entry.parentId,
-      payload: toJson({ entry }),
-      pi_session_id: piSessionId,
-    },
-    { onConflict: "id" },
-  );
+  const row = {
+    event_type: entry.type,
+    id: entry.id,
+    parent_entry_id: entry.parentId,
+    pi_session_id: piSessionId,
+  };
+
+  const { error: entryError } = await admin
+    .from("pi_session_entries")
+    .upsert({ ...row, payload: toJson({ entry }) }, { onConflict: "id" });
 
   if (entryError) {
-    throw new Error(
-      `Unable to persist Pi session entry: ${entryError.message}`,
+    // parent_entry_id is a self-referencing foreign key and entries are written
+    // in order, so one unstorable entry makes every later entry of the turn
+    // unstorable too — including the assistant's final answer. Degrade the
+    // characters rather than dropping the tail of the conversation.
+    console.error(
+      `[pi:session-persistence] Entry ${entry.id} (${entry.type}) rejected: ${entryError.message} — retrying with ASCII-only payload`,
     );
+
+    const { error: retryError } = await admin
+      .from("pi_session_entries")
+      .upsert({ ...row, payload: toAsciiJson({ entry }) }, { onConflict: "id" });
+
+    if (retryError) {
+      throw new Error(
+        `Unable to persist Pi session entry: ${retryError.message}`,
+      );
+    }
   }
 
   const { error: updateError } = await admin
