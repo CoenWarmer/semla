@@ -1,12 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextCheckResult } from "@/hooks/use-context-check";
 import { useSessionMessages } from "@/hooks/use-session-messages";
@@ -134,32 +128,28 @@ export function SessionTopbar({
               {agentCount} {agentCount === 1 ? "agent" : "agents"}
             </span>
           )}
-          <Button size="sm" variant="ghost" onClick={() => setInspectOpen(true)}>
+          <Button
+            size="sm"
+            variant={inspectOpen ? "secondary" : "ghost"}
+            onClick={() => setInspectOpen((v) => !v)}
+          >
             <ScanSearchIcon />
             Inspect
           </Button>
         </div>
       </div>
 
-      <Sheet open={inspectOpen} onOpenChange={setInspectOpen}>
-        <SheetContent
-          className="flex flex-col gap-0 p-0 sm:max-w-3xl"
-          side="right"
-        >
-          <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle>Inspect</SheetTitle>
-          </SheetHeader>
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            <SessionWorkflowPanel
-              messages={messages}
-              onAgentClick={onAgentClick}
-              sessionId={sessionId}
-              sessionRunning={sessionRunning}
-              snapshot={snapshot}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
+      {inspectOpen && (
+        <div className="shrink-0 border-b border-border/40 overflow-auto" style={{ height: 260 }}>
+          <SessionWorkflowPanel
+            messages={messages}
+            onAgentClick={onAgentClick}
+            sessionId={sessionId}
+            sessionRunning={sessionRunning}
+            snapshot={snapshot}
+          />
+        </div>
+      )}
     </>
   );
 }
