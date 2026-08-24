@@ -23,7 +23,10 @@ function SessionCostBadge({ sessionId }: { sessionId: string }) {
   const { cost } = useSessionCost(sessionId);
   if (cost <= 0) return null;
   return (
-    <span className="text-xs tabular-nums text-muted-foreground" title="Total session cost">
+    <span
+      className="text-xs tabular-nums text-muted-foreground"
+      title="Total session cost"
+    >
       {formatCost(cost)}
     </span>
   );
@@ -38,11 +41,14 @@ export function HeaderActions() {
 
   return (
     <>
-      <SessionCostBadge sessionId={sessionId} />
       <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
         <FolderOpenIcon />
         Files
       </Button>
+
+      <div className="ml-auto">
+        <SessionCostBadge sessionId={sessionId} />
+      </div>
 
       <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
         <SheetContent
