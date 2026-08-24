@@ -3,6 +3,8 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -11,20 +13,27 @@ import {
 import { Settings } from "lucide-react";
 import Link from "next/link";
 import { NewSessionButton } from "./new-session-button";
+import { ProjectsCombobox } from "./projects-combobox";
 import { SessionsList } from "./sessionsList";
 
 export function AppSidebar() {
   return (
     <Sidebar>
-      <SidebarHeader className="flex flex-row items-center justify-between">
-        <span>Sessions</span>
-        <NewSessionButton />
+      <SidebarHeader className="flex flex-row items-center justify-between p-0">
+        <SidebarGroup>
+          <SidebarGroupContent className="px-2">
+            <ProjectsCombobox />
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
+          <div className="flex flex-row justify-between items-center mb-2">
+            <span>Sessions</span>
+            <NewSessionButton />
+          </div>
           <SessionsList />
         </SidebarGroup>
-        <SidebarGroup />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
