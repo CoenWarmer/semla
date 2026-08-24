@@ -76,16 +76,21 @@ export const getTranscript = async (
   }
 
   return entries.flatMap((entry) => {
-    const payload = entry.payload as { entry?: { message?: PiMessage } };
+    const payload = entry.payload as { entry?: { message?: PiMessage; timestamp?: string } };
     const message = payload.entry?.message;
 
     if (!message || !isDisplayMessage(message)) {
       return [];
     }
 
+    // payload.entry.timestamp is the actual event time set by the pi runtime.
+    // entry.created_at is the Supabase insertion time, which can lag significantly
+    // behind the real event time when entries are written asynchronously.
+    const createdAt = payload.entry?.timestamp ?? entry.created_at;
+
     return [
       {
-        createdAt: entry.created_at,
+        createdAt,
         id: entry.id,
         role: message.role,
         text: getMessageText(message),

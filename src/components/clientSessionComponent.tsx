@@ -152,8 +152,23 @@ export function ClientSessionComponent({
       />
       <div className="shrink-0">
         <SessionWorkflowPanel
+          messages={messages}
           onAgentClick={handleAgentClick}
-          snapshot={workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot}
+          snapshot={
+            // When both snapshots reference the same run, prefer the one with
+            // more agent data. Background workflows set workflowSnapshot to an
+            // empty shell via "workflow-started" and never update it — the DB
+            // polling snapshot has the real agent progress.
+            workflowSnapshot &&
+            persistedWorkflowSnapshot &&
+            workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
+            persistedWorkflowSnapshot.agents.length >
+              workflowSnapshot.agents.length
+              ? persistedWorkflowSnapshot
+              : (workflowSnapshot ??
+                persistedWorkflowSnapshot ??
+                sessionAgentSnapshot)
+          }
         />
       </div>
       <Conversation className="min-h-0 w-full">
@@ -166,7 +181,7 @@ export function ClientSessionComponent({
             />
           ) : (
             messages.map((message) => (
-              <Message from={message.role} key={message.id}>
+              <Message from={message.role} id={message.id} key={message.id}>
                 <MessageContent>
                   <MessageResponse>{message.text}</MessageResponse>
                 </MessageContent>
@@ -184,15 +199,19 @@ export function ClientSessionComponent({
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Spinner />
               <span>{activeTool ? `Running ${activeTool}…` : "Thinking…"}</span>
-              {elapsedLabel && <span className="tabular-nums">{elapsedLabel}</span>}
-              {estimatedTokens && <span className="tabular-nums">{estimatedTokens}</span>}
+              {elapsedLabel && (
+                <span className="tabular-nums">{elapsedLabel}</span>
+              )}
+              {estimatedTokens && (
+                <span className="tabular-nums">{estimatedTokens}</span>
+              )}
             </div>
           )}
           {errorMessage && (
             <p className="text-destructive text-sm">{errorMessage}</p>
           )}
         </ConversationContent>
-        {messages.length > 0 && (
+        {/* {messages.length > 0 && (
           <ConversationDownload
             messages={
               messages.map((message) => ({
@@ -202,7 +221,7 @@ export function ClientSessionComponent({
               })) as UIMessage[]
             }
           />
-        )}
+        )} */}
         <ConversationScrollButton />
       </Conversation>
       <div className="shrink-0">

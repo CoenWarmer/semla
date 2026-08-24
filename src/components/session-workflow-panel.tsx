@@ -11,14 +11,19 @@ import {
   NodeHeader,
   NodeTitle,
 } from "@/components/ai-elements/node";
+import type { SessionMessage } from "@/hooks/use-session-messages";
 import type { WorkflowAgentSnapshot, WorkflowSnapshot } from "@/types/workflow";
 import type {
   Edge as FlowEdge,
   Node as FlowNode,
   NodeProps,
 } from "@xyflow/react";
+import { TraceWaterfall, darkTheme } from "react-otel-trace-waterfall";
+import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
+import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import { useNodesState, useReactFlow } from "@xyflow/react";
-import { Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { GanttChartIcon, Maximize2Icon, Minimize2Icon, NetworkIcon } from "lucide-react";
+import type { SpanTooltipProps } from "react-otel-trace-waterfall";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function FitViewOnChange({ expanded, nodeCount }: { expanded: boolean; nodeCount: number }) {
@@ -129,14 +134,118 @@ const edgeTypes = { animated: Edge.Animated };
 const COL_WIDTH = 440;
 const ROW_HEIGHT = 200;
 
+// ── Inline span row ──────────────────────────────────────────────────────────
+// Shared constants that mirror the library's internal layout values.
+const LABEL_COL = 280;
+const SPAN_ROW_H = 32;
+const BAR_H = 14;
+const MIN_BAR_W = 2;
+
+type InlineEvent = { t: string; name: string; service: string; msgId: string };
+
+function paletteColor(service: string | undefined, palette: readonly string[]) {
+  if (!service) return palette[0];
+  let n = 0;
+  for (let i = 0; i < service.length; i++) n = (n * 31 + service.charCodeAt(i)) | 0;
+  return palette[Math.abs(n) % palette.length];
+}
+
+// Module-level bus: InlineSpanRow writes here on marker hover; InlineEventTooltip reads it.
+let _hoveredInlineEvent: InlineEvent | null = null;
+
+function InlineEventTooltip(_: SpanTooltipProps) {
+  const ev = _hoveredInlineEvent;
+  if (!ev) return null;
+  return (
+    <div style={{ padding: "5px 9px", fontSize: 12, lineHeight: "1.4", maxWidth: 300, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+      {ev.name}
+    </div>
+  );
+}
+
+function InlineSpanRow({ row, scale, isSelected, isFocused, onToggle, onSelect }: SpanComponentProps) {
+  const { span, hasChildren, isExpanded } = row;
+  const t = darkTheme;
+  const isError = span.status?.code === "ERROR";
+  const service = span.resource?.["service.name"] as string | undefined;
+  const barColor = isError ? t.barErrorColor : paletteColor(service, t.barPalette);
+  const startPx = scale(Number(span.startTimeUnixNano));
+  const endPx = scale(Number(span.endTimeUnixNano));
+  const barWidth = Math.max(MIN_BAR_W, endPx - startPx);
+  const events: InlineEvent[] = span.attributes?.["_events"]
+    ? JSON.parse(span.attributes["_events"] as string)
+    : [];
+  const indent = span.depth * t.rowIndentPx + t.rowPaddingInline;
+
+  return (
+    <div
+      role="row"
+      style={{
+        display: "flex", alignItems: "center", height: SPAN_ROW_H,
+        borderBottom: `1px solid ${t.rowBorder}`,
+        background: isSelected ? t.rowSelectedBackground : "transparent",
+        boxShadow: isFocused ? `inset 0 0 0 2px ${t.rowFocusRing}` : undefined,
+        cursor: "pointer", userSelect: "none",
+      }}
+      onClick={() => onSelect(span.spanId)}
+    >
+      <div style={{ width: LABEL_COL, flexShrink: 0, paddingLeft: indent, display: "flex", alignItems: "center", overflow: "hidden" }}>
+        <button
+          style={{ width: 14, flexShrink: 0, background: "none", border: "none", padding: 0, cursor: hasChildren ? "pointer" : "default", color: t.chevronColor, fontSize: 10, visibility: hasChildren ? "visible" : "hidden" }}
+          onClick={(e) => { e.stopPropagation(); if (hasChildren) onToggle(span.spanId); }}
+        >
+          {isExpanded ? "▾" : "▸"}
+        </button>
+        <span style={{ color: isError ? t.spanNameErrorColor : t.spanNameColor, fontSize: 13, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {span.name}
+        </span>
+      </div>
+      <div style={{ flex: 1, position: "relative", overflow: "hidden", height: "100%" }}>
+        {events.length === 0 && (
+          <div style={{ position: "absolute", left: startPx, width: barWidth, height: BAR_H, top: "50%", transform: "translateY(-50%)", background: barColor, borderRadius: 2 }} />
+        )}
+        {events.map((ev, i) => {
+          const color = ev.service ? paletteColor(ev.service, t.barPalette) : (t.eventMarkerColor || barColor);
+          return (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                left: scale(Number(ev.t)),
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: t.eventMarkerSize,
+                height: t.eventMarkerSize,
+                background: color,
+                borderRadius: "50%",
+                cursor: ev.msgId ? "pointer" : "default",
+                zIndex: 1,
+              }}
+              onMouseEnter={() => { _hoveredInlineEvent = ev; }}
+              onMouseLeave={() => { _hoveredInlineEvent = null; }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (ev.msgId) document.getElementById(ev.msgId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SessionWorkflowPanel({
+  messages,
   onAgentClick,
   snapshot,
 }: {
+  messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
   snapshot?: WorkflowSnapshot;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
   const { edges, nodes: computedNodes } = useMemo(() => {
     if (!snapshot) {
       return { edges: [], nodes: [] };
@@ -306,6 +415,17 @@ export function SessionWorkflowPanel({
               </span>
             )}
             <button
+              aria-label={viewMode === "timeline" ? "Switch to graph view" : "Switch to timeline view"}
+              className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              onClick={() => setViewMode((v) => v === "timeline" ? "graph" : "timeline")}
+            >
+              {viewMode === "timeline" ? (
+                <NetworkIcon className="size-3.5" />
+              ) : (
+                <GanttChartIcon className="size-3.5" />
+              )}
+            </button>
+            <button
               aria-label={
                 expanded ? "Collapse workflow panel" : "Expand workflow panel"
               }
@@ -321,20 +441,40 @@ export function SessionWorkflowPanel({
           </div>
         </div>
         <div className="flex-1 min-h-0">
-          <Canvas
-            edges={edges}
-            edgeTypes={edgeTypes}
-            fitViewOptions={{ padding: 0.25 }}
-            nodeTypes={nodeTypes}
-            nodes={nodes}
-            nodesDraggable
-            nodesFocusable={false}
-            onNodesChange={onNodesChange}
-            panOnDrag
-          >
-            <FitViewOnChange expanded={expanded} nodeCount={nodes.length} />
-            <Controls showInteractive={false} />
-          </Canvas>
+          {viewMode === "timeline" ? (
+            <TraceWaterfall
+              key={snapshot.runId ?? "no-run"}
+              spans={workflowSnapshotToSpans(snapshot, messages ?? [])}
+              theme={darkTheme}
+              liveMode={snapshot.runningCount > 0}
+              initialState="expanded"
+              SpanComponent={InlineSpanRow}
+              TooltipComponent={InlineEventTooltip}
+              onSelectSpan={(span: SpanNode | null) => {
+                if (!span || !onAgentClick) return;
+                const agentId = span.attributes?.["pi.agent_id"];
+                const runId = span.attributes?.["pi.run_id"];
+                if (typeof agentId === "number" && typeof runId === "string") {
+                  onAgentClick(agentId, runId);
+                }
+              }}
+            />
+          ) : (
+            <Canvas
+              edges={edges}
+              edgeTypes={edgeTypes}
+              fitViewOptions={{ padding: 0.25 }}
+              nodeTypes={nodeTypes}
+              nodes={nodes}
+              nodesDraggable
+              nodesFocusable={false}
+              onNodesChange={onNodesChange}
+              panOnDrag
+            >
+              <FitViewOnChange expanded={expanded} nodeCount={nodes.length} />
+              <Controls showInteractive={false} />
+            </Canvas>
+          )}
         </div>
       </section>
     </div>
