@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-export async function POST() {
+export async function POST(request: Request) {
   const userClient = await createClient();
   const {
     data: { user },
@@ -11,9 +11,14 @@ export async function POST() {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
+  const body = await request.json().catch(() => ({}));
+  const title = typeof body?.title === "string" && body.title.trim()
+    ? body.title.trim()
+    : "New Session";
+
   const { data, error } = await userClient
     .from("sessions")
-    .insert({ title: "New Session", user_id: user.id })
+    .insert({ title, user_id: user.id })
     .select("id")
     .single();
 

@@ -4,9 +4,8 @@ const hostDevelopmentEnabled =
   process.env.NODE_ENV === "development" &&
   process.env.PI_ALLOW_HOST_DEV === "true";
 
-export const PI_WORKSPACE_ROOT = hostDevelopmentEnabled
-  ? process.cwd()
-  : "/workspace";
+export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
+  ?? (hostDevelopmentEnabled ? process.cwd() : "/workspace");
 export const PI_SESSION_DIR = "/tmp/semla-pi-sessions";
 export const PI_TOOLS = [
   "read",
