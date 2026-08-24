@@ -118,15 +118,15 @@ export function workflowSnapshotToSpans(
     }
   }
 
-  // ── Workflow branch (only for real workflow runs) ────────────────────────
-  if (snapshot.runId && snapshot.agents.length > 0) {
+  // ── Workflow branch (for real workflow runs, even while starting with 0 agents) ──
+  if (snapshot.runId) {
     const wfStart = snapshot.startedAt
       ? new Date(snapshot.startedAt).getTime()
       : traceStart;
     const wfEnd = snapshot.completedAt
       ? new Date(snapshot.completedAt).getTime()
-      : snapshot.runningCount > 0
-        ? now
+      : snapshot.runningCount > 0 || snapshot.agents.length === 0
+        ? now  // still running (or just starting — no agents yet)
         : traceEnd;
 
     const wfId = makeSpanId(`wf-${snapshot.runId}`);

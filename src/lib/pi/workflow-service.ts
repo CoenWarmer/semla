@@ -1,21 +1,61 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
-import type { WorkflowSnapshot } from "@/types/workflow";
+import type { WorkflowAgentStatus, WorkflowSnapshot } from "@/types/workflow";
 import { PI_WORKSPACE_ROOT } from "./runtime-config";
 import {
   readWorkflowRun,
   type PersistedAgentState,
 } from "./workflow-run-reader";
+import { getActiveManager } from "./workflow-manager-registry";
 
 /**
- * Build a live WorkflowSnapshot from the run file on disk.
+ * Build a live WorkflowSnapshot for a run.
  *
- * The DB snapshot starts empty for background runs because pi session
- * events don't carry agent progress for background workflows — the run
- * file on disk is the authoritative source of live agent state.
+ * For running workflows, the disk file only updates when agents COMPLETE
+ * (onAgentJournal fires at completion, not at start). Agents in "running" or
+ * "queued" state are only visible in the WorkflowManager's in-memory snapshot.
+ * We try the manager first so the UI shows agents as they start, then fall
+ * back to the disk file once the run completes and the manager evicts it.
  */
 export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
-  // The workflow extension falls back to process.cwd() when ctx.cwd isn't
+  // Prefer in-memory manager snapshot — shows running/queued agents immediately.
+  const manager = getActiveManager(runId);
+  if (manager) {
+    const live = manager.getSnapshot(runId);
+    if (live) {
+      return {
+        agentCount: live.agentCount,
+        agents: live.agents.map((a) => ({
+          error: a.error,
+          id: a.id,
+          label: a.label,
+          model: a.model,
+          phase: a.phase,
+          prompt: a.prompt ? a.prompt.slice(0, 200) : undefined,
+          resultPreview:
+            typeof a.result === "string"
+              ? (a.result as string).slice(0, 300)
+              : a.resultPreview,
+          // timestamps not in in-memory snapshot; available on disk after completion
+          status: a.status as WorkflowAgentStatus,
+          tokens: a.tokens,
+        })),
+        currentPhase: live.currentPhase,
+        doneCount: live.doneCount,
+        errorCount: live.errorCount,
+        name: live.name,
+        phases: live.phases,
+        runId,
+        runningCount: live.runningCount,
+        tokenUsage: live.tokenUsage
+          ? { cost: live.tokenUsage.cost, total: live.tokenUsage.total }
+          : undefined,
+      };
+    }
+  }
+
+  // Fall back to disk once the run completes and the manager evicts it. The
+  // workflow extension falls back to process.cwd() when ctx.cwd isn't
   // propagated from the agent session (PI_WORKSPACE_ROOT may differ).
   const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
   const runState = cwds.reduce<ReturnType<typeof readWorkflowRun>>(

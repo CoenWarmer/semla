@@ -37,6 +37,11 @@ const workflowExtensionPath = join(
   "node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts",
 );
 
+const workflowProgressBridgePath = join(
+  process.cwd(),
+  "src/lib/pi/extensions/workflow-progress-bridge.ts",
+);
+
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.
 const log = (sid: string, msg: string, data?: Record<string, unknown>) => {
   const prefix = `[pi:session:${sid.slice(0, 8)}]`;
@@ -197,7 +202,7 @@ export const runPiPrompt = async ({
     PI_WORKSPACE_ROOT,
   );
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath],
+    additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath],
     agentDir: getAgentDir(),
     cwd: PI_WORKSPACE_ROOT,
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],

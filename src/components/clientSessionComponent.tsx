@@ -181,14 +181,16 @@ export function ClientSessionComponent({
         onAgentClick={handleAgentClick}
         sessionRunning={promptMutation.isPending}
         snapshot={
-          // When both snapshots reference the same run, prefer the one with
-          // more agent data. Background workflows set workflowSnapshot to an
-          // empty shell via "workflow-started" and never update it — the DB
-          // polling snapshot has the real agent progress.
+          // Prefer the persisted snapshot (from DB/live polling) over the SSE
+          // shell whenever they reference the same run and the persisted one
+          // has at least as many agents. Background workflows emit an empty
+          // "workflow-started" shell via SSE and never update it — the polling
+          // snapshot has the real agent progress (including running agents
+          // from the in-memory WorkflowManager).
           workflowSnapshot &&
           persistedWorkflowSnapshot &&
           workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
-          persistedWorkflowSnapshot.agents.length >
+          persistedWorkflowSnapshot.agents.length >=
             workflowSnapshot.agents.length
             ? persistedWorkflowSnapshot
             : (workflowSnapshot ??
