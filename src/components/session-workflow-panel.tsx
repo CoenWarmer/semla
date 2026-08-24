@@ -200,6 +200,7 @@ function InlineSpanRow({
   const t = darkTheme;
   const isError = span.status?.code === "ERROR";
   const isRunning = span.attributes?.["pi.status"] === "running";
+  const isQueued = span.attributes?.["pi.status"] === "queued";
   const service = span.resource?.["service.name"] as string | undefined;
   const barColor = isError
     ? t.barErrorColor
@@ -275,6 +276,11 @@ function InlineSpanRow({
             <Spinner className="size-3" />
           </span>
         )}
+        {isQueued && (
+          <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.4, fontSize: 10 }}>
+            ·
+          </span>
+        )}
       </div>
       <div
         style={{
@@ -288,13 +294,15 @@ function InlineSpanRow({
           <div
             style={{
               position: "absolute",
-              left: startPx,
-              width: barWidth,
+              left: isQueued ? startPx - 4 : startPx,
+              width: isQueued ? 8 : barWidth,
               height: BAR_H,
               top: "50%",
               transform: "translateY(-50%)",
-              background: barColor,
+              background: isQueued ? "transparent" : barColor,
+              border: isQueued ? `1.5px dashed ${barColor}` : "none",
               borderRadius: 2,
+              opacity: isQueued ? 0.5 : 1,
             }}
           />
         )}
@@ -353,6 +361,18 @@ export function SessionWorkflowPanel({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  const hasActiveAgents =
+    (snapshot?.runningCount ?? 0) > 0 ||
+    (snapshot?.agents ?? []).some((a) => a.status === "queued");
+
+  useEffect(() => {
+    if (!hasActiveAgents) return;
+    const id = setInterval(() => setLiveNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [hasActiveAgents]);
+
   const { edges, nodes: computedNodes } = useMemo(() => {
     if (!snapshot) {
       return { edges: [], nodes: [] };
@@ -558,7 +578,7 @@ export function SessionWorkflowPanel({
           {viewMode === "timeline" ? (
             <TraceWaterfall
               key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
-              spans={workflowSnapshotToSpans(snapshot, messages ?? [], { sessionRunning })}
+              spans={workflowSnapshotToSpans(snapshot, messages ?? [], { sessionRunning, now: liveNow })}
               theme={darkTheme}
               liveMode={snapshot.runningCount > 0}
               initialState="expanded"
