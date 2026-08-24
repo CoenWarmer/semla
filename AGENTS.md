@@ -12,6 +12,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 Semla is an agent harness that focuses on reliability and traceability. The code it produces should always compile, validate. Code quality is paramount.
 
+# Architecture
+
+- large files are discouraged: break up large files into separate, dedicated files if possible
+
 # Validate your changes
 
 Run tsc, lint and test to make sure your changes are valid.
