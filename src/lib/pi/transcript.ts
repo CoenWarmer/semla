@@ -40,6 +40,7 @@ export type SessionToolCall = {
   name: string;
   params?: Record<string, string>;
   resultAt?: string;
+  resultText?: string;
   summary?: string;
 };
 
@@ -104,7 +105,12 @@ const getToolCalls = (
         name: part.name,
         ...(summary ? { summary } : {}),
         ...(params ? { params } : {}),
-        ...(result ? { isError: result.isError, errorText: result.text.slice(0, 1000), resultAt: result.resultAt } : {}),
+        ...(result ? {
+          isError: result.isError,
+          ...(result.isError ? { errorText: result.text.slice(0, 1000) } : {}),
+          resultAt: result.resultAt,
+          resultText: result.text.slice(0, 4000),
+        } : {}),
       },
     ];
   });

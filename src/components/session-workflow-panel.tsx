@@ -509,7 +509,8 @@ function SpanDetailDrawer({
     .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
   const workflowDescription = span?.attributes?.["workflow.description"] as string | undefined;
   const piText = span?.attributes?.["pi.text"] as string | undefined;
-  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && k !== "workflow.description" && k !== "pi.text");
+  const piResult = span?.attributes?.["pi.result"] as string | undefined;
+  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && !["workflow.description", "pi.text", "pi.result"].includes(k));
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -567,9 +568,9 @@ function SpanDetailDrawer({
               <AttrRow label="kind" value={span.kind} />
             )}
           </div>
-          {piText && (
+          {(piText || piResult) && (
             <div className="prose prose-sm prose-invert max-w-none text-xs leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piText}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piText ?? piResult ?? ""}</ReactMarkdown>
             </div>
           )}
           {events.length > 0 && (

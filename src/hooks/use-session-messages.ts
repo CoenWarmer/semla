@@ -19,6 +19,7 @@ export type SessionToolCall = {
   name: string;
   params?: Record<string, string>;
   resultAt?: string;
+  resultText?: string;
   summary?: string;
 };
 
