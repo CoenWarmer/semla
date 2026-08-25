@@ -49,7 +49,7 @@ const getParams = (value: unknown): Record<string, string> | undefined => {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(value)) {
     if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
-      result[key] = String(val).slice(0, 500);
+      result[key] = String(val).slice(0, 8000);
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
