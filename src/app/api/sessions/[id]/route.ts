@@ -1,6 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function PATCH(
@@ -38,14 +37,16 @@ export async function PATCH(
   if (title !== undefined) patch.title = title;
   if (goal !== undefined) patch.goal = goal;
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  // Ownership already verified above — use admin client to bypass RLS,
+  // which silently no-ops an UPDATE (returns empty data, no error).
+  const admin = createAdminClient();
+  const { error } = await admin
     .from("sessions")
     .update(patch)
     .eq("id", id);
 
   if (error) {
-    console.error(`[api:sessions/${id}] Failed to rename session:`, error);
+    console.error(`[api:sessions/${id}] Failed to update session:`, error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 
