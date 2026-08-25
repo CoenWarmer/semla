@@ -139,18 +139,26 @@ export function mergeLiveSnapshot({
     .filter((at): at is string => Boolean(at))
     .sort()[0];
 
+  // live.runningCount/doneCount/errorCount are never updated from 0 on the
+  // WorkflowManager's managed.snapshot — only the per-agent status fields are
+  // mutated. Recompute from the merged agents so polling callers see accurate
+  // counts (affects liveMode in the timeline, topbar running count, etc).
+  const runningCount = agents.filter((a) => a.status === "running").length;
+  const doneCount = agents.filter((a) => a.status === "done").length;
+  const errorCount = agents.filter((a) => a.status === "error").length;
+
   return {
     agentCount: live.agentCount,
     agents,
     completedAt: disk?.completedAt,
     currentPhase: live.currentPhase,
     description: live.description ?? disk?.workflowDescription,
-    doneCount: live.doneCount,
-    errorCount: live.errorCount,
+    doneCount,
+    errorCount,
     name: live.name,
     phases: live.phases,
     runId,
-    runningCount: live.runningCount,
+    runningCount,
     startedAt: disk?.startedAt ?? earliestStart,
     tokenUsage: live.tokenUsage
       ? { cost: live.tokenUsage.cost, total: live.tokenUsage.total }
