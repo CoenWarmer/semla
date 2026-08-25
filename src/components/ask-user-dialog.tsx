@@ -72,30 +72,31 @@ export function AskUserDialog({ payload, sessionId, onDismiss }: AskUserDialogPr
   const isMultiItem = payload.questions.length > 1;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+    <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
       <Questionnaire
+        className="gap-3"
         items={items}
         shortcuts="letters"
         onSubmit={handleSubmit}
       >
-        {isMultiItem && <QuestionnaireProgress />}
+        {isMultiItem && <QuestionnaireProgress className="text-xs" />}
 
         {payload.questions.map((q) => (
-          <QuestionnaireItem key={q.id} name={q.id} multiple={q.type === "multiple"} required={q.type !== "text"}>
-            <QuestionnaireTitle>{q.question}</QuestionnaireTitle>
+          <QuestionnaireItem key={q.id} className="gap-2.5" name={q.id} multiple={q.type === "multiple"} required={q.type !== "text"}>
+            <QuestionnaireTitle className="text-sm font-medium">{q.question}</QuestionnaireTitle>
             {q.description && (
-              <QuestionnaireDescription>{q.description}</QuestionnaireDescription>
+              <QuestionnaireDescription className="text-xs">{q.description}</QuestionnaireDescription>
             )}
 
             {q.type === "text" ? (
-              <QuestionnaireInput placeholder="Type your answer…" />
+              <QuestionnaireInput className="min-h-0 h-8 text-sm px-3 rounded-md" placeholder="Type your answer…" />
             ) : (
-              <QuestionnaireChoices>
+              <QuestionnaireChoices className="gap-1.5">
                 {(q.options ?? []).map((opt) => (
-                  <QuestionnaireChoice key={opt.value} value={opt.value}>
+                  <QuestionnaireChoice key={opt.value} className="min-h-0 px-3 py-2 text-xs rounded-lg" value={opt.value}>
                     {opt.label}
                     {opt.description && (
-                      <QuestionnaireChoiceDescription>
+                      <QuestionnaireChoiceDescription className="text-xs">
                         {opt.description}
                       </QuestionnaireChoiceDescription>
                     )}
@@ -107,19 +108,19 @@ export function AskUserDialog({ payload, sessionId, onDismiss }: AskUserDialogPr
         ))}
 
         {error && (
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-xs text-destructive">{error}</p>
         )}
 
-        <QuestionnaireActions>
-          {isMultiItem && <QuestionnairePrevious />}
+        <QuestionnaireActions className="min-h-0 gap-1.5">
+          {isMultiItem && <QuestionnairePrevious size="sm" />}
           {isMultiItem ? (
-            <QuestionnaireNext />
+            <QuestionnaireNext size="sm" />
           ) : (
-            <QuestionnaireSubmit disabled={submitting}>
+            <QuestionnaireSubmit size="sm" disabled={submitting}>
               {submitting ? "Sending…" : "Submit"}
             </QuestionnaireSubmit>
           )}
-          {isMultiItem && <QuestionnaireSubmit disabled={submitting}>
+          {isMultiItem && <QuestionnaireSubmit size="sm" disabled={submitting}>
             {submitting ? "Sending…" : "Submit"}
           </QuestionnaireSubmit>}
         </QuestionnaireActions>
