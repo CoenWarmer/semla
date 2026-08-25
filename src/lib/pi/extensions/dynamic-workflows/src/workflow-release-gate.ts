@@ -21,8 +21,14 @@ import {
   type CAPABILITY_PUBLICATION_PATHS,
   checkWorkflowCapabilityPublications,
 } from "./workflow-authoring-reference.ts";
-import { WORKFLOW_CAPABILITY_DEFINITION, type WorkflowCapabilityDefinition } from "./workflow-capability-contract.ts";
-import { checkWorkflowContextMeasurement, WORKFLOW_CONTEXT_MEASUREMENT_PATH } from "./workflow-context-measurement.ts";
+import {
+  WORKFLOW_CAPABILITY_DEFINITION,
+  type WorkflowCapabilityDefinition,
+} from "./workflow-capability-contract.ts";
+import {
+  checkWorkflowContextMeasurement,
+  WORKFLOW_CONTEXT_MEASUREMENT_PATH,
+} from "./workflow-context-measurement.ts";
 import { createWorkflowTool } from "./workflow-tool.ts";
 
 /** Re-exported stable diagnostic codes for release automation. */
@@ -54,7 +60,8 @@ export interface WorkflowReleaseCheckOptions {
 
 const SKILL_ROOT = "skills/workflow-authoring";
 /** Package-relative generated hash baseline for compact and detailed guidance. */
-export const WORKFLOW_GUIDANCE_BASELINE_PATH = "docs/workflow-guidance-baseline.json";
+export const WORKFLOW_GUIDANCE_BASELINE_PATH =
+  "docs/workflow-guidance-baseline.tson";
 const FOCUSED_REFERENCES = [
   "capabilities",
   "capability-details",
@@ -80,14 +87,19 @@ const PATTERNS = [
   "tournament",
   "loop-until-done",
 ] as const;
-const RECIPES = ["phased-budgets", "saved-nested-workflows", "bounded-semantic-retry", "structured-output"] as const;
+const RECIPES = [
+  "phased-budgets",
+  "saved-nested-workflows",
+  "bounded-semantic-retry",
+  "structured-output",
+] as const;
 
 /** Skill files that must be present in the publishable npm package. */
 export const REQUIRED_WORKFLOW_PACKAGE_RESOURCES = [
   `${SKILL_ROOT}/SKILL.md`,
   ...FOCUSED_REFERENCES.map((name) => `${SKILL_ROOT}/references/${name}.md`),
-  ...PATTERNS.map((name) => `${SKILL_ROOT}/examples/${name}.js`),
-  ...RECIPES.map((name) => `${SKILL_ROOT}/examples/${name}.js`),
+  ...PATTERNS.map((name) => `${SKILL_ROOT}/examples/${name}.ts`),
+  ...RECIPES.map((name) => `${SKILL_ROOT}/examples/${name}.ts`),
 ] as const;
 
 function diagnostic(
@@ -142,7 +154,10 @@ function validateVersions(
       );
     }
   }
-  if (definition.versions.format.kind !== "present-at" || !/^1(?:\.|$)/.test(definition.versions.format.version)) {
+  if (
+    definition.versions.format.kind !== "present-at" ||
+    !/^1(?:\.|$)/.test(definition.versions.format.version)
+  ) {
     diagnostics.push(
       diagnostic(
         WorkflowReleaseDiagnosticCode.INCOMPATIBLE_VERSION,
@@ -154,7 +169,10 @@ function validateVersions(
   return diagnostics;
 }
 
-function validateCapabilityLinks(root: string, definition: WorkflowCapabilityDefinition): WorkflowReleaseDiagnostic[] {
+function validateCapabilityLinks(
+  root: string,
+  definition: WorkflowCapabilityDefinition,
+): WorkflowReleaseDiagnostic[] {
   const diagnostics: WorkflowReleaseDiagnostic[] = [];
   for (const capability of definition.capabilities) {
     if (
@@ -185,7 +203,10 @@ function validateCapabilityLinks(root: string, definition: WorkflowCapabilityDef
       const { path, anchor } = capability.staticReference;
       const absolute = join(root, path);
       const subject = `${path}#${anchor}`;
-      if (!existsSync(absolute) || !anchorExists(readFileSync(absolute, "utf8"), anchor)) {
+      if (
+        !existsSync(absolute) ||
+        !anchorExists(readFileSync(absolute, "utf8"), anchor)
+      ) {
         diagnostics.push(
           diagnostic(
             WorkflowReleaseDiagnosticCode.BROKEN_CONTRACT_REFERENCE,
@@ -208,7 +229,9 @@ function validateAuthoringCoverage(
   const expectedIds = [
     ...definition.capabilities
       .filter(
-        ({ discovery, support }) => discovery !== DiscoveryPlacement.NONE && support !== CapabilitySupport.INTERNAL,
+        ({ discovery, support }) =>
+          discovery !== DiscoveryPlacement.NONE &&
+          support !== CapabilitySupport.INTERNAL,
       )
       .map(({ id }) => id),
     ...WORKFLOW_AUTHORING_PATTERN_IDS,
@@ -227,11 +250,14 @@ function validateAuthoringCoverage(
 
   const knownScenarioIds = new Set(WORKFLOW_COMPREHENSION_SCENARIO_IDS);
   for (const entry of coverage.filter(
-    ({ protection }) => protection === WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
+    ({ protection }) =>
+      protection === WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
   )) {
     if (
       entry.comprehensionScenarios.length === 0 ||
-      entry.comprehensionScenarios.some((scenarioId) => !knownScenarioIds.has(scenarioId))
+      entry.comprehensionScenarios.some(
+        (scenarioId) => !knownScenarioIds.has(scenarioId),
+      )
     ) {
       diagnostics.push(
         diagnostic(
@@ -243,7 +269,10 @@ function validateAuthoringCoverage(
     }
   }
 
-  for (const entry of coverage.filter(({ protection }) => protection === WorkflowAuthoringProtection.GUIDANCE_FROZEN)) {
+  for (const entry of coverage.filter(
+    ({ protection }) =>
+      protection === WorkflowAuthoringProtection.GUIDANCE_FROZEN,
+  )) {
     if (entry.protectedGuidance.length === 0) {
       diagnostics.push(
         diagnostic(
@@ -254,15 +283,19 @@ function validateAuthoringCoverage(
       );
       continue;
     }
-    const drifted = entry.protectedGuidance.find(({ path, anchor, requiredText }) => {
-      const absolute = join(root, path);
-      if (!existsSync(absolute) && guidanceOverrides[path] === undefined) return true;
-      const source = guidanceOverrides[path] ?? readFileSync(absolute, "utf8");
-      return (
-        (anchor !== undefined && !anchorExists(source, anchor)) ||
-        (requiredText !== undefined && !source.includes(requiredText))
-      );
-    });
+    const drifted = entry.protectedGuidance.find(
+      ({ path, anchor, requiredText }) => {
+        const absolute = join(root, path);
+        if (!existsSync(absolute) && guidanceOverrides[path] === undefined)
+          return true;
+        const source =
+          guidanceOverrides[path] ?? readFileSync(absolute, "utf8");
+        return (
+          (anchor !== undefined && !anchorExists(source, anchor)) ||
+          (requiredText !== undefined && !source.includes(requiredText))
+        );
+      },
+    );
     if (drifted) {
       const absolute = join(root, drifted.path);
       const source =
@@ -273,10 +306,18 @@ function validateAuthoringCoverage(
       if (source === null) {
         failedChecks.push("protected file");
       }
-      if (source !== null && drifted.anchor !== undefined && !anchorExists(source, drifted.anchor)) {
+      if (
+        source !== null &&
+        drifted.anchor !== undefined &&
+        !anchorExists(source, drifted.anchor)
+      ) {
         failedChecks.push("required anchor");
       }
-      if (source !== null && drifted.requiredText !== undefined && !source.includes(drifted.requiredText)) {
+      if (
+        source !== null &&
+        drifted.requiredText !== undefined &&
+        !source.includes(drifted.requiredText)
+      ) {
         failedChecks.push("required text");
       }
       diagnostics.push(
@@ -295,38 +336,48 @@ function validateFrozenGuidanceFiles(
   root: string,
   guidanceOverrides: Readonly<Record<string, string>> = {},
 ): WorkflowReleaseDiagnostic[] {
-  return WORKFLOW_AUTHORING_FROZEN_FILES.flatMap(({ path, sha256: expected }) => {
-    const absolute = join(root, path);
-    if (!existsSync(absolute) && guidanceOverrides[path] === undefined) {
-      return [
-        diagnostic(
-          WorkflowReleaseDiagnosticCode.PROTECTED_GUIDANCE_DRIFT,
-          path,
-          `Protected workflow-authoring file is missing: ${path}. Restore an accidental deletion. An intentional removal requires review of the coverage manifest and relevant behavioral/provider evidence, followed by deliberate updates to authoring coverage and package resources. See CONTRIBUTING.md#protected-workflow-authoring-guidance.`,
-        ),
-      ];
-    }
-    const source = guidanceOverrides[path] ?? readFileSync(absolute, "utf8");
-    return sha256(source) === expected
-      ? []
-      : [
+  return WORKFLOW_AUTHORING_FROZEN_FILES.flatMap(
+    ({ path, sha256: expected }) => {
+      const absolute = join(root, path);
+      if (!existsSync(absolute) && guidanceOverrides[path] === undefined) {
+        return [
           diagnostic(
             WorkflowReleaseDiagnosticCode.PROTECTED_GUIDANCE_DRIFT,
             path,
-            `Protected workflow-authoring file changed: ${path}. Its SHA-256 is an explicit review checkpoint for guidance with partial behavioral coverage. Revert accidental changes. For an intentional change, inspect the coverage manifest and relevant behavioral tests, plus provider evidence when needed, then run npm run guidance:accept -- ${path}. This updates the matching sha256 in WORKFLOW_AUTHORING_FROZEN_FILES (src/workflow-authoring-coverage.ts). See CONTRIBUTING.md#protected-workflow-authoring-guidance.`,
+            `Protected workflow-authoring file is missing: ${path}. Restore an accidental deletion. An intentional removal requires review of the coverage manifest and relevant behavioral/provider evidence, followed by deliberate updates to authoring coverage and package resources. See CONTRIBUTING.md#protected-workflow-authoring-guidance.`,
           ),
         ];
-  });
+      }
+      const source = guidanceOverrides[path] ?? readFileSync(absolute, "utf8");
+      return sha256(source) === expected
+        ? []
+        : [
+            diagnostic(
+              WorkflowReleaseDiagnosticCode.PROTECTED_GUIDANCE_DRIFT,
+              path,
+              `Protected workflow-authoring file changed: ${path}. Its SHA-256 is an explicit review checkpoint for guidance with partial behavioral coverage. Revert accidental changes. For an intentional change, inspect the coverage manifest and relevant behavioral tests, plus provider evidence when needed, then run npm run guidance:accept -- ${path}. This updates the matching sha256 in WORKFLOW_AUTHORING_FROZEN_FILES (src/workflow-authoring-coverage.ts). See CONTRIBUTING.md#protected-workflow-authoring-guidance.`,
+            ),
+          ];
+    },
+  );
 }
 
-function validateToolInputs(definition: WorkflowCapabilityDefinition): WorkflowReleaseDiagnostic[] {
+function validateToolInputs(
+  definition: WorkflowCapabilityDefinition,
+): WorkflowReleaseDiagnostic[] {
   const { parameters } = createWorkflowTool();
   const properties: Record<string, unknown> =
-    isRecord(parameters) && isRecord(parameters.properties) ? parameters.properties : {};
+    isRecord(parameters) && isRecord(parameters.properties)
+      ? parameters.properties
+      : {};
   const observed = new Set(Object.keys(properties));
   const declared = new Set(
     definition.capabilities
-      .filter((capability) => capability.classification === CapabilityClassification.WORKFLOW_TOOL_INPUT)
+      .filter(
+        (capability) =>
+          capability.classification ===
+          CapabilityClassification.WORKFLOW_TOOL_INPUT,
+      )
       .map((capability) => capability.label),
   );
   const diagnostics: WorkflowReleaseDiagnostic[] = [];
@@ -355,18 +406,28 @@ function validateToolInputs(definition: WorkflowCapabilityDefinition): WorkflowR
 
   const tokenBudget = definition.capabilities.find(
     (capability) =>
-      capability.classification === CapabilityClassification.WORKFLOW_TOOL_INPUT && capability.label === "tokenBudget",
+      capability.classification ===
+        CapabilityClassification.WORKFLOW_TOOL_INPUT &&
+      capability.label === "tokenBudget",
   );
   const tokenBudgetSchema = properties.tokenBudget;
   const observedTokenBudget =
-    isRecord(tokenBudgetSchema) && typeof tokenBudgetSchema.description === "string"
+    isRecord(tokenBudgetSchema) &&
+    typeof tokenBudgetSchema.description === "string"
       ? tokenBudgetSchema.description
       : "";
-  const contractCallsSoft = tokenBudget?.constraints.some((constraint) => /soft/i.test(constraint)) ?? false;
-  const contractCallsHard = tokenBudget?.constraints.some((constraint) => /hard/i.test(constraint)) ?? false;
+  const contractCallsSoft =
+    tokenBudget?.constraints.some((constraint) => /soft/i.test(constraint)) ??
+    false;
+  const contractCallsHard =
+    tokenBudget?.constraints.some((constraint) => /hard/i.test(constraint)) ??
+    false;
   const proseCallsSoft = /soft/i.test(observedTokenBudget);
   const proseCallsHard = /hard/i.test(observedTokenBudget);
-  if ((contractCallsSoft && proseCallsHard) || (contractCallsHard && proseCallsSoft)) {
+  if (
+    (contractCallsSoft && proseCallsHard) ||
+    (contractCallsHard && proseCallsSoft)
+  ) {
     diagnostics.push(
       diagnostic(
         WorkflowReleaseDiagnosticCode.RUNTIME_CONSTRAINT_DISAGREEMENT,
@@ -397,11 +458,13 @@ export function renderWorkflowGuidanceBaseline(root: string): string {
   });
   const detailedPaths = [
     `${SKILL_ROOT}/SKILL.md`,
-    ...FOCUSED_REFERENCES.filter((name) => name !== "capabilities" && name !== "capability-details").map(
-      (name) => `${SKILL_ROOT}/references/${name}.md`,
-    ),
+    ...FOCUSED_REFERENCES.filter(
+      (name) => name !== "capabilities" && name !== "capability-details",
+    ).map((name) => `${SKILL_ROOT}/references/${name}.md`),
   ];
-  const detailed = detailedPaths.map((path) => `${path}\n${readFileSync(join(root, path), "utf8")}`).join("\n");
+  const detailed = detailedPaths
+    .map((path) => `${path}\n${readFileSync(join(root, path), "utf8")}`)
+    .join("\n");
   return `${JSON.stringify(
     {
       formatVersion: 1,
@@ -418,11 +481,18 @@ export function renderWorkflowGuidanceBaseline(root: string): string {
 
 /** Refresh the committed guidance hash baseline under root. */
 export function writeWorkflowGuidanceBaseline(root: string): void {
-  writeFileSync(join(root, WORKFLOW_GUIDANCE_BASELINE_PATH), renderWorkflowGuidanceBaseline(root));
+  writeFileSync(
+    join(root, WORKFLOW_GUIDANCE_BASELINE_PATH),
+    renderWorkflowGuidanceBaseline(root),
+  );
 }
 
-function validateGuidanceBaseline(root: string, actual?: string): WorkflowReleaseDiagnostic[] {
-  const committed = actual ?? readFileSync(join(root, WORKFLOW_GUIDANCE_BASELINE_PATH), "utf8");
+function validateGuidanceBaseline(
+  root: string,
+  actual?: string,
+): WorkflowReleaseDiagnostic[] {
+  const committed =
+    actual ?? readFileSync(join(root, WORKFLOW_GUIDANCE_BASELINE_PATH), "utf8");
   if (committed === renderWorkflowGuidanceBaseline(root)) return [];
   return [
     diagnostic(
@@ -434,7 +504,10 @@ function validateGuidanceBaseline(root: string, actual?: string): WorkflowReleas
   ];
 }
 
-function validatePackage(root: string, publishableFiles: readonly string[]): WorkflowReleaseDiagnostic[] {
+function validatePackage(
+  root: string,
+  publishableFiles: readonly string[],
+): WorkflowReleaseDiagnostic[] {
   const diagnostics: WorkflowReleaseDiagnostic[] = [];
   const files = new Set(publishableFiles);
   for (const resource of REQUIRED_WORKFLOW_PACKAGE_RESOURCES) {
@@ -453,13 +526,22 @@ function validatePackage(root: string, publishableFiles: readonly string[]): Wor
     (path) => path.startsWith(`${SKILL_ROOT}/`) && path.endsWith(".md"),
   )) {
     const source = readFileSync(join(root, sourcePath), "utf8");
-    for (const match of source.matchAll(/\[[^\]]+\]\(([^)#]+)(?:#([^)]+))?\)/g)) {
+    for (const match of source.matchAll(
+      /\[[^\]]+\]\(([^)#]+)(?:#([^)]+))?\)/g,
+    )) {
       const target = normalize(join(dirname(sourcePath), match[1]));
       const anchor = match[2];
       const outsidePackage = relative(".", target).startsWith("..");
       const targetMissing = !files.has(target);
-      const targetSource = !targetMissing && anchor ? readFileSync(join(root, target), "utf8") : null;
-      if (outsidePackage || targetMissing || (anchor && targetSource !== null && !anchorExists(targetSource, anchor))) {
+      const targetSource =
+        !targetMissing && anchor
+          ? readFileSync(join(root, target), "utf8")
+          : null;
+      if (
+        outsidePackage ||
+        targetMissing ||
+        (anchor && targetSource !== null && !anchorExists(targetSource, anchor))
+      ) {
         const subject = `${sourcePath} -> ${target}${anchor ? `#${anchor}` : ""}`;
         diagnostics.push(
           diagnostic(
@@ -484,14 +566,19 @@ export function parseNpmPackFilePaths(output: string): string[] {
   if (!isRecord(first) || !Array.isArray(first.files)) {
     return [];
   }
-  return first.files.flatMap((file: unknown) => (isRecord(file) && typeof file.path === "string" ? [file.path] : []));
+  return first.files.flatMap((file: unknown) =>
+    isRecord(file) && typeof file.path === "string" ? [file.path] : [],
+  );
 }
 
 /** Return every model-free contract, package, documentation, and guidance alignment diagnostic. */
-export function checkWorkflowRelease(options: WorkflowReleaseCheckOptions): WorkflowReleaseDiagnostic[] {
+export function checkWorkflowRelease(
+  options: WorkflowReleaseCheckOptions,
+): WorkflowReleaseDiagnostic[] {
   const definition = options.definition ?? WORKFLOW_CAPABILITY_DEFINITION;
   const extensionVersion = options.extensionVersion ?? packageJson.version;
-  const installedSkillVersion = options.skillVersion ?? skillVersion(options.root);
+  const installedSkillVersion =
+    options.skillVersion ?? skillVersion(options.root);
   const diagnostics = [
     ...validateVersions(definition, extensionVersion, installedSkillVersion),
     ...validateCapabilityLinks(options.root, definition),
@@ -507,7 +594,10 @@ export function checkWorkflowRelease(options: WorkflowReleaseCheckOptions): Work
     ...validateGuidanceBaseline(options.root, options.guidanceBaseline),
   ];
 
-  for (const path of checkWorkflowCapabilityPublications(options.root, options.publicationOverrides)) {
+  for (const path of checkWorkflowCapabilityPublications(
+    options.root,
+    options.publicationOverrides,
+  )) {
     diagnostics.push(
       diagnostic(
         WorkflowReleaseDiagnosticCode.STALE_GENERATED_SURFACE,
@@ -516,7 +606,9 @@ export function checkWorkflowRelease(options: WorkflowReleaseCheckOptions): Work
       ),
     );
   }
-  if (!checkWorkflowContextMeasurement(options.root, options.contextMeasurement)) {
+  if (
+    !checkWorkflowContextMeasurement(options.root, options.contextMeasurement)
+  ) {
     diagnostics.push(
       diagnostic(
         WorkflowReleaseDiagnosticCode.STALE_GENERATED_SURFACE,

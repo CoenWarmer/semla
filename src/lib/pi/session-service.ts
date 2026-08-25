@@ -39,6 +39,7 @@ import {
   workflowRunPath,
   type PersistedRunState,
 } from "@/lib/pi/workflow-run-reader";
+import { historyToTurns } from "@/lib/pi/workflow-snapshot-merge";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 const workflowExtensionPath = join(
@@ -97,7 +98,24 @@ const asWorkflowSnapshot = (value: unknown): WorkflowSnapshot | undefined => {
     return undefined;
   }
 
-  return details as WorkflowSnapshot;
+  const raw = details as WorkflowSnapshot;
+
+  // The internal snapshot carries history[] on each agent (updated every 250ms
+  // by onAgentHistory). Convert it to turns so tool calls appear in the timeline
+  // during execution, not only after the agent completes.
+  const agents = raw.agents.map((agent) => {
+    if (agent.turns) return agent;
+    const history = (agent as Record<string, unknown>)["history"];
+    if (!Array.isArray(history) || history.length === 0) return agent;
+    return {
+      ...agent,
+      turns: historyToTurns(
+        history as Parameters<typeof historyToTurns>[0],
+      ),
+    };
+  });
+
+  return { ...raw, agents };
 };
 
 const getBackgroundWorkflowRunId = (value: unknown): string | undefined => {

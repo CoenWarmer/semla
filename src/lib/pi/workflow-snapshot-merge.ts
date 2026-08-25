@@ -27,6 +27,8 @@ export type LiveSnapshot = {
   agentCount: number;
   agents: Array<{
     error?: string;
+    /** Live per-turn history (updated every 250 ms by onAgentHistory). */
+    history?: AgentHistoryEntry[];
     id: number;
     label: string;
     model?: string;
@@ -124,7 +126,11 @@ export function mergeLiveSnapshot({
       startedAt: persisted?.startedAt ?? clock.firstSeenAt,
       status: agent.status as WorkflowAgentStatus,
       tokens: agent.tokens,
-      turns: persisted?.history ? historyToTurns(persisted.history) : undefined,
+      turns: persisted?.history
+        ? historyToTurns(persisted.history)
+        : agent.history
+          ? historyToTurns(agent.history)
+          : undefined,
     };
   });
 
