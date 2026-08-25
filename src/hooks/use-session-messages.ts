@@ -18,6 +18,7 @@ export type SessionToolCall = {
   messageId: string;
   name: string;
   params?: Record<string, string>;
+  resultAt?: string;
   summary?: string;
 };
 

@@ -39,6 +39,7 @@ export type SessionToolCall = {
   messageId: string;
   name: string;
   params?: Record<string, string>;
+  resultAt?: string;
   summary?: string;
 };
 
@@ -82,7 +83,7 @@ const getToolCalls = (
   }: {
     createdAt: string;
     messageId: string;
-    toolResultMap: Map<string, { isError: boolean; text: string }>;
+    toolResultMap: Map<string, { isError: boolean; resultAt: string; text: string }>;
   },
 ): SessionToolCall[] => {
   if (!Array.isArray(message.content)) return [];
@@ -103,7 +104,7 @@ const getToolCalls = (
         name: part.name,
         ...(summary ? { summary } : {}),
         ...(params ? { params } : {}),
-        ...(result ? { isError: result.isError, errorText: result.text.slice(0, 1000) } : {}),
+        ...(result ? { isError: result.isError, errorText: result.text.slice(0, 1000), resultAt: result.resultAt } : {}),
       },
     ];
   });
@@ -172,9 +173,9 @@ export const getTranscript = async (
 
   // First pass: build a map of tool call ID → result info so tool calls can be
   // annotated with success/failure without a separate query.
-  const toolResultMap = new Map<string, { isError: boolean; text: string }>();
+  const toolResultMap = new Map<string, { isError: boolean; resultAt: string; text: string }>();
   for (const entry of entries) {
-    const payload = entry.payload as { entry?: { message?: PiMessage } };
+    const payload = entry.payload as { entry?: { message?: PiMessage; timestamp?: string } };
     const message = payload.entry?.message;
     if (!message || message.role !== "toolResult") continue;
     const callId = typeof message.toolCallId === "string" ? message.toolCallId : null;
@@ -189,7 +190,8 @@ export const getTranscript = async (
       : typeof message.content === "string"
         ? message.content
         : "";
-    toolResultMap.set(callId, { isError: Boolean(message.isError), text });
+    const resultAt = payload.entry?.timestamp ?? entry.created_at;
+    toolResultMap.set(callId, { isError: Boolean(message.isError), resultAt, text });
   }
 
   const toolCalls: SessionToolCall[] = [];

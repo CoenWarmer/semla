@@ -63,7 +63,10 @@ export function workflowSnapshotToSpans(
   const msgMs = messages
     .filter((m) => m.text.trim().length > 0)
     .map((m) => new Date(m.createdAt).getTime());
-  const toolMs = toolCalls.map((call) => new Date(call.createdAt).getTime());
+  const toolMs = toolCalls.flatMap((call) => [
+    new Date(call.createdAt).getTime(),
+    ...(call.resultAt ? [new Date(call.resultAt).getTime()] : []),
+  ]);
   const hasActive = snapshot.agents.some(
     (a) => a.status === "running" || a.status === "queued",
   );
@@ -176,6 +179,24 @@ export function workflowSnapshotToSpans(
             : undefined,
           resource: { "service.name": "tool" },
         });
+
+        if (call.resultAt) {
+          const resultNano = msToNano(new Date(call.resultAt).getTime());
+          spans.push({
+            traceId: TRACE_ID,
+            spanId: makeSpanId(`tool-result-${call.id}`),
+            parentSpanId: toolsId,
+            name: `↩ ${call.name}`,
+            startTimeUnixNano: resultNano,
+            endTimeUnixNano: resultNano,
+            kind: "EVENT",
+            attributes: { msg_id: call.messageId, "pi.tool_name": call.name },
+            status: call.isError !== undefined
+              ? (call.isError ? { code: "ERROR" } : { code: "OK" })
+              : undefined,
+            resource: { "service.name": "tool-result" },
+          });
+        }
       }
     }
   }
