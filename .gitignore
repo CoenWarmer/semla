@@ -42,3 +42,9 @@ next-env.d.ts
 
 # dev session artifacts
 /.semla-debug/
+
+# Agent worktrees live inside the repo. Left untracked they show up as
+# workspace changes, so any checkout of a different tree state (e.g. entering
+# GitButler conflict resolution) deletes them along with the uncommitted work
+# of whoever is using them.
+/.claude/worktrees/

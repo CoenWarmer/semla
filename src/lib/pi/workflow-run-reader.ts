@@ -45,6 +45,8 @@ export type PersistedRunState = {
   currentPhase?: string;
   durationMs?: number;
   phases: string[];
+  /** Whatever the workflow script returned. Present once the run completes. */
+  result?: unknown;
   runId: string;
   startedAt: string;
   status: "aborted" | "completed" | "failed" | "paused" | "pending" | "running";
@@ -74,6 +76,12 @@ function workflowRunsDir(cwd: string): string {
   const hash = createHash("sha256").update(projectPath).digest("hex").slice(0, 12);
   const key = `${slug}-${hash}`;
   return join(homedir(), ".pi", "workflows", "projects", key, "runs");
+}
+
+/** Canonical on-disk path of a run's persisted state, for pointing the model
+ *  (or a human) at the full result of a run we only summarise. */
+export function workflowRunPath(cwd: string, runId: string): string {
+  return join(workflowRunsDir(cwd), `${runId}.json`);
 }
 
 export function readWorkflowRun(

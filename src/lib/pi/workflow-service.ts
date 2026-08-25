@@ -6,22 +6,35 @@ import {
   readWorkflowRun,
   type PersistedAgentState,
 } from "./workflow-run-reader";
+import { getActiveManager } from "./workflow-manager-registry";
+import { mergeLiveSnapshot } from "./workflow-snapshot-merge";
 
 /**
- * Build a live WorkflowSnapshot from the run file on disk.
+ * Build a live WorkflowSnapshot for a run.
  *
- * The DB snapshot starts empty for background runs because pi session
- * events don't carry agent progress for background workflows — the run
- * file on disk is the authoritative source of live agent state.
+ * For running workflows, the disk file only updates when agents COMPLETE
+ * (onAgentJournal fires at completion, not at start). Agents in "running" or
+ * "queued" state are only visible in the WorkflowManager's in-memory snapshot.
+ * We try the manager first so the UI shows agents as they start, then fall
+ * back to the disk file once the run completes and the manager evicts it.
  */
 export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
-  // The workflow extension falls back to process.cwd() when ctx.cwd isn't
+  // Disk is authoritative for timestamps (written as agents complete). The
+  // workflow extension falls back to process.cwd() when ctx.cwd isn't
   // propagated from the agent session (PI_WORKSPACE_ROOT may differ).
   const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
   const runState = cwds.reduce<ReturnType<typeof readWorkflowRun>>(
     (found, cwd) => found ?? readWorkflowRun(cwd, runId),
     null,
   );
+
+  // The manager is the only source for agents that are queued or running, so
+  // merge its status over the timestamps the run file has recorded so far.
+  const live = getActiveManager(runId)?.getSnapshot(runId) ?? null;
+  if (live) {
+    return mergeLiveSnapshot({ disk: runState, live, runId });
+  }
+
   if (!runState) return null;
 
   const agents = runState.agents.map((a) => ({

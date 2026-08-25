@@ -16,7 +16,7 @@ export async function GET(
   try {
     await requireSessionOwner(id);
     const supabase = await createClient();
-    const messages = await getTranscript(supabase, id);
+    const { messages, toolCalls } = await getTranscript(supabase, id);
 
     // Look up the model context window for the most recent pi session
     let contextWindow: number | null = null;
@@ -39,7 +39,7 @@ export async function GET(
       // Non-fatal — contextWindow stays null
     }
 
-    return Response.json({ contextWindow, messages });
+    return Response.json({ contextWindow, messages, toolCalls });
   } catch (error) {
     return handleRouteError(error, "Unable to load session.");
   }

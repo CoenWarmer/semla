@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase-admin";
+import { toAsciiJson, toJson } from "./json-sanitize";
 import type { Json } from "@/types/database.types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -29,9 +30,6 @@ export const updateSessionTitle = async (
     );
   }
 };
-
-export const toJson = (value: unknown): Json =>
-  JSON.parse(JSON.stringify(value)) as Json;
 
 export const persistWorkflowSnapshot = async (
   semlaSessionId: string,
@@ -146,21 +144,35 @@ export const ensurePiSession = async (
 
 export const persistEntry = async (piSessionId: string, entry: PiSessionEntry) => {
   const admin = createAdminClient();
-  const { error: entryError } = await admin.from("pi_session_entries").upsert(
-    {
-      event_type: entry.type,
-      id: entry.id,
-      parent_entry_id: entry.parentId,
-      payload: toJson({ entry }),
-      pi_session_id: piSessionId,
-    },
-    { onConflict: "id" },
-  );
+  const row = {
+    event_type: entry.type,
+    id: entry.id,
+    parent_entry_id: entry.parentId,
+    pi_session_id: piSessionId,
+  };
+
+  const { error: entryError } = await admin
+    .from("pi_session_entries")
+    .upsert({ ...row, payload: toJson({ entry }) }, { onConflict: "id" });
 
   if (entryError) {
-    throw new Error(
-      `Unable to persist Pi session entry: ${entryError.message}`,
+    // parent_entry_id is a self-referencing foreign key and entries are written
+    // in order, so one unstorable entry makes every later entry of the turn
+    // unstorable too — including the assistant's final answer. Degrade the
+    // characters rather than dropping the tail of the conversation.
+    console.error(
+      `[pi:session-persistence] Entry ${entry.id} (${entry.type}) rejected: ${entryError.message} — retrying with ASCII-only payload`,
     );
+
+    const { error: retryError } = await admin
+      .from("pi_session_entries")
+      .upsert({ ...row, payload: toAsciiJson({ entry }) }, { onConflict: "id" });
+
+    if (retryError) {
+      throw new Error(
+        `Unable to persist Pi session entry: ${retryError.message}`,
+      );
+    }
   }
 
   const { error: updateError } = await admin
@@ -191,11 +203,14 @@ export const fetchPersistedEntries = async (piSessionId: string) => {
   return data;
 };
 
-export const finalizeBackgroundRun = async (runId: string) => {
+export const finalizeBackgroundRun = async (
+  runId: string,
+  status: "completed" | "failed" = "completed",
+) => {
   const admin = createAdminClient();
   const { error } = await admin
     .from("workflow_runs")
-    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .update({ status, updated_at: new Date().toISOString() })
     .eq("run_id", runId)
     .eq("status", "running");
 
@@ -205,4 +220,24 @@ export const finalizeBackgroundRun = async (runId: string) => {
       error,
     );
   }
+};
+
+export const fetchStuckBackgroundRuns = async (
+  semlaSessionId: string,
+): Promise<Array<{ run_id: string }>> => {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("workflow_runs")
+    .select("run_id")
+    .eq("semla_session_id", semlaSessionId)
+    .eq("status", "running");
+
+  if (error) {
+    console.error(
+      `[pi:session-persistence] Unable to fetch stuck background runs: ${error.message}`,
+    );
+    return [];
+  }
+
+  return data ?? [];
 };

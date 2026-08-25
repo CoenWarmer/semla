@@ -1,5 +1,5 @@
 import type { OtelSpan } from "react-otel-trace-waterfall";
-import type { SessionMessage } from "@/hooks/use-session-messages";
+import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 function msToNano(ms: number): string {
@@ -43,9 +43,14 @@ const TRACE_ID = "73656d6c61736573730000000000006f"; // "semlasess....o" padded 
 export function workflowSnapshotToSpans(
   snapshot: WorkflowSnapshot,
   messages: SessionMessage[],
-  options?: { sessionRunning?: boolean; now?: number },
+  options?: {
+    sessionRunning?: boolean;
+    now?: number;
+    toolCalls?: SessionToolCall[];
+  },
 ): OtelSpan[] {
   const now = options?.now ?? Date.now();
+  const toolCalls = options?.toolCalls ?? [];
   const spans: OtelSpan[] = [];
 
   // ── Gather all timestamps to compute trace bounds ───────────────────────
@@ -58,10 +63,11 @@ export function workflowSnapshotToSpans(
   const msgMs = messages
     .filter((m) => m.text.trim().length > 0)
     .map((m) => new Date(m.createdAt).getTime());
+  const toolMs = toolCalls.map((call) => new Date(call.createdAt).getTime());
   const hasActive = snapshot.agents.some(
     (a) => a.status === "running" || a.status === "queued",
   );
-  const allMs = [...agentMs, ...msgMs, ...(hasActive ? [now] : [])];
+  const allMs = [...agentMs, ...msgMs, ...toolMs, ...(hasActive ? [now] : [])];
 
   if (allMs.length === 0) return [];
 
@@ -83,9 +89,10 @@ export function workflowSnapshotToSpans(
 
   // ── Conversation branch ───────────────────────────────────────────────────
   const visibleMessages = messages.filter((m) => m.text.trim().length > 0);
-  if (visibleMessages.length > 0) {
-    const convStart = Math.min(...msgMs);
-    const convEnd = Math.max(...msgMs);
+  if (visibleMessages.length > 0 || toolCalls.length > 0) {
+    const convMs = [...msgMs, ...toolMs];
+    const convStart = Math.min(...convMs);
+    const convEnd = Math.max(...convMs);
     const convId = makeSpanId("conversation");
     spans.push({
       traceId: TRACE_ID,
@@ -116,17 +123,35 @@ export function workflowSnapshotToSpans(
         resource: { "service.name": msg.role === "user" ? "user" : "assistant" },
       });
     }
+
+    // Tool calls are the work between messages. They share the row rather than
+    // each taking one, and carry their message id so a marker can still scroll
+    // to the turn it belongs to.
+    for (const call of toolCalls) {
+      const nano = msToNano(new Date(call.createdAt).getTime());
+      spans.push({
+        traceId: TRACE_ID,
+        spanId: makeSpanId(`tool-${call.id}`),
+        parentSpanId: convId,
+        name: call.summary ? `⚙ ${call.name}: ${call.summary}` : `⚙ ${call.name}`,
+        startTimeUnixNano: nano,
+        endTimeUnixNano: nano,
+        kind: "EVENT",
+        attributes: { msg_id: call.messageId, "pi.tool_name": call.name },
+        resource: { "service.name": "tool" },
+      });
+    }
   }
 
-  // ── Workflow branch (only for real workflow runs) ────────────────────────
-  if (snapshot.runId && snapshot.agents.length > 0) {
+  // ── Workflow branch (for real workflow runs, even while starting with 0 agents) ──
+  if (snapshot.runId) {
     const wfStart = snapshot.startedAt
       ? new Date(snapshot.startedAt).getTime()
       : traceStart;
     const wfEnd = snapshot.completedAt
       ? new Date(snapshot.completedAt).getTime()
-      : snapshot.runningCount > 0
-        ? now
+      : snapshot.runningCount > 0 || snapshot.agents.length === 0
+        ? now  // still running (or just starting — no agents yet)
         : traceEnd;
 
     const wfId = makeSpanId(`wf-${snapshot.runId}`);

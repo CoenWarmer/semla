@@ -9,9 +9,19 @@ export type SessionMessage = {
   tokenUsage?: { cost: number; total: number };
 };
 
+/** A tool the assistant invoked, rendered as a marker on the timeline. */
+export type SessionToolCall = {
+  createdAt: string;
+  id: string;
+  messageId: string;
+  name: string;
+  summary?: string;
+};
+
 export type SessionMessagesResult = {
   contextWindow: number | null;
   messages: SessionMessage[];
+  toolCalls: SessionToolCall[];
 };
 
 export const sessionMessagesQueryKey = (sessionId: string) =>

@@ -23,6 +23,63 @@ export type SessionTranscriptEntry = {
   tokenUsage?: { cost: number; total: number };
 };
 
+/**
+ * A tool the assistant invoked. These are not conversation messages — they are
+ * the actions taken between them, surfaced so the timeline can mark when each
+ * one fired. `messageId` is the entry the call belongs to, so a marker can
+ * still scroll to the right place in the transcript.
+ */
+export type SessionToolCall = {
+  createdAt: string;
+  id: string;
+  messageId: string;
+  name: string;
+  summary?: string;
+};
+
+export type SessionTranscript = {
+  messages: SessionTranscriptEntry[];
+  toolCalls: SessionToolCall[];
+};
+
+/** First scalar argument, for a marker tooltip: `bash: npm test`. */
+const summarizeArguments = (value: unknown): string | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  for (const key of ["command", "path", "file_path", "pattern", "name"]) {
+    const arg = value[key];
+    if (typeof arg === "string" && arg.trim()) {
+      return arg.trim().slice(0, 120);
+    }
+  }
+
+  return undefined;
+};
+
+const getToolCalls = (
+  message: PiMessage,
+  { createdAt, messageId }: { createdAt: string; messageId: string },
+): SessionToolCall[] => {
+  if (!Array.isArray(message.content)) return [];
+
+  return message.content.flatMap((part, index) => {
+    if (!isRecord(part) || part.type !== "toolCall") return [];
+    if (typeof part.name !== "string") return [];
+
+    return [
+      {
+        createdAt,
+        id: typeof part.id === "string" ? part.id : `${messageId}-${index}`,
+        messageId,
+        name: part.name,
+        ...(summarizeArguments(part.arguments)
+          ? { summary: summarizeArguments(part.arguments) }
+          : {}),
+      },
+    ];
+  });
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -58,7 +115,7 @@ const isDisplayMessage = (
 export const getTranscript = async (
   supabase: SupabaseClient<Database>,
   semlaSessionId: string
-): Promise<SessionTranscriptEntry[]> => {
+): Promise<SessionTranscript> => {
   const { data: piSession, error: sessionError } = await supabase
     .from("pi_sessions")
     .select("id")
@@ -70,7 +127,7 @@ export const getTranscript = async (
   }
 
   if (!piSession) {
-    return [];
+    return { messages: [], toolCalls: [] };
   }
 
   const { data: entries, error: entriesError } = await supabase
@@ -84,11 +141,13 @@ export const getTranscript = async (
     throw new Error(`Unable to load Pi transcript: ${entriesError.message}`);
   }
 
-  return entries.flatMap((entry) => {
+  const toolCalls: SessionToolCall[] = [];
+
+  const messages = entries.flatMap((entry) => {
     const payload = entry.payload as { entry?: { message?: PiMessage; timestamp?: string } };
     const message = payload.entry?.message;
 
-    if (!message || !isDisplayMessage(message)) {
+    if (!message) {
       return [];
     }
 
@@ -96,6 +155,14 @@ export const getTranscript = async (
     // entry.created_at is the Supabase insertion time, which can lag significantly
     // behind the real event time when entries are written asynchronously.
     const createdAt = payload.entry?.timestamp ?? entry.created_at;
+
+    toolCalls.push(
+      ...getToolCalls(message, { createdAt, messageId: entry.id }),
+    );
+
+    if (!isDisplayMessage(message)) {
+      return [];
+    }
 
     const cost = message.usage?.cost?.total;
     const total = message.usage?.totalTokens;
@@ -115,4 +182,6 @@ export const getTranscript = async (
       },
     ];
   });
+
+  return { messages, toolCalls };
 };

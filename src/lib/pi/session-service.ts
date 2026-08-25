@@ -1,19 +1,23 @@
 import {
   createAgentSession,
   DefaultResourceLoader,
-  getAgentDir,
   ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { retainBackgroundSession } from "@/lib/pi/background-sessions";
+import {
+  releaseBackgroundSession,
+  retainBackgroundSession,
+} from "@/lib/pi/background-sessions";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
 import {
   createSessionDebugWriter,
   type SessionDebugWriter,
 } from "@/lib/pi/debug-writer";
 import {
+  PI_AGENT_DIR,
   PI_SESSION_DIR,
   PI_WORKSPACE_ROOT,
   getPiRuntimeConfig,
@@ -22,17 +26,33 @@ import {
   createSessionFile,
   ensurePiSession,
   fetchPersistedEntries,
+  fetchStuckBackgroundRuns,
   finalizeBackgroundRun,
   persistBackgroundWorkflowStart,
   persistEntry,
   persistWorkflowSnapshot,
   updateSessionTitle,
 } from "@/lib/pi/session-persistence";
+import {
+  readWorkflowRun,
+  workflowRunPath,
+  type PersistedRunState,
+} from "@/lib/pi/workflow-run-reader";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 const workflowExtensionPath = join(
   process.cwd(),
   "node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts",
+);
+
+const workflowProgressBridgePath = join(
+  process.cwd(),
+  "src/lib/pi/extensions/workflow-progress-bridge.ts",
+);
+
+const workflowSkillsPath = join(
+  process.cwd(),
+  "node_modules/@quintinshaw/pi-dynamic-workflows/skills",
 );
 
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.
@@ -104,6 +124,49 @@ const withRunId = (
 ): WorkflowSnapshot =>
   !snapshot.runId && runId ? { ...snapshot, runId } : snapshot;
 
+// Run states after which no further agent work happens, so a result that has
+// not been delivered yet never will be without intervention.
+const TERMINAL_RUN_STATUSES = new Set(["aborted", "completed", "failed"]);
+
+const isRunTerminal = (
+  run: PersistedRunState | null,
+): run is PersistedRunState =>
+  run !== null && TERMINAL_RUN_STATUSES.has(run.status);
+
+const RESULT_SUMMARY_MAX_CHARS = 2000;
+
+// Mirrors summarizeResult() in pi-dynamic-workflows' task-panel: prefer a
+// human-readable field, else a capped JSON dump. The full result stays on disk.
+const summarizeRunResult = (result: unknown): string => {
+  if (typeof result === "string") return result;
+
+  if (result && typeof result === "object") {
+    for (const key of ["verdict", "report", "summary", "synthesis"]) {
+      const value = (result as Record<string, unknown>)[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+
+  const json = JSON.stringify(result ?? null, null, 2);
+  return json.length <= RESULT_SUMMARY_MAX_CHARS
+    ? json
+    : `${json.slice(0, RESULT_SUMMARY_MAX_CHARS)}\n…(truncated — read the full result from the path below)`;
+};
+
+// The message pi-dynamic-workflows would have delivered for a finished run.
+// Used by both recovery paths: the in-continuation watchdog and the
+// next-prompt catch-up.
+const finishedRunMessage = (run: PersistedRunState, runId: string): string => {
+  const done = run.agents.filter((agent) => agent.status === "done").length;
+  return [
+    `✓ Background workflow "${run.workflowName}" finished (${done}/${run.agents.length} agents).`,
+    "",
+    summarizeRunResult(run.result),
+    "",
+    `↳ Full result: ${workflowRunPath(PI_WORKSPACE_ROOT, runId)}`,
+  ].join("\n");
+};
+
 const assertSandboxedRuntime = () => {
   const { hostDevelopmentEnabled, sandboxed } = getPiRuntimeConfig();
 
@@ -122,6 +185,16 @@ const getConfiguredModel = async ({
   provider: string;
 }) => {
   const runtime = await ModelRuntime.create({ refreshOnCreate: false });
+
+  // Workflow subagents resolve their own model through this runtime, and that
+  // path reads the availability snapshot rather than models.json directly.
+  // refreshOnCreate:false leaves the snapshot empty, which makes
+  // hasConfiguredAuth() report false for a provider whose credentials are in
+  // fact present — the subagent then fails with "No API key found for the
+  // selected model" while this session's own model works fine. Warming it once
+  // here is what pi-dynamic-workflows does for its own fallback runtime.
+  await runtime.getAvailable().catch(() => {});
+
   const apiKey = process.env.PI_MODEL_API_KEY;
 
   if (apiKey) {
@@ -194,9 +267,15 @@ export const runPiPrompt = async ({
     PI_SESSION_DIR,
     PI_WORKSPACE_ROOT,
   );
+  await mkdir(PI_AGENT_DIR, { recursive: true });
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath],
-    agentDir: getAgentDir(),
+    additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath],
+    // The workflow skills ship inside the package but are only contributed when
+    // it is loaded as a package. We load the extension file directly, so point
+    // at this repo's copy explicitly rather than inheriting them from whatever
+    // is installed in the developer's agent dir.
+    additionalSkillPaths: [workflowSkillsPath],
+    agentDir: PI_AGENT_DIR,
     cwd: PI_WORKSPACE_ROOT,
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
   });
@@ -223,6 +302,22 @@ export const runPiPrompt = async ({
     );
   }
 
+  // Extensions are only told they are live when pi emits `session_start`, and
+  // pi emits it from bindExtensions() — which only its built-in CLI modes call.
+  // Skipping it silently breaks background workflows: the pi-dynamic-workflows
+  // factory calls suspendResultDelivery() and only resumeResultDelivery() on
+  // session_start un-suspends it, so a finished run's result is queued in the
+  // extension's in-memory pending list and never delivered to the conversation.
+  // Bind before setActiveToolsByName so our explicit tool set stays authoritative
+  // (the extension re-activates its own tools from its session_start handler).
+  await session.bindExtensions({
+    mode: "print",
+    onError: (err) =>
+      console.warn(
+        `[pi:session:${semlaSessionId.slice(0, 8)}] extension error (${err.extensionPath}): ${err.error}`,
+      ),
+  });
+
   session.setActiveToolsByName(tools);
   const activeTools = session.getActiveToolNames();
   log(semlaSessionId, "active tools", { tools: activeTools.join(",") });
@@ -236,9 +331,49 @@ export const runPiPrompt = async ({
     );
   }
 
+  // Recover background workflows whose delivery was lost (e.g. server restart mid-run).
+  // Inject the result as a context message so Pi sees the completed workflow in this prompt.
+  const stuckRuns = await fetchStuckBackgroundRuns(semlaSessionId);
+  for (const { run_id } of stuckRuns) {
+    const runState = readWorkflowRun(PI_WORKSPACE_ROOT, run_id);
+    if (!runState || runState.status !== "completed") continue;
+    try {
+      await session.sendCustomMessage(
+        {
+          content: finishedRunMessage(runState, run_id),
+          customType: "workflow-result",
+          display: true,
+        },
+        { triggerTurn: false },
+      );
+      void finalizeBackgroundRun(run_id);
+      log(semlaSessionId, "recovered stuck bg run", { run: run_id });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[pi:session:${semlaSessionId.slice(0, 8)}] bg run recovery failed for ${run_id}: ${msg}`,
+      );
+    }
+  }
+
   let hasBackgroundWorkflow = false;
   let detectedBackgroundRunId: string | undefined;
+  // A short background workflow can finish while the prompt turn is still
+  // streaming. Pi then delivers the result as a follow-up inside this same
+  // prompt() call, so there is nothing left for the background continuation to
+  // wait for. Subscribed after the stuck-run recovery above, so the messages it
+  // injects cannot be mistaken for this turn's delivery.
+  let deliveredDuringPrompt = false;
   const unsubscribe = session.subscribe((event) => {
+    if (
+      event.type === "message_start" &&
+      event.message.role === "custom" &&
+      event.message.customType === "workflow-result"
+    ) {
+      deliveredDuringPrompt = true;
+      log(semlaSessionId, "workflow result delivered inside prompt turn");
+    }
+
     if (event.type === "message_update") {
       const update = event.assistantMessageEvent;
 
@@ -321,7 +456,22 @@ export const runPiPrompt = async ({
     throw new Error(msg);
   } finally {
     unsubscribe();
-    if (hasBackgroundWorkflow) {
+    const settledDuringPrompt =
+      deliveredDuringPrompt &&
+      (!detectedBackgroundRunId ||
+        isRunTerminal(readWorkflowRun(PI_WORKSPACE_ROOT, detectedBackgroundRunId)));
+
+    if (hasBackgroundWorkflow && settledDuringPrompt) {
+      // The workflow outran the prompt turn: its result is already delivered
+      // and persisted above, so there is no continuation to wait for.
+      log(semlaSessionId, "background workflow settled during prompt turn");
+      if (detectedBackgroundRunId) {
+        void finalizeBackgroundRun(detectedBackgroundRunId);
+        releaseBackgroundSession(detectedBackgroundRunId);
+      } else {
+        session.dispose();
+      }
+    } else if (hasBackgroundWorkflow) {
       // Keep the session alive to receive background workflow progress and the
       // final report turn that pi delivers when the workflow completes.
       const bgAbort = new AbortController();
@@ -347,6 +497,10 @@ const runBackgroundContinuation = async (
   session: {
     subscribe: (cb: (event: unknown) => void) => () => void;
     agent: { waitForIdle: () => Promise<void> };
+    sendCustomMessage: (
+      message: { content: string; customType: string; display: boolean },
+      options: { triggerTurn: boolean },
+    ) => Promise<void>;
     sessionManager: { getEntries: () => unknown[] };
     dispose: () => void;
   },
@@ -362,6 +516,13 @@ const runBackgroundContinuation = async (
   const deliveryStarted = new Promise<void>((resolve) => {
     resolveDelivery = resolve;
   });
+  const noteDelivery = (via: string) => {
+    if (!resolveDelivery) return;
+    log(semlaSessionId, "bg delivery detected · report turn starting", { via });
+    debug.onBgDelivery();
+    resolveDelivery();
+    resolveDelivery = undefined;
+  };
 
   const unsubscribeBg = session.subscribe((event: unknown) => {
     const e = event as Record<string, unknown>;
@@ -384,20 +545,70 @@ const runBackgroundContinuation = async (
       }
     }
 
-    // The delivery turn starts with a message_update once pi processes the result.
-    if (e.type === "message_update") {
-      if (resolveDelivery) {
-        log(semlaSessionId, "bg delivery detected · report turn starting");
-        debug.onBgDelivery();
-        resolveDelivery();
-        resolveDelivery = undefined;
+    // Pi appends the workflow-result message the moment the extension delivers
+    // it, before the report turn's first model round trip — the earliest and
+    // most specific signal that delivery happened.
+    if (e.type === "message_start") {
+      const message = (e.message ?? {}) as Record<string, unknown>;
+      if (message.customType === "workflow-result") {
+        noteDelivery("workflow-result message");
       }
+    }
+
+    // Fallback: any assistant streaming after the prompt turn means pi is
+    // generating the report, even if the delivery message was missed.
+    if (e.type === "message_update") {
+      noteDelivery("message_update");
       const update = (e.assistantMessageEvent ?? {}) as Record<string, unknown>;
       if (update.type === "text_delta" && typeof update.delta === "string") {
         debug.onAssistantDelta(update.delta);
       }
     }
   });
+
+  // Watchdog. Pi owns delivery (the workflow extension sends the result back
+  // and triggers the report turn), but if that ever fails — delivery suspended,
+  // extension error, version skew — the conversation would sit frozen until
+  // TIMEOUT_MS with a finished result on disk. Poll the run file and deliver it
+  // ourselves once it has been terminal for a grace period without a report turn.
+  const POLL_MS = 5 * 1000;
+  const DELIVERY_GRACE_MS = 15 * 1000;
+  let selfDelivering = false;
+  let terminalSince: number | undefined;
+  const watchdog = runId
+    ? setInterval(() => {
+        if (selfDelivering || !resolveDelivery) return;
+
+        const run = readWorkflowRun(PI_WORKSPACE_ROOT, runId);
+        if (!isRunTerminal(run)) {
+          terminalSince = undefined;
+          return;
+        }
+
+        terminalSince ??= Date.now();
+        if (Date.now() - terminalSince < DELIVERY_GRACE_MS) return;
+
+        selfDelivering = true;
+        console.warn(
+          `[pi:session:${semlaSessionId.slice(0, 8)}] workflow ${runId} is ${run.status} but pi delivered no result within ${DELIVERY_GRACE_MS / 1000}s — delivering it directly`,
+        );
+        void session
+          .sendCustomMessage(
+            {
+              content: finishedRunMessage(run, runId),
+              customType: "workflow-result",
+              display: true,
+            },
+            { triggerTurn: true },
+          )
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(
+              `[pi:session:${semlaSessionId.slice(0, 8)}] direct delivery of ${runId} failed: ${msg}`,
+            );
+          });
+      }, POLL_MS)
+    : undefined;
 
   const TIMEOUT_MS = 30 * 60 * 1000;
   const superseded = new Promise<void>((_, reject) => {
@@ -447,6 +658,7 @@ const runBackgroundContinuation = async (
       }
     }
   } finally {
+    if (watchdog) clearInterval(watchdog);
     unsubscribeBg();
     bgAbortControllers.delete(semlaSessionId);
     if (supersededByNewPrompt) {
@@ -455,9 +667,13 @@ const runBackgroundContinuation = async (
       log(semlaSessionId, "bg session released (not disposed — new session active)");
     } else {
       log(semlaSessionId, "bg session disposed");
-      session.dispose();
       if (runId) {
+        // Disposes the session and drops it from the retained map, which would
+        // otherwise keep a dead session (and its bash executor) referenced.
+        releaseBackgroundSession(runId);
         await finalizeBackgroundRun(runId);
+      } else {
+        session.dispose();
       }
     }
   }

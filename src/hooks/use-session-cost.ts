@@ -11,7 +11,7 @@ export function useSessionCost(sessionId: string): SessionCost {
   const messagesQuery = useSessionMessages(sessionId);
 
   const allRuns = runsQuery.data ?? [];
-  const messages = messagesQuery.data ?? [];
+  const messages = messagesQuery.data?.messages ?? [];
 
   const runCost = allRuns.reduce(
     (sum, run) => sum + (run.snapshot?.tokenUsage?.cost ?? 0),

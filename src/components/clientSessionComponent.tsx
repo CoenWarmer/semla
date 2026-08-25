@@ -49,6 +49,7 @@ export function ClientSessionComponent({
   const messagesQuery = useSessionMessages(sessionId);
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data?.messages ?? [];
+  const toolCalls = messagesQuery.data?.toolCalls ?? [];
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
 
   // Trigger an immediate re-fetch of workflow runs when a background workflow
@@ -181,20 +182,23 @@ export function ClientSessionComponent({
         onAgentClick={handleAgentClick}
         sessionRunning={promptMutation.isPending}
         snapshot={
-          // When both snapshots reference the same run, prefer the one with
-          // more agent data. Background workflows set workflowSnapshot to an
-          // empty shell via "workflow-started" and never update it — the DB
-          // polling snapshot has the real agent progress.
+          // Prefer the persisted snapshot (from DB/live polling) over the SSE
+          // shell whenever they reference the same run and the persisted one
+          // has at least as many agents. Background workflows emit an empty
+          // "workflow-started" shell via SSE and never update it — the polling
+          // snapshot has the real agent progress (including running agents
+          // from the in-memory WorkflowManager).
           workflowSnapshot &&
           persistedWorkflowSnapshot &&
           workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
-          persistedWorkflowSnapshot.agents.length >
+          persistedWorkflowSnapshot.agents.length >=
             workflowSnapshot.agents.length
             ? persistedWorkflowSnapshot
             : (workflowSnapshot ??
               persistedWorkflowSnapshot ??
               sessionAgentSnapshot)
         }
+        toolCalls={toolCalls}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
         <AgentTranscriptDrawer

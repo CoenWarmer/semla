@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextCheckResult } from "@/hooks/use-context-check";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import type { SessionMessage } from "@/hooks/use-session-messages";
+import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
@@ -17,6 +17,7 @@ interface SessionTopbarProps {
   onAgentClick: (agentId: number, runId: string) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
+  toolCalls?: SessionToolCall[];
 }
 
 function formatCost(cost: number): string {
@@ -89,6 +90,7 @@ export function SessionTopbar({
   onAgentClick,
   sessionRunning,
   snapshot,
+  toolCalls,
 }: SessionTopbarProps) {
   const [inspectOpen, setInspectOpen] = useState(false);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
@@ -147,6 +149,7 @@ export function SessionTopbar({
             sessionId={sessionId}
             sessionRunning={sessionRunning}
             snapshot={snapshot}
+            toolCalls={toolCalls}
           />
         </div>
       )}
