@@ -416,7 +416,7 @@ export function backgroundStartedText(name: string, runId: string): string {
  */
 export function reviseHint(runId: string | undefined): string {
   if (!runId) return "";
-  return `To revise without re-running everything: re-call workflow with resumeFromRunId="${runId}" and an edited script — unchanged agent() calls replay from cache, only edited/new ones re-run.`;
+  return `[For the user, not for you to act on now] To revise without re-running everything: re-call workflow with resumeFromRunId="${runId}" and an edited script — unchanged agent() calls replay from cache, only edited/new ones re-run.`;
 }
 
 /**
