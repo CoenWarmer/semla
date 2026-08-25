@@ -22,6 +22,7 @@ export function NewSessionButton() {
         return;
       }
       router.push(`/sessions/${body.id}`);
+      router.refresh();
     } catch (err) {
       console.error("Failed to create session:", err);
       setError("Could not create a new session. Please try again.");
