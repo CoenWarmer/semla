@@ -88,6 +88,7 @@ export function workflowSnapshotToSpans(
   });
 
   // ── Conversation branch ───────────────────────────────────────────────────
+  // Each agent gets two sub-rows: Prompts (messages) and Tool calls.
   const visibleMessages = messages.filter((m) => m.text.trim().length > 0);
   if (visibleMessages.length > 0 || toolCalls.length > 0) {
     const convMs = [...msgMs, ...toolMs];
@@ -105,49 +106,79 @@ export function workflowSnapshotToSpans(
       kind: "INTERNAL",
     });
 
-    // Each message is an EVENT — always visible as a fixed marker regardless of zoom.
-    for (const msg of visibleMessages) {
-      const t = new Date(msg.createdAt).getTime();
-      const nano = msToNano(t);
+    // ── Prompts sub-row ──────────────────────────────────────────────────
+    if (visibleMessages.length > 0) {
+      const promptsStart = Math.min(...msgMs);
+      const promptsEnd = Math.max(...msgMs);
+      const promptsId = makeSpanId("conversation-prompts");
       spans.push({
         traceId: TRACE_ID,
-        spanId: makeSpanId(`msg-${msg.id}`),
+        spanId: promptsId,
         parentSpanId: convId,
-        name: msg.role === "user"
-          ? `↑ ${msg.text.trim().slice(0, 60)}`
-          : `↓ ${msg.text.trim().slice(0, 60)}`,
-        startTimeUnixNano: nano,
-        endTimeUnixNano: nano,
-        kind: "EVENT",
-        attributes: { msg_id: msg.id },
-        resource: { "service.name": msg.role === "user" ? "user" : "assistant" },
+        name: "Prompts",
+        startTimeUnixNano: msToNano(promptsStart),
+        endTimeUnixNano: msToNano(promptsEnd + 1),
+        resource: { "service.name": "session" },
+        kind: "INTERNAL",
       });
+
+      for (const msg of visibleMessages) {
+        const t = new Date(msg.createdAt).getTime();
+        const nano = msToNano(t);
+        spans.push({
+          traceId: TRACE_ID,
+          spanId: makeSpanId(`msg-${msg.id}`),
+          parentSpanId: promptsId,
+          name: msg.role === "user"
+            ? `↑ ${msg.text.trim().slice(0, 60)}`
+            : `↓ ${msg.text.trim().slice(0, 60)}`,
+          startTimeUnixNano: nano,
+          endTimeUnixNano: nano,
+          kind: "EVENT",
+          attributes: { msg_id: msg.id },
+          resource: { "service.name": msg.role === "user" ? "user" : "assistant" },
+        });
+      }
     }
 
-    // Tool calls are the work between messages. They share the row rather than
-    // each taking one, and carry their message id so a marker can still scroll
-    // to the turn it belongs to.
-    for (const call of toolCalls) {
-      const nano = msToNano(new Date(call.createdAt).getTime());
-      const paramAttrs = call.params
-        ? Object.fromEntries(Object.entries(call.params).map(([k, v]) => [`pi.param.${k}`, v]))
-        : {};
+    // ── Tool calls sub-row ───────────────────────────────────────────────
+    if (toolCalls.length > 0) {
+      const toolsStart = Math.min(...toolMs);
+      const toolsEnd = Math.max(...toolMs);
+      const toolsId = makeSpanId("conversation-toolcalls");
       spans.push({
         traceId: TRACE_ID,
-        spanId: makeSpanId(`tool-${call.id}`),
+        spanId: toolsId,
         parentSpanId: convId,
-        name: call.summary ? `⚙ ${call.name}: ${call.summary}` : `⚙ ${call.name}`,
-        startTimeUnixNano: nano,
-        endTimeUnixNano: nano,
-        kind: "EVENT",
-        attributes: { msg_id: call.messageId, "pi.tool_name": call.name, ...paramAttrs },
-        status: call.isError !== undefined
-          ? (call.isError
-              ? { code: "ERROR", message: call.errorText }
-              : { code: "OK" })
-          : undefined,
+        name: "Tool calls",
+        startTimeUnixNano: msToNano(toolsStart),
+        endTimeUnixNano: msToNano(toolsEnd + 1),
         resource: { "service.name": "tool" },
+        kind: "INTERNAL",
       });
+
+      for (const call of toolCalls) {
+        const nano = msToNano(new Date(call.createdAt).getTime());
+        const paramAttrs = call.params
+          ? Object.fromEntries(Object.entries(call.params).map(([k, v]) => [`pi.param.${k}`, v]))
+          : {};
+        spans.push({
+          traceId: TRACE_ID,
+          spanId: makeSpanId(`tool-${call.id}`),
+          parentSpanId: toolsId,
+          name: call.summary ? `⚙ ${call.name}: ${call.summary}` : `⚙ ${call.name}`,
+          startTimeUnixNano: nano,
+          endTimeUnixNano: nano,
+          kind: "EVENT",
+          attributes: { msg_id: call.messageId, "pi.tool_name": call.name, ...paramAttrs },
+          status: call.isError !== undefined
+            ? (call.isError
+                ? { code: "ERROR", message: call.errorText }
+                : { code: "OK" })
+            : undefined,
+          resource: { "service.name": "tool" },
+        });
+      }
     }
   }
 
