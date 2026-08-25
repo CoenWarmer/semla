@@ -27,6 +27,7 @@ import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { TokenUsage } from "./token-usage";
 import { MessageSquareIcon } from "lucide-react";
+import { PENDING_PROMPT_KEY } from "@/components/new-session-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -176,6 +177,22 @@ export function ClientSessionComponent({
     },
     [promptMutation],
   );
+
+  // Auto-submit a pending prompt that was stored before navigating from /sessions/new.
+  useEffect(() => {
+    const raw = sessionStorage.getItem(PENDING_PROMPT_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(PENDING_PROMPT_KEY);
+    let pending: { model: PromptEditorModel; text: string; tools: string[] };
+    try {
+      pending = JSON.parse(raw) as typeof pending;
+    } catch {
+      return;
+    }
+    if (!pending.text.trim()) return;
+    void promptMutation.mutateAsync(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
