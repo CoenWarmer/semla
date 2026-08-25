@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party source inlined from @quintinshaw/pi-dynamic-workflows;
+    // not subject to this project's lint rules.
+    "src/lib/pi/extensions/dynamic-workflows/**",
   ]),
 ]);
 
