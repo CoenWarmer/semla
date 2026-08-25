@@ -617,6 +617,7 @@ export class WorkflowManager extends EventEmitter {
         runningCount: 0,
         doneCount: 0,
         errorCount: 0,
+        runId,
       },
       controller: new AbortController(),
       startedAt: new Date(),
