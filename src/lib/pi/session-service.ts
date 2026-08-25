@@ -470,7 +470,9 @@ export const runPiPrompt = async ({
     debug.onPromptComplete(entries.length, hasBackgroundWorkflow);
     if (persistedEntries.length === 0) {
       const title = generateTitle(text);
-      await updateSessionTitle(semlaSessionId, title);
+      // Fire-and-forget: a slow or failing Supabase write must not block the
+      // SSE stream from closing, which would leave the client stuck pending.
+      void updateSessionTitle(semlaSessionId, title);
       onEvent({ title, type: "title-updated" });
     }
     onEvent({ type: "complete" });
