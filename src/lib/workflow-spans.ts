@@ -248,9 +248,10 @@ export function workflowSnapshotToSpans(
             ? now
             : aStart + 1;
 
+        const agentSpanId = makeSpanId(`agent-${agent.id}-${snapshot.runId}`);
         spans.push({
           traceId: TRACE_ID,
-          spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}`),
+          spanId: agentSpanId,
           parentSpanId: phaseId,
           name: agent.label,
           startTimeUnixNano: msToNano(aStart),
@@ -267,6 +268,67 @@ export function workflowSnapshotToSpans(
           resource: { "service.name": "agent" },
           kind: "INTERNAL",
         });
+
+        const turns = agent.turns ?? [];
+        const promptTurns = turns.filter((t) => t.kind === "prompt");
+        const toolCallTurns = turns.filter((t) => t.kind === "toolCall");
+
+        if (promptTurns.length > 0) {
+          const promptsStart = Math.min(...promptTurns.map((t) => t.timestamp));
+          const promptsEnd = Math.max(...promptTurns.map((t) => t.timestamp));
+          const promptsId = makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompts`);
+          spans.push({
+            traceId: TRACE_ID,
+            spanId: promptsId,
+            parentSpanId: agentSpanId,
+            name: "Prompts",
+            startTimeUnixNano: msToNano(promptsStart),
+            endTimeUnixNano: msToNano(promptsEnd + 1),
+            resource: { "service.name": "session" },
+            kind: "INTERNAL",
+          });
+          for (const turn of promptTurns) {
+            spans.push({
+              traceId: TRACE_ID,
+              spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompt-${turn.timestamp}`),
+              parentSpanId: promptsId,
+              name: turn.role === "user" ? `↑ ${turn.text}` : `↓ ${turn.text}`,
+              startTimeUnixNano: msToNano(turn.timestamp),
+              endTimeUnixNano: msToNano(turn.timestamp),
+              kind: "EVENT",
+              resource: { "service.name": turn.role === "user" ? "user" : "assistant" },
+            });
+          }
+        }
+
+        if (toolCallTurns.length > 0) {
+          const toolsStart = Math.min(...toolCallTurns.map((t) => t.timestamp));
+          const toolsEnd = Math.max(...toolCallTurns.map((t) => t.timestamp));
+          const toolsId = makeSpanId(`agent-${agent.id}-${snapshot.runId}-toolcalls`);
+          spans.push({
+            traceId: TRACE_ID,
+            spanId: toolsId,
+            parentSpanId: agentSpanId,
+            name: "Tool calls",
+            startTimeUnixNano: msToNano(toolsStart),
+            endTimeUnixNano: msToNano(toolsEnd + 1),
+            resource: { "service.name": "tool" },
+            kind: "INTERNAL",
+          });
+          for (const turn of toolCallTurns) {
+            const name = turn.toolName ? `⚙ ${turn.toolName}` : "⚙ tool";
+            spans.push({
+              traceId: TRACE_ID,
+              spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-toolcall-${turn.timestamp}`),
+              parentSpanId: toolsId,
+              name,
+              startTimeUnixNano: msToNano(turn.timestamp),
+              endTimeUnixNano: msToNano(turn.timestamp),
+              kind: "EVENT",
+              resource: { "service.name": "tool" },
+            });
+          }
+        }
       }
     }
   }

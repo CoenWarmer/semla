@@ -1,5 +1,19 @@
-import type { WorkflowAgentStatus, WorkflowSnapshot } from "@/types/workflow";
-import type { PersistedAgentState, PersistedRunState } from "./workflow-run-reader";
+import type { AgentTurnSnapshot, WorkflowAgentStatus, WorkflowSnapshot } from "@/types/workflow";
+import type { AgentHistoryEntry, PersistedAgentState, PersistedRunState } from "./workflow-run-reader";
+
+/** Map persisted agent history entries to lightweight timeline turn snapshots. */
+export function historyToTurns(history: AgentHistoryEntry[]): AgentTurnSnapshot[] {
+  const result: AgentTurnSnapshot[] = [];
+  for (const h of history) {
+    if (h.timestamp == null) continue;
+    if (h.kind === "text" && (h.role === "user" || h.role === "assistant")) {
+      result.push({ kind: "prompt", role: h.role, text: h.text.slice(0, 60), timestamp: h.timestamp });
+    } else if (h.kind === "toolCall") {
+      result.push({ kind: "toolCall", text: h.text.slice(0, 60), timestamp: h.timestamp, toolName: h.toolName });
+    }
+  }
+  return result;
+}
 
 /** Statuses after which an agent does no further work. */
 export const TERMINAL_AGENT_STATUSES = new Set(["done", "error", "skipped"]);
@@ -109,6 +123,7 @@ export function mergeLiveSnapshot({
       startedAt: persisted?.startedAt ?? clock.firstSeenAt,
       status: agent.status as WorkflowAgentStatus,
       tokens: agent.tokens,
+      turns: persisted?.history ? historyToTurns(persisted.history) : undefined,
     };
   });
 

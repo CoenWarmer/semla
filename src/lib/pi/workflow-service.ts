@@ -7,7 +7,7 @@ import {
   type PersistedAgentState,
 } from "./workflow-run-reader";
 import { getActiveManager } from "./workflow-manager-registry";
-import { mergeLiveSnapshot } from "./workflow-snapshot-merge";
+import { historyToTurns, mergeLiveSnapshot } from "./workflow-snapshot-merge";
 
 /**
  * Build a live WorkflowSnapshot for a run.
@@ -53,6 +53,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     startedAt: a.startedAt,
     status: a.status,
     tokens: a.tokens,
+    turns: a.history ? historyToTurns(a.history) : undefined,
   }));
 
   return {
