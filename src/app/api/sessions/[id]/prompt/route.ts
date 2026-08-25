@@ -71,14 +71,34 @@ export async function POST(
 
   const stream = new ReadableStream({
     start(controller) {
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed (client disconnected before runPiPrompt finished).
+        }
+      };
+
       // Guard against enqueue-after-close when the client disconnects mid-stream.
       const send = (event: unknown) => {
+        if (closed) return;
         try {
           controller.enqueue(eventPayload(event));
         } catch {
           // Client disconnected — drop the event silently.
         }
       };
+
+      // Hard deadline: if runPiPrompt hasn't closed the stream after 5 minutes,
+      // force-close it so the client mutation always settles.
+      const deadline = setTimeout(() => {
+        console.error(`[api:sessions/prompt] Stream deadline exceeded for session ${id} — force-closing`);
+        send({ message: "Session timed out. Please retry.", type: "error" });
+        close();
+      }, 5 * 60 * 1000);
 
       void runPiPrompt({
         model: { modelId, provider },
@@ -96,11 +116,8 @@ export async function POST(
           });
         })
         .finally(() => {
-          try {
-            controller.close();
-          } catch {
-            // Already closed (client disconnected before runPiPrompt finished).
-          }
+          clearTimeout(deadline);
+          close();
         });
     },
   });

@@ -464,8 +464,10 @@ export const runPiPrompt = async ({
       entries: entries.length,
       background: hasBackgroundWorkflow,
     });
-    for (const entry of entries) {
-      await persistEntry(piSession.id, entry as PiSessionEntry);
+    for (let i = 0; i < entries.length; i++) {
+      const t0 = Date.now();
+      await persistEntry(piSession.id, entries[i] as PiSessionEntry);
+      debug.onPersistEntry(i + 1, entries.length, Date.now() - t0);
     }
     debug.onPromptComplete(entries.length, hasBackgroundWorkflow);
     if (persistedEntries.length === 0) {
@@ -475,6 +477,7 @@ export const runPiPrompt = async ({
       void updateSessionTitle(semlaSessionId, title);
       onEvent({ title, type: "title-updated" });
     }
+    debug.onSseComplete();
     onEvent({ type: "complete" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

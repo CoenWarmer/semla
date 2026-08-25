@@ -26,7 +26,9 @@ export interface SessionDebugWriter {
   onToolEnd(toolName: string, result?: unknown): void;
   onWorkflowSnapshot(snapshot: WorkflowSnapshot, mode: "background" | "foreground"): void;
   onError(message: string): void;
+  onPersistEntry(index: number, total: number, ms: number): void;
   onPromptComplete(entryCount: number, hasBackground: boolean): void;
+  onSseComplete(): void;
   onBgStart(): void;
   onBgDelivery(): void;
   onBgComplete(entryCount: number): void;
@@ -42,7 +44,9 @@ const NOP: SessionDebugWriter = {
   onToolEnd: () => {},
   onWorkflowSnapshot: () => {},
   onError: () => {},
+  onPersistEntry: () => {},
   onPromptComplete: () => {},
+  onSseComplete: () => {},
   onBgStart: () => {},
   onBgDelivery: () => {},
   onBgComplete: () => {},
@@ -155,12 +159,20 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
       appendEvent({ type: "error", message });
     },
 
+    onPersistEntry(index: number, total: number, ms: number) {
+      appendEvent({ type: "persist-entry", index, total, ms });
+    },
+
     onPromptComplete(entryCount: number, hasBackground: boolean) {
       closeAssistantBlock();
       appendConvo(
         `\n---\n\n_Prompt complete · ${ts()} · ${entryCount} entries persisted${hasBackground ? " · background workflow running" : ""}_\n`,
       );
       appendEvent({ type: "prompt-complete", entries: entryCount, hasBackground });
+    },
+
+    onSseComplete() {
+      appendEvent({ type: "sse-complete" });
     },
 
     onBgStart() {
