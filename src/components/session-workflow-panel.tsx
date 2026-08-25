@@ -504,16 +504,24 @@ function SpanDetailDrawer({
             {service && <AttrRow label="service" value={service} />}
             {duration && <AttrRow label="duration" value={duration} />}
             {statusCode && statusCode !== "UNSET" && (
-              <div className="flex gap-2 text-xs">
-                <span className="text-muted-foreground shrink-0 w-28">
-                  status
-                </span>
-                <span
-                  className={`flex-1 ${statusCode === "ERROR" ? "text-destructive" : "text-green-500"}`}
-                >
-                  {statusCode}
-                  {span?.status?.message ? ` — ${span.status.message}` : ""}
-                </span>
+              <div className="flex gap-2 text-xs items-start">
+                <span className="text-muted-foreground shrink-0 w-28">status</span>
+                <div className="flex-1 min-w-0">
+                  <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
+                      statusCode === "ERROR"
+                        ? "bg-destructive/15 text-destructive"
+                        : "bg-green-500/15 text-green-600 dark:text-green-400"
+                    }`}
+                  >
+                    {statusCode === "ERROR" ? "Failed" : "Success"}
+                  </span>
+                  {span?.status?.message && (
+                    <p className="mt-1.5 text-xs text-muted-foreground break-words">
+                      {span.status.message}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
             {span?.kind && span.kind !== "UNSPECIFIED" && (

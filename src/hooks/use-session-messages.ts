@@ -12,7 +12,9 @@ export type SessionMessage = {
 /** A tool the assistant invoked, rendered as a marker on the timeline. */
 export type SessionToolCall = {
   createdAt: string;
+  errorText?: string;
   id: string;
+  isError?: boolean;
   messageId: string;
   name: string;
   params?: Record<string, string>;

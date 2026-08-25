@@ -141,6 +141,11 @@ export function workflowSnapshotToSpans(
         endTimeUnixNano: nano,
         kind: "EVENT",
         attributes: { msg_id: call.messageId, "pi.tool_name": call.name, ...paramAttrs },
+        status: call.isError !== undefined
+          ? (call.isError
+              ? { code: "ERROR", message: call.errorText }
+              : { code: "OK" })
+          : undefined,
         resource: { "service.name": "tool" },
       });
     }

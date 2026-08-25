@@ -10,7 +10,9 @@ type PiUsage = {
 
 type PiMessage = {
   content: unknown;
+  isError?: boolean;
   role: string;
+  toolCallId?: string;
   usage?: PiUsage;
 };
 
@@ -31,7 +33,9 @@ export type SessionTranscriptEntry = {
  */
 export type SessionToolCall = {
   createdAt: string;
+  errorText?: string;
   id: string;
+  isError?: boolean;
   messageId: string;
   name: string;
   params?: Record<string, string>;
@@ -71,7 +75,15 @@ const summarizeArguments = (value: unknown): string | undefined => {
 
 const getToolCalls = (
   message: PiMessage,
-  { createdAt, messageId }: { createdAt: string; messageId: string },
+  {
+    createdAt,
+    messageId,
+    toolResultMap,
+  }: {
+    createdAt: string;
+    messageId: string;
+    toolResultMap: Map<string, { isError: boolean; text: string }>;
+  },
 ): SessionToolCall[] => {
   if (!Array.isArray(message.content)) return [];
 
@@ -79,16 +91,19 @@ const getToolCalls = (
     if (!isRecord(part) || part.type !== "toolCall") return [];
     if (typeof part.name !== "string") return [];
 
+    const id = typeof part.id === "string" ? part.id : `${messageId}-${index}`;
     const summary = summarizeArguments(part.arguments);
     const params = getParams(part.arguments);
+    const result = toolResultMap.get(id);
     return [
       {
         createdAt,
-        id: typeof part.id === "string" ? part.id : `${messageId}-${index}`,
+        id,
         messageId,
         name: part.name,
         ...(summary ? { summary } : {}),
         ...(params ? { params } : {}),
+        ...(result ? { isError: result.isError, errorText: result.text.slice(0, 1000) } : {}),
       },
     ];
   });
@@ -155,6 +170,28 @@ export const getTranscript = async (
     throw new Error(`Unable to load Pi transcript: ${entriesError.message}`);
   }
 
+  // First pass: build a map of tool call ID → result info so tool calls can be
+  // annotated with success/failure without a separate query.
+  const toolResultMap = new Map<string, { isError: boolean; text: string }>();
+  for (const entry of entries) {
+    const payload = entry.payload as { entry?: { message?: PiMessage } };
+    const message = payload.entry?.message;
+    if (!message || message.role !== "toolResult") continue;
+    const callId = typeof message.toolCallId === "string" ? message.toolCallId : null;
+    if (!callId) continue;
+    const text = Array.isArray(message.content)
+      ? (message.content as Array<unknown>)
+          .filter((p): p is { type: string; text: string } =>
+            isRecord(p) && p.type === "text" && typeof p.text === "string"
+          )
+          .map((p) => p.text)
+          .join("")
+      : typeof message.content === "string"
+        ? message.content
+        : "";
+    toolResultMap.set(callId, { isError: Boolean(message.isError), text });
+  }
+
   const toolCalls: SessionToolCall[] = [];
 
   const messages = entries.flatMap((entry) => {
@@ -171,7 +208,7 @@ export const getTranscript = async (
     const createdAt = payload.entry?.timestamp ?? entry.created_at;
 
     toolCalls.push(
-      ...getToolCalls(message, { createdAt, messageId: entry.id }),
+      ...getToolCalls(message, { createdAt, messageId: entry.id, toolResultMap }),
     );
 
     if (!isDisplayMessage(message)) {
