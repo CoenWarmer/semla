@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
@@ -19,11 +19,11 @@ interface SessionItemProps {
   date: string;
   title: string | null;
   usage?: { tokens: number; cost: number };
+  onDelete: (id: string) => void;
 }
 
-export function SessionItem({ id, date, title, usage }: SessionItemProps) {
+export function SessionItem({ id, date, title, usage, onDelete }: SessionItemProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,13 +50,7 @@ export function SessionItem({ id, date, title, usage }: SessionItemProps) {
     router.refresh();
   };
 
-  const handleDelete = async () => {
-    await fetch(`/api/sessions/${id}`, { method: "DELETE" });
-    router.refresh();
-    if (pathname === `/sessions/${id}`) {
-      router.push("/");
-    }
-  };
+  const handleDelete = () => onDelete(id);
 
   return (
     <Item variant="outline" className="group relative">

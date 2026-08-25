@@ -1,5 +1,4 @@
-import { ItemGroup } from "@/components/ui/item";
-import { SessionItem } from "@/components/session-item";
+import { SessionsListClient } from "@/components/sessions-list-client";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
@@ -87,27 +86,19 @@ export async function SessionsList() {
     sessions.map((s) => s.id),
   );
 
-  return (
-    <ItemGroup className="max-w-sm">
-      {sessions.map(({ id, created_at, title }) => {
-        const date = new Date(created_at).toLocaleDateString("nl-NL", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        });
-        return (
-          <SessionItem
-            key={id}
-            id={id}
-            date={date}
-            title={title}
-            usage={usageBySession.get(id)}
-          />
-        );
-      })}
-    </ItemGroup>
-  );
+  const rows = sessions.map(({ id, created_at, title }) => ({
+    id,
+    date: new Date(created_at).toLocaleDateString("nl-NL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    title,
+    usage: usageBySession.get(id),
+  }));
+
+  return <SessionsListClient sessions={rows} />;
 }
