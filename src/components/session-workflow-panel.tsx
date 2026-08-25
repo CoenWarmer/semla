@@ -450,7 +450,7 @@ function ParamValue({
 }
 
 function StatusMessage({ message }: { message: string }) {
-  let content = message;
+  let content = message.replace(/`([^`]*)`/g, "$1");
   let lang: BundledLanguage | null = null;
   try {
     content = JSON.stringify(JSON.parse(message), null, 2);
