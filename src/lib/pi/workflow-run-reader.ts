@@ -68,9 +68,17 @@ export type PersistedRunState = {
     total: number;
   };
   updatedAt: string;
+  script?: string;
   workflowDescription?: string;
   workflowName: string;
 };
+
+/** Extract the description string from a workflow script's meta literal. */
+export function extractWorkflowDescription(script: string | undefined): string | undefined {
+  if (!script) return undefined;
+  const m = script.match(/\bdescription\s*:\s*['"`]([^'"`]+)['"`]/);
+  return m?.[1];
+}
 
 function sanitize(value: string): string {
   return value

@@ -3,6 +3,7 @@ import type { Database } from "@/types/database.types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { PI_WORKSPACE_ROOT } from "./runtime-config";
 import {
+  extractWorkflowDescription,
   readWorkflowRun,
   type PersistedAgentState,
 } from "./workflow-run-reader";
@@ -27,6 +28,11 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     (found, cwd) => found ?? readWorkflowRun(cwd, runId),
     null,
   );
+
+  // Backfill description from the script's meta literal if not stored directly.
+  if (runState && !runState.workflowDescription) {
+    runState.workflowDescription = extractWorkflowDescription(runState.script);
+  }
 
   // The manager is the only source for agents that are queued or running, so
   // merge its status over the timestamps the run file has recorded so far.
@@ -61,7 +67,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     agents,
     completedAt: runState.completedAt,
     currentPhase: runState.currentPhase,
-    description: runState.workflowDescription,
+    description: runState.workflowDescription ?? extractWorkflowDescription(runState.script),
     doneCount: agents.filter((a) => a.status === "done").length,
     errorCount: agents.filter((a) => a.status === "error").length,
     name: runState.workflowName,
