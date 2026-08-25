@@ -19,29 +19,6 @@ export default async function Page({
   ]);
 
   if (sessionResult.error) {
-    // If the goal column doesn't exist yet (pending migration), retry without it.
-    if (sessionResult.error.message.includes("goal")) {
-      const fallback = await supabase
-        .from("sessions")
-        .select("id, title")
-        .eq("id", id)
-        .maybeSingle();
-      if (fallback.error) {
-        console.error(`[sessions/${id}] Failed to fetch session:`, fallback.error);
-        throw new Error(`Unable to load session: ${fallback.error.message}`);
-      }
-      if (!fallback.data) notFound();
-      return (
-        <div className="flex h-full w-full flex-col overflow-hidden">
-          <ClientSessionComponent
-            defaultTools={[...getPiRuntimeConfig().tools]}
-            initialMessagesData={transcript ? { contextWindow: null, ...transcript } : undefined}
-            sessionId={id}
-            title={fallback.data.title}
-          />
-        </div>
-      );
-    }
     console.error(`[sessions/${id}] Failed to fetch session:`, sessionResult.error);
     throw new Error(`Unable to load session: ${sessionResult.error.message}`);
   }
