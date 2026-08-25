@@ -68,6 +68,7 @@ export type PersistedRunState = {
     total: number;
   };
   updatedAt: string;
+  workflowDescription?: string;
   workflowName: string;
 };
 

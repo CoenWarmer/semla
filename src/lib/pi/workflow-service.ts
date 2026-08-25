@@ -61,6 +61,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     agents,
     completedAt: runState.completedAt,
     currentPhase: runState.currentPhase,
+    description: runState.workflowDescription,
     doneCount: agents.filter((a) => a.status === "done").length,
     errorCount: agents.filter((a) => a.status === "error").length,
     name: runState.workflowName,

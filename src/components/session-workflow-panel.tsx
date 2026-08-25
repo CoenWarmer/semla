@@ -497,7 +497,8 @@ function SpanDetailDrawer({
   const params = allAttrs
     .filter(([k]) => k.startsWith("pi.param."))
     .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
-  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param."));
+  const workflowDescription = span?.attributes?.["workflow.description"] as string | undefined;
+  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && k !== "workflow.description");
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -526,6 +527,9 @@ function SpanDetailDrawer({
         </DrawerHeader>
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-4">
           <div className="space-y-1.5">
+            {workflowDescription && (
+              <p className="text-xs text-muted-foreground">{workflowDescription}</p>
+            )}
             {service && <AttrRow label="service" value={service} />}
             {duration && <AttrRow label="duration" value={duration} />}
             {statusCode && statusCode !== "UNSET" && (

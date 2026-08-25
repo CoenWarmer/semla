@@ -201,6 +201,9 @@ export function workflowSnapshotToSpans(
       name: snapshot.name,
       startTimeUnixNano: msToNano(wfStart),
       endTimeUnixNano: msToNano(wfEnd),
+      attributes: snapshot.description
+        ? { "workflow.description": snapshot.description }
+        : undefined,
       resource: { "service.name": "workflow" },
       kind: "INTERNAL",
     });

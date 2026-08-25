@@ -37,6 +37,7 @@ export type WorkflowSnapshot = {
   agents: WorkflowAgentSnapshot[];
   completedAt?: string;
   currentPhase?: string;
+  description?: string;
   doneCount: number;
   errorCount: number;
   name: string;

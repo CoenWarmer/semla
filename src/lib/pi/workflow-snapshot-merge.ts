@@ -39,6 +39,7 @@ export type LiveSnapshot = {
     tokenUsage?: { cost?: number; total?: number };
   }>;
   currentPhase?: string;
+  description?: string;
   doneCount: number;
   errorCount: number;
   name: string;
@@ -137,6 +138,7 @@ export function mergeLiveSnapshot({
     agents,
     completedAt: disk?.completedAt,
     currentPhase: live.currentPhase,
+    description: live.description ?? disk?.workflowDescription,
     doneCount: live.doneCount,
     errorCount: live.errorCount,
     name: live.name,
