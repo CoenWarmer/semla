@@ -3,13 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { GoalEditor } from "@/components/goal-editor";
 import { PromptEditor, type PromptEditorModel } from "@/components/prompt-editor";
 
-const PENDING_PROMPT_KEY = "semla.pending-prompt";
+export const PENDING_PROMPT_KEY = "semla.pending-prompt";
 
 export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
   const router = useRouter();
+  const [goal, setGoal] = useState<string | null>(null);
   const [error, setError] = useState<string>();
+
+  const handleGoalSave = useCallback(async (next: string | null) => {
+    setGoal(next);
+  }, []);
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage, model: PromptEditorModel, tools: string[]) => {
@@ -28,19 +34,20 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
 
       sessionStorage.setItem(
         PENDING_PROMPT_KEY,
-        JSON.stringify({ model, text, tools }),
+        JSON.stringify({ goal, model, text, tools }),
       );
 
       router.replace(`/sessions/${body.id}`);
       router.refresh();
     },
-    [router],
+    [goal, router],
   );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-20 py-4">
-        <div className="w-full max-w-2xl">
+        <div className="flex w-full max-w-2xl flex-col gap-2">
+          <GoalEditor goal={goal} onSave={handleGoalSave} variant="block" />
           <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
           {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
         </div>
@@ -48,5 +55,3 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
     </div>
   );
 }
-
-export { PENDING_PROMPT_KEY };

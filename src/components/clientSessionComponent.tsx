@@ -191,18 +191,22 @@ export function ClientSessionComponent({
     [promptMutation],
   );
 
-  // Auto-submit a pending prompt that was stored before navigating from /sessions/new.
+  // Auto-submit a pending prompt (and goal) stored before navigating from /sessions/new.
   useEffect(() => {
     const raw = sessionStorage.getItem(PENDING_PROMPT_KEY);
     if (!raw) return;
     sessionStorage.removeItem(PENDING_PROMPT_KEY);
-    let pending: { model: PromptEditorModel; text: string; tools: string[] };
+    let pending: { goal?: string | null; model: PromptEditorModel; text: string; tools: string[] };
     try {
       pending = JSON.parse(raw) as typeof pending;
     } catch {
       return;
     }
     if (!pending.text.trim()) return;
+    if (pending.goal) {
+      setGoal(pending.goal);
+      void handleGoalSave(pending.goal);
+    }
     void promptMutation.mutateAsync(pending);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
