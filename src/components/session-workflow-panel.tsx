@@ -458,6 +458,14 @@ function ParamValue({
   );
 }
 
+function MarkdownBlock({ children }: { children: string }) {
+  return (
+    <div className="rounded border p-2 text-xs overflow-y-auto max-h-64 prose prose-sm prose-invert max-w-none leading-relaxed">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+    </div>
+  );
+}
+
 function StatusMessage({ message }: { message: string }) {
   let content = message.replace(/`([^`]*)`/g, "$1");
   let lang: BundledLanguage | null = null;
@@ -568,9 +576,16 @@ function SpanDetailDrawer({
               <AttrRow label="kind" value={span.kind} />
             )}
           </div>
-          {(piText || piResult) && (
-            <div className="prose prose-sm prose-invert max-w-none text-xs leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piText ?? piResult ?? ""}</ReactMarkdown>
+          {piText && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Prompt</p>
+              <MarkdownBlock>{piText}</MarkdownBlock>
+            </div>
+          )}
+          {piResult && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Result</p>
+              <MarkdownBlock>{piResult}</MarkdownBlock>
             </div>
           )}
           {events.length > 0 && (
