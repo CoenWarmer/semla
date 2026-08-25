@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
+import { CodeBlockContent } from "@/components/ai-elements/code/code-block";
+import type { BundledLanguage } from "shiki";
 
 function FitViewOnChange({
   expanded,
@@ -403,6 +405,48 @@ function AttrRow({
   );
 }
 
+function guessParamLanguage(
+  toolName: string | undefined,
+  key: string,
+): BundledLanguage | null {
+  if (toolName === "workflow" && key === "script") return "javascript";
+  if (toolName === "bash" && key === "command") return "bash";
+  return null;
+}
+
+function ParamValue({
+  paramKey,
+  toolName,
+  value,
+}: {
+  paramKey: string;
+  toolName?: string;
+  value: string;
+}) {
+  const lang = guessParamLanguage(toolName, paramKey);
+  const isMultiline = value.includes("\n");
+
+  if (lang) {
+    return (
+      <div className="mt-1 overflow-hidden rounded border text-xs">
+        <CodeBlockContent code={value} language={lang} />
+      </div>
+    );
+  }
+
+  if (isMultiline) {
+    return (
+      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded border p-2 font-mono text-xs">
+        {value}
+      </pre>
+    );
+  }
+
+  return (
+    <span className="flex-1 break-all font-mono text-xs">{value}</span>
+  );
+}
+
 /**
  * The markers folded into this row (messages and tool calls), oldest first —
  * buildSpanTree already sorts every child list by start time.
@@ -423,6 +467,7 @@ function SpanDetailDrawer({
     ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
     : null;
   const statusCode = span?.status?.code;
+  const toolName = span?.attributes?.["pi.tool_name"] as string | undefined;
   const allAttrs = span ? Object.entries(span.attributes ?? {}) : [];
   const params = allAttrs
     .filter(([k]) => k.startsWith("pi.param."))
@@ -499,10 +544,21 @@ function SpanDetailDrawer({
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                 Parameters
               </p>
-              <div className="space-y-1.5">
-                {params.map(([key, value]) => (
-                  <AttrRow key={key} label={key} mono value={String(value)} />
-                ))}
+              <div className="space-y-3">
+                {params.map(([key, value]) => {
+                  const strVal = String(value);
+                  const lang = guessParamLanguage(toolName, key);
+                  const isMultiline = strVal.includes("\n");
+                  if (lang || isMultiline) {
+                    return (
+                      <div key={key}>
+                        <p className="text-xs text-muted-foreground mb-1">{key}</p>
+                        <ParamValue paramKey={key} toolName={toolName} value={strVal} />
+                      </div>
+                    );
+                  }
+                  return <AttrRow key={key} label={key} mono value={strVal} />;
+                })}
               </div>
             </div>
           )}
