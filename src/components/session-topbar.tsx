@@ -9,6 +9,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
+import { TokenUsage, formatTokens } from "./token-usage";
 
 interface SessionTopbarProps {
   title: string | null;
@@ -18,18 +19,6 @@ interface SessionTopbarProps {
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
   toolCalls?: SessionToolCall[];
-}
-
-function formatCost(cost: number): string {
-  if (cost < 0.001) return `$${cost.toFixed(5)}`;
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(3)}`;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
 }
 
 function ContextFillBar({ sessionId }: { sessionId: string }) {
@@ -107,14 +96,7 @@ export function SessionTopbar({
           {title ?? "Untitled session"}
         </h1>
         <div className="flex items-center gap-3 text-xs text-foreground">
-          {totalTokens > 0 && (
-            <span className="tabular-nums" title="Total tokens used">
-              {formatTokens(totalTokens)} tokens
-            </span>
-          )}
-          {totalCost > 0 && (
-            <span title="Total session cost">{formatCost(totalCost)}</span>
-          )}
+          <TokenUsage cost={totalCost} tokens={totalTokens} />
         </div>
       </div>
 

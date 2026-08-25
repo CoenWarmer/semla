@@ -24,6 +24,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
+import { TokenUsage } from "./token-usage";
 import { MessageSquareIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -137,11 +138,10 @@ export function ClientSessionComponent({
 
   const elapsedLabel =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : null;
-  // Rough estimate: ~4 chars per token for output only.
+  // Rough estimate: ~4 chars per token for output only. No cost yet — the real
+  // usage (and its price) only arrives with the finished message.
   const estimatedTokens =
-    streamingText.length > 0
-      ? `~${Math.round(streamingText.length / 4).toLocaleString()} tokens`
-      : null;
+    streamingText.length > 0 ? Math.round(streamingText.length / 4) : null;
 
   const [selectedAgent, setSelectedAgent] = useState<{
     agentId: number;
@@ -241,9 +241,7 @@ export function ClientSessionComponent({
                 {elapsedLabel && (
                   <span className="tabular-nums">{elapsedLabel}</span>
                 )}
-                {estimatedTokens && (
-                  <span className="tabular-nums">{estimatedTokens}</span>
-                )}
+                <TokenUsage approximate tokens={estimatedTokens} />
               </div>
             )}
             {errorMessage && (

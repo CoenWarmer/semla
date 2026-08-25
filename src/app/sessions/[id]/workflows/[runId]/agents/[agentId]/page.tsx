@@ -2,6 +2,7 @@ import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { readWorkflowRun, type AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import { TokenUsage } from "@/components/token-usage";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -131,11 +132,11 @@ export default async function AgentDetailPage({
           {agent.model && (
             <span className="text-muted-foreground">{agent.model}</span>
           )}
-          {agent.tokens !== undefined && (
-            <span className="text-muted-foreground">
-              {agent.tokens.toLocaleString()} tokens
-            </span>
-          )}
+          <TokenUsage
+            className="text-muted-foreground"
+            cost={agent.tokenUsage?.cost}
+            tokens={agent.tokens}
+          />
           {durationMs !== undefined && (
             <span className="text-muted-foreground">
               {(durationMs / 1000).toFixed(1)}s

@@ -42,6 +42,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
+import { TokenUsage } from "@/components/token-usage";
 
 function FitViewOnChange({
   expanded,
@@ -145,9 +146,11 @@ const AgentNode = ({ data }: NodeProps<AgentFlowNode>) => {
       )}
       {agent && (
         <NodeFooter className="text-muted-foreground text-xs">
-          {agent.tokens
-            ? `${agent.tokens.toLocaleString()} tokens`
-            : "No usage reported"}
+          <TokenUsage
+            cost={agent.cost}
+            emptyLabel="No usage reported"
+            tokens={agent.tokens}
+          />
         </NodeFooter>
       )}
     </WorkflowNode>
@@ -694,9 +697,11 @@ export function SessionWorkflowPanel({
             <h2 className="font-medium mr-4 truncate">{snapshot.name}</h2>
             <p className="text-muted-foreground text-sm shrink-0">
               {snapshot.doneCount}/{snapshot.agentCount} agents complete
-              {snapshot.tokenUsage?.total
-                ? ` · ${snapshot.tokenUsage.total.toLocaleString()} tokens`
-                : ""}
+              {snapshot.tokenUsage?.total ? " · " : ""}
+              <TokenUsage
+                cost={snapshot.tokenUsage?.cost}
+                tokens={snapshot.tokenUsage?.total}
+              />
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">

@@ -6,6 +6,8 @@ export type WorkflowAgentStatus =
   | "skipped";
 
 export type WorkflowAgentSnapshot = {
+  /** Dollar cost of this agent's own tokens, when the run recorded it. */
+  cost?: number;
   endedAt?: string;
   error?: string;
   id: number;

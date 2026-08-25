@@ -38,6 +38,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
   if (!runState) return null;
 
   const agents = runState.agents.map((a) => ({
+    cost: a.tokenUsage?.cost,
     endedAt: a.endedAt,
     error: a.error,
     id: a.id,
@@ -96,6 +97,7 @@ export async function verifyRunBelongsToSession(
 }
 
 export type AgentDetail = {
+  cost?: number;
   endedAt?: string;
   error?: string;
   history: PersistedAgentState["history"];
@@ -126,6 +128,7 @@ export function getAgentDetail(
 
   return {
     agent: {
+      cost: agent.tokenUsage?.cost,
       endedAt: agent.endedAt,
       error: agent.error,
       history: agent.history ?? [],

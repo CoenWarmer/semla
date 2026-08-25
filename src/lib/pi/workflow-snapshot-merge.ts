@@ -22,6 +22,7 @@ export type LiveSnapshot = {
     resultPreview?: string;
     status: string;
     tokens?: number;
+    tokenUsage?: { cost?: number; total?: number };
   }>;
   currentPhase?: string;
   doneCount: number;
@@ -89,6 +90,9 @@ export function mergeLiveSnapshot({
     const persisted = onDisk.get(agent.id);
     const clock = agentClock(runId, agent.id, agent.status, now);
     return {
+      // The manager reports cost once an agent settles; until then the disk
+      // record is the only source, so prefer whichever has it.
+      cost: agent.tokenUsage?.cost ?? persisted?.tokenUsage?.cost,
       endedAt:
         persisted?.endedAt ??
         (TERMINAL_AGENT_STATUSES.has(agent.status) ? clock.terminalAt : undefined),
