@@ -16,7 +16,7 @@
     "@base-ui/react": "^1.7.0",
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@phosphor-icons/react": "^2.1.10",
-    "@quintinshaw/pi-dynamic-workflows": "^3.5.1",
+    "@quintinshaw/pi-dynamic-workflows": "file:./packages/pi-dynamic-workflows",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@rive-app/react-webgl2": "^4.31.0",
     "@shadcn/react": "^0.3.0",
