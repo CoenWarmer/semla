@@ -31,10 +31,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
   defaultTools,
+  initialMessagesData,
   sessionId,
   title,
 }: {
   defaultTools: string[];
+  initialMessagesData?: import("@/hooks/use-session-messages").SessionMessagesResult;
   sessionId: string;
   title: string | null;
 }) {
@@ -47,7 +49,7 @@ export function ClientSessionComponent({
   } = usePromptMutation(sessionId);
 
   const queryClient = useQueryClient();
-  const messagesQuery = useSessionMessages(sessionId);
+  const messagesQuery = useSessionMessages(sessionId, initialMessagesData);
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data?.messages ?? [];
   const toolCalls = messagesQuery.data?.toolCalls ?? [];

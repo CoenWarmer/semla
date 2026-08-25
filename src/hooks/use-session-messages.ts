@@ -42,8 +42,12 @@ const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesR
   return response.json() as Promise<SessionMessagesResult>;
 };
 
-export const useSessionMessages = (sessionId: string) =>
+export const useSessionMessages = (
+  sessionId: string,
+  initialData?: SessionMessagesResult,
+) =>
   useQuery({
+    initialData,
     queryFn: () => fetchSessionMessages(sessionId),
     queryKey: sessionMessagesQueryKey(sessionId),
   });

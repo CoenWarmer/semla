@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ClientSessionComponent } from "@/components/clientSessionComponent";
 import { getPiRuntimeConfig } from "@/lib/pi/runtime-config";
+import { getTranscript } from "@/lib/pi/transcript";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -12,18 +13,17 @@ export default async function Page({
 
   const supabase = await createClient();
 
-  const { data: session, error } = await supabase
-    .from("sessions")
-    .select("id, title")
-    .eq("id", id)
-    .maybeSingle();
+  const [sessionResult, transcript] = await Promise.all([
+    supabase.from("sessions").select("id, title").eq("id", id).maybeSingle(),
+    getTranscript(supabase, id).catch(() => null),
+  ]);
 
-  if (error) {
-    console.error(`[sessions/${id}] Failed to fetch session:`, error);
-    throw new Error(`Unable to load session: ${error.message}`);
+  if (sessionResult.error) {
+    console.error(`[sessions/${id}] Failed to fetch session:`, sessionResult.error);
+    throw new Error(`Unable to load session: ${sessionResult.error.message}`);
   }
 
-  if (!session) {
+  if (!sessionResult.data) {
     notFound();
   }
 
@@ -31,8 +31,9 @@ export default async function Page({
     <div className="flex h-full w-full flex-col overflow-hidden">
       <ClientSessionComponent
         defaultTools={[...getPiRuntimeConfig().tools]}
+        initialMessagesData={transcript ? { contextWindow: null, ...transcript } : undefined}
         sessionId={id}
-        title={session.title}
+        title={sessionResult.data.title}
       />
     </div>
   );
