@@ -11,12 +11,15 @@ import type {
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
+import { GoalEditor } from "./goal-editor";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 import { TokenUsage, formatTokens } from "./token-usage";
 
 interface SessionTopbarProps {
   title: string | null;
   sessionId: string;
+  goal?: string | null;
+  onGoalSave?: (goal: string | null) => Promise<void>;
   messages: SessionMessage[];
   onAgentClick: (agentId: number, runId: string) => void;
   sessionRunning?: boolean;
@@ -81,6 +84,8 @@ function ContextQualityBadge({ sessionId }: { sessionId: string }) {
 export function SessionTopbar({
   title,
   sessionId,
+  goal,
+  onGoalSave,
   messages,
   onAgentClick,
   sessionRunning,
@@ -98,31 +103,44 @@ export function SessionTopbar({
     <>
       {/* Title bar */}
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/40 px-6">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        {/* Left: session title */}
+        <h1 className="w-40 shrink-0 truncate text-sm font-medium text-foreground">
           {title ?? "Untitled session"}
         </h1>
 
-        <ContextFillBar sessionId={sessionId} />
-        <ContextQualityBadge sessionId={sessionId} />
+        {/* Center: goal */}
+        <div className="flex min-w-0 flex-1 justify-center">
+          {onGoalSave && (
+            <div className="w-full max-w-lg">
+              <GoalEditor goal={goal ?? null} onSave={onGoalSave} variant="inline" />
+            </div>
+          )}
+        </div>
 
-        {showAgents && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {runningCount > 0 ? `${runningCount} running · ` : ""}
-            {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
-          </span>
-        )}
+        {/* Right: controls */}
+        <div className="flex shrink-0 items-center gap-2">
+          <ContextFillBar sessionId={sessionId} />
+          <ContextQualityBadge sessionId={sessionId} />
 
-        <Button
-          size="sm"
-          variant={inspectOpen ? "secondary" : "ghost"}
-          onClick={() => setInspectOpen((v) => !v)}
-        >
-          <ScanSearchIcon />
-          Inspect
-        </Button>
+          {showAgents && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {runningCount > 0 ? `${runningCount} running · ` : ""}
+              {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
+            </span>
+          )}
 
-        <div className="flex items-center gap-3 text-xs text-foreground">
-          <TokenUsage cost={totalCost} tokens={totalTokens} />
+          <Button
+            size="sm"
+            variant={inspectOpen ? "secondary" : "ghost"}
+            onClick={() => setInspectOpen((v) => !v)}
+          >
+            <ScanSearchIcon />
+            Inspect
+          </Button>
+
+          <div className="flex items-center gap-3 text-xs text-foreground">
+            <TokenUsage cost={totalCost} tokens={totalTokens} />
+          </div>
         </div>
       </div>
 

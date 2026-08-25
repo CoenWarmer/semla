@@ -41,7 +41,8 @@ import {
   useUpdateUserSettings,
   useUserSettings,
 } from "@/hooks/use-user-settings";
-import { CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
+import { GoalEditor } from "@/components/goal-editor";
+import { ChevronDownIcon, ChevronUpIcon, CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 export type PromptEditorModel = Pick<PiModel, "modelId" | "provider">;
@@ -144,9 +145,13 @@ interface PromptEditorProps {
     tools: string[],
   ) => Promise<void> | void;
   defaultTools: string[];
+  goal?: string | null;
+  onGoalSave?: (goal: string | null) => Promise<void>;
+  /** When true the goal section starts expanded (new session) */
+  goalExpanded?: boolean;
 }
 
-export function PromptEditor({ defaultTools, onSubmit }: PromptEditorProps) {
+export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onSubmit }: PromptEditorProps) {
   const {
     data: models = [],
     error: modelsError,
@@ -169,6 +174,7 @@ export function PromptEditor({ defaultTools, onSubmit }: PromptEditorProps) {
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
+  const [goalOpen, setGoalOpen] = useState(goalExpanded ?? false);
   const toolPickerRef = useRef<HTMLDivElement>(null);
 
   const defaultModelKey =
@@ -271,11 +277,26 @@ export function PromptEditor({ defaultTools, onSubmit }: PromptEditorProps) {
     modelsError ?? userSettingsError ?? updateUserSettingsError;
 
   return (
-    <div className="size-full">
+    <div className="flex size-full flex-col gap-2">
       {configurationError && (
         <p className="mb-2 text-sm text-destructive" role="alert">
           {configurationError.message}
         </p>
+      )}
+      {onGoalSave && (
+        <div>
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
+            onClick={() => setGoalOpen((v) => !v)}
+            type="button"
+          >
+            {goalOpen ? <ChevronUpIcon className="size-3" /> : <ChevronDownIcon className="size-3" />}
+            Goal
+          </button>
+          {goalOpen && (
+            <GoalEditor goal={goal ?? null} onSave={onGoalSave} variant="block" />
+          )}
+        </div>
       )}
       <PromptInputProvider>
         <PromptInput globalDrop multiple onSubmit={handleSubmit} overflowVisible>

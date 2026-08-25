@@ -33,11 +33,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
   defaultTools,
+  goal: initialGoal,
   initialMessagesData,
   sessionId,
   title,
 }: {
   defaultTools: string[];
+  goal?: string | null;
   initialMessagesData?: import("@/hooks/use-session-messages").SessionMessagesResult;
   sessionId: string;
   title: string | null;
@@ -50,6 +52,17 @@ export function ClientSessionComponent({
     streamingText,
     workflowSnapshot,
   } = usePromptMutation(sessionId);
+
+  const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
+
+  const handleGoalSave = useCallback(async (next: string | null) => {
+    setGoal(next);
+    await fetch(`/api/sessions/${sessionId}`, {
+      body: JSON.stringify({ goal: next ?? "" }),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    });
+  }, [sessionId]);
 
   const queryClient = useQueryClient();
   const messagesQuery = useSessionMessages(sessionId, initialMessagesData);
@@ -199,6 +212,8 @@ export function ClientSessionComponent({
       <SessionTopbar
         title={title}
         sessionId={sessionId}
+        goal={goal}
+        onGoalSave={handleGoalSave}
         messages={messages}
         onAgentClick={handleAgentClick}
         sessionRunning={promptMutation.isPending}
@@ -292,7 +307,13 @@ export function ClientSessionComponent({
           </div>
         )}
         <div className="shrink-0">
-          <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
+          <PromptEditor
+            defaultTools={defaultTools}
+            goal={goal}
+            goalExpanded={messages.length === 0}
+            onGoalSave={handleGoalSave}
+            onSubmit={handleSubmit}
+          />
         </div>
       </div>
     </div>

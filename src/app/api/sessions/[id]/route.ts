@@ -17,21 +17,31 @@ export async function PATCH(
 
   const body = (await request.json().catch(() => null)) as {
     title?: unknown;
+    goal?: unknown;
   } | null;
 
   const title =
     typeof body?.title === "string" && body.title.trim()
       ? body.title.trim()
-      : null;
+      : undefined;
 
-  if (!title) {
-    return Response.json({ error: "title is required." }, { status: 400 });
+  const goal =
+    typeof body?.goal === "string"
+      ? body.goal.trim() || null
+      : undefined;
+
+  if (title === undefined && goal === undefined) {
+    return Response.json({ error: "title or goal is required." }, { status: 400 });
   }
+
+  const patch: { title?: string; goal?: string | null } = {};
+  if (title !== undefined) patch.title = title;
+  if (goal !== undefined) patch.goal = goal;
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("sessions")
-    .update({ title })
+    .update(patch)
     .eq("id", id);
 
   if (error) {
