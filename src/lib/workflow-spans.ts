@@ -274,27 +274,28 @@ export function workflowSnapshotToSpans(
         const toolCallTurns = turns.filter((t) => t.kind === "toolCall");
 
         if (promptTurns.length > 0) {
-          const promptsStart = Math.min(...promptTurns.map((t) => t.timestamp));
-          const promptsEnd = Math.max(...promptTurns.map((t) => t.timestamp));
           const promptsId = makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompts`);
           spans.push({
             traceId: TRACE_ID,
             spanId: promptsId,
             parentSpanId: agentSpanId,
             name: "Prompts",
-            startTimeUnixNano: msToNano(promptsStart),
-            endTimeUnixNano: msToNano(promptsEnd + 1),
+            startTimeUnixNano: msToNano(aStart),
+            endTimeUnixNano: msToNano(aEnd),
             resource: { "service.name": "session" },
             kind: "INTERNAL",
           });
           for (const turn of promptTurns) {
+            // History timestamps are unreliable (all stamped at agent creation).
+            // Use agent start for user prompts, agent end for assistant responses.
+            const t = turn.role === "assistant" ? aEnd : aStart;
             spans.push({
               traceId: TRACE_ID,
               spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompt-${turn.timestamp}`),
               parentSpanId: promptsId,
               name: turn.role === "user" ? `↑ ${turn.text}` : `↓ ${turn.text}`,
-              startTimeUnixNano: msToNano(turn.timestamp),
-              endTimeUnixNano: msToNano(turn.timestamp),
+              startTimeUnixNano: msToNano(t),
+              endTimeUnixNano: msToNano(t),
               kind: "EVENT",
               resource: { "service.name": turn.role === "user" ? "user" : "assistant" },
             });
