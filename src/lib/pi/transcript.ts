@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
 type PiUsage = {
+  cacheRead?: number;
+  cacheWrite?: number;
   cost?: { total: number };
   input?: number;
   totalTokens?: number;
@@ -225,7 +227,16 @@ export const getTranscript = async (
 
     const cost = message.usage?.cost?.total;
     const total = message.usage?.totalTokens;
-    const inputTokens = message.usage?.input;
+    // Total context tokens sent to the model = fresh input + cache reads + cache writes.
+    // Using only `usage.input` (uncached tokens) yields near-zero values that make
+    // the fill bar invisible on the first turn where everything is written to cache.
+    const contextTokens =
+      message.usage != null
+        ? (message.usage.input ?? 0) +
+          (message.usage.cacheRead ?? 0) +
+          (message.usage.cacheWrite ?? 0)
+        : null;
+    const inputTokens = contextTokens != null && contextTokens > 0 ? contextTokens : null;
     return [
       {
         createdAt,
