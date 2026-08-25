@@ -519,9 +519,9 @@ function SpanDetailDrawer({
                     {statusCode === "ERROR" ? "Failed" : "Success"}
                   </span>
                   {span?.status?.message && (
-                    <p className="mt-1.5 text-xs text-muted-foreground break-words">
+                    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded border p-2 font-mono text-xs text-muted-foreground">
                       {span.status.message}
-                    </p>
+                    </pre>
                   )}
                 </div>
               </div>
