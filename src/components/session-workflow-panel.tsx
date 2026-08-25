@@ -378,6 +378,13 @@ function InlineSpanRow({
   );
 }
 
+function formatTimestamp(nano: string): string {
+  const ms = Number(nano) / 1_000_000;
+  const d = new Date(ms);
+  const pad = (n: number, len = 2) => String(n).padStart(len, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
 function formatDuration(startNano: string, endNano: string): string {
   const ms = (Number(endNano) - Number(startNano)) / 1_000_000;
   if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
@@ -493,6 +500,7 @@ function SpanDetailDrawer({
   const duration = span
     ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
     : null;
+  const isEvent = span?.kind === "EVENT";
   const statusCode = span?.status?.code;
   const toolName = span?.attributes?.["pi.tool_name"] as string | undefined;
   const allAttrs = span ? Object.entries(span.attributes ?? {}) : [];
@@ -533,8 +541,9 @@ function SpanDetailDrawer({
             {workflowDescription && (
               <AttrRow label="description" value={workflowDescription} />
             )}
+            {span && <AttrRow label="time" mono value={formatTimestamp(span.startTimeUnixNano)} />}
             {service && <AttrRow label="service" value={service} />}
-            {duration && <AttrRow label="duration" value={duration} />}
+            {duration && !isEvent && <AttrRow label="duration" value={duration} />}
             {statusCode && statusCode !== "UNSET" && (
               <div className="flex gap-2 text-xs items-start">
                 <span className="text-muted-foreground shrink-0 w-28">status</span>
