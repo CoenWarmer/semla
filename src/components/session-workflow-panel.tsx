@@ -161,6 +161,14 @@ const edgeTypes = { animated: Edge.Animated };
 const COL_WIDTH = 440;
 const ROW_HEIGHT = 200;
 
+// ── Shimmer animation for running bars ───────────────────────────────────────
+const SHIMMER_STYLE = `
+@keyframes span-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+`;
+
 // ── Inline span row ──────────────────────────────────────────────────────────
 // Shared constants that mirror the library's internal layout values.
 const LABEL_COL = 280;
@@ -222,6 +230,8 @@ function InlineSpanRow({
   const indent = span.depth * t.rowIndentPx + t.rowPaddingInline;
 
   return (
+    <>
+    <style>{SHIMMER_STYLE}</style>
     <div
       role="row"
       style={{
@@ -329,7 +339,11 @@ function InlineSpanRow({
                 height: BAR_H,
                 top: "50%",
                 transform: "translateY(-50%)",
-                background: isQueued ? "transparent" : barColor,
+                background: isRunning
+                  ? `linear-gradient(90deg, ${barColor} 25%, rgba(255,255,255,0.55) 50%, ${barColor} 75%)`
+                  : isQueued ? "transparent" : barColor,
+                backgroundSize: isRunning ? "200% 100%" : undefined,
+                animation: isRunning ? "span-shimmer 1.6s linear infinite" : undefined,
                 border: isQueued ? `1.5px dashed ${barColor}` : "none",
                 borderRadius: 2,
                 opacity: isQueued ? 0.5 : 1,
@@ -375,6 +389,7 @@ function InlineSpanRow({
         })}
       </div>
     </div>
+    </>
   );
 }
 
