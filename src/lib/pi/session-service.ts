@@ -11,6 +11,7 @@ import {
   releaseBackgroundSession,
   retainBackgroundSession,
 } from "@/lib/pi/background-sessions";
+import { registerNotifier, type AskUserPayload } from "@/lib/pi/ask-user-bridge";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
 import {
   createSessionDebugWriter,
@@ -50,6 +51,11 @@ const workflowProgressBridgePath = join(
   "src/lib/pi/extensions/workflow-progress-bridge.ts",
 );
 
+const askUserExtensionPath = join(
+  process.cwd(),
+  "src/lib/pi/extensions/ask-user.ts",
+);
+
 const workflowSkillsPath = join(
   process.cwd(),
   "node_modules/@quintinshaw/pi-dynamic-workflows/skills",
@@ -81,6 +87,7 @@ type PiSessionEvent =
   | { toolName: string; type: "tool-end" }
   | { runId: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  | { payload: AskUserPayload; type: "ask-user-question" }
   | { message: string; type: "error" }
   | { title: string; type: "title-updated" }
   | { type: "complete" };
@@ -268,8 +275,12 @@ export const runPiPrompt = async ({
     PI_WORKSPACE_ROOT,
   );
   await mkdir(PI_AGENT_DIR, { recursive: true });
+  const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
+    onEvent({ payload, type: "ask-user-question" });
+  });
+
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath],
+    additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath, askUserExtensionPath],
     // The workflow skills ship inside the package but are only contributed when
     // it is loaded as a package. We load the extension file directly, so point
     // at this repo's copy explicitly rather than inheriting them from whatever
@@ -456,6 +467,7 @@ export const runPiPrompt = async ({
     throw new Error(msg);
   } finally {
     unsubscribe();
+    unregisterNotifier();
     const settledDuringPrompt =
       deliveredDuringPrompt &&
       (!detectedBackgroundRunId ||

@@ -57,13 +57,13 @@ export function TokenUsage({
 
   const parts: string[] = [];
   if (hasTokens) {
-    parts.push(`${approximate ? "~" : ""}${formatTokens(tokens)} tokens`);
+    parts.push(`${approximate ? "~" : ""}${formatTokens(tokens)}`);
   }
   if (hasCost) parts.push(formatCost(cost));
 
   // The visible count is abbreviated, so the tooltip carries the exact numbers.
   const exact: string[] = [];
-  if (tokens != null && tokens > 0) exact.push(`${tokens.toLocaleString()} tokens`);
+  if (tokens != null && tokens > 0) exact.push(`${tokens.toLocaleString()}`);
   if (hasCost) exact.push(`$${cost.toFixed(5)}`);
 
   return (
@@ -71,7 +71,7 @@ export function TokenUsage({
       className={cn("tabular-nums", className)}
       title={title ?? exact.join(" · ")}
     >
-      {parts.join(" · ")}
+      {parts.join(" - ")}
     </span>
   );
 }

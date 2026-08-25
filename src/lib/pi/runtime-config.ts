@@ -27,6 +27,7 @@ export const PI_TOOLS = [
   "write",
   "workflow",
   "workflow_control",
+  "ask_user",
 ] as const;
 
 export const getPiRuntimeConfig = () => ({

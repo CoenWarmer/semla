@@ -22,6 +22,7 @@ import {
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
+import { AskUserDialog } from "./ask-user-dialog";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { TokenUsage } from "./token-usage";
@@ -43,6 +44,7 @@ export function ClientSessionComponent({
   const {
     activeTool,
     mutation: promptMutation,
+    pendingQuestion,
     streamError,
     streamingText,
     workflowSnapshot,
@@ -263,6 +265,15 @@ export function ClientSessionComponent({
         )} */}
           <ConversationScrollButton />
         </Conversation>
+        {pendingQuestion && (
+          <div className="shrink-0">
+            <AskUserDialog
+              payload={pendingQuestion}
+              sessionId={sessionId}
+              onDismiss={() => {}}
+            />
+          </div>
+        )}
         <div className="shrink-0">
           <PromptEditor defaultTools={defaultTools} onSubmit={handleSubmit} />
         </div>

@@ -8,6 +8,7 @@ import {
   type SessionMessagesResult,
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
+import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 
 export type PromptModel = {
   modelId: string;
@@ -26,6 +27,7 @@ type PiStreamEvent =
   | { toolName: string; type: "tool-end" | "tool-start" }
   | { runId: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
   | { type: "complete" };
 
@@ -36,6 +38,7 @@ export const usePromptMutation = (sessionId: string) => {
   const [activeTool, setActiveTool] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
+  const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
 
   const mutation = useMutation<
     void,
@@ -90,6 +93,11 @@ export const usePromptMutation = (sessionId: string) => {
             setActiveTool(piEvent.toolName);
           } else if (piEvent.type === "tool-end") {
             setActiveTool(undefined);
+            if (piEvent.toolName === "ask_user") {
+              setPendingQuestion(null);
+            }
+          } else if (piEvent.type === "ask-user-question") {
+            setPendingQuestion(piEvent.payload);
           } else if (piEvent.type === "workflow-snapshot") {
             setWorkflowSnapshot(piEvent.snapshot);
           } else if (piEvent.type === "workflow-started") {
@@ -142,6 +150,7 @@ export const usePromptMutation = (sessionId: string) => {
       setStreamingText("");
       setActiveTool(undefined);
       setWorkflowSnapshot(undefined);
+      setPendingQuestion(null);
       await queryClient.cancelQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
@@ -175,11 +184,12 @@ export const usePromptMutation = (sessionId: string) => {
     onSettled: async () => {
       setStreamingText("");
       setActiveTool(undefined);
+      setPendingQuestion(null);
       await queryClient.invalidateQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
     },
   });
 
-  return { activeTool, mutation, streamError, streamingText, workflowSnapshot };
+  return { activeTool, mutation, pendingQuestion, streamError, streamingText, workflowSnapshot };
 };
