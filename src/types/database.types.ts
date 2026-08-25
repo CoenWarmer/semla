@@ -14,59 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      sessions: {
-        Row: {
-          created_at: string
-          id: string
-          title: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          title?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          title?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      user_settings: {
-        Row: {
-          default_model_id: string | null
-          default_model_provider: string | null
-          system_prompt: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          default_model_id?: string | null
-          default_model_provider?: string | null
-          system_prompt?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          default_model_id?: string | null
-          default_model_provider?: string | null
-          system_prompt?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_settings_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       pi_session_entries: {
         Row: {
           created_at: string
@@ -156,6 +103,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sessions: {
+        Row: {
+          created_at: string
+          id: string
+          title: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          default_model_id: string | null
+          default_model_provider: string | null
+          system_prompt: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          default_model_id?: string | null
+          default_model_provider?: string | null
+          system_prompt?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          default_model_id?: string | null
+          default_model_provider?: string | null
+          system_prompt?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       workflow_runs: {
         Row: {
