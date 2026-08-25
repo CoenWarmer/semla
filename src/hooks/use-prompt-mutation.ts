@@ -39,6 +39,7 @@ export const usePromptMutation = (sessionId: string) => {
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
+  const [titleUpdated, setTitleUpdated] = useState(false);
 
   const mutation = useMutation<
     void,
@@ -112,7 +113,7 @@ export const usePromptMutation = (sessionId: string) => {
               runningCount: 0,
             });
           } else if (piEvent.type === "title-updated") {
-            router.refresh();
+            setTitleUpdated(true);
           } else if (piEvent.type === "error") {
             piError = new Error(piEvent.message);
             setStreamError(piEvent.message);
@@ -151,6 +152,7 @@ export const usePromptMutation = (sessionId: string) => {
       setActiveTool(undefined);
       setWorkflowSnapshot(undefined);
       setPendingQuestion(null);
+      setTitleUpdated(false);
       await queryClient.cancelQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
@@ -188,6 +190,12 @@ export const usePromptMutation = (sessionId: string) => {
       await queryClient.invalidateQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
+      // Defer router.refresh() until after the stream has fully closed.
+      // Calling it mid-stream (on title-updated) can disrupt the SSE reader loop.
+      if (titleUpdated) {
+        router.refresh();
+        setTitleUpdated(false);
+      }
     },
   });
 
