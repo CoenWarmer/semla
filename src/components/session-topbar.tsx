@@ -101,37 +101,34 @@ export function SessionTopbar({
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {title ?? "Untitled session"}
         </h1>
+
+        <ContextFillBar sessionId={sessionId} />
+        <ContextQualityBadge sessionId={sessionId} />
+
+        {showAgents && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {runningCount > 0 ? `${runningCount} running · ` : ""}
+            {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
+          </span>
+        )}
+
+        <Button
+          size="sm"
+          variant={inspectOpen ? "secondary" : "ghost"}
+          onClick={() => setInspectOpen((v) => !v)}
+        >
+          <ScanSearchIcon />
+          Inspect
+        </Button>
+
         <div className="flex items-center gap-3 text-xs text-foreground">
           <TokenUsage cost={totalCost} tokens={totalTokens} />
         </div>
       </div>
 
-      {/* Inspect bar */}
-      <div className="flex h-9 shrink-0 items-center gap-3 border-b border-border/40 px-4">
-        <ContextFillBar sessionId={sessionId} />
-        <ContextQualityBadge sessionId={sessionId} />
-
-        <div className="ml-auto flex items-center gap-2">
-          {showAgents && (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {runningCount > 0 ? `${runningCount} running · ` : ""}
-              {agentCount} {agentCount === 1 ? "agent" : "agents"}
-            </span>
-          )}
-          <Button
-            size="sm"
-            variant={inspectOpen ? "secondary" : "ghost"}
-            onClick={() => setInspectOpen((v) => !v)}
-          >
-            <ScanSearchIcon />
-            Inspect
-          </Button>
-        </div>
-      </div>
-
       {inspectOpen && (
         <div
-          className="shrink-0 border-b border-border/40 overflow-auto"
+          className="shrink-0 border-b border-border/40 overflow-auto px-3"
           style={{ height: 348 }}
         >
           <SessionWorkflowPanel

@@ -117,7 +117,7 @@ export async function SessionsList() {
                   {title ?? "Untitled"}
                 </Link>
               </ItemTitle>
-              <ItemDescription className="flex items-center justify-between gap-2">
+              <ItemDescription className="flex flex-col justify-between gap-1">
                 <span>{date}</span>
                 {usage && (
                   <TokenUsage
