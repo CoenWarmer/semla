@@ -351,13 +351,14 @@ function InlineSpanRow({
                 height: t.eventMarkerSize,
                 background: color,
                 borderRadius: "50%",
-                cursor: msgId ? "pointer" : "default",
+                cursor: "pointer",
                 zIndex: 1,
               }}
               onMouseEnter={() => onHoverEvent(ev)}
               onMouseLeave={() => onHoverEvent(null)}
               onClick={(e) => {
                 e.stopPropagation();
+                onSelect(ev.spanId);
                 if (msgId)
                   document
                     .getElementById(msgId)
