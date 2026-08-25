@@ -15,6 +15,7 @@ export type SessionToolCall = {
   id: string;
   messageId: string;
   name: string;
+  params?: Record<string, string>;
   summary?: string;
 };
 

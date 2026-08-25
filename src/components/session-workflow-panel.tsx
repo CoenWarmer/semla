@@ -423,7 +423,11 @@ function SpanDetailDrawer({
     ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
     : null;
   const statusCode = span?.status?.code;
-  const attrs = span ? Object.entries(span.attributes ?? {}) : [];
+  const allAttrs = span ? Object.entries(span.attributes ?? {}) : [];
+  const params = allAttrs
+    .filter(([k]) => k.startsWith("pi.param."))
+    .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
+  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param."));
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -486,6 +490,18 @@ function SpanDetailDrawer({
                     )}
                     value={event.name}
                   />
+                ))}
+              </div>
+            </div>
+          )}
+          {params.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Parameters
+              </p>
+              <div className="space-y-1.5">
+                {params.map(([key, value]) => (
+                  <AttrRow key={key} label={key} mono value={String(value)} />
                 ))}
               </div>
             </div>

@@ -129,6 +129,9 @@ export function workflowSnapshotToSpans(
     // to the turn it belongs to.
     for (const call of toolCalls) {
       const nano = msToNano(new Date(call.createdAt).getTime());
+      const paramAttrs = call.params
+        ? Object.fromEntries(Object.entries(call.params).map(([k, v]) => [`pi.param.${k}`, v]))
+        : {};
       spans.push({
         traceId: TRACE_ID,
         spanId: makeSpanId(`tool-${call.id}`),
@@ -137,7 +140,7 @@ export function workflowSnapshotToSpans(
         startTimeUnixNano: nano,
         endTimeUnixNano: nano,
         kind: "EVENT",
-        attributes: { msg_id: call.messageId, "pi.tool_name": call.name },
+        attributes: { msg_id: call.messageId, "pi.tool_name": call.name, ...paramAttrs },
         resource: { "service.name": "tool" },
       });
     }

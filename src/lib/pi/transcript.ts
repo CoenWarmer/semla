@@ -34,12 +34,25 @@ export type SessionToolCall = {
   id: string;
   messageId: string;
   name: string;
+  params?: Record<string, string>;
   summary?: string;
 };
 
 export type SessionTranscript = {
   messages: SessionTranscriptEntry[];
   toolCalls: SessionToolCall[];
+};
+
+/** Scalar arguments as truncated strings, for display in the detail drawer. */
+const getParams = (value: unknown): Record<string, string> | undefined => {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
+      result[key] = String(val).slice(0, 500);
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 };
 
 /** First scalar argument, for a marker tooltip: `bash: npm test`. */
@@ -66,15 +79,16 @@ const getToolCalls = (
     if (!isRecord(part) || part.type !== "toolCall") return [];
     if (typeof part.name !== "string") return [];
 
+    const summary = summarizeArguments(part.arguments);
+    const params = getParams(part.arguments);
     return [
       {
         createdAt,
         id: typeof part.id === "string" ? part.id : `${messageId}-${index}`,
         messageId,
         name: part.name,
-        ...(summarizeArguments(part.arguments)
-          ? { summary: summarizeArguments(part.arguments) }
-          : {}),
+        ...(summary ? { summary } : {}),
+        ...(params ? { params } : {}),
       },
     ];
   });
