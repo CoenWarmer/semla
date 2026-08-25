@@ -106,12 +106,12 @@ export function SessionItem({ id, date, title, usage }: SessionItemProps) {
             <MoreHorizontalIcon className="size-4 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="start">
-            <DropdownMenuItem onSelect={startRename}>
+            <DropdownMenuItem onClick={startRename}>
               <PencilIcon />
               Rename
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={handleDelete}>
+            <DropdownMenuItem variant="destructive" onClick={() => void handleDelete()}>
               <Trash2Icon />
               Delete
             </DropdownMenuItem>
