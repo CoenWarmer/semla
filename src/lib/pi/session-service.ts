@@ -46,11 +46,6 @@ const workflowExtensionPath = join(
   "node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts",
 );
 
-const workflowProgressBridgePath = join(
-  process.cwd(),
-  "src/lib/pi/extensions/workflow-progress-bridge.ts",
-);
-
 const askUserExtensionPath = join(
   process.cwd(),
   "src/lib/pi/extensions/ask-user.ts",
@@ -280,7 +275,7 @@ export const runPiPrompt = async ({
   });
 
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath, workflowProgressBridgePath, askUserExtensionPath],
+    additionalExtensionPaths: [workflowExtensionPath, askUserExtensionPath],
     // The workflow skills ship inside the package but are only contributed when
     // it is loaded as a package. We load the extension file directly, so point
     // at this repo's copy explicitly rather than inheriting them from whatever
