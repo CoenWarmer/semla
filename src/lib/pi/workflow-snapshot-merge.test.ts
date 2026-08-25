@@ -108,6 +108,39 @@ test("an agent that finishes without ever reaching disk gets an end time", () =>
   assert.equal(merged.agents[0].endedAt, "2026-08-24T12:00:25.000Z");
 });
 
+// Per-agent cost only exists under the agent's own tokenUsage. The manager
+// reports it once the agent settles; before that the disk record is the only
+// source, so dropping either side left the usage readout priceless.
+test("agent cost comes from the manager, falling back to the run file", () => {
+  const fromLive = mergeLiveSnapshot({
+    disk: disk([
+      { id: 1, label: "agent-1", prompt: "p", status: "done", tokenUsage: { cost: 0.5 } },
+    ]),
+    live: live([{ status: "done", tokenUsage: { cost: 0.25 } }]),
+    now: () => T0,
+    runId: "merge-cost-live",
+  });
+  assert.equal(fromLive.agents[0].cost, 0.25);
+
+  const fromDisk = mergeLiveSnapshot({
+    disk: disk([
+      { id: 1, label: "agent-1", prompt: "p", status: "done", tokenUsage: { cost: 0.5 } },
+    ]),
+    live: live([{ status: "done" }]),
+    now: () => T0,
+    runId: "merge-cost-disk",
+  });
+  assert.equal(fromDisk.agents[0].cost, 0.5);
+
+  const neither = mergeLiveSnapshot({
+    disk: null,
+    live: live([{ status: "running" }]),
+    now: () => T0,
+    runId: "merge-cost-none",
+  });
+  assert.equal(neither.agents[0].cost, undefined);
+});
+
 test("run-level startedAt prefers disk, else the earliest agent start", () => {
   const withDisk = mergeLiveSnapshot({
     disk: disk([]),

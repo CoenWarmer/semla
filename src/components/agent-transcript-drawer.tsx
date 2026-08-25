@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import { TokenUsage } from "@/components/token-usage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -21,6 +22,7 @@ const DRAWER_WIDTH_MAX = 1000
 
 type AgentData = {
   agent: {
+    cost?: number;
     endedAt?: string;
     error?: string;
     history: AgentHistoryEntry[];
@@ -134,13 +136,23 @@ export function AgentTranscriptDrawer({
               {agent?.label ?? "Agent transcript"}
             </DrawerTitle>
             <DrawerDescription>
-              {agent
-                ? `${agent.status} · ${agent.tokens?.toLocaleString() ?? "0"} tokens`
-                : query.isPending
-                  ? "Loading…"
-                  : query.isError
-                    ? "Failed to load"
-                    : ""}
+              {agent ? (
+                <>
+                  {agent.status}
+                  {" · "}
+                  <TokenUsage
+                    cost={agent.cost}
+                    emptyLabel="0 tokens"
+                    tokens={agent.tokens}
+                  />
+                </>
+              ) : query.isPending ? (
+                "Loading…"
+              ) : query.isError ? (
+                "Failed to load"
+              ) : (
+                ""
+              )}
             </DrawerDescription>
           </div>
           <DrawerClose className="shrink-0 rounded-sm p-1 opacity-70 hover:opacity-100">

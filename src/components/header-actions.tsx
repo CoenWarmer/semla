@@ -12,23 +12,20 @@ import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { SessionFilesPanel } from "./session-files-panel";
-
-function formatCost(cost: number): string {
-  if (cost < 0.001) return `$${cost.toFixed(5)}`;
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(3)}`;
-}
+import { TokenUsage } from "./token-usage";
 
 function GlobalCostBadge() {
   const { data } = useGlobalCost();
-  if (!data || data.cost <= 0) return null;
+  if (!data) return null;
+  // Cost only: the header is tight, and the tooltip carries the token count.
   return (
-    <span
-      className="text-xs tabular-nums text-muted-foreground"
-      title="Total cost across all sessions"
-    >
-      {formatCost(data.cost)}
-    </span>
+    <TokenUsage
+      className="text-xs text-muted-foreground"
+      cost={data.cost}
+      costOnly
+      title={`Total across all sessions: ${data.tokens.toLocaleString()} tokens`}
+      tokens={data.tokens}
+    />
   );
 }
 

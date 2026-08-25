@@ -37,6 +37,15 @@ export type PersistedAgentState = {
   startedAt?: string;
   status: "done" | "error" | "queued" | "running" | "skipped";
   tokens?: number;
+  /** Per-agent usage; the only place an agent's own cost is recorded. */
+  tokenUsage?: {
+    cacheRead?: number;
+    cacheWrite?: number;
+    cost?: number;
+    input?: number;
+    output?: number;
+    total?: number;
+  };
 };
 
 export type PersistedRunState = {
