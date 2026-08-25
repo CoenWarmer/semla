@@ -1,15 +1,8 @@
-import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-} from "@/components/ui/item";
-import { TokenUsage } from "@/components/token-usage";
+import { ItemGroup } from "@/components/ui/item";
+import { SessionItem } from "@/components/session-item";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
-import Link from "next/link";
 
 async function getSessionTokenUsage(
   supabase: SupabaseClient<Database>,
@@ -105,30 +98,14 @@ export async function SessionsList() {
           minute: "2-digit",
           hour12: false,
         });
-        const usage = usageBySession.get(id);
         return (
-          <Item key={id} variant="outline" className="relative">
-            <ItemContent className="gap-1">
-              <ItemTitle>
-                <Link
-                  href={`/sessions/${id}`}
-                  className="after:absolute after:inset-0"
-                >
-                  {title ?? "Untitled"}
-                </Link>
-              </ItemTitle>
-              <ItemDescription className="flex flex-col justify-between gap-1">
-                <span>{date}</span>
-                {usage && (
-                  <TokenUsage
-                    className="text-xs"
-                    cost={usage.cost}
-                    tokens={usage.tokens}
-                  />
-                )}
-              </ItemDescription>
-            </ItemContent>
-          </Item>
+          <SessionItem
+            key={id}
+            id={id}
+            date={date}
+            title={title}
+            usage={usageBySession.get(id)}
+          />
         );
       })}
     </ItemGroup>
