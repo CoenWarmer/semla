@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { ClientSessionComponent } from "@/components/clientSessionComponent";
+import { ClientSessionComponent } from "@/components/client-session-component";
 import { getPiRuntimeConfig } from "@/lib/pi/runtime-config";
 import { getTranscript } from "@/lib/pi/transcript";
 import { notFound } from "next/navigation";

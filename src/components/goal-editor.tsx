@@ -10,7 +10,11 @@ interface GoalEditorProps {
   variant?: "inline" | "block";
 }
 
-export function GoalEditor({ goal, onSave, variant = "block" }: GoalEditorProps) {
+export function GoalEditor({
+  goal,
+  onSave,
+  variant = "block",
+}: GoalEditorProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(goal ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,7 +68,11 @@ export function GoalEditor({ goal, onSave, variant = "block" }: GoalEditorProps)
             onClick={startEdit}
             type="button"
           >
-            {goal?.trim() ? goal : <span className="italic">No goal set — click to define one</span>}
+            {goal?.trim() ? (
+              goal
+            ) : (
+              <span className="italic">No goal set — click to define one</span>
+            )}
           </button>
         )}
       </div>
@@ -73,10 +81,12 @@ export function GoalEditor({ goal, onSave, variant = "block" }: GoalEditorProps)
 
   // block variant — used in the prompt editor area
   return (
-    <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+    <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 w-full">
       <div className="mb-1.5 flex items-center gap-1.5">
         <TargetIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Goal</span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Goal
+        </span>
       </div>
       {editing ? (
         <textarea
@@ -99,13 +109,17 @@ export function GoalEditor({ goal, onSave, variant = "block" }: GoalEditorProps)
           {goal?.trim() ? (
             <span className="whitespace-pre-wrap">{goal}</span>
           ) : (
-            <span className="italic">What are you trying to achieve? Click to define a goal…</span>
+            <span className="italic">
+              What are you trying to achieve? Click to define a goal…
+            </span>
           )}
         </button>
       )}
       {editing && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {variant === "block" ? "⌘↵ to save · Esc to cancel" : "↵ to save · Esc to cancel"}
+          {variant === "block"
+            ? "⌘↵ to save · Esc to cancel"
+            : "↵ to save · Esc to cancel"}
         </p>
       )}
     </div>
