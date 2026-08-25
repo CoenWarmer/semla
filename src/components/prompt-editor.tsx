@@ -277,7 +277,7 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
     modelsError ?? userSettingsError ?? updateUserSettingsError;
 
   return (
-    <div className="flex size-full flex-col gap-2">
+    <div className="flex w-full flex-col gap-2">
       {configurationError && (
         <p className="mb-2 text-sm text-destructive" role="alert">
           {configurationError.message}
