@@ -337,9 +337,11 @@ function InlineSpanRow({
         )}
         {events.map((ev) => {
           const evService = ev.resource?.["service.name"] as string | undefined;
-          const color = evService
-            ? paletteColor(evService, t.barPalette)
-            : t.eventMarkerColor || barColor;
+          const color = ev.status?.code === "ERROR"
+            ? t.barErrorColor
+            : evService
+              ? paletteColor(evService, t.barPalette)
+              : t.eventMarkerColor || barColor;
           const msgId = ev.attributes?.["msg_id"] as string | undefined;
           return (
             <div
