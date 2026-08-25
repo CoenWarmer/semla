@@ -43,7 +43,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 
 const workflowExtensionPath = join(
   process.cwd(),
-  "node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts",
+  "packages/pi-dynamic-workflows/extensions/workflow.ts",
 );
 
 const askUserExtensionPath = join(
@@ -53,7 +53,7 @@ const askUserExtensionPath = join(
 
 const workflowSkillsPath = join(
   process.cwd(),
-  "node_modules/@quintinshaw/pi-dynamic-workflows/skills",
+  "packages/pi-dynamic-workflows/skills",
 );
 
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.

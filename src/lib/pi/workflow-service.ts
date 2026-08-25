@@ -8,7 +8,7 @@ import {
   type PersistedAgentState,
 } from "./workflow-run-reader";
 import { getActiveManager } from "./workflow-manager-registry";
-import { historyToTurns, mergeLiveSnapshot } from "./workflow-snapshot-merge";
+import { historyToTurns, mergeLiveSnapshot, type LiveSnapshot } from "./workflow-snapshot-merge";
 
 /**
  * Build a live WorkflowSnapshot for a run.
@@ -36,7 +36,7 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
 
   // The manager is the only source for agents that are queued or running, so
   // merge its status over the timestamps the run file has recorded so far.
-  const live = getActiveManager(runId)?.getSnapshot(runId) ?? null;
+  const live = (getActiveManager(runId)?.getSnapshot(runId) ?? null) as LiveSnapshot | null;
   if (live) {
     return mergeLiveSnapshot({ disk: runState, live, runId });
   }
