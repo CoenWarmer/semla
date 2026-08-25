@@ -449,6 +449,29 @@ function ParamValue({
   );
 }
 
+function StatusMessage({ message }: { message: string }) {
+  let content = message;
+  let lang: BundledLanguage | null = null;
+  try {
+    content = JSON.stringify(JSON.parse(message), null, 2);
+    lang = "json";
+  } catch {
+    // not JSON — render as plain text
+  }
+  if (lang) {
+    return (
+      <div className="mt-1 overflow-hidden rounded border text-xs">
+        <CodeBlockContent code={content} language={lang} />
+      </div>
+    );
+  }
+  return (
+    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded border p-2 font-mono text-xs text-muted-foreground">
+      {content}
+    </pre>
+  );
+}
+
 /**
  * The markers folded into this row (messages and tool calls), oldest first —
  * buildSpanTree already sorts every child list by start time.
@@ -519,9 +542,7 @@ function SpanDetailDrawer({
                     {statusCode === "ERROR" ? "Failed" : "Success"}
                   </span>
                   {span?.status?.message && (
-                    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded border p-2 font-mono text-xs text-muted-foreground">
-                      {span.status.message}
-                    </pre>
+                    <StatusMessage message={span.status.message} />
                   )}
                 </div>
               </div>
