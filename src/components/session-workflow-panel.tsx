@@ -39,6 +39,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import { CodeBlockContent } from "@/components/ai-elements/code/code-block";
 import type { BundledLanguage } from "shiki";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 function FitViewOnChange({
   expanded,
@@ -498,7 +500,8 @@ function SpanDetailDrawer({
     .filter(([k]) => k.startsWith("pi.param."))
     .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
   const workflowDescription = span?.attributes?.["workflow.description"] as string | undefined;
-  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && k !== "workflow.description");
+  const piText = span?.attributes?.["pi.text"] as string | undefined;
+  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && k !== "workflow.description" && k !== "pi.text");
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -555,6 +558,11 @@ function SpanDetailDrawer({
               <AttrRow label="kind" value={span.kind} />
             )}
           </div>
+          {piText && (
+            <div className="prose prose-sm prose-invert max-w-none text-xs leading-relaxed">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{piText}</ReactMarkdown>
+            </div>
+          )}
           {events.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">

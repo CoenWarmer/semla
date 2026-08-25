@@ -129,13 +129,11 @@ export function workflowSnapshotToSpans(
           traceId: TRACE_ID,
           spanId: makeSpanId(`msg-${msg.id}`),
           parentSpanId: promptsId,
-          name: msg.role === "user"
-            ? `↑ ${msg.text.trim().slice(0, 60)}`
-            : `↓ ${msg.text.trim().slice(0, 60)}`,
+          name: msg.role === "user" ? "↑ User" : "↓ Assistant",
           startTimeUnixNano: nano,
           endTimeUnixNano: nano,
           kind: "EVENT",
-          attributes: { msg_id: msg.id },
+          attributes: { msg_id: msg.id, "pi.text": msg.text.trim() },
           resource: { "service.name": msg.role === "user" ? "user" : "assistant" },
         });
       }
@@ -296,10 +294,11 @@ export function workflowSnapshotToSpans(
               traceId: TRACE_ID,
               spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompt-${turn.timestamp}`),
               parentSpanId: promptsId,
-              name: turn.role === "user" ? `↑ ${turn.text}` : `↓ ${turn.text}`,
+              name: turn.role === "user" ? "↑ User" : "↓ Assistant",
               startTimeUnixNano: msToNano(t),
               endTimeUnixNano: msToNano(t),
               kind: "EVENT",
+              attributes: { "pi.text": turn.text },
               resource: { "service.name": turn.role === "user" ? "user" : "assistant" },
             });
           }

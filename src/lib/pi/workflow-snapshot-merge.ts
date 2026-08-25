@@ -7,7 +7,7 @@ export function historyToTurns(history: AgentHistoryEntry[]): AgentTurnSnapshot[
   for (const h of history) {
     if (h.timestamp == null) continue;
     if (h.kind === "text" && (h.role === "user" || h.role === "assistant")) {
-      result.push({ kind: "prompt", role: h.role, text: h.text.slice(0, 60), timestamp: h.timestamp });
+      result.push({ kind: "prompt", role: h.role, text: h.text, timestamp: h.timestamp });
     } else if (h.kind === "toolCall") {
       result.push({ kind: "toolCall", text: h.text.slice(0, 60), timestamp: h.timestamp, toolName: h.toolName });
     }
