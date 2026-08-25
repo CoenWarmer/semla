@@ -232,27 +232,8 @@ export function workflowSnapshotToSpans(
     }
   }
 
-  // Move EVENT child spans into their parent's _events attribute so the parent
-  // row can render them as inline markers without creating a separate row each.
-  const eventsByParent = new Map<string, Array<{ t: string; name: string; service: string; msgId: string }>>();
-  for (const span of spans) {
-    if (span.kind === "EVENT" && span.parentSpanId) {
-      const arr = eventsByParent.get(span.parentSpanId) ?? [];
-      arr.push({
-        t: span.startTimeUnixNano,
-        name: span.name,
-        service: (span.resource?.["service.name"] as string) ?? "",
-        msgId: (span.attributes?.["msg_id"] as string) ?? "",
-      });
-      eventsByParent.set(span.parentSpanId, arr);
-    }
-  }
-
-  return spans
-    .filter((s) => !(s.kind === "EVENT" && s.parentSpanId))
-    .map((s) => {
-      const events = eventsByParent.get(s.spanId);
-      if (!events) return s;
-      return { ...s, attributes: { ...s.attributes, _events: JSON.stringify(events) } };
-    });
+  // EVENT spans are returned as ordinary children. The waterfall's
+  // foldEventsIntoParent draws them as inline markers on the parent's row
+  // instead of giving each one a row, and hands them back on FlatRow.events.
+  return spans;
 }

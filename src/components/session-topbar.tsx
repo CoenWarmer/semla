@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextCheckResult } from "@/hooks/use-context-check";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
+import type {
+  SessionMessage,
+  SessionToolCall,
+} from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
@@ -27,10 +30,11 @@ function ContextFillBar({ sessionId }: { sessionId: string }) {
   const contextWindow = messagesQuery.data?.contextWindow ?? null;
 
   // Most recent assistant message's inputTokens = current context size
-  const latestInput = [...messages]
-    .reverse()
-    .find((m) => m.role === "assistant" && m.inputTokens != null)
-    ?.inputTokens ?? null;
+  const latestInput =
+    [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && m.inputTokens != null)
+      ?.inputTokens ?? null;
 
   if (latestInput == null || contextWindow == null) return null;
 
@@ -67,7 +71,9 @@ function ContextQualityBadge({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex items-center gap-1.5" title={data.summary}>
       <span className={`size-2 rounded-full shrink-0 ${dot}`} />
-      <span className="text-xs text-muted-foreground capitalize">{data.quality}</span>
+      <span className="text-xs text-muted-foreground capitalize">
+        {data.quality}
+      </span>
     </div>
   );
 }
@@ -124,7 +130,10 @@ export function SessionTopbar({
       </div>
 
       {inspectOpen && (
-        <div className="shrink-0 border-b border-border/40 overflow-auto" style={{ height: 260 }}>
+        <div
+          className="shrink-0 border-b border-border/40 overflow-auto"
+          style={{ height: 348 }}
+        >
           <SessionWorkflowPanel
             messages={messages}
             onAgentClick={onAgentClick}

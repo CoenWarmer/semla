@@ -21,17 +21,11 @@ import type {
   Node as FlowNode,
   NodeProps,
 } from "@xyflow/react";
-import { TraceWaterfall, darkTheme } from "react-otel-trace-waterfall";
+import { TraceWaterfall, darkTheme, useTheme } from "react-otel-trace-waterfall";
 import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import { useNodesState, useReactFlow } from "@xyflow/react";
-import {
-  GanttChartIcon,
-  Maximize2Icon,
-  Minimize2Icon,
-  NetworkIcon,
-  XIcon,
-} from "lucide-react";
+import { GanttChartIcon, NetworkIcon, XIcon } from "lucide-react";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -169,8 +163,8 @@ const LABEL_COL = 280;
 const SPAN_ROW_H = 32;
 const BAR_H = 14;
 const MIN_BAR_W = 2;
-
-type InlineEvent = { t: string; name: string; service: string; msgId: string };
+/** Extra clickable pixels on each side of a bar, so narrow bars stay aimable. */
+const BAR_HIT_PAD = 4;
 
 function paletteColor(service: string | undefined, palette: readonly string[]) {
   if (!service) return palette[0];
@@ -180,12 +174,9 @@ function paletteColor(service: string | undefined, palette: readonly string[]) {
   return palette[Math.abs(n) % palette.length];
 }
 
-// Module-level bus: InlineSpanRow writes here on marker hover; InlineEventTooltip reads it.
-let _hoveredInlineEvent: InlineEvent | null = null;
-
-function InlineEventTooltip(_: SpanTooltipProps) {
-  const ev = _hoveredInlineEvent;
-  if (!ev) return null;
+/** Only shows while the pointer is over a folded marker, not over a row's bar. */
+function InlineEventTooltip({ event }: SpanTooltipProps) {
+  if (!event) return null;
   return (
     <div
       style={{
@@ -197,7 +188,7 @@ function InlineEventTooltip(_: SpanTooltipProps) {
         whiteSpace: "pre-wrap",
       }}
     >
-      {ev.name}
+      {event.name}
     </div>
   );
 }
@@ -208,9 +199,11 @@ function InlineSpanRow({
   isSelected,
   isFocused,
   onToggle,
+  onSelect,
+  onHoverEvent,
 }: SpanComponentProps) {
   const { span, hasChildren, isExpanded } = row;
-  const t = darkTheme;
+  const t = useTheme();
   const isError = span.status?.code === "ERROR";
   const isRunning = span.attributes?.["pi.status"] === "running";
   const isQueued = span.attributes?.["pi.status"] === "queued";
@@ -221,9 +214,7 @@ function InlineSpanRow({
   const startPx = scale(Number(span.startTimeUnixNano));
   const endPx = scale(Number(span.endTimeUnixNano));
   const barWidth = Math.max(MIN_BAR_W, endPx - startPx);
-  const events: InlineEvent[] = span.attributes?.["_events"]
-    ? JSON.parse(span.attributes["_events"] as string)
-    : [];
+  const events = row.events ?? [];
   const indent = span.depth * t.rowIndentPx + t.rowPaddingInline;
 
   return (
@@ -236,13 +227,14 @@ function InlineSpanRow({
         borderBottom: `1px solid ${t.rowBorder}`,
         background: isSelected ? t.rowSelectedBackground : "transparent",
         boxShadow: isFocused ? `inset 0 0 0 2px ${t.rowFocusRing}` : undefined,
-        cursor: "pointer",
+        cursor: "default",
         userSelect: "none",
       }}
-      // Deliberately no onClick: the waterfall wraps this row in a div
-      // that already selects on click. Calling onSelect here too ran the
-      // library's toggle twice in one batch — set then unset — so the
-      // selection never changed and the detail panel never opened.
+      // The waterfall wraps this row in a div that selects on any click, which
+      // opened the drawer from anywhere on the row — including empty timeline
+      // space. Swallow the click here so only the bar below selects, and so our
+      // own onSelect is not doubled by the wrapper's.
+      onClick={(e) => e.stopPropagation()}
     >
       <div
         style={{
@@ -309,51 +301,66 @@ function InlineSpanRow({
         }}
       >
         {events.length === 0 && (
+          // Full-height hit area a few pixels wider than the bar: a bar can be
+          // as narrow as MIN_BAR_W, which is too small to aim at.
           <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(span.spanId);
+            }}
             style={{
               position: "absolute",
-              left: isQueued ? startPx - 4 : startPx,
-              width: isQueued ? 8 : barWidth,
-              height: BAR_H,
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: isQueued ? "transparent" : barColor,
-              border: isQueued ? `1.5px dashed ${barColor}` : "none",
-              borderRadius: 2,
-              opacity: isQueued ? 0.5 : 1,
+              left: (isQueued ? startPx - 4 : startPx) - BAR_HIT_PAD,
+              width: (isQueued ? 8 : barWidth) + BAR_HIT_PAD * 2,
+              top: 0,
+              bottom: 0,
+              cursor: "pointer",
             }}
-          />
-        )}
-        {events.map((ev, i) => {
-          const color = ev.service
-            ? paletteColor(ev.service, t.barPalette)
-            : t.eventMarkerColor || barColor;
-          return (
+          >
             <div
-              key={i}
               style={{
                 position: "absolute",
-                left: scale(Number(ev.t)),
+                left: BAR_HIT_PAD,
+                width: isQueued ? 8 : barWidth,
+                height: BAR_H,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: isQueued ? "transparent" : barColor,
+                border: isQueued ? `1.5px dashed ${barColor}` : "none",
+                borderRadius: 2,
+                opacity: isQueued ? 0.5 : 1,
+              }}
+            />
+          </div>
+        )}
+        {events.map((ev) => {
+          const evService = ev.resource?.["service.name"] as string | undefined;
+          const color = evService
+            ? paletteColor(evService, t.barPalette)
+            : t.eventMarkerColor || barColor;
+          const msgId = ev.attributes?.["msg_id"] as string | undefined;
+          return (
+            <div
+              key={ev.spanId}
+              style={{
+                position: "absolute",
+                left: scale(Number(ev.startTimeUnixNano)),
                 top: "50%",
                 transform: "translate(-50%, -50%)",
                 width: t.eventMarkerSize,
                 height: t.eventMarkerSize,
                 background: color,
                 borderRadius: "50%",
-                cursor: ev.msgId ? "pointer" : "default",
+                cursor: msgId ? "pointer" : "default",
                 zIndex: 1,
               }}
-              onMouseEnter={() => {
-                _hoveredInlineEvent = ev;
-              }}
-              onMouseLeave={() => {
-                _hoveredInlineEvent = null;
-              }}
+              onMouseEnter={() => onHoverEvent(ev)}
+              onMouseLeave={() => onHoverEvent(null)}
               onClick={(e) => {
                 e.stopPropagation();
-                if (ev.msgId)
+                if (msgId)
                   document
-                    .getElementById(ev.msgId)
+                    .getElementById(msgId)
                     ?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
             />
@@ -382,27 +389,25 @@ function AttrRow({
 }) {
   return (
     <div className="flex gap-2 text-xs">
-      <span className="text-muted-foreground shrink-0 w-28 truncate" title={label}>
+      <span
+        className="text-muted-foreground shrink-0 w-28 truncate"
+        title={label}
+      >
         {label}
       </span>
-      <span className={`flex-1 break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className={`flex-1 break-all ${mono ? "font-mono" : ""}`}>
+        {value}
+      </span>
     </div>
   );
 }
 
-type FoldedEvent = { name: string; service: string; t: string };
-
-/** The markers folded into this row (messages and tool calls), oldest first. */
-function foldedEvents(span: SpanNode | null): FoldedEvent[] {
-  const raw = span?.attributes?.["_events"];
-  if (typeof raw !== "string") return [];
-
-  try {
-    const events = JSON.parse(raw) as FoldedEvent[];
-    return [...events].sort((a, b) => Number(a.t) - Number(b.t));
-  } catch {
-    return [];
-  }
+/**
+ * The markers folded into this row (messages and tool calls), oldest first —
+ * buildSpanTree already sorts every child list by start time.
+ */
+function foldedEvents(span: SpanNode | null): SpanNode[] {
+  return (span?.children ?? []).filter((child) => child.kind === "EVENT");
 }
 
 function SpanDetailDrawer({
@@ -417,9 +422,7 @@ function SpanDetailDrawer({
     ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
     : null;
   const statusCode = span?.status?.code;
-  const attrs = span
-    ? Object.entries(span.attributes ?? {}).filter(([key]) => key !== "_events")
-    : [];
+  const attrs = span ? Object.entries(span.attributes ?? {}) : [];
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -438,7 +441,9 @@ function SpanDetailDrawer({
         style={{ "--drawer-content-width": "320px" } as React.CSSProperties}
       >
         <DrawerHeader className="flex flex-row items-start justify-between gap-2 pb-3">
-          <DrawerTitle className="truncate text-sm">{span?.name ?? ""}</DrawerTitle>
+          <DrawerTitle className="truncate text-sm">
+            {span?.name ?? ""}
+          </DrawerTitle>
           <DrawerClose className="shrink-0 rounded-sm p-1 opacity-70 hover:opacity-100">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
@@ -450,7 +455,9 @@ function SpanDetailDrawer({
             {duration && <AttrRow label="duration" value={duration} />}
             {statusCode && statusCode !== "UNSET" && (
               <div className="flex gap-2 text-xs">
-                <span className="text-muted-foreground shrink-0 w-28">status</span>
+                <span className="text-muted-foreground shrink-0 w-28">
+                  status
+                </span>
                 <span
                   className={`flex-1 ${statusCode === "ERROR" ? "text-destructive" : "text-green-500"}`}
                 >
@@ -469,10 +476,13 @@ function SpanDetailDrawer({
                 Events ({events.length})
               </p>
               <div className="space-y-1.5">
-                {events.map((event, index) => (
+                {events.map((event) => (
                   <AttrRow
-                    key={`${event.t}-${index}`}
-                    label={formatDuration(String(spanStart), event.t)}
+                    key={event.spanId}
+                    label={formatDuration(
+                      String(spanStart),
+                      event.startTimeUnixNano,
+                    )}
                     value={event.name}
                   />
                 ))}
@@ -681,16 +691,9 @@ export function SessionWorkflowPanel({
     <div className="relative h-[200px]">
       <section
         className="flex flex-col overflow-hidden rounded-lg border bg-sidebar transition-[height] duration-200"
-        style={
-          expanded
-            ? {
-                position: "absolute",
-                inset: "0 0 auto",
-                height: "min(60dvh, 600px)",
-                zIndex: 50,
-              }
-            : { height: "200px" }
-        }
+        style={{
+          zIndex: 50,
+        }}
       >
         <div className="flex-none flex items-center justify-between border-b bg-card px-4 py-3">
           <div className="flex items-center min-w-0">
@@ -727,19 +730,6 @@ export function SessionWorkflowPanel({
                 <GanttChartIcon className="size-3.5" />
               )}
             </button>
-            <button
-              aria-label={
-                expanded ? "Collapse workflow panel" : "Expand workflow panel"
-              }
-              className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {expanded ? (
-                <Minimize2Icon className="size-3.5" />
-              ) : (
-                <Maximize2Icon className="size-3.5" />
-              )}
-            </button>
           </div>
         </div>
         <div className="flex-1 min-h-0">
@@ -751,10 +741,14 @@ export function SessionWorkflowPanel({
                 sessionRunning,
                 toolCalls,
               })}
+              height={240}
               theme={darkTheme}
               liveMode={snapshot.runningCount > 0}
               initialState="expanded"
               clampZoomToBounds
+              // Messages and tool calls are EVENT spans under Conversation; fold
+              // them onto that one row as markers instead of a row each.
+              foldEventsIntoParent
               timelinePadding={10}
               SpanComponent={InlineSpanRow}
               TooltipComponent={InlineEventTooltip}

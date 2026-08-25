@@ -94,7 +94,7 @@ test("an errored agent keeps its measured duration", () => {
   assert.equal(span?.status?.code, "ERROR");
 });
 
-test("tool calls become event markers folded into the Conversation row", () => {
+test("tool calls become EVENT spans parented to the Conversation row", () => {
   const spans = workflowSnapshotToSpans(snapshot([]), messages, {
     now: NOW,
     toolCalls: [
@@ -114,19 +114,23 @@ test("tool calls become event markers folded into the Conversation row", () => {
     ],
   });
 
-  // EVENT spans are folded into the parent, so they get no row of their own.
-  assert.equal(spans.filter((s) => s.kind === "EVENT").length, 0);
-
+  // The spans are emitted as real EVENT children; the waterfall's
+  // foldEventsIntoParent is what collapses them onto the Conversation row.
   const conversation = spans.find((s) => s.name === "Conversation");
-  const events = JSON.parse(
-    (conversation?.attributes?._events as string) ?? "[]",
-  ) as Array<{ name: string; service: string }>;
+  assert.ok(conversation);
 
-  const tools = events.filter((e) => e.service === "tool");
+  const tools = spans.filter(
+    (s) => s.kind === "EVENT" && s.resource?.["service.name"] === "tool",
+  );
   assert.deepEqual(
-    tools.map((e) => e.name),
+    tools.map((s) => s.name),
     ["⚙ bash: npm test", "⚙ read"],
   );
+  for (const tool of tools) {
+    assert.equal(tool.parentSpanId, conversation.spanId);
+    // Zero-width: a marker sits on an instant, not a range.
+    assert.equal(tool.startTimeUnixNano, tool.endTimeUnixNano);
+  }
 });
 
 test("a tool call extends the trace past the last message", () => {
