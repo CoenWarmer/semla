@@ -3,7 +3,7 @@
  * importing the full @quintinshaw/pi-dynamic-workflows package, which pulls in
  * transitive dependencies (@earendil-works/pi-ai) that are not installed.
  *
- * The path logic mirrors workflow-paths.js and run-persistence.js from the
+ * The path logic mirrors workflow-paths.ts and run-persistence.ts from the
  * pi-dynamic-workflows dist — kept in sync manually.
  */
 import { createHash } from "node:crypto";
@@ -74,24 +74,31 @@ export type PersistedRunState = {
 };
 
 /** Extract the description string from a workflow script's meta literal. */
-export function extractWorkflowDescription(script: string | undefined): string | undefined {
+export function extractWorkflowDescription(
+  script: string | undefined,
+): string | undefined {
   if (!script) return undefined;
   const m = script.match(/\bdescription\s*:\s*['"`]([^'"`]+)['"`]/);
   return m?.[1];
 }
 
 function sanitize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "project";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "project"
+  );
 }
 
 function workflowRunsDir(cwd: string): string {
   const projectPath = resolve(cwd);
   const slug = sanitize(basename(projectPath) || "project");
-  const hash = createHash("sha256").update(projectPath).digest("hex").slice(0, 12);
+  const hash = createHash("sha256")
+    .update(projectPath)
+    .digest("hex")
+    .slice(0, 12);
   const key = `${slug}-${hash}`;
   return join(homedir(), ".pi", "workflows", "projects", key, "runs");
 }
@@ -99,18 +106,22 @@ function workflowRunsDir(cwd: string): string {
 /** Canonical on-disk path of a run's persisted state, for pointing the model
  *  (or a human) at the full result of a run we only summarise. */
 export function workflowRunPath(cwd: string, runId: string): string {
-  return join(workflowRunsDir(cwd), `${runId}.json`);
+  const jsonPath = join(workflowRunsDir(cwd), `${runId}.json`);
+  if (existsSync(jsonPath)) return jsonPath;
+  return join(workflowRunsDir(cwd), `${runId}.tson`);
 }
 
 export function readWorkflowRun(
   cwd: string,
   runId: string,
 ): PersistedRunState | null {
-  const primary = join(workflowRunsDir(cwd), `${runId}.json`);
+  const primary = join(workflowRunsDir(cwd), `${runId}.tson`);
+  const primaryJson = join(workflowRunsDir(cwd), `${runId}.json`);
   // Also check legacy location (.pi/workflows/runs/ inside cwd)
-  const legacy = join(cwd, ".pi", "workflows", "runs", `${runId}.json`);
+  const legacy = join(cwd, ".pi", "workflows", "runs", `${runId}.tson`);
+  const legacyJson = join(cwd, ".pi", "workflows", "runs", `${runId}.json`);
 
-  for (const path of [primary, legacy]) {
+  for (const path of [primary, primaryJson, legacy, legacyJson]) {
     if (existsSync(path)) {
       try {
         return JSON.parse(readFileSync(path, "utf8")) as PersistedRunState;
@@ -119,7 +130,9 @@ export function readWorkflowRun(
         const backup = `${path}.bak`;
         if (existsSync(backup)) {
           try {
-            return JSON.parse(readFileSync(backup, "utf8")) as PersistedRunState;
+            return JSON.parse(
+              readFileSync(backup, "utf8"),
+            ) as PersistedRunState;
           } catch {
             /* ignore */
           }
