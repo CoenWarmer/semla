@@ -9,6 +9,7 @@ import type {
   SessionToolCall,
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
+import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
 import { GoalEditor } from "./goal-editor";
@@ -25,6 +26,7 @@ interface SessionTopbarProps {
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
   toolCalls?: SessionToolCall[];
+  workflowRuns?: WorkflowRun[];
 }
 
 function ContextFillBar({ sessionId }: { sessionId: string }) {
@@ -91,6 +93,7 @@ export function SessionTopbar({
   sessionRunning,
   snapshot,
   toolCalls,
+  workflowRuns,
 }: SessionTopbarProps) {
   const [inspectOpen, setInspectOpen] = useState(false);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
@@ -156,6 +159,7 @@ export function SessionTopbar({
             sessionRunning={sessionRunning}
             snapshot={snapshot}
             toolCalls={toolCalls}
+            workflowRuns={workflowRuns}
           />
         </div>
       )}

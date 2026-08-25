@@ -24,6 +24,7 @@ import type {
 import { TraceWaterfall, darkTheme, useTheme } from "react-otel-trace-waterfall";
 import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
+import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
 import { GanttChartIcon, NetworkIcon, XIcon } from "lucide-react";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
@@ -682,6 +683,7 @@ export function SessionWorkflowPanel({
   sessionRunning,
   snapshot,
   toolCalls,
+  workflowRuns,
 }: {
   messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
@@ -689,6 +691,7 @@ export function SessionWorkflowPanel({
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
   toolCalls?: SessionToolCall[];
+  workflowRuns?: WorkflowRun[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
@@ -896,6 +899,9 @@ export function SessionWorkflowPanel({
                 now: liveNow,
                 sessionRunning,
                 toolCalls,
+                additionalSnapshots: workflowRuns
+                  ?.filter((r) => r.run_id !== snapshot.runId && r.snapshot?.runId)
+                  .map((r) => r.snapshot),
               })}
               height={240}
               theme={darkTheme}

@@ -47,19 +47,24 @@ export function workflowSnapshotToSpans(
     sessionRunning?: boolean;
     now?: number;
     toolCalls?: SessionToolCall[];
+    additionalSnapshots?: WorkflowSnapshot[];
   },
 ): OtelSpan[] {
   const now = options?.now ?? Date.now();
   const toolCalls = options?.toolCalls ?? [];
+  const additionalSnapshots = options?.additionalSnapshots ?? [];
   const spans: OtelSpan[] = [];
 
   // ── Gather all timestamps to compute trace bounds ───────────────────────
-  const agentMs = snapshot.agents
-    .filter((a) => a.startedAt)
-    .flatMap((a) => [
-      new Date(a.startedAt!).getTime(),
-      a.endedAt ? new Date(a.endedAt).getTime() : now,
-    ]);
+  const allSnapshots = [snapshot, ...additionalSnapshots];
+  const agentMs = allSnapshots.flatMap((s) =>
+    s.agents
+      .filter((a) => a.startedAt)
+      .flatMap((a) => [
+        new Date(a.startedAt!).getTime(),
+        a.endedAt ? new Date(a.endedAt).getTime() : now,
+      ]),
+  );
   const msgMs = messages
     .filter((m) => m.text.trim().length > 0)
     .map((m) => new Date(m.createdAt).getTime());
@@ -67,8 +72,8 @@ export function workflowSnapshotToSpans(
     new Date(call.createdAt).getTime(),
     ...(call.resultAt ? [new Date(call.resultAt).getTime()] : []),
   ]);
-  const hasActive = snapshot.agents.some(
-    (a) => a.status === "running" || a.status === "queued",
+  const hasActive = allSnapshots.some((s) =>
+    s.agents.some((a) => a.status === "running" || a.status === "queued"),
   );
   const allMs = [...agentMs, ...msgMs, ...toolMs, ...(hasActive ? [now] : [])];
 
@@ -205,37 +210,39 @@ export function workflowSnapshotToSpans(
     }
   }
 
-  // ── Workflow branch (for real workflow runs, even while starting with 0 agents) ──
-  if (snapshot.runId) {
-    const wfStart = snapshot.startedAt
-      ? new Date(snapshot.startedAt).getTime()
+  // ── Workflow branches — one per run with a runId ────────────────────────
+  for (const wfSnapshot of allSnapshots) {
+    if (!wfSnapshot.runId) continue;
+
+    const wfStart = wfSnapshot.startedAt
+      ? new Date(wfSnapshot.startedAt).getTime()
       : traceStart;
-    const wfEnd = snapshot.completedAt
-      ? new Date(snapshot.completedAt).getTime()
-      : snapshot.runningCount > 0 || snapshot.agents.length === 0
+    const wfEnd = wfSnapshot.completedAt
+      ? new Date(wfSnapshot.completedAt).getTime()
+      : wfSnapshot.runningCount > 0 || wfSnapshot.agents.length === 0
         ? now  // still running (or just starting — no agents yet)
         : traceEnd;
 
-    const wfId = makeSpanId(`wf-${snapshot.runId}`);
+    const wfId = makeSpanId(`wf-${wfSnapshot.runId}`);
     spans.push({
       traceId: TRACE_ID,
       spanId: wfId,
       parentSpanId: sessionId,
-      name: snapshot.name,
+      name: wfSnapshot.name,
       startTimeUnixNano: msToNano(wfStart),
       endTimeUnixNano: msToNano(wfEnd),
-      attributes: snapshot.description
-        ? { "workflow.description": snapshot.description }
+      attributes: wfSnapshot.description
+        ? { "workflow.description": wfSnapshot.description }
         : undefined,
       resource: { "service.name": "workflow" },
       kind: "INTERNAL",
     });
 
     const phases =
-      snapshot.phases.length > 0 ? snapshot.phases : ["Agents"];
+      wfSnapshot.phases.length > 0 ? wfSnapshot.phases : ["Agents"];
 
     for (const phase of phases) {
-      const phaseAgents = snapshot.agents.filter(
+      const phaseAgents = wfSnapshot.agents.filter(
         (a) => (a.phase ?? phases[0]) === phase,
       );
       if (!phaseAgents.length) continue;
@@ -249,7 +256,7 @@ export function workflowSnapshotToSpans(
 
       const phaseStart = phaseTimes.length > 0 ? Math.min(...phaseTimes) : wfStart;
       const phaseEnd = phaseTimes.length > 0 ? Math.max(...phaseTimes) : wfEnd;
-      const phaseId = makeSpanId(`phase-${snapshot.runId}-${phase}`);
+      const phaseId = makeSpanId(`phase-${wfSnapshot.runId}-${phase}`);
 
       spans.push({
         traceId: TRACE_ID,
@@ -274,7 +281,7 @@ export function workflowSnapshotToSpans(
             ? now
             : aStart + 1;
 
-        const agentSpanId = makeSpanId(`agent-${agent.id}-${snapshot.runId}`);
+        const agentSpanId = makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}`);
         spans.push({
           traceId: TRACE_ID,
           spanId: agentSpanId,
@@ -285,7 +292,7 @@ export function workflowSnapshotToSpans(
           attributes: {
             "pi.status": agent.status,
             "pi.agent_id": agent.id,
-            "pi.run_id": snapshot.runId,
+            "pi.run_id": wfSnapshot.runId,
             ...(agent.prompt ? { "pi.user_prompt": agent.prompt.slice(0, 200) } : {}),
             ...(agent.tokens ? { "gen_ai.usage.total_tokens": agent.tokens } : {}),
             ...(agent.error ? { "error.message": agent.error } : {}),
@@ -300,7 +307,7 @@ export function workflowSnapshotToSpans(
         const toolCallTurns = turns.filter((t) => t.kind === "toolCall");
 
         if (promptTurns.length > 0) {
-          const promptsId = makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompts`);
+          const promptsId = makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-prompts`);
           spans.push({
             traceId: TRACE_ID,
             spanId: promptsId,
@@ -317,7 +324,7 @@ export function workflowSnapshotToSpans(
             const t = turn.role === "assistant" ? aEnd : aStart;
             spans.push({
               traceId: TRACE_ID,
-              spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-prompt-${turn.timestamp}`),
+              spanId: makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-prompt-${turn.timestamp}`),
               parentSpanId: promptsId,
               name: turn.role === "user" ? "↑ User" : "↓ Assistant",
               startTimeUnixNano: msToNano(t),
@@ -332,7 +339,7 @@ export function workflowSnapshotToSpans(
         if (toolCallTurns.length > 0) {
           const toolsStart = Math.min(...toolCallTurns.map((t) => t.timestamp));
           const toolsEnd = Math.max(...toolCallTurns.map((t) => t.timestamp));
-          const toolsId = makeSpanId(`agent-${agent.id}-${snapshot.runId}-toolcalls`);
+          const toolsId = makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-toolcalls`);
           spans.push({
             traceId: TRACE_ID,
             spanId: toolsId,
@@ -347,7 +354,7 @@ export function workflowSnapshotToSpans(
             const name = turn.toolName ? `⚙ ${turn.toolName}` : "⚙ tool";
             spans.push({
               traceId: TRACE_ID,
-              spanId: makeSpanId(`agent-${agent.id}-${snapshot.runId}-toolcall-${turn.timestamp}`),
+              spanId: makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-toolcall-${turn.timestamp}`),
               parentSpanId: toolsId,
               name,
               startTimeUnixNano: msToNano(turn.timestamp),

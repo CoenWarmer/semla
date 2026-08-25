@@ -174,3 +174,72 @@ test("the workflow span spans its agents rather than the whole trace", () => {
   // The session root still covers the earlier conversation.
   assert.ok(widthOf(spans, "Session") >= 50_000);
 });
+
+test("additionalSnapshots each get their own workflow branch under Session", () => {
+  // First (failed) run: ran for 3 minutes, hit agent limit.
+  const failedRun = snapshot(
+    [
+      {
+        startedAt: new Date(T0 + 5_000).toISOString(),
+        endedAt: new Date(T0 + 30_000).toISOString(),
+        status: "error",
+        error: "Agent limit exceeded (3)",
+      },
+    ],
+    {
+      runId: "run-failed",
+      name: "codebase_audit",
+      doneCount: 0,
+      errorCount: 1,
+      runningCount: 0,
+      startedAt: new Date(T0 + 5_000).toISOString(),
+      completedAt: new Date(T0 + 30_000).toISOString(),
+    },
+  );
+
+  // Second (successful) run: the primary snapshot.
+  const successRun = snapshot(
+    [
+      {
+        startedAt: new Date(T0 + 35_000).toISOString(),
+        endedAt: new Date(T0 + 55_000).toISOString(),
+        status: "done",
+      },
+    ],
+    {
+      runId: "run-success",
+      name: "codebase_audit",
+      doneCount: 1,
+      runningCount: 0,
+      startedAt: new Date(T0 + 35_000).toISOString(),
+      completedAt: new Date(T0 + 55_000).toISOString(),
+    },
+  );
+
+  const spans = workflowSnapshotToSpans(successRun, messages, {
+    now: NOW,
+    additionalSnapshots: [failedRun],
+  });
+
+  const sessionSpan = spans.find((s) => s.name === "Session");
+  assert.ok(sessionSpan);
+
+  // Both workflow branches exist as children of Session (one per runId).
+  const wfSpans = spans.filter(
+    (s) => s.parentSpanId === sessionSpan.spanId && s.name === "codebase_audit",
+  );
+  assert.equal(wfSpans.length, 2, "both runs should each produce a workflow branch");
+
+  // The errored agent from the failed run is present with the correct error.
+  const errorAgent = spans.find(
+    (s) => s.status?.code === "ERROR" && s.attributes?.["pi.run_id"] === "run-failed",
+  );
+  assert.ok(errorAgent, "errored agent appears in the failed run's branch");
+  assert.equal(errorAgent.status?.message, "Agent limit exceeded (3)");
+
+  // The successful agent from the second run is also present.
+  const doneAgent = spans.find(
+    (s) => s.attributes?.["pi.run_id"] === "run-success" && s.attributes?.["pi.status"] === "done",
+  );
+  assert.ok(doneAgent, "done agent appears in the successful run's branch");
+});
