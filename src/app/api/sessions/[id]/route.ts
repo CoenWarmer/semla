@@ -1,6 +1,7 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function PATCH(
   request: Request,
@@ -53,8 +54,10 @@ export async function DELETE(
     return handleRouteError(error, "Unable to authorize session.");
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("sessions").delete().eq("id", id);
+  // Ownership already verified above — use admin client to bypass RLS,
+  // which silently no-ops a DELETE rather than returning an error.
+  const admin = createAdminClient();
+  const { error } = await admin.from("sessions").delete().eq("id", id);
 
   if (error) {
     console.error(`[api:sessions/${id}] Failed to delete session:`, error);
