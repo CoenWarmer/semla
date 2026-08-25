@@ -23,6 +23,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { AskUserDialog } from "./ask-user-dialog";
+import { GoalEditor } from "./goal-editor";
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { TokenUsage } from "./token-usage";
@@ -313,9 +314,9 @@ export function ClientSessionComponent({
         <div className="shrink-0">
           <PromptEditor
             defaultTools={defaultTools}
-            goal={goal}
-            goalExpanded={messages.length === 0}
-            onGoalSave={handleGoalSave}
+            goalEditor={
+              <GoalEditor goal={goal} onSave={handleGoalSave} variant="block" />
+            }
             onSubmit={handleSubmit}
           />
         </div>

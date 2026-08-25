@@ -41,9 +41,16 @@ import {
   useUpdateUserSettings,
   useUserSettings,
 } from "@/hooks/use-user-settings";
-import { GoalEditor } from "@/components/goal-editor";
-import { ChevronDownIcon, ChevronUpIcon, CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+
+import { CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
+import {
+  memo,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type PromptEditorModel = Pick<PiModel, "modelId" | "provider">;
 
@@ -92,7 +99,7 @@ const ModelItem = memo(({ m, selectedModel, onSelect }: ModelItemProps) => {
   const modelKey = `${m.provider}:${m.modelId}`;
   const handleSelect = useCallback(
     () => onSelect(modelKey),
-    [modelKey, onSelect]
+    [modelKey, onSelect],
   );
 
   return (
@@ -145,13 +152,14 @@ interface PromptEditorProps {
     tools: string[],
   ) => Promise<void> | void;
   defaultTools: string[];
-  goal?: string | null;
-  onGoalSave?: (goal: string | null) => Promise<void>;
-  /** When true the goal section starts expanded (new session) */
-  goalExpanded?: boolean;
+  goalEditor?: ReactNode;
 }
 
-export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onSubmit }: PromptEditorProps) {
+export function PromptEditor({
+  defaultTools,
+  goalEditor,
+  onSubmit,
+}: PromptEditorProps) {
   const {
     data: models = [],
     error: modelsError,
@@ -162,10 +170,10 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
     error: userSettingsError,
     isSuccess: userSettingsLoaded,
   } = useUserSettings();
-  const {
-    error: updateUserSettingsError,
-    mutate: updateUserSettings,
-  } = useUpdateUserSettings();
+
+  const { error: updateUserSettingsError, mutate: updateUserSettings } =
+    useUpdateUserSettings();
+
   const [model, setModel] = useState("");
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const [toolPickerOpen, setToolPickerOpen] = useState(false);
@@ -174,7 +182,7 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
-  const [goalOpen, setGoalOpen] = useState(goalExpanded ?? false);
+
   const toolPickerRef = useRef<HTMLDivElement>(null);
 
   const defaultModelKey =
@@ -182,11 +190,11 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
       ? `${userSettings.default_model_provider}:${userSettings.default_model_id}`
       : "";
   const modelIsAvailable = models.some(
-    (candidate) => `${candidate.provider}:${candidate.modelId}` === model
+    (candidate) => `${candidate.provider}:${candidate.modelId}` === model,
   );
   const defaultModelIsAvailable = models.some(
     (candidate) =>
-      `${candidate.provider}:${candidate.modelId}` === defaultModelKey
+      `${candidate.provider}:${candidate.modelId}` === defaultModelKey,
   );
   const selectedModelKey = modelIsAvailable
     ? model
@@ -199,7 +207,7 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
       : "";
   const selectedModelData = models.find(
     (candidate) =>
-      `${candidate.provider}:${candidate.modelId}` === selectedModelKey
+      `${candidate.provider}:${candidate.modelId}` === selectedModelKey,
   );
   const matchingTools = defaultTools.filter((tool) =>
     tool.toLowerCase().includes(toolQuery.toLowerCase()),
@@ -233,45 +241,51 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
       document.removeEventListener("pointerdown", closeWhenClickingOutside);
   }, [toolPickerOpen]);
 
-  const handleModelSelect = useCallback((modelKey: string) => {
-    const selectedModel = models.find(
-      (candidate) =>
-        `${candidate.provider}:${candidate.modelId}` === modelKey
-    );
+  const handleModelSelect = useCallback(
+    (modelKey: string) => {
+      const selectedModel = models.find(
+        (candidate) =>
+          `${candidate.provider}:${candidate.modelId}` === modelKey,
+      );
 
-    setModel(modelKey);
-    setModelSelectorOpen(false);
+      setModel(modelKey);
+      setModelSelectorOpen(false);
 
-    if (selectedModel) {
-      updateUserSettings({
-        defaultModelId: selectedModel.modelId,
-        defaultModelProvider: selectedModel.provider,
-      });
-    }
-  }, [models, updateUserSettings]);
+      if (selectedModel) {
+        updateUserSettings({
+          defaultModelId: selectedModel.modelId,
+          defaultModelProvider: selectedModel.provider,
+        });
+      }
+    },
+    [models, updateUserSettings],
+  );
 
-  const handleSubmit = useCallback(async (message: PromptInputMessage) => {
-    const hasText = Boolean(message.text);
-    const hasAttachments = Boolean(message.files?.length);
+  const handleSubmit = useCallback(
+    async (message: PromptInputMessage) => {
+      const hasText = Boolean(message.text);
+      const hasAttachments = Boolean(message.files?.length);
 
-    if (!(hasText || hasAttachments)) {
-      return;
-    }
-
-    setStatus("submitted");
-
-    try {
-      if (!selectedModelData) {
-        throw new Error("Select a Pi model before submitting a prompt.");
+      if (!(hasText || hasAttachments)) {
+        return;
       }
 
-      await onSubmit?.(message, selectedModelData, tools);
-      setStatus("ready");
-    } catch (error) {
-      console.error("Failed to submit prompt:", error);
-      setStatus("error");
-    }
-  }, [onSubmit, selectedModelData, tools]);
+      setStatus("submitted");
+
+      try {
+        if (!selectedModelData) {
+          throw new Error("Select a Pi model before submitting a prompt.");
+        }
+
+        await onSubmit?.(message, selectedModelData, tools);
+        setStatus("ready");
+      } catch (error) {
+        console.error("Failed to submit prompt:", error);
+        setStatus("error");
+      }
+    },
+    [onSubmit, selectedModelData, tools],
+  );
 
   const configurationError =
     modelsError ?? userSettingsError ?? updateUserSettingsError;
@@ -283,25 +297,16 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
           {configurationError.message}
         </p>
       )}
-      {onGoalSave && (
-        <div>
-          <button
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
-            onClick={() => setGoalOpen((v) => !v)}
-            type="button"
-          >
-            {goalOpen ? <ChevronUpIcon className="size-3" /> : <ChevronDownIcon className="size-3" />}
-            Goal
-          </button>
-          {goalOpen && (
-            <GoalEditor goal={goal ?? null} onSave={onGoalSave} variant="block" />
-          )}
-        </div>
-      )}
       <PromptInputProvider>
-        <PromptInput globalDrop multiple onSubmit={handleSubmit} overflowVisible>
+        <PromptInput
+          globalDrop
+          multiple
+          onSubmit={handleSubmit}
+          overflowVisible
+        >
           <PromptInputAttachmentsDisplay />
           <PromptInputBody>
+            {goalEditor}
             <PromptInputTextarea />
           </PromptInputBody>
           <PromptInputFooter>
@@ -381,11 +386,14 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
                   <ModelSelectorInput placeholder="Search models..." />
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {[...new Set(models.map((candidate) => candidate.provider))].map(
-                      (provider) => (
+                    {[
+                      ...new Set(models.map((candidate) => candidate.provider)),
+                    ].map((provider) => (
                       <ModelSelectorGroup heading={provider} key={provider}>
                         {models
-                          .filter((candidate) => candidate.provider === provider)
+                          .filter(
+                            (candidate) => candidate.provider === provider,
+                          )
                           .map((m) => (
                             <ModelItem
                               key={`${m.provider}:${m.modelId}`}
@@ -395,8 +403,7 @@ export function PromptEditor({ defaultTools, goal, goalExpanded, onGoalSave, onS
                             />
                           ))}
                       </ModelSelectorGroup>
-                      )
-                    )}
+                    ))}
                   </ModelSelectorList>
                 </ModelSelectorContent>
               </ModelSelector>
