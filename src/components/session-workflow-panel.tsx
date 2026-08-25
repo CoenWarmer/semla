@@ -22,11 +22,23 @@ import { TraceWaterfall, darkTheme } from "react-otel-trace-waterfall";
 import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import { useNodesState, useReactFlow } from "@xyflow/react";
-import { GanttChartIcon, Maximize2Icon, Minimize2Icon, NetworkIcon } from "lucide-react";
+import {
+  GanttChartIcon,
+  Maximize2Icon,
+  Minimize2Icon,
+  NetworkIcon,
+} from "lucide-react";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 
-function FitViewOnChange({ expanded, nodeCount }: { expanded: boolean; nodeCount: number }) {
+function FitViewOnChange({
+  expanded,
+  nodeCount,
+}: {
+  expanded: boolean;
+  nodeCount: number;
+}) {
   const { fitView } = useReactFlow();
   const prevNodeCount = useRef(nodeCount);
   const prevExpanded = useRef(expanded);
@@ -39,7 +51,10 @@ function FitViewOnChange({ expanded, nodeCount }: { expanded: boolean; nodeCount
       fitView({ duration: 300, padding: 0.25 });
     } else if (expandedChanged) {
       // Delay until the 200ms height transition completes.
-      const id = setTimeout(() => fitView({ duration: 300, padding: 0.25 }), 220);
+      const id = setTimeout(
+        () => fitView({ duration: 300, padding: 0.25 }),
+        220,
+      );
       return () => clearTimeout(id);
     }
   }, [nodeCount, expanded, fitView]);
@@ -146,7 +161,8 @@ type InlineEvent = { t: string; name: string; service: string; msgId: string };
 function paletteColor(service: string | undefined, palette: readonly string[]) {
   if (!service) return palette[0];
   let n = 0;
-  for (let i = 0; i < service.length; i++) n = (n * 31 + service.charCodeAt(i)) | 0;
+  for (let i = 0; i < service.length; i++)
+    n = (n * 31 + service.charCodeAt(i)) | 0;
   return palette[Math.abs(n) % palette.length];
 }
 
@@ -157,18 +173,38 @@ function InlineEventTooltip(_: SpanTooltipProps) {
   const ev = _hoveredInlineEvent;
   if (!ev) return null;
   return (
-    <div style={{ padding: "5px 9px", fontSize: 12, lineHeight: "1.4", maxWidth: 300, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+    <div
+      style={{
+        padding: "5px 9px",
+        fontSize: 12,
+        lineHeight: "1.4",
+        maxWidth: 300,
+        wordBreak: "break-word",
+        whiteSpace: "pre-wrap",
+      }}
+    >
       {ev.name}
     </div>
   );
 }
 
-function InlineSpanRow({ row, scale, isSelected, isFocused, onToggle, onSelect }: SpanComponentProps) {
+function InlineSpanRow({
+  row,
+  scale,
+  isSelected,
+  isFocused,
+  onToggle,
+  onSelect,
+}: SpanComponentProps) {
   const { span, hasChildren, isExpanded } = row;
   const t = darkTheme;
   const isError = span.status?.code === "ERROR";
+  const isRunning = span.attributes?.["pi.status"] === "running";
+  const isQueued = span.attributes?.["pi.status"] === "queued";
   const service = span.resource?.["service.name"] as string | undefined;
-  const barColor = isError ? t.barErrorColor : paletteColor(service, t.barPalette);
+  const barColor = isError
+    ? t.barErrorColor
+    : paletteColor(service, t.barPalette);
   const startPx = scale(Number(span.startTimeUnixNano));
   const endPx = scale(Number(span.endTimeUnixNano));
   const barWidth = Math.max(MIN_BAR_W, endPx - startPx);
@@ -181,31 +217,99 @@ function InlineSpanRow({ row, scale, isSelected, isFocused, onToggle, onSelect }
     <div
       role="row"
       style={{
-        display: "flex", alignItems: "center", height: SPAN_ROW_H,
+        display: "flex",
+        alignItems: "center",
+        height: SPAN_ROW_H,
         borderBottom: `1px solid ${t.rowBorder}`,
         background: isSelected ? t.rowSelectedBackground : "transparent",
         boxShadow: isFocused ? `inset 0 0 0 2px ${t.rowFocusRing}` : undefined,
-        cursor: "pointer", userSelect: "none",
+        cursor: "pointer",
+        userSelect: "none",
       }}
       onClick={() => onSelect(span.spanId)}
     >
-      <div style={{ width: LABEL_COL, flexShrink: 0, paddingLeft: indent, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <div
+        style={{
+          width: LABEL_COL,
+          flexShrink: 0,
+          paddingLeft: indent,
+          paddingRight: 6,
+          display: "flex",
+          alignItems: "center",
+          overflow: "hidden",
+        }}
+      >
         <button
-          style={{ width: 14, flexShrink: 0, background: "none", border: "none", padding: 0, cursor: hasChildren ? "pointer" : "default", color: t.chevronColor, fontSize: 10, visibility: hasChildren ? "visible" : "hidden" }}
-          onClick={(e) => { e.stopPropagation(); if (hasChildren) onToggle(span.spanId); }}
+          style={{
+            width: 14,
+            flexShrink: 0,
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: hasChildren ? "pointer" : "default",
+            color: t.chevronColor,
+            fontSize: 10,
+            visibility: hasChildren ? "visible" : "hidden",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasChildren) onToggle(span.spanId);
+          }}
         >
           {isExpanded ? "▾" : "▸"}
         </button>
-        <span style={{ color: isError ? t.spanNameErrorColor : t.spanNameColor, fontSize: 13, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span
+          style={{
+            color: isError ? t.spanNameErrorColor : t.spanNameColor,
+            fontSize: 13,
+            marginLeft: 4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+          }}
+        >
           {span.name}
         </span>
+        {isRunning && (
+          <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.7 }}>
+            <Spinner className="size-3" />
+          </span>
+        )}
+        {isQueued && (
+          <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.4, fontSize: 10 }}>
+            ·
+          </span>
+        )}
       </div>
-      <div style={{ flex: 1, position: "relative", overflow: "hidden", height: "100%" }}>
+      <div
+        style={{
+          flex: 1,
+          position: "relative",
+          overflow: "hidden",
+          height: "100%",
+        }}
+      >
         {events.length === 0 && (
-          <div style={{ position: "absolute", left: startPx, width: barWidth, height: BAR_H, top: "50%", transform: "translateY(-50%)", background: barColor, borderRadius: 2 }} />
+          <div
+            style={{
+              position: "absolute",
+              left: isQueued ? startPx - 4 : startPx,
+              width: isQueued ? 8 : barWidth,
+              height: BAR_H,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: isQueued ? "transparent" : barColor,
+              border: isQueued ? `1.5px dashed ${barColor}` : "none",
+              borderRadius: 2,
+              opacity: isQueued ? 0.5 : 1,
+            }}
+          />
         )}
         {events.map((ev, i) => {
-          const color = ev.service ? paletteColor(ev.service, t.barPalette) : (t.eventMarkerColor || barColor);
+          const color = ev.service
+            ? paletteColor(ev.service, t.barPalette)
+            : t.eventMarkerColor || barColor;
           return (
             <div
               key={i}
@@ -221,11 +325,18 @@ function InlineSpanRow({ row, scale, isSelected, isFocused, onToggle, onSelect }
                 cursor: ev.msgId ? "pointer" : "default",
                 zIndex: 1,
               }}
-              onMouseEnter={() => { _hoveredInlineEvent = ev; }}
-              onMouseLeave={() => { _hoveredInlineEvent = null; }}
+              onMouseEnter={() => {
+                _hoveredInlineEvent = ev;
+              }}
+              onMouseLeave={() => {
+                _hoveredInlineEvent = null;
+              }}
               onClick={(e) => {
                 e.stopPropagation();
-                if (ev.msgId) document.getElementById(ev.msgId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                if (ev.msgId)
+                  document
+                    .getElementById(ev.msgId)
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
             />
           );
@@ -238,14 +349,30 @@ function InlineSpanRow({ row, scale, isSelected, isFocused, onToggle, onSelect }
 export function SessionWorkflowPanel({
   messages,
   onAgentClick,
+  sessionId,
+  sessionRunning,
   snapshot,
 }: {
   messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
+  sessionId?: string;
+  sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  const hasActiveAgents =
+    (snapshot?.runningCount ?? 0) > 0 ||
+    (snapshot?.agents ?? []).some((a) => a.status === "queued");
+
+  useEffect(() => {
+    if (!hasActiveAgents) return;
+    const id = setInterval(() => setLiveNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [hasActiveAgents]);
+
   const { edges, nodes: computedNodes } = useMemo(() => {
     if (!snapshot) {
       return { edges: [], nodes: [] };
@@ -359,7 +486,8 @@ export function SessionWorkflowPanel({
 
   // Keep node positions stable across snapshot updates so dragging persists.
   // Positions reset only when a node is new; status/data updates are merged in.
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(computedNodes);
+  const [nodes, setNodes, onNodesChange] =
+    useNodesState<FlowNode>(computedNodes);
   useEffect(() => {
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
@@ -415,9 +543,15 @@ export function SessionWorkflowPanel({
               </span>
             )}
             <button
-              aria-label={viewMode === "timeline" ? "Switch to graph view" : "Switch to timeline view"}
+              aria-label={
+                viewMode === "timeline"
+                  ? "Switch to graph view"
+                  : "Switch to timeline view"
+              }
               className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              onClick={() => setViewMode((v) => v === "timeline" ? "graph" : "timeline")}
+              onClick={() =>
+                setViewMode((v) => (v === "timeline" ? "graph" : "timeline"))
+              }
             >
               {viewMode === "timeline" ? (
                 <NetworkIcon className="size-3.5" />
@@ -443,11 +577,13 @@ export function SessionWorkflowPanel({
         <div className="flex-1 min-h-0">
           {viewMode === "timeline" ? (
             <TraceWaterfall
-              key={snapshot.runId ?? "no-run"}
-              spans={workflowSnapshotToSpans(snapshot, messages ?? [])}
+              key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
+              spans={workflowSnapshotToSpans(snapshot, messages ?? [], { sessionRunning, now: liveNow })}
               theme={darkTheme}
               liveMode={snapshot.runningCount > 0}
               initialState="expanded"
+              clampZoomToBounds
+              timelinePadding={10}
               SpanComponent={InlineSpanRow}
               TooltipComponent={InlineEventTooltip}
               onSelectSpan={(span: SpanNode | null) => {

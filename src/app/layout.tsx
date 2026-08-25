@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { QueryProvider } from "@/components/query-provider";
+import { HeaderActions } from "@/components/header-actions";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -50,7 +51,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <SidebarProvider className="flex-1 min-h-0">
               <AppSidebar />
               <main className="flex w-full flex-col">
-                <SidebarTrigger className="shrink-0" />
+                <header className="flex h-11 shrink-0 items-center gap-1 border-b border-border/40 px-2">
+                  <SidebarTrigger />
+                  <HeaderActions />
+                </header>
                 <div className="flex-1 min-h-0 overflow-y-auto">
                   {children}
                 </div>

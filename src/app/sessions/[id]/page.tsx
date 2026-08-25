@@ -28,10 +28,11 @@ export default async function Page({
   }
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div className="flex h-full w-full flex-col overflow-hidden">
       <ClientSessionComponent
         defaultTools={[...getPiRuntimeConfig().tools]}
         sessionId={id}
+        title={session.title}
       />
     </div>
   );

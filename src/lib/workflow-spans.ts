@@ -43,8 +43,9 @@ const TRACE_ID = "73656d6c61736573730000000000006f"; // "semlasess....o" padded 
 export function workflowSnapshotToSpans(
   snapshot: WorkflowSnapshot,
   messages: SessionMessage[],
+  options?: { sessionRunning?: boolean; now?: number },
 ): OtelSpan[] {
-  const now = Date.now();
+  const now = options?.now ?? Date.now();
   const spans: OtelSpan[] = [];
 
   // ── Gather all timestamps to compute trace bounds ───────────────────────
@@ -57,7 +58,10 @@ export function workflowSnapshotToSpans(
   const msgMs = messages
     .filter((m) => m.text.trim().length > 0)
     .map((m) => new Date(m.createdAt).getTime());
-  const allMs = [...agentMs, ...msgMs];
+  const hasActive = snapshot.agents.some(
+    (a) => a.status === "running" || a.status === "queued",
+  );
+  const allMs = [...agentMs, ...msgMs, ...(hasActive ? [now] : [])];
 
   if (allMs.length === 0) return [];
 
@@ -74,6 +78,7 @@ export function workflowSnapshotToSpans(
     endTimeUnixNano: msToNano(traceEnd),
     resource: { "service.name": "session" },
     kind: "INTERNAL",
+    attributes: options?.sessionRunning ? { "pi.status": "running" } : undefined,
   });
 
   // ── Conversation branch ───────────────────────────────────────────────────
@@ -170,10 +175,12 @@ export function workflowSnapshotToSpans(
       for (const agent of phaseAgents) {
         const aStart = agent.startedAt
           ? new Date(agent.startedAt).getTime()
-          : phaseStart;
+          : agent.status === "queued"
+            ? now
+            : phaseStart;
         const aEnd = agent.endedAt
           ? new Date(agent.endedAt).getTime()
-          : agent.status === "running"
+          : agent.status === "running" || agent.status === "queued"
             ? now
             : aStart + 1;
 
