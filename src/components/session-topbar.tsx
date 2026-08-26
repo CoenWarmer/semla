@@ -10,9 +10,10 @@ import type {
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
-import { ScanSearchIcon } from "lucide-react";
+import { BotIcon, ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
 import { GoalEditor } from "./goal-editor";
+import { InspectorPanel } from "./inspector-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 import { TokenUsage, formatTokens } from "./token-usage";
 
@@ -29,12 +30,13 @@ interface SessionTopbarProps {
   workflowRuns?: WorkflowRun[];
 }
 
+type PanelMode = "agents" | "inspector" | null;
+
 function ContextFillBar({ sessionId }: { sessionId: string }) {
   const messagesQuery = useSessionMessages(sessionId);
   const messages = messagesQuery.data?.messages ?? [];
   const contextWindow = messagesQuery.data?.contextWindow ?? null;
 
-  // Most recent assistant message's inputTokens = current context size
   const latestInput =
     [...messages]
       .reverse()
@@ -62,7 +64,7 @@ function ContextFillBar({ sessionId }: { sessionId: string }) {
   );
 }
 
-function ContextQualityBadge({ sessionId }: { sessionId: string }) {
+function ContextQualityDot({ sessionId }: { sessionId: string }) {
   const { data } = useContextCheckResult(sessionId);
   if (!data) return null;
 
@@ -72,15 +74,7 @@ function ContextQualityBadge({ sessionId }: { sessionId: string }) {
     degraded: "bg-destructive",
   };
   const dot = colors[data.quality] ?? "bg-muted";
-
-  return (
-    <div className="flex items-center gap-1.5" title={data.summary}>
-      <span className={`size-2 rounded-full shrink-0 ${dot}`} />
-      <span className="text-xs text-muted-foreground capitalize">
-        {data.quality}
-      </span>
-    </div>
-  );
+  return <span className={`size-2 rounded-full shrink-0 ${dot}`} title={data.summary} />;
 }
 
 export function SessionTopbar({
@@ -95,12 +89,16 @@ export function SessionTopbar({
   toolCalls,
   workflowRuns,
 }: SessionTopbarProps) {
-  const [inspectOpen, setInspectOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
 
   const agentCount = snapshot?.agentCount ?? 0;
   const runningCount = snapshot?.runningCount ?? 0;
-  const showAgents = agentCount > 0 || runningCount > 0;
+  const showAgentCount = agentCount > 0 || runningCount > 0;
+
+  function togglePanel(mode: PanelMode) {
+    setPanelMode((prev) => (prev === mode ? null : mode));
+  }
 
   return (
     <>
@@ -123,20 +121,27 @@ export function SessionTopbar({
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
           <ContextFillBar sessionId={sessionId} />
-          <ContextQualityBadge sessionId={sessionId} />
 
-          {showAgents && (
-            <span className="text-xs tabular-nums text-muted-foreground">
+          {/* Agent count — clicking opens the workflow panel */}
+          {showAgentCount && (
+            <button
+              className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:bg-muted transition-colors"
+              onClick={() => togglePanel("agents")}
+              title="Show agent timeline"
+            >
+              <BotIcon className="size-3.5 shrink-0" />
               {runningCount > 0 ? `${runningCount} running · ` : ""}
               {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
-            </span>
+            </button>
           )}
 
+          {/* Inspect — opens context inspector panel */}
           <Button
             size="sm"
-            variant={inspectOpen ? "secondary" : "ghost"}
-            onClick={() => setInspectOpen((v) => !v)}
+            variant={panelMode === "inspector" ? "secondary" : "ghost"}
+            onClick={() => togglePanel("inspector")}
           >
+            <ContextQualityDot sessionId={sessionId} />
             <ScanSearchIcon />
             Inspect
           </Button>
@@ -147,7 +152,8 @@ export function SessionTopbar({
         </div>
       </div>
 
-      {inspectOpen && (
+      {/* Panel area */}
+      {panelMode === "agents" && (
         <div
           className="shrink-0 border-b border-border/40 overflow-auto px-3"
           style={{ height: 348 }}
@@ -161,6 +167,15 @@ export function SessionTopbar({
             toolCalls={toolCalls}
             workflowRuns={workflowRuns}
           />
+        </div>
+      )}
+
+      {panelMode === "inspector" && (
+        <div
+          className="shrink-0 border-b border-border/40 overflow-hidden px-3"
+          style={{ height: 348 }}
+        >
+          <InspectorPanel goal={goal} sessionId={sessionId} />
         </div>
       )}
     </>
