@@ -45,7 +45,6 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
       );
 
       router.replace(`/sessions/${body.id}`);
-      router.refresh();
     },
     [goal, router],
   );
