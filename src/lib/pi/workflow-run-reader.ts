@@ -53,6 +53,8 @@ export type PersistedRunState = {
   completedAt?: string;
   currentPhase?: string;
   durationMs?: number;
+  /** Everything the script passed to log(), plus the runner's own final entry. */
+  logs?: string[];
   phases: string[];
   /** Whatever the workflow script returned. Present once the run completes. */
   result?: unknown;

@@ -39,6 +39,7 @@ import {
   workflowRunPath,
   type PersistedRunState,
 } from "@/lib/pi/workflow-run-reader";
+import { summarizeRunResult } from "@/lib/pi/workflow-result-summary";
 import { historyToTurns } from "@/lib/pi/workflow-snapshot-merge";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
@@ -153,26 +154,6 @@ const isRunTerminal = (
 ): run is PersistedRunState =>
   run !== null && TERMINAL_RUN_STATUSES.has(run.status);
 
-const RESULT_SUMMARY_MAX_CHARS = 2000;
-
-// Mirrors summarizeResult() in pi-dynamic-workflows' task-panel: prefer a
-// human-readable field, else a capped JSON dump. The full result stays on disk.
-const summarizeRunResult = (result: unknown): string => {
-  if (typeof result === "string") return result;
-
-  if (result && typeof result === "object") {
-    for (const key of ["verdict", "report", "summary", "synthesis"]) {
-      const value = (result as Record<string, unknown>)[key];
-      if (typeof value === "string" && value.trim()) return value;
-    }
-  }
-
-  const json = JSON.stringify(result ?? null, null, 2);
-  return json.length <= RESULT_SUMMARY_MAX_CHARS
-    ? json
-    : `${json.slice(0, RESULT_SUMMARY_MAX_CHARS)}\n…(truncated — read the full result from the path below)`;
-};
-
 // The message pi-dynamic-workflows would have delivered for a finished run.
 // Used by both recovery paths: the in-continuation watchdog and the
 // next-prompt catch-up.
@@ -181,7 +162,7 @@ const finishedRunMessage = (run: PersistedRunState, runId: string): string => {
   return [
     `✓ Background workflow "${run.workflowName}" finished (${done}/${run.agents.length} agents).`,
     "",
-    summarizeRunResult(run.result),
+    summarizeRunResult(run.result, run.logs ?? []),
     "",
     `↳ Full result: ${workflowRunPath(PI_WORKSPACE_ROOT, runId)}`,
   ].join("\n");
