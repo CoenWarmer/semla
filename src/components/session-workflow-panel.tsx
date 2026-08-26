@@ -22,7 +22,12 @@ import type {
   NodeProps,
 } from "@xyflow/react";
 import { TraceWaterfall, darkTheme, useTheme } from "react-otel-trace-waterfall";
-import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
+import type {
+  EventComponentProps,
+  SpanBarProps,
+  SpanNameProps,
+  SpanNode,
+} from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
@@ -168,7 +173,8 @@ const edgeTypes = { animated: Edge.Animated };
 const COL_WIDTH = 440;
 const ROW_HEIGHT = 200;
 
-// ── Shimmer animation for running bars ───────────────────────────────────────
+// Injected once next to the waterfall rather than per row: it is a global
+// keyframes rule, and SpanBar may render it on many rows at once.
 const SHIMMER_STYLE = `
 @keyframes span-shimmer {
   0%   { background-position: 200% center; }
@@ -176,14 +182,10 @@ const SHIMMER_STYLE = `
 }
 `;
 
-// ── Inline span row ──────────────────────────────────────────────────────────
-// Shared constants that mirror the library's internal layout values.
-const LABEL_COL = 280;
-const SPAN_ROW_H = 32;
-const BAR_H = 14;
-const MIN_BAR_W = 2;
-/** Extra clickable pixels on each side of a bar, so narrow bars stay aimable. */
-const BAR_HIT_PAD = 4;
+// ── Row slots ────────────────────────────────────────────────────────────────
+// The waterfall renders the row; these replace only the parts that need to
+// reflect agent status. Layout, truncation, chevron, hit areas and selection
+// stay with the library (see docs/plans/waterfall-row-slots.md).
 
 function paletteColor(service: string | undefined, palette: readonly string[]) {
   if (!service) return palette[0];
@@ -212,215 +214,154 @@ function InlineEventTooltip({ event }: SpanTooltipProps) {
   );
 }
 
-function InlineSpanRow({
-  row,
-  scale,
-  isSelected,
-  isFocused,
-  onToggle,
-  onSelect,
-  onHoverEvent,
-}: SpanComponentProps) {
-  const { span, hasChildren, isExpanded } = row;
+/** Agent status as recorded on the span by workflow-spans. */
+const piStatusOf = (span: SpanNode) =>
+  span.attributes?.["pi.status"] as string | undefined;
+
+/**
+ * A span's name, with the status cues the timeline needs: a shimmer and a
+ * spinner while it runs, a dot while it is queued.
+ *
+ * The indicators live here rather than in RowPrefixComponent because that slot
+ * renders at the leading edge of the row, before the label column — these
+ * belong after the name.
+ */
+function SpanName({ span }: SpanNameProps) {
   const t = useTheme();
   const isError = span.status?.code === "ERROR";
-  const isRunning = span.attributes?.["pi.status"] === "running";
-  const isQueued = span.attributes?.["pi.status"] === "queued";
-  const service = span.resource?.["service.name"] as string | undefined;
-  const barColor = isError
-    ? t.barErrorColor
-    : paletteColor(service, t.barPalette);
-  const startPx = scale(Number(span.startTimeUnixNano));
-  const endPx = scale(Number(span.endTimeUnixNano));
-  const barWidth = Math.max(MIN_BAR_W, endPx - startPx);
-  const events = row.events ?? [];
-  const indent = span.depth * t.rowIndentPx + t.rowPaddingInline;
+  const status = piStatusOf(span);
+  const isRunning = status === "running";
+  const isQueued = status === "queued";
 
   return (
-    <>
-    <style>{SHIMMER_STYLE}</style>
-    <div
-      role="row"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        height: SPAN_ROW_H,
-        borderBottom: `1px solid ${t.rowBorder}`,
-        background: isSelected ? t.rowSelectedBackground : "transparent",
-        boxShadow: isFocused ? `inset 0 0 0 2px ${t.rowFocusRing}` : undefined,
-        cursor: "default",
-        userSelect: "none",
-      }}
-      // The waterfall wraps this row in a div that selects on any click, which
-      // opened the drawer from anywhere on the row — including empty timeline
-      // space. Swallow the click here so only the bar below selects, and so our
-      // own onSelect is not doubled by the wrapper's.
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div
-        style={{
-          width: LABEL_COL,
-          flexShrink: 0,
-          paddingLeft: indent,
-          paddingRight: 6,
-          display: "flex",
+    <span
+      style={
+        {
           alignItems: "center",
+          display: "inline-flex",
+          gap: 6,
+          maxWidth: "100%",
+          minWidth: 0,
+          // Shimmer reads its base and sweep colours from these two vars. Its
+          // defaults follow the app theme, but this panel is pinned to
+          // darkTheme, so in light mode the default base would be dark grey on
+          // a dark row. Restate them in the waterfall's palette: the row's own
+          // label colour, swept by the same highlight the running bar uses.
+          ...(isRunning && !isError
+            ? {
+                "--color-muted-foreground": t.spanNameColor,
+                "--color-background": "rgba(255,255,255,0.85)",
+              }
+            : {}),
+        } as React.CSSProperties
+      }
+    >
+      <span
+        style={{
+          minWidth: 0,
           overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
       >
-        <button
-          style={{
-            width: 14,
-            flexShrink: 0,
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: hasChildren ? "pointer" : "default",
-            color: t.chevronColor,
-            fontSize: 10,
-            visibility: hasChildren ? "visible" : "hidden",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) onToggle(span.spanId);
-          }}
-        >
-          {isExpanded ? "▾" : "▸"}
-        </button>
-        <span
-          style={{
-            color: isError ? t.spanNameErrorColor : t.spanNameColor,
-            fontSize: 13,
-            marginLeft: 4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-            // Shimmer reads its base and sweep colours from these two vars.
-            // Its defaults follow the app theme, but this panel is always dark
-            // (theme={darkTheme}), so in light mode the default base would be
-            // dark grey on a dark row. Restate them in the waterfall's own
-            // palette: the row's normal label colour, swept by the same
-            // highlight the running bar uses.
-            ...(isRunning && !isError
-              ? {
-                  "--color-muted-foreground": t.spanNameColor,
-                  "--color-background": "rgba(255,255,255,0.85)",
-                }
-              : {}),
-          } as React.CSSProperties}
-        >
-          {isRunning && !isError ? (
-            // Shimmer paints an inline-block, which the parent's ellipsis
-            // cannot truncate — so it truncates itself.
-            <Shimmer
-              as="span"
-              className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-              duration={2}
-            >
-              {span.name}
-            </Shimmer>
-          ) : (
-            span.name
-          )}
-        </span>
-        {isRunning && (
-          <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.7 }}>
-            <Spinner className="size-3" />
-          </span>
-        )}
-        {isQueued && (
-          <span
-            style={{ flexShrink: 0, marginLeft: 6, opacity: 0.4, fontSize: 10 }}
+        {isRunning && !isError ? (
+          // Shimmer paints an inline-block, which the parent's ellipsis cannot
+          // truncate — so it truncates itself.
+          <Shimmer
+            as="span"
+            className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            duration={2}
           >
-            ·
-          </span>
+            {span.name}
+          </Shimmer>
+        ) : (
+          span.name
         )}
-      </div>
+      </span>
+      {isRunning && (
+        <span style={{ display: "inline-flex", flexShrink: 0, opacity: 0.7 }}>
+          <Spinner className="size-3" />
+        </span>
+      )}
+      {isQueued && (
+        <span style={{ flexShrink: 0, fontSize: 10, opacity: 0.4 }}>·</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * A span's bar, coloured by service and animated while the span is running.
+ * The library owns the bar's position and its click/hit area; this fills the
+ * container it is given.
+ */
+function SpanBar({ span }: SpanBarProps) {
+  const t = useTheme();
+  const isError = span.status?.code === "ERROR";
+  const status = piStatusOf(span);
+  const isRunning = status === "running";
+  const barColor = isError
+    ? t.barErrorColor
+    : paletteColor(span.resource?.["service.name"] as string | undefined, t.barPalette);
+
+  if (status === "queued") {
+    // A queued agent has no duration yet. Show a fixed-width placeholder
+    // centred on its start rather than a hairline bar at the minimum width.
+    return (
       <div
         style={{
-          flex: 1,
-          position: "relative",
-          overflow: "hidden",
-          height: "100%",
+          border: `1.5px dashed ${barColor}`,
+          borderRadius: 2,
+          bottom: 0,
+          left: "50%",
+          opacity: 0.5,
+          position: "absolute",
+          top: 0,
+          transform: "translateX(-50%)",
+          width: 8,
         }}
-      >
-        {events.length === 0 && (
-          // Full-height hit area a few pixels wider than the bar: a bar can be
-          // as narrow as MIN_BAR_W, which is too small to aim at.
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(span.spanId);
-            }}
-            style={{
-              position: "absolute",
-              left: (isQueued ? startPx - 4 : startPx) - BAR_HIT_PAD,
-              width: (isQueued ? 8 : barWidth) + BAR_HIT_PAD * 2,
-              top: 0,
-              bottom: 0,
-              cursor: "pointer",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                left: BAR_HIT_PAD,
-                width: isQueued ? 8 : barWidth,
-                height: BAR_H,
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: isRunning
-                  ? `linear-gradient(90deg, ${barColor} 25%, rgba(255,255,255,0.55) 50%, ${barColor} 75%)`
-                  : isQueued ? "transparent" : barColor,
-                backgroundSize: isRunning ? "200% 100%" : undefined,
-                animation: isRunning ? "span-shimmer 1.6s linear infinite" : undefined,
-                border: isQueued ? `1.5px dashed ${barColor}` : "none",
-                borderRadius: 2,
-                opacity: isQueued ? 0.5 : 1,
-              }}
-            />
-          </div>
-        )}
-        {events.map((ev) => {
-          const evService = ev.resource?.["service.name"] as string | undefined;
-          const color = ev.status?.code === "ERROR"
-            ? t.barErrorColor
-            : evService
-              ? paletteColor(evService, t.barPalette)
-              : t.eventMarkerColor || barColor;
-          const msgId = ev.attributes?.["msg_id"] as string | undefined;
-          return (
-            <div
-              key={ev.spanId}
-              style={{
-                position: "absolute",
-                left: scale(Number(ev.startTimeUnixNano)),
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                width: t.eventMarkerSize,
-                height: t.eventMarkerSize,
-                background: color,
-                borderRadius: "50%",
-                cursor: "pointer",
-                zIndex: 1,
-              }}
-              onMouseEnter={() => onHoverEvent(ev)}
-              onMouseLeave={() => onHoverEvent(null)}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(ev.spanId);
-                if (msgId)
-                  document
-                    .getElementById(msgId)
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
-              }}
-            />
-          );
-        })}
-      </div>
-    </div>
-    </>
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        background: isRunning
+          ? `linear-gradient(90deg, ${barColor} 25%, rgba(255,255,255,0.55) 50%, ${barColor} 75%)`
+          : barColor,
+        backgroundSize: isRunning ? "200% 100%" : undefined,
+        animation: isRunning ? "span-shimmer 1.6s linear infinite" : undefined,
+        borderRadius: 2,
+        height: "100%",
+        width: "100%",
+      }}
+    />
+  );
+}
+
+/**
+ * A folded conversation marker. The library already colours these by service
+ * and owns their click and hover behaviour; this exists only so a failed tool
+ * call reads as an error rather than as its service colour.
+ */
+function EventMarker({ span }: EventComponentProps) {
+  const t = useTheme();
+  const color =
+    span.status?.code === "ERROR"
+      ? t.barErrorColor
+      : t.eventMarkerColor ||
+        paletteColor(span.resource?.["service.name"] as string | undefined, t.barPalette);
+
+  return (
+    <div
+      style={{
+        background: color,
+        borderRadius: "50%",
+        height: t.eventMarkerSize,
+        width: t.eventMarkerSize,
+      }}
+    />
   );
 }
 
@@ -949,6 +890,8 @@ export function SessionWorkflowPanel({
         </div>
         <div className="flex-1 min-h-0">
           {viewMode === "timeline" ? (
+            <>
+            <style>{SHIMMER_STYLE}</style>
             <TraceWaterfall
               key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
               spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
@@ -968,7 +911,9 @@ export function SessionWorkflowPanel({
               // them onto that one row as markers instead of a row each.
               foldEventsIntoParent
               timelinePadding={10}
-              SpanComponent={InlineSpanRow}
+              SpanNameComponent={SpanName}
+              SpanBarComponent={SpanBar}
+              EventMarkerComponent={EventMarker}
               TooltipComponent={InlineEventTooltip}
               // We render our own panel below, so switch the built-in one off
               // rather than showing both. Ours also portals to the body, which
@@ -990,11 +935,20 @@ export function SessionWorkflowPanel({
                   onAgentClick(agentId, runId);
                   return;
                 }
+                // Conversation markers name the transcript entry they came
+                // from, so selecting one scrolls the chat to it.
+                const msgId = span.attributes?.["msg_id"];
+                if (typeof msgId === "string" && msgId) {
+                  document
+                    .getElementById(msgId)
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
                 setSelectedSpan((prev) =>
                   prev?.spanId === span.spanId ? null : span,
                 );
               }}
             />
+            </>
           ) : (
             <Canvas
               edges={edges}

@@ -46,7 +46,7 @@
     "react-dom": "19.2.8",
     "react-jsx-parser": "^2.4.1",
     "react-markdown": "^10.1.0",
-    "react-otel-trace-waterfall": "https://registry.npmjs.org/react-otel-trace-waterfall/-/react-otel-trace-waterfall-0.7.0.tgz",
+    "react-otel-trace-waterfall": "https://registry.npmjs.org/react-otel-trace-waterfall/-/react-otel-trace-waterfall-0.8.0.tgz",
     "remark-gfm": "^4.0.1",
     "shadcn": "^4.18.0",
     "shiki": "^4.4.3",
