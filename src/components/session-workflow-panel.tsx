@@ -23,11 +23,11 @@ import type {
 } from "@xyflow/react";
 import { TraceWaterfall, darkTheme, useTheme } from "react-otel-trace-waterfall";
 import type {
-  EventComponentProps,
   SpanBarProps,
   SpanNameProps,
   SpanNode,
 } from "react-otel-trace-waterfall";
+import { numberAttr, stringAttr } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
@@ -173,6 +173,11 @@ const edgeTypes = { animated: Edge.Animated };
 const COL_WIDTH = 440;
 const ROW_HEIGHT = 200;
 
+// Hoisted so the theme keeps its identity across renders — the library memoises
+// the merged theme on this prop. spanNameFontSize restores the 13px label the
+// row used before the library owned that styling.
+const TIMELINE_THEME = { ...darkTheme, spanNameFontSize: 13 };
+
 // Injected once next to the waterfall rather than per row: it is a global
 // keyframes rule, and SpanBar may render it on many rows at once.
 const SHIMMER_STYLE = `
@@ -215,8 +220,7 @@ function InlineEventTooltip({ event }: SpanTooltipProps) {
 }
 
 /** Agent status as recorded on the span by workflow-spans. */
-const piStatusOf = (span: SpanNode) =>
-  span.attributes?.["pi.status"] as string | undefined;
+const piStatusOf = (span: SpanNode) => stringAttr(span, "pi.status");
 
 /**
  * A span's name, with the status cues the timeline needs: a shimmer and a
@@ -302,7 +306,7 @@ function SpanBar({ span }: SpanBarProps) {
   const isRunning = status === "running";
   const barColor = isError
     ? t.barErrorColor
-    : paletteColor(span.resource?.["service.name"] as string | undefined, t.barPalette);
+    : paletteColor(stringAttr(span, "service.name"), t.barPalette);
 
   if (status === "queued") {
     // A queued agent has no duration yet. Show a fixed-width placeholder
@@ -335,31 +339,6 @@ function SpanBar({ span }: SpanBarProps) {
         borderRadius: 2,
         height: "100%",
         width: "100%",
-      }}
-    />
-  );
-}
-
-/**
- * A folded conversation marker. The library already colours these by service
- * and owns their click and hover behaviour; this exists only so a failed tool
- * call reads as an error rather than as its service colour.
- */
-function EventMarker({ span }: EventComponentProps) {
-  const t = useTheme();
-  const color =
-    span.status?.code === "ERROR"
-      ? t.barErrorColor
-      : t.eventMarkerColor ||
-        paletteColor(span.resource?.["service.name"] as string | undefined, t.barPalette);
-
-  return (
-    <div
-      style={{
-        background: color,
-        borderRadius: "50%",
-        height: t.eventMarkerSize,
-        width: t.eventMarkerSize,
       }}
     />
   );
@@ -511,21 +490,21 @@ function SpanDetailDrawer({
   onClose: () => void;
   span: SpanNode | null;
 }) {
-  const service = span?.resource?.["service.name"] as string | undefined;
+  const service = span ? stringAttr(span, "service.name") : undefined;
   const duration = span
     ? formatDuration(span.startTimeUnixNano, span.endTimeUnixNano)
     : null;
   const isEvent = span?.kind === "EVENT";
   const statusCode = span?.status?.code;
-  const toolName = span?.attributes?.["pi.tool_name"] as string | undefined;
+  const toolName = span ? stringAttr(span, "pi.tool_name") : undefined;
   const allAttrs = span ? Object.entries(span.attributes ?? {}) : [];
   const params = allAttrs
     .filter(([k]) => k.startsWith("pi.param."))
     .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
-  const workflowDescription = span?.attributes?.["workflow.description"] as string | undefined;
-  const piText = span?.attributes?.["pi.text"] as string | undefined;
-  const piResult = span?.attributes?.["pi.result"] as string | undefined;
-  const piThinking = span?.attributes?.["pi.thinking"] as string | undefined;
+  const workflowDescription = span ? stringAttr(span, "workflow.description") : undefined;
+  const piText = span ? stringAttr(span, "pi.text") : undefined;
+  const piResult = span ? stringAttr(span, "pi.result") : undefined;
+  const piThinking = span ? stringAttr(span, "pi.thinking") : undefined;
   const attrs = allAttrs.filter(
     ([k]) =>
       !k.startsWith("pi.param.") &&
@@ -893,7 +872,7 @@ export function SessionWorkflowPanel({
             <>
             <style>{SHIMMER_STYLE}</style>
             <TraceWaterfall
-              key={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
+              resetKey={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
               spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
                 now: liveNow,
                 sessionRunning,
@@ -903,7 +882,7 @@ export function SessionWorkflowPanel({
                   .map((r) => r.snapshot),
               })}
               height={240}
-              theme={darkTheme}
+              theme={TIMELINE_THEME}
               liveMode={snapshot.runningCount > 0}
               initialState="expanded"
               clampZoomToBounds
@@ -913,7 +892,6 @@ export function SessionWorkflowPanel({
               timelinePadding={10}
               SpanNameComponent={SpanName}
               SpanBarComponent={SpanBar}
-              EventMarkerComponent={EventMarker}
               TooltipComponent={InlineEventTooltip}
               // We render our own panel below, so switch the built-in one off
               // rather than showing both. Ours also portals to the body, which
@@ -925,20 +903,16 @@ export function SessionWorkflowPanel({
                   return;
                 }
                 // Agent rows have a richer drawer of their own (the transcript).
-                const agentId = span.attributes?.["pi.agent_id"];
-                const runId = span.attributes?.["pi.run_id"];
-                if (
-                  onAgentClick &&
-                  typeof agentId === "number" &&
-                  typeof runId === "string"
-                ) {
+                const agentId = numberAttr(span, "pi.agent_id");
+                const runId = stringAttr(span, "pi.run_id");
+                if (onAgentClick && agentId !== undefined && runId !== undefined) {
                   onAgentClick(agentId, runId);
                   return;
                 }
                 // Conversation markers name the transcript entry they came
                 // from, so selecting one scrolls the chat to it.
-                const msgId = span.attributes?.["msg_id"];
-                if (typeof msgId === "string" && msgId) {
+                const msgId = stringAttr(span, "msg_id");
+                if (msgId) {
                   document
                     .getElementById(msgId)
                     ?.scrollIntoView({ behavior: "smooth", block: "center" });

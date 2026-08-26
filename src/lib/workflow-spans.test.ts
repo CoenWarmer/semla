@@ -41,8 +41,7 @@ function snapshot(
 function widthOf(spans: ReturnType<typeof workflowSnapshotToSpans>, name: string) {
   const span = spans.find((s) => s.name === name);
   assert.ok(span, `no span named ${name}`);
-  const ms = (nano: string) => Number(nano.slice(0, -6));
-  return ms(span.endTimeUnixNano) - ms(span.startTimeUnixNano);
+  return span.endTimeMs - span.startTimeMs;
 }
 
 test("a running agent's bar grows as the clock advances", () => {
@@ -134,7 +133,7 @@ test("tool calls become EVENT spans under the Tool calls sub-row", () => {
   for (const tool of tools) {
     assert.equal(tool.parentSpanId, toolCallsRow.spanId);
     // Zero-width: a marker sits on an instant, not a range.
-    assert.equal(tool.startTimeUnixNano, tool.endTimeUnixNano);
+    assert.equal(tool.startTimeMs, tool.endTimeMs);
   }
 });
 
@@ -387,13 +386,12 @@ test("a just-started agent with no recorded start does not span the whole trace"
   for (const label of ["agent 1", "agent 2"]) {
     const span = spans.find((s) => s.name === label);
     assert.ok(span, `no span named ${label}`);
-    const ms = (nano: string) => Number(nano.slice(0, -6));
     assert.equal(
-      ms(span.startTimeUnixNano),
+      span.startTimeMs,
       NOW,
       `${label} anchors to now, not to the start of the trace`,
     );
-    assert.equal(ms(span.endTimeUnixNano), NOW);
+    assert.equal(span.endTimeMs, NOW);
   }
 });
 
@@ -417,8 +415,6 @@ test("a stamped live snapshot renders agent bars from their real start", () => {
   const spans = workflowSnapshotToSpans(stamped, messages, { now: NOW });
   const span = spans.find((s) => s.name === "agent 1");
   assert.ok(span);
-  const ms = (nano: string) => Number(nano.slice(0, -6));
-
-  assert.equal(ms(span.startTimeUnixNano), T0 + 2_000, "starts when first seen");
-  assert.equal(ms(span.endTimeUnixNano), NOW, "still running, so it grows to now");
+  assert.equal(span.startTimeMs, T0 + 2_000, "starts when first seen");
+  assert.equal(span.endTimeMs, NOW, "still running, so it grows to now");
 });

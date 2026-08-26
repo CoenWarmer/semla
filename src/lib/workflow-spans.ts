@@ -1,30 +1,18 @@
 import type { OtelSpan } from "react-otel-trace-waterfall";
+import { makeSpanId, makeTraceId } from "react-otel-trace-waterfall";
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
-function msToNano(ms: number): string {
-  // Multiply milliseconds by 1,000,000 using string math to avoid BigInt (tsconfig target < ES2020).
-  const whole = Math.round(ms);
-  const zeros = "000000";
-  return `${whole}${zeros}`;
-}
-
-// Deterministic 16-char hex span ID from a string key.
-function makeSpanId(key: string): string {
-  let h = 5381;
-  for (let i = 0; i < key.length; i++) {
-    h = (Math.imul(h, 33) ^ key.charCodeAt(i)) >>> 0;
-  }
-  // Two rounds to get 16 hex chars.
-  let h2 = 5381;
-  for (let i = key.length - 1; i >= 0; i--) {
-    h2 = (Math.imul(h2, 33) ^ key.charCodeAt(i)) >>> 0;
-  }
-  return (h.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0")).slice(0, 16);
-}
+/**
+ * These spans are synthesised from app state rather than ingested from a real
+ * trace, so they use the library's millisecond timing form and its deterministic
+ * id helpers. Narrowed to that half of the OtelSpan union so callers (and tests)
+ * can read startTimeMs/endTimeMs without re-narrowing.
+ */
+type SyntheticSpan = Extract<OtelSpan, { startTimeMs: number }>;
 
 // Fixed trace ID — all synthesized spans belong to one trace per page load.
-const TRACE_ID = "73656d6c61736573730000000000006f"; // "semlasess....o" padded to 32
+const TRACE_ID = makeTraceId("semla-session");
 
 /**
  * Convert a WorkflowSnapshot + conversation messages into OtelSpan[]
@@ -49,11 +37,11 @@ export function workflowSnapshotToSpans(
     toolCalls?: SessionToolCall[];
     additionalSnapshots?: WorkflowSnapshot[];
   },
-): OtelSpan[] {
+): SyntheticSpan[] {
   const now = options?.now ?? Date.now();
   const toolCalls = options?.toolCalls ?? [];
   const additionalSnapshots = options?.additionalSnapshots ?? [];
-  const spans: OtelSpan[] = [];
+  const spans: SyntheticSpan[] = [];
 
   // ── Gather all timestamps to compute trace bounds ───────────────────────
   const allSnapshots = [snapshot, ...additionalSnapshots];
@@ -88,8 +76,8 @@ export function workflowSnapshotToSpans(
     traceId: TRACE_ID,
     spanId: sessionId,
     name: "Session",
-    startTimeUnixNano: msToNano(traceStart),
-    endTimeUnixNano: msToNano(traceEnd),
+    startTimeMs: traceStart,
+    endTimeMs: traceEnd,
     resource: { "service.name": "session" },
     kind: "INTERNAL",
     attributes: options?.sessionRunning ? { "pi.status": "running" } : undefined,
@@ -108,8 +96,8 @@ export function workflowSnapshotToSpans(
       spanId: convId,
       parentSpanId: sessionId,
       name: "Conversation",
-      startTimeUnixNano: msToNano(convStart),
-      endTimeUnixNano: msToNano(convEnd + 1),
+      startTimeMs: convStart,
+      endTimeMs: convEnd + 1,
       resource: { "service.name": "session" },
       kind: "INTERNAL",
     });
@@ -124,22 +112,22 @@ export function workflowSnapshotToSpans(
         spanId: promptsId,
         parentSpanId: convId,
         name: "Prompts",
-        startTimeUnixNano: msToNano(promptsStart),
-        endTimeUnixNano: msToNano(promptsEnd + 1),
+        startTimeMs: promptsStart,
+        endTimeMs: promptsEnd + 1,
         resource: { "service.name": "session" },
         kind: "INTERNAL",
       });
 
       for (const msg of visibleMessages) {
         const t = new Date(msg.createdAt).getTime();
-        const nano = msToNano(t);
+        const at = t;
         spans.push({
           traceId: TRACE_ID,
           spanId: makeSpanId(`msg-${msg.id}`),
           parentSpanId: promptsId,
           name: msg.role === "user" ? "↑ User" : "↓ Assistant",
-          startTimeUnixNano: nano,
-          endTimeUnixNano: nano,
+          startTimeMs: at,
+          endTimeMs: at,
           kind: "EVENT",
           attributes: {
             msg_id: msg.id,
@@ -161,14 +149,14 @@ export function workflowSnapshotToSpans(
         spanId: toolsId,
         parentSpanId: convId,
         name: "Tool calls",
-        startTimeUnixNano: msToNano(toolsStart),
-        endTimeUnixNano: msToNano(toolsEnd + 1),
+        startTimeMs: toolsStart,
+        endTimeMs: toolsEnd + 1,
         resource: { "service.name": "tool" },
         kind: "INTERNAL",
       });
 
       for (const call of toolCalls) {
-        const nano = msToNano(new Date(call.createdAt).getTime());
+        const at = new Date(call.createdAt).getTime();
         const paramAttrs = call.params
           ? Object.fromEntries(Object.entries(call.params).map(([k, v]) => [`pi.param.${k}`, v]))
           : {};
@@ -177,8 +165,8 @@ export function workflowSnapshotToSpans(
           spanId: makeSpanId(`tool-${call.id}`),
           parentSpanId: toolsId,
           name: call.summary ? `⚙ ${call.name}: ${call.summary}` : `⚙ ${call.name}`,
-          startTimeUnixNano: nano,
-          endTimeUnixNano: nano,
+          startTimeMs: at,
+          endTimeMs: at,
           kind: "EVENT",
           attributes: { msg_id: call.messageId, "pi.tool_name": call.name, ...paramAttrs },
           status: call.isError !== undefined
@@ -190,14 +178,14 @@ export function workflowSnapshotToSpans(
         });
 
         if (call.resultAt) {
-          const resultNano = msToNano(new Date(call.resultAt).getTime());
+          const resultAt = new Date(call.resultAt).getTime();
           spans.push({
             traceId: TRACE_ID,
             spanId: makeSpanId(`tool-result-${call.id}`),
             parentSpanId: toolsId,
             name: `↩ ${call.name}`,
-            startTimeUnixNano: resultNano,
-            endTimeUnixNano: resultNano,
+            startTimeMs: resultAt,
+            endTimeMs: resultAt,
             kind: "EVENT",
             attributes: {
               msg_id: call.messageId,
@@ -233,8 +221,8 @@ export function workflowSnapshotToSpans(
       spanId: wfId,
       parentSpanId: sessionId,
       name: wfSnapshot.name,
-      startTimeUnixNano: msToNano(wfStart),
-      endTimeUnixNano: msToNano(wfEnd),
+      startTimeMs: wfStart,
+      endTimeMs: wfEnd,
       attributes: wfSnapshot.description
         ? { "workflow.description": wfSnapshot.description }
         : undefined,
@@ -267,8 +255,8 @@ export function workflowSnapshotToSpans(
         spanId: phaseId,
         parentSpanId: wfId,
         name: phase,
-        startTimeUnixNano: msToNano(phaseStart),
-        endTimeUnixNano: msToNano(phaseEnd),
+        startTimeMs: phaseStart,
+        endTimeMs: phaseEnd,
         resource: { "service.name": "workflow" },
         kind: "INTERNAL",
       });
@@ -295,8 +283,8 @@ export function workflowSnapshotToSpans(
           spanId: agentSpanId,
           parentSpanId: phaseId,
           name: agent.label,
-          startTimeUnixNano: msToNano(aStart),
-          endTimeUnixNano: msToNano(aEnd),
+          startTimeMs: aStart,
+          endTimeMs: aEnd,
           attributes: {
             "pi.status": agent.status,
             "pi.agent_id": agent.id,
@@ -321,8 +309,8 @@ export function workflowSnapshotToSpans(
             spanId: promptsId,
             parentSpanId: agentSpanId,
             name: "Prompts",
-            startTimeUnixNano: msToNano(aStart),
-            endTimeUnixNano: msToNano(aEnd),
+            startTimeMs: aStart,
+            endTimeMs: aEnd,
             resource: { "service.name": "session" },
             kind: "INTERNAL",
           });
@@ -335,8 +323,8 @@ export function workflowSnapshotToSpans(
               spanId: makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-prompt-${turn.timestamp}`),
               parentSpanId: promptsId,
               name: turn.role === "user" ? "↑ User" : "↓ Assistant",
-              startTimeUnixNano: msToNano(t),
-              endTimeUnixNano: msToNano(t),
+              startTimeMs: t,
+              endTimeMs: t,
               kind: "EVENT",
               attributes: { "pi.text": turn.text },
               resource: { "service.name": turn.role === "user" ? "user" : "assistant" },
@@ -353,8 +341,8 @@ export function workflowSnapshotToSpans(
             spanId: toolsId,
             parentSpanId: agentSpanId,
             name: "Tool calls",
-            startTimeUnixNano: msToNano(toolsStart),
-            endTimeUnixNano: msToNano(toolsEnd + 1),
+            startTimeMs: toolsStart,
+            endTimeMs: toolsEnd + 1,
             resource: { "service.name": "tool" },
             kind: "INTERNAL",
           });
@@ -365,8 +353,8 @@ export function workflowSnapshotToSpans(
               spanId: makeSpanId(`agent-${agent.id}-${wfSnapshot.runId}-toolcall-${turn.timestamp}`),
               parentSpanId: toolsId,
               name,
-              startTimeUnixNano: msToNano(turn.timestamp),
-              endTimeUnixNano: msToNano(turn.timestamp),
+              startTimeMs: turn.timestamp,
+              endTimeMs: turn.timestamp,
               kind: "EVENT",
               resource: { "service.name": "tool" },
             });
