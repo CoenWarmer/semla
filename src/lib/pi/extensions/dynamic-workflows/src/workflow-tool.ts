@@ -1,7 +1,13 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  defineTool,
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { BUILTIN_WORKFLOW_NAMES, resolveWorkflowInvocation } from "./builtin-workflows.ts";
+import {
+  BUILTIN_WORKFLOW_NAMES,
+  resolveWorkflowInvocation,
+} from "./builtin-workflows.ts";
 import {
   createToolUpdateWorkflowDisplay,
   createWorkflowSnapshot,
@@ -64,7 +70,8 @@ const workflowToolSchema = Type.Object({
     // provider-visible tool definition's byte budget.
     Type.Unsafe<Record<string, unknown>>({
       type: "object",
-      description: "Optional JSON value exposed to the workflow script as global `args`.",
+      description:
+        "Optional JSON value exposed to the workflow script as global `args`.",
     }),
   ),
   background: Type.Optional(
@@ -152,7 +159,9 @@ export interface WorkflowToolOptions {
   defaultAgentRetries?: number;
 }
 
-export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefinition<typeof workflowToolSchema, any> {
+export function createWorkflowTool(
+  options: WorkflowToolOptions = {},
+): ToolDefinition<typeof workflowToolSchema, any> {
   const fallbackCwd = options.cwd ?? process.cwd();
   const fallbackStorage = options.storage ?? createWorkflowStorage(fallbackCwd);
   const defaults = resolveWorkflowToolDefaults(options, fallbackCwd);
@@ -203,7 +212,10 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
             "workflow: `name` cannot be combined with `resumeFromRunId` — resume with an edited `script` instead.",
           );
         }
-        const resolved = resolveWorkflowInvocation(params.name, params.args, { storage, cwd });
+        const resolved = resolveWorkflowInvocation(params.name, params.args, {
+          storage,
+          cwd,
+        });
         if (!resolved) {
           throw new Error(
             `workflow: no saved or built-in workflow named "${params.name}". Built-in names: ${BUILTIN_WORKFLOW_NAMES.join(", ")}.`,
@@ -213,7 +225,8 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
         invocationTools = resolved.tools;
         invocationToolset = resolved.toolset;
       } else {
-        if (!params.script) throw new Error("workflow requires either `script` or `name`");
+        if (!params.script)
+          throw new Error("workflow requires either `script` or `name`");
         script = normalizeWorkflowScript(params.script);
       }
       const parsed = parseWorkflowScript(script);
@@ -225,12 +238,17 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
       // detached and its result is delivered back into the conversation).
       if (params.resumeFromRunId) {
         const runId = params.resumeFromRunId;
-        const resumed = await manager.resume(runId, { script, args: params.args });
+        const resumed = await manager.resume(runId, {
+          script,
+          args: params.args,
+        });
         if (!resumed) {
           throw new Error(resumeFailureText(manager, runId));
         }
         return {
-          content: [{ type: "text", text: resumedText(parsed.meta.name, runId) }],
+          content: [
+            { type: "text", text: resumedText(parsed.meta.name, runId) },
+          ],
           details: { runId, background: true, resumedFrom: runId },
         };
       }
@@ -239,11 +257,15 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
       // background run is detached, so checkpoint() falls back to its headless
       // default. Map a checkpoint to ctx.ui.confirm (a yes/no gate) when available.
       const uiCtx = ctx as
-        | { hasUI?: boolean; ui?: { confirm?(title: string, message: string): Promise<boolean> } }
+        | {
+            hasUI?: boolean;
+            ui?: { confirm?(title: string, message: string): Promise<boolean> };
+          }
         | undefined;
       const uiConfirm = uiCtx?.hasUI ? uiCtx.ui?.confirm : undefined;
       const confirm = uiConfirm
-        ? (promptText: string) => uiConfirm.call(uiCtx?.ui, "Workflow checkpoint", promptText)
+        ? (promptText: string) =>
+            uiConfirm.call(uiCtx?.ui, "Workflow checkpoint", promptText)
         : undefined;
 
       // Background execution is the default: return immediately so the turn ends
@@ -261,7 +283,12 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
           toolset: invocationToolset,
         });
         return {
-          content: [{ type: "text", text: backgroundStartedText(parsed.meta.name, runId) }],
+          content: [
+            {
+              type: "text",
+              text: backgroundStartedText(parsed.meta.name, runId),
+            },
+          ],
           details: { runId, background: true },
         };
       }
@@ -296,7 +323,11 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
           },
         });
       } catch (error) {
-        if (signal?.aborted || (error instanceof WorkflowError && error.code === WorkflowErrorCode.WORKFLOW_ABORTED)) {
+        if (
+          signal?.aborted ||
+          (error instanceof WorkflowError &&
+            error.code === WorkflowErrorCode.WORKFLOW_ABORTED)
+        ) {
           for (const agent of snapshot.agents) {
             if (agent.status === "running") {
               agent.status = "skipped";
@@ -322,13 +353,18 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
       display.complete(snapshot);
 
       // Format token usage (include cost when the provider reports it)
-      const tokenSegment = fmtTokenSegment(tokenFigures(result.tokenUsage), fmtFull);
+      const tokenSegment = fmtTokenSegment(
+        tokenFigures(result.tokenUsage),
+        fmtFull,
+      );
       const tokenInfo = tokenSegment
         ? `\n\nToken usage: ${tokenSegment}${result.tokenUsage?.cost ? ` (${fmtCost(result.tokenUsage.cost)})` : ""}`
         : "";
 
       const formattedResult =
-        result.result !== undefined ? `\n\`\`\`json\n${JSON.stringify(result.result, null, 2)}\n\`\`\`` : "";
+        result.result !== undefined
+          ? `\n\`\`\`json\n${JSON.stringify(result.result, null, 2)}\n\`\`\``
+          : "";
 
       return {
         content: [
@@ -361,7 +397,8 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
       // The `content` field is for the LLM (where markdown is preserved), but the TUI
       // renderer (Text component) shows text literally — so we strip markdown here.
       const text = result.content?.[0];
-      const raw = text?.type === "text" ? text.text : theme.fg("muted", "workflow");
+      const raw =
+        text?.type === "text" ? text.text : theme.fg("muted", "workflow");
       const clean = raw
         .replace(/\*\*/g, "")
         .replace(/```[a-z]*\n/g, "")
@@ -376,15 +413,23 @@ export function createWorkflowTool(options: WorkflowToolOptions = {}): ToolDefin
 function resolveWorkflowToolDefaults(
   options: WorkflowToolOptions,
   cwd: string,
-): { agentTimeoutMs: number | null; concurrency?: number; agentRetries: number } {
+): {
+  agentTimeoutMs: number | null;
+  concurrency?: number;
+  agentRetries: number;
+} {
   const settings = loadWorkflowSettings({ cwd });
   return {
     agentTimeoutMs:
       options.defaultAgentTimeoutMs !== undefined
         ? options.defaultAgentTimeoutMs
         : (settings.defaultAgentTimeoutMs ?? null),
-    concurrency: options.defaultConcurrency ?? options.concurrency ?? settings.defaultConcurrency,
-    agentRetries: options.defaultAgentRetries ?? settings.defaultAgentRetries ?? 0,
+    concurrency:
+      options.defaultConcurrency ??
+      options.concurrency ??
+      settings.defaultConcurrency,
+    agentRetries:
+      options.defaultAgentRetries ?? settings.defaultAgentRetries ?? 0,
   };
 }
 
@@ -439,7 +484,10 @@ export function resumedText(name: string, runId: string): string {
  * tool error instead of a silent failure. Inspects live + persisted state to
  * name the concrete reason (not found / running / completed / stopped).
  */
-export function resumeFailureText(manager: WorkflowManager, runId: string): string {
+export function resumeFailureText(
+  manager: WorkflowManager,
+  runId: string,
+): string {
   const active = manager.getRun(runId);
   if (active?.status === "running") {
     return `Cannot resume workflow run "${runId}": it is still running. Wait for it to finish (or /workflows stop ${runId}) before resuming with an edited script.`;
@@ -462,7 +510,9 @@ export function resumeFailureText(manager: WorkflowManager, runId: string): stri
 
 function normalizeWorkflowToolArgs(args: unknown): WorkflowToolInput {
   if (!args || typeof args !== "object")
-    throw new Error("workflow requires an object argument with a `script` string or a `name`");
+    throw new Error(
+      "workflow requires an object argument with a `script` string or a `name`",
+    );
   const value = args as Record<string, unknown>;
   // `name` resolves a saved/built-in workflow at execute() time, so `script` is
   // optional here — but if `script` is present at all it must still be a
@@ -471,16 +521,27 @@ function normalizeWorkflowToolArgs(args: unknown): WorkflowToolInput {
   // of it being silently dropped.
   if (typeof value.name === "string" && value.name.trim()) {
     if (value.script !== undefined && typeof value.script !== "string") {
-      throw new Error("workflow's `script` must be a string when provided alongside `name`");
+      throw new Error(
+        "workflow's `script` must be a string when provided alongside `name`",
+      );
     }
     return {
       ...value,
       name: value.name.trim(),
-      script: typeof value.script === "string" ? normalizeWorkflowScript(value.script) : undefined,
+      script:
+        typeof value.script === "string"
+          ? normalizeWorkflowScript(value.script)
+          : undefined,
     } as WorkflowToolInput;
   }
-  if (typeof value.script !== "string") throw new Error("workflow requires either `script` or `name` to be a string");
-  return { ...value, script: normalizeWorkflowScript(value.script) } as WorkflowToolInput;
+  if (typeof value.script !== "string")
+    throw new Error(
+      "workflow requires either `script` or `name` to be a string",
+    );
+  return {
+    ...value,
+    script: normalizeWorkflowScript(value.script),
+  } as WorkflowToolInput;
 }
 
 function normalizeWorkflowScript(script: string): string {

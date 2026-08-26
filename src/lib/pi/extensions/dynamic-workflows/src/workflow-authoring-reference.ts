@@ -8,15 +8,18 @@ import {
   WORKFLOW_CAPABILITY_CONTRACT,
 } from "./workflow-capability-contract.ts";
 
-const GENERATED_MARKER = "<!-- GENERATED from WORKFLOW_CAPABILITY_CONTRACT; do not edit by hand. -->";
+const GENERATED_MARKER =
+  "<!-- GENERATED from WORKFLOW_CAPABILITY_CONTRACT; do not edit by hand. -->";
 const TABLE_START = "<!-- BEGIN GENERATED SUPPORTED WORKFLOW CAPABILITIES -->";
 const TABLE_END = "<!-- END GENERATED SUPPORTED WORKFLOW CAPABILITIES -->";
 
 /** Package-relative compact capability index generated from the contract. */
-export const CAPABILITY_INDEX_PATH = "skills/workflow-authoring/references/capabilities.md";
+export const CAPABILITY_INDEX_PATH =
+  "skills/workflow-authoring/references/capabilities.md";
 
 /** Package-relative exhaustive generated capability reference. */
-export const CAPABILITY_DETAIL_PATH = "skills/workflow-authoring/references/capability-details.md";
+export const CAPABILITY_DETAIL_PATH =
+  "skills/workflow-authoring/references/capability-details.md";
 
 /** Documents that embed the byte-identical supported-capability table. */
 export const CAPABILITY_TABLE_PUBLICATION_PATHS = [
@@ -25,7 +28,10 @@ export const CAPABILITY_TABLE_PUBLICATION_PATHS = [
   "docs/workflow-authoring.md",
 ] as const;
 /** All generated capability publication surfaces checked for drift. */
-export const CAPABILITY_PUBLICATION_PATHS = [...CAPABILITY_TABLE_PUBLICATION_PATHS, CAPABILITY_DETAIL_PATH] as const;
+export const CAPABILITY_PUBLICATION_PATHS = [
+  ...CAPABILITY_TABLE_PUBLICATION_PATHS,
+  CAPABILITY_DETAIL_PATH,
+] as const;
 
 function escapeTable(value: string): string {
   return value.replaceAll("|", "\\|").replaceAll("\n", " ");
@@ -37,9 +43,14 @@ function display(value: string | null): string {
 
 function optionText(option: OptionDescriptor): string {
   const required = option.optional ? "optional" : "required";
-  const defaultValue = option.default === null ? "" : `; default: ${option.default}`;
-  const constraints = option.constraints.length === 0 ? "" : `; ${option.constraints.join("; ")}`;
-  const dynamic = option.dynamicReference === null ? "" : `; dynamic reference: ${option.dynamicReference}`;
+  const defaultValue =
+    option.default === null ? "" : `; default: ${option.default}`;
+  const constraints =
+    option.constraints.length === 0 ? "" : `; ${option.constraints.join("; ")}`;
+  const dynamic =
+    option.dynamicReference === null
+      ? ""
+      : `; dynamic reference: ${option.dynamicReference}`;
   return `- \`${option.name}\`: ${option.type} (${required}${defaultValue}${constraints}${dynamic})`;
 }
 
@@ -48,7 +59,8 @@ function compactOptions(fact: StaticCapabilityFact): string {
   return fact.options.options
     .map((option) => {
       const optionality = option.optional ? "optional" : "required";
-      const defaultValue = option.default === null ? "" : `; default: ${option.default}`;
+      const defaultValue =
+        option.default === null ? "" : `; default: ${option.default}`;
       return `\`${escapeTable(option.name)}\`: ${escapeTable(option.type)} (${optionality}${escapeTable(defaultValue)})`;
     })
     .join("<br>");
@@ -79,7 +91,12 @@ ${TABLE_END}`;
 function replaceSupportedCapabilityTable(document: string): string | null {
   const start = document.indexOf(TABLE_START);
   const end = document.indexOf(TABLE_END, start + TABLE_START.length);
-  if (start < 0 || end < 0 || document.indexOf(TABLE_START, start + TABLE_START.length) >= 0) return null;
+  if (
+    start < 0 ||
+    end < 0 ||
+    document.indexOf(TABLE_START, start + TABLE_START.length) >= 0
+  )
+    return null;
   const after = end + TABLE_END.length;
   return `${document.slice(0, start)}${renderSupportedCapabilityTable()}${document.slice(after)}`;
 }
@@ -94,16 +111,24 @@ export function writeWorkflowCapabilityPublications(root: string): void {
     }
     const source = readFileSync(absolutePath, "utf8");
     const refreshed = replaceSupportedCapabilityTable(source);
-    if (refreshed === null) throw new Error(`Missing or duplicate generated capability-table anchors in ${path}.`);
+    if (refreshed === null)
+      throw new Error(
+        `Missing or duplicate generated capability-table anchors in ${path}.`,
+      );
     writeFileSync(absolutePath, refreshed);
   }
-  writeFileSync(join(root, CAPABILITY_DETAIL_PATH), renderWorkflowCapabilityDetails());
+  writeFileSync(
+    join(root, CAPABILITY_DETAIL_PATH),
+    renderWorkflowCapabilityDetails(),
+  );
 }
 
 /** Returns every stale surface in stable publication order. Overrides are useful to CI callers and tests. */
 export function checkWorkflowCapabilityPublications(
   root: string,
-  overrides: Readonly<Partial<Record<(typeof CAPABILITY_PUBLICATION_PATHS)[number], string>>> = {},
+  overrides: Readonly<
+    Partial<Record<(typeof CAPABILITY_PUBLICATION_PATHS)[number], string>>
+  > = {},
 ): string[] {
   const stale: string[] = [];
   for (const path of CAPABILITY_TABLE_PUBLICATION_PATHS) {
@@ -115,14 +140,20 @@ export function checkWorkflowCapabilityPublications(
     const refreshed = replaceSupportedCapabilityTable(actual);
     if (refreshed === null || refreshed !== actual) stale.push(path);
   }
-  const details = overrides[CAPABILITY_DETAIL_PATH] ?? readFileSync(join(root, CAPABILITY_DETAIL_PATH), "utf8");
-  if (details !== renderWorkflowCapabilityDetails()) stale.push(CAPABILITY_DETAIL_PATH);
+  const details =
+    overrides[CAPABILITY_DETAIL_PATH] ??
+    readFileSync(join(root, CAPABILITY_DETAIL_PATH), "utf8");
+  if (details !== renderWorkflowCapabilityDetails())
+    stale.push(CAPABILITY_DETAIL_PATH);
   return stale;
 }
 
 function anchorFor(fact: StaticCapabilityFact): string {
   const anchor = fact.reference?.split("#")[1];
-  if (!anchor) throw new Error(`Static capability fact ${fact.id} has no reference anchor.`);
+  if (!anchor)
+    throw new Error(
+      `Static capability fact ${fact.id} has no reference anchor.`,
+    );
   return anchor;
 }
 
@@ -136,9 +167,15 @@ function detail(fact: StaticCapabilityFact): string {
     `- Signature: ${display(fact.signature)}`,
   ];
   if (fact.options) {
-    lines.push(`- Option shape: \`${fact.options.id}\``, ...fact.options.options.map(optionText));
+    lines.push(
+      `- Option shape: \`${fact.options.id}\``,
+      ...fact.options.options.map(optionText),
+    );
   }
-  if (fact.constraints.length > 0) lines.push(...fact.constraints.map((constraint) => `- Constraint: ${constraint}`));
+  if (fact.constraints.length > 0)
+    lines.push(
+      ...fact.constraints.map((constraint) => `- Constraint: ${constraint}`),
+    );
   if (fact.dynamicReference) {
     lines.push(
       `- Dynamic reference owner: \`${fact.dynamicReference.owner}\``,

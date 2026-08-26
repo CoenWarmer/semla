@@ -5,7 +5,11 @@ import type { Node } from "acorn";
 import { parse } from "acorn";
 import type { TSchema } from "typebox";
 import type { AgentUsage } from "./agent.ts";
-import { type AgentRunOptions, WorkflowAgent, type WorkflowAgentOptions } from "./agent.ts";
+import {
+  type AgentRunOptions,
+  WorkflowAgent,
+  type WorkflowAgentOptions,
+} from "./agent.ts";
 import type { AgentHistoryEntry } from "./agent-history.ts";
 import {
   type AgentDefinition,
@@ -14,12 +18,23 @@ import {
   loadAgentRegistry,
   resolveAgentType,
 } from "./agent-registry.ts";
-import { DEFAULT_AGENT_TIMEOUT_MS, MAX_AGENT_RETRIES, MAX_AGENTS_PER_RUN, MAX_CONCURRENCY } from "./config.ts";
+import {
+  DEFAULT_AGENT_TIMEOUT_MS,
+  MAX_AGENT_RETRIES,
+  MAX_AGENTS_PER_RUN,
+  MAX_CONCURRENCY,
+} from "./config.ts";
 import { WorkflowError, WorkflowErrorCode, wrapError } from "./errors.ts";
 import { createWorkflowLogger } from "./logger.ts";
-import { parseModelRoutingFromMeta, resolveModelForPhase } from "./model-routing.ts";
+import {
+  parseModelRoutingFromMeta,
+  resolveModelForPhase,
+} from "./model-routing.ts";
 import { createAgentStoreTools, SharedStore } from "./shared-store.ts";
-import { WORKFLOW_CAPABILITY_CONTRACT, type WorkflowRuntimeImplementations } from "./workflow-capability-contract.ts";
+import {
+  WORKFLOW_CAPABILITY_CONTRACT,
+  type WorkflowRuntimeImplementations,
+} from "./workflow-capability-contract.ts";
 import { createWorktree, removeWorktree, type Worktree } from "./worktree.ts";
 
 /**
@@ -94,7 +109,14 @@ export interface SharedRuntime {
   limiter: <T>(fn: () => Promise<T>) => Promise<T>;
   agentCount: number;
   spent: number;
-  tokenUsage: { input: number; output: number; total: number; cost: number; cacheRead: number; cacheWrite: number };
+  tokenUsage: {
+    input: number;
+    output: number;
+    total: number;
+    cost: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
   depth: number;
   /**
    * Monotonic count of every workflow() call anywhere in this run tree,
@@ -146,8 +168,17 @@ export interface SharedRuntime {
 export type WorkflowRuntimeEvent =
   | { type: "phase"; title: string; budget: number | null }
   | { type: "workflow"; stage: "start" | "end"; name: string; args: unknown }
-  | { type: "quality"; stage: "start" | "end"; helper: "verify" | "judgePanel" | "completenessCheck" }
-  | { type: "control-attempt"; helper: "retry" | "gate"; attempt: number; accepted: boolean };
+  | {
+      type: "quality";
+      stage: "start" | "end";
+      helper: "verify" | "judgePanel" | "completenessCheck";
+    }
+  | {
+      type: "control-attempt";
+      helper: "retry" | "gate";
+      attempt: number;
+      accepted: boolean;
+    };
 
 /** Minimal injected agent surface used by the workflow runtime and deterministic tests. */
 export interface WorkflowAgentRunner {
@@ -239,12 +270,21 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
    * a UI-bearing tool context. Absent => headless: checkpoint() takes its declared
    * default (and journals it), so a detached/background run never hangs.
    */
-  confirm?: (promptText: string, options: CheckpointOptions) => Promise<unknown>;
+  confirm?: (
+    promptText: string,
+    options: CheckpointOptions,
+  ) => Promise<unknown>;
   onLog?: (message: string) => void;
   onPhase?: (title: string) => void;
   /** Runtime behavior trace used by diagnostics and comprehension evidence. */
   onRuntimeEvent?: (event: WorkflowRuntimeEvent) => void;
-  onAgentStart?: (event: { id: string; label: string; phase?: string; prompt: string; model?: string }) => void;
+  onAgentStart?: (event: {
+    id: string;
+    label: string;
+    phase?: string;
+    prompt: string;
+    model?: string;
+  }) => void;
   onAgentEnd?: (event: {
     /**
      * Unique per agent() CALL (not per label — concurrent agents routinely
@@ -266,7 +306,12 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
     errorCode?: WorkflowErrorCode;
     recoverable?: boolean;
   }) => void;
-  onAgentHistory?: (event: { id: string; label: string; phase?: string; history: AgentHistoryEntry[] }) => void;
+  onAgentHistory?: (event: {
+    id: string;
+    label: string;
+    phase?: string;
+    history: AgentHistoryEntry[];
+  }) => void;
   onTokenUsage?: (usage: {
     input: number;
     output: number;
@@ -295,7 +340,9 @@ export interface WorkflowRunResult<T = unknown> {
   };
 }
 
-export interface AgentOptions<TSchemaDef extends TSchema | undefined = TSchema | undefined> {
+export interface AgentOptions<
+  TSchemaDef extends TSchema | undefined = TSchema | undefined,
+> {
   label?: string;
   phase?: string;
   schema?: TSchemaDef;
@@ -351,7 +398,10 @@ interface RuntimeState {
    * budget is untouched. Soft gate (like the global one): spent accrues after each
    * agent, so an in-flight wave may overshoot slightly.
    */
-  phaseBudgets: Map<string, { budget: number; startSpent: number; warned: boolean }>;
+  phaseBudgets: Map<
+    string,
+    { budget: number; startSpent: number; warned: boolean }
+  >;
   logs: string[];
   phases: string[];
   /** Monotonic, assigned at lexical agent() call time — the stable resume key. */
@@ -367,7 +417,8 @@ interface RuntimeState {
 type AnyNode = Node & { [key: string]: any; start: number; end: number };
 
 // Parse-time author hint (fast feedback). The real enforcement is DETERMINISM_PRELUDE.
-const DETERMINISM_BLOCKLIST = /\bDate\s*\.\s*now\b|\bMath\s*\.\s*random\b|\bnew\s+Date\s*\(\s*\)/;
+const DETERMINISM_BLOCKLIST =
+  /\bDate\s*\.\s*now\b|\bMath\s*\.\s*random\b|\bnew\s+Date\s*\(\s*\)/;
 
 /**
  * Runtime determinism hardening, run inside the vm realm BEFORE the user script.
@@ -410,7 +461,10 @@ export async function runWorkflow<T = unknown>(
   // Per-phase model routing from meta.phases[].model, with meta.model as the default.
   const routingConfig = parseModelRoutingFromMeta(meta.phases, meta.model);
   const maxAgents = options.maxAgents ?? MAX_AGENTS_PER_RUN;
-  const agentTimeoutMs = options.agentTimeoutMs !== undefined ? options.agentTimeoutMs : DEFAULT_AGENT_TIMEOUT_MS;
+  const agentTimeoutMs =
+    options.agentTimeoutMs !== undefined
+      ? options.agentTimeoutMs
+      : DEFAULT_AGENT_TIMEOUT_MS;
   const runId = options.runId ?? `run-${started.toString(36)}`;
   const baseCwd = options.cwd ?? process.cwd();
   // Snapshot the agentType registry ONCE per run so two agent() calls can't
@@ -440,7 +494,8 @@ export async function runWorkflow<T = unknown>(
 
   const agentRunner = options.agent ?? new WorkflowAgent(options);
   const concurrency = normalizeConcurrency(
-    options.concurrency ?? Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 8) - 2),
+    options.concurrency ??
+      Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 8) - 2),
   );
   // Global caps + budget are shared with any nested workflow() so they hold across nesting.
   // options.initialTokenUsage (resume() only) seeds spent/tokenUsage so the
@@ -497,20 +552,30 @@ export async function runWorkflow<T = unknown>(
     // Re-declaring re-bases from the current spent (idempotent across resume: the
     // script re-runs phase() and the ceiling is recomputed from live spent).
     if (typeof phaseOptions?.budget === "number" && phaseOptions.budget > 0) {
-      state.phaseBudgets.set(title, { budget: phaseOptions.budget, startSpent: shared.spent, warned: false });
+      state.phaseBudgets.set(title, {
+        budget: phaseOptions.budget,
+        startSpent: shared.spent,
+        warned: false,
+      });
     }
     options.onPhase?.(title);
     options.onRuntimeEvent?.({
       type: "phase",
       title,
-      budget: typeof phaseOptions?.budget === "number" && phaseOptions.budget > 0 ? phaseOptions.budget : null,
+      budget:
+        typeof phaseOptions?.budget === "number" && phaseOptions.budget > 0
+          ? phaseOptions.budget
+          : null,
     });
   };
 
   const budget = Object.freeze({
     total: options.tokenBudget ?? null,
     spent: () => shared.spent,
-    remaining: () => (options.tokenBudget == null ? Infinity : Math.max(0, options.tokenBudget - shared.spent)),
+    remaining: () =>
+      options.tokenBudget == null
+        ? Infinity
+        : Math.max(0, options.tokenBudget - shared.spent),
   });
 
   const agentLimitError = () =>
@@ -525,15 +590,25 @@ export async function runWorkflow<T = unknown>(
   // its doc comment). Every abort check in this file goes through this so the
   // two sources compose identically everywhere instead of only some call
   // sites remembering to check the second one.
-  const isAborted = () => Boolean(options.signal?.aborted || shared.runFatalController.signal.aborted);
+  const isAborted = () =>
+    Boolean(
+      options.signal?.aborted || shared.runFatalController.signal.aborted,
+    );
 
   const throwIfAborted = () => {
     if (isAborted()) {
-      throw new WorkflowError("workflow aborted", WorkflowErrorCode.WORKFLOW_ABORTED, { recoverable: true });
+      throw new WorkflowError(
+        "workflow aborted",
+        WorkflowErrorCode.WORKFLOW_ABORTED,
+        { recoverable: true },
+      );
     }
   };
 
-  const agent = (prompt: string, agentOptions: AgentOptions = {}): Promise<unknown> => {
+  const agent = (
+    prompt: string,
+    agentOptions: AgentOptions = {},
+  ): Promise<unknown> => {
     // Track every call (awaited or not) so the top-level run can drain
     // outstanding calls before completing (see SharedRuntime.inFlight and the
     // drain in the finally below) — this is what stops a forgotten `await`
@@ -566,9 +641,13 @@ export async function runWorkflow<T = unknown>(
     }
 
     if (budget.total !== null && budget.remaining() <= 0) {
-      throw new WorkflowError("workflow token budget exhausted", WorkflowErrorCode.TOKEN_BUDGET_EXHAUSTED, {
-        recoverable: false,
-      });
+      throw new WorkflowError(
+        "workflow token budget exhausted",
+        WorkflowErrorCode.TOKEN_BUDGET_EXHAUSTED,
+        {
+          recoverable: false,
+        },
+      );
     }
 
     const assignedPhase = agentOptions.phase ?? state.currentPhase;
@@ -590,7 +669,9 @@ export async function runWorkflow<T = unknown>(
         }
         if (!pb.warned && phaseSpent >= pb.budget * 0.8) {
           pb.warned = true;
-          log(`phase "${assignedPhase}" at ${Math.round((phaseSpent / pb.budget) * 100)}% of its token sub-budget`);
+          log(
+            `phase "${assignedPhase}" at ${Math.round((phaseSpent / pb.budget) * 100)}% of its token sub-budget`,
+          );
         }
       }
     }
@@ -600,7 +681,9 @@ export async function runWorkflow<T = unknown>(
     // Resolve a named agentType to its bound definition (tools/model/prompt).
     const agentDef = resolveAgentType(agentOptions.agentType, agentRegistry);
     if (agentOptions.agentType && !agentDef) {
-      log(`unknown agentType "${agentOptions.agentType}"; using default tools/model`);
+      log(
+        `unknown agentType "${agentOptions.agentType}"; using default tools/model`,
+      );
     }
 
     // Model precedence: explicit agentOptions.model > agentType.model > tier > phase model.
@@ -609,7 +692,10 @@ export async function runWorkflow<T = unknown>(
     // the phase model) decides inside WorkflowAgent.run().
     const explicitModel = agentOptions.model ?? agentDef?.model;
     const modelSpec =
-      explicitModel ?? (agentOptions.tier ? undefined : resolveModelForPhase(assignedPhase, routingConfig));
+      explicitModel ??
+      (agentOptions.tier
+        ? undefined
+        : resolveModelForPhase(assignedPhase, routingConfig));
     // For display in /workflows: the model this agent runs on — its explicit/phase
     // spec, else the session's main model. The real resolved id overrides this via
     // onModelResolved once the subagent session is created.
@@ -618,7 +704,13 @@ export async function runWorkflow<T = unknown>(
     // Deterministic resume key: assigned at lexical call time, before the limiter,
     // so parallel()/pipeline() fan-out is reproducible for a fixed script.
     const callIndex = state.callSeq++;
-    const callHash = hashAgentCall(prompt, modelSpec, assignedPhase, agentOptions, agentDefinitionKey(agentDef));
+    const callHash = hashAgentCall(
+      prompt,
+      modelSpec,
+      assignedPhase,
+      agentOptions,
+      agentDefinitionKey(agentDef),
+    );
     // Store delta key: callIndex alone is NOT run-unique. A nested workflow()
     // call (see workflowFn below) shares this run's SharedStore instance but
     // restarts its own callSeq at 0, so a parent agent and a concurrently
@@ -639,7 +731,8 @@ export async function runWorkflow<T = unknown>(
     // spent accrues after each agent, matching Claude Code; in-flight agents may
     // push slightly past total, then further agent() calls throw.)
     shared.agentCount++;
-    const label = requestedLabel || defaultAgentLabel(assignedPhase, shared.agentCount);
+    const label =
+      requestedLabel || defaultAgentLabel(assignedPhase, shared.agentCount);
 
     // Longest-unchanged-prefix resume: replay a cached result only while the
     // prefix is still intact — this call's index is before the first changed/new
@@ -652,9 +745,16 @@ export async function runWorkflow<T = unknown>(
     // entry, or vice versa (see JournalEntry.runId).
     const cached = options.resumeJournal?.get(deltaKey);
     const hashMatches = cached != null && cached.hash === callHash;
-    const cachedEmptyOutput = hashMatches && isEmptyTextAgentResult(cached.result, agentOptions.schema);
+    const cachedEmptyOutput =
+      hashMatches && isEmptyTextAgentResult(cached.result, agentOptions.schema);
     if (hashMatches && !cachedEmptyOutput && callIndex < state.firstMiss) {
-      options.onAgentStart?.({ id: deltaKey, label, phase: assignedPhase, prompt, model: displayModel });
+      options.onAgentStart?.({
+        id: deltaKey,
+        label,
+        phase: assignedPhase,
+        prompt,
+        model: displayModel,
+      });
       options.onAgentEnd?.({
         id: deltaKey,
         label,
@@ -671,14 +771,26 @@ export async function runWorkflow<T = unknown>(
     }
     // A genuine miss (no journal entry, or the hash changed) marks where the
     // unchanged prefix ends; this call and every later one then run live.
-    if (!hashMatches || cachedEmptyOutput) state.firstMiss = Math.min(state.firstMiss, callIndex);
+    if (!hashMatches || cachedEmptyOutput)
+      state.firstMiss = Math.min(state.firstMiss, callIndex);
 
     return limiter(async () => {
-      const timeout = agentOptions.timeoutMs !== undefined ? agentOptions.timeoutMs : agentTimeoutMs;
-      const retryAttempts = normalizeAgentRetries(agentOptions.retries ?? options.agentRetries ?? 0);
+      const timeout =
+        agentOptions.timeoutMs !== undefined
+          ? agentOptions.timeoutMs
+          : agentTimeoutMs;
+      const retryAttempts = normalizeAgentRetries(
+        agentOptions.retries ?? options.agentRetries ?? 0,
+      );
       const maxAttempts = retryAttempts + 1;
 
-      options.onAgentStart?.({ id: deltaKey, label, phase: assignedPhase, prompt, model: displayModel });
+      options.onAgentStart?.({
+        id: deltaKey,
+        label,
+        phase: assignedPhase,
+        prompt,
+        model: displayModel,
+      });
 
       // Optional per-agent worktree isolation (deterministic name -> stable resume keys).
       // Precedence: explicit call-site isolation > agentDef isolation.
@@ -688,8 +800,12 @@ export async function runWorkflow<T = unknown>(
       let worktree: Worktree | undefined;
       const resolvedIsolation = agentOptions.isolation ?? agentDef?.isolation;
       if (resolvedIsolation === "worktree") {
-        worktree = await createWorktree(baseCwd, `${runId}-${callIndex}-${label}`);
-        if (!worktree.isolated) log(`isolation ignored for "${label}" (${worktree.reason})`);
+        worktree = await createWorktree(
+          baseCwd,
+          `${runId}-${callIndex}-${label}`,
+        );
+        if (!worktree.isolated)
+          log(`isolation ignored for "${label}" (${worktree.reason})`);
       }
       const runCwd = worktree?.isolated ? worktree.cwd : undefined;
 
@@ -698,7 +814,10 @@ export async function runWorkflow<T = unknown>(
       // per retry attempt so a failed attempt does not double-count the next one.
       let usage: AgentUsage | undefined;
       const recordTokens = (result: unknown): number => {
-        const tokens = usage && usage.total > 0 ? usage.total : estimateTokens(result) + estimateTokens(prompt);
+        const tokens =
+          usage && usage.total > 0
+            ? usage.total
+            : estimateTokens(result) + estimateTokens(prompt);
         if (usage) {
           shared.tokenUsage.input += usage.input;
           shared.tokenUsage.output += usage.output;
@@ -740,10 +859,16 @@ export async function runWorkflow<T = unknown>(
             } else {
               if (externalSignal) {
                 onExternalAbort = () => agentController.abort();
-                externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+                externalSignal.addEventListener("abort", onExternalAbort, {
+                  once: true,
+                });
               }
               onRunFatal = () => agentController.abort();
-              shared.runFatalController.signal.addEventListener("abort", onRunFatal, { once: true });
+              shared.runFatalController.signal.addEventListener(
+                "abort",
+                onRunFatal,
+                { once: true },
+              );
             }
             const runPromise = agentRunner.run(prompt, {
               label,
@@ -751,7 +876,12 @@ export async function runWorkflow<T = unknown>(
               sessionName: `workflow:${runId} ${label}`,
               schema: agentOptions.schema,
               signal: agentController.signal,
-              instructions: buildAgentInstructions(assignedPhase, agentOptions, agentDef, resolvedIsolation),
+              instructions: buildAgentInstructions(
+                assignedPhase,
+                agentOptions,
+                agentDef,
+                resolvedIsolation,
+              ),
               model: modelSpec,
               tier: agentOptions.tier,
               modelRegistry: options.modelRegistry,
@@ -766,32 +896,51 @@ export async function runWorkflow<T = unknown>(
               onModelResolved: (id: string) => {
                 displayModel = id;
               },
-              onModelFallback: ({ tier, requestedSpec }: { tier: string; requestedSpec: string }) => {
+              onModelFallback: ({
+                tier,
+                requestedSpec,
+              }: {
+                tier: string;
+                requestedSpec: string;
+              }) => {
                 // Untagged agents' implicit default tier degrading to the session
                 // default must stay visible in the run's own log/event stream, not
                 // just a console.warn (#131) — an explicit model/tier pin instead
                 // throws MODEL_NOT_FOUND and never reaches this callback.
-                log(`default "${tier}" tier model "${requestedSpec}" unavailable — using the session default`);
+                log(
+                  `default "${tier}" tier model "${requestedSpec}" unavailable — using the session default`,
+                );
               },
               onUsage: (u: AgentUsage) => {
                 usage = u;
               },
               onHistory: (history: AgentHistoryEntry[]) => {
-                options.onAgentHistory?.({ id: deltaKey, label, phase: assignedPhase, history });
+                options.onAgentHistory?.({
+                  id: deltaKey,
+                  label,
+                  phase: assignedPhase,
+                  history,
+                });
               },
             });
             // After a timeout the run() promise still settles later, rejecting with
             // "aborted" once agentController fires; the race has already resolved,
             // so swallow that to avoid an unhandled rejection.
             runPromise.catch(() => {});
-            const result = await withTimeout(runPromise, timeout, label, () => agentController.abort());
+            const result = await withTimeout(runPromise, timeout, label, () =>
+              agentController.abort(),
+            );
 
             throwIfAborted();
             if (isEmptyTextAgentResult(result, agentOptions.schema)) {
-              throw new WorkflowError("Subagent produced no assistant output", WorkflowErrorCode.AGENT_EMPTY_OUTPUT, {
-                recoverable: true,
-                agentLabel: label,
-              });
+              throw new WorkflowError(
+                "Subagent produced no assistant output",
+                WorkflowErrorCode.AGENT_EMPTY_OUTPUT,
+                {
+                  recoverable: true,
+                  agentLabel: label,
+                },
+              );
             }
 
             const tokens = recordTokens(result);
@@ -817,7 +966,9 @@ export async function runWorkflow<T = unknown>(
             if (isAborted()) throw error;
 
             const workflowError = wrapError(error, { agentLabel: label });
-            logger.error(`agent ${label} attempt ${attempt}/${maxAttempts} failed: ${workflowError.message}`);
+            logger.error(
+              `agent ${label} attempt ${attempt}/${maxAttempts} failed: ${workflowError.message}`,
+            );
             const tokens = recordTokens(null);
             // This attempt's store writes must not survive it — a failed
             // attempt shares this call's deltaKey with every other attempt
@@ -868,8 +1019,13 @@ export async function runWorkflow<T = unknown>(
             // Drop this attempt's abort listeners so they don't accrue one entry
             // per attempt on the run's signal / runFatalController for the whole
             // run (#109 hygiene).
-            if (onExternalAbort) externalSignal?.removeEventListener("abort", onExternalAbort);
-            if (onRunFatal) shared.runFatalController.signal.removeEventListener("abort", onRunFatal);
+            if (onExternalAbort)
+              externalSignal?.removeEventListener("abort", onExternalAbort);
+            if (onRunFatal)
+              shared.runFatalController.signal.removeEventListener(
+                "abort",
+                onRunFatal,
+              );
           }
         }
         return null;
@@ -882,9 +1038,12 @@ export async function runWorkflow<T = unknown>(
 
   const parallel = async (thunks: Array<() => Promise<unknown>>) => {
     throwIfAborted();
-    if (!Array.isArray(thunks)) throw new TypeError("parallel() expects an array of functions");
+    if (!Array.isArray(thunks))
+      throw new TypeError("parallel() expects an array of functions");
     if (thunks.some((thunk) => typeof thunk !== "function")) {
-      throw new TypeError("parallel() expects an array of functions, not promises. Wrap each call: () => agent(...)");
+      throw new TypeError(
+        "parallel() expects an array of functions, not promises. Wrap each call: () => agent(...)",
+      );
     }
     // Batch-scoped cancellation: agent() calls made (directly or transitively)
     // from these thunks see this store via fanoutScope.getStore(). A breach in
@@ -907,7 +1066,8 @@ export async function runWorkflow<T = unknown>(
               // token budget stays a soft gate by design (in-flight agents may
               // finish past it), and other non-recoverable errors don't imply
               // the rest of the batch is doomed.
-              if (workflowError.code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED) batch.cancelled = true;
+              if (workflowError.code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED)
+                batch.cancelled = true;
               throw workflowError;
             }
             log(`parallel[${index}] failed: ${workflowError.message}`);
@@ -920,12 +1080,17 @@ export async function runWorkflow<T = unknown>(
 
   const pipeline = async (
     items: unknown[],
-    ...stages: Array<(prev: unknown, original: unknown, index: number) => unknown>
+    ...stages: Array<
+      (prev: unknown, original: unknown, index: number) => unknown
+    >
   ) => {
     throwIfAborted();
-    if (!Array.isArray(items)) throw new TypeError("pipeline() expects an array as the first argument");
+    if (!Array.isArray(items))
+      throw new TypeError("pipeline() expects an array as the first argument");
     if (stages.some((stage) => typeof stage !== "function")) {
-      throw new TypeError("pipeline() stages must be functions: pipeline(items, item => ..., result => ...)");
+      throw new TypeError(
+        "pipeline() stages must be functions: pipeline(items, item => ..., result => ...)",
+      );
     }
     // Batch-scoped cancellation — see parallel() for the rationale.
     const batch = { cancelled: false };
@@ -943,7 +1108,10 @@ export async function runWorkflow<T = unknown>(
               const workflowError = wrapError(error);
               // Non-recoverable failures halt the whole run (see parallel()).
               if (!workflowError.recoverable) {
-                if (workflowError.code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED) batch.cancelled = true;
+                if (
+                  workflowError.code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED
+                )
+                  batch.cancelled = true;
                 throw workflowError;
               }
               log(`pipeline[${index}] failed: ${workflowError.message}`);
@@ -961,14 +1129,23 @@ export async function runWorkflow<T = unknown>(
   const workflowFn = async (nameOrScript: string, childArgs?: unknown) => {
     throwIfAborted();
     if (shared.depth >= 1) {
-      throw new WorkflowError("workflow() can nest only one level deep", WorkflowErrorCode.SCRIPT_VALIDATION_ERROR, {
-        recoverable: false,
-      });
+      throw new WorkflowError(
+        "workflow() can nest only one level deep",
+        WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+        {
+          recoverable: false,
+        },
+      );
     }
     const resolved = options.loadSavedWorkflow?.(String(nameOrScript));
     const childScript = resolved ?? String(nameOrScript);
     const workflowName = String(nameOrScript);
-    options.onRuntimeEvent?.({ type: "workflow", stage: "start", name: workflowName, args: childArgs });
+    options.onRuntimeEvent?.({
+      type: "workflow",
+      stage: "start",
+      name: workflowName,
+      args: childArgs,
+    });
     shared.depth++;
     try {
       // Propagate the resumeJournal into the child frame ONLY while the
@@ -1007,7 +1184,12 @@ export async function runWorkflow<T = unknown>(
       return child.result;
     } finally {
       shared.depth--;
-      options.onRuntimeEvent?.({ type: "workflow", stage: "end", name: workflowName, args: childArgs });
+      options.onRuntimeEvent?.({
+        type: "workflow",
+        stage: "end",
+        name: workflowName,
+        args: childArgs,
+      });
     }
   };
 
@@ -1022,12 +1204,24 @@ export async function runWorkflow<T = unknown>(
   };
   const verify = async (
     item: unknown,
-    opts: { reviewers?: number; threshold?: number; lens?: string | string[] } = {},
+    opts: {
+      reviewers?: number;
+      threshold?: number;
+      lens?: string | string[];
+    } = {},
   ) => {
-    options.onRuntimeEvent?.({ type: "quality", stage: "start", helper: "verify" });
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "start",
+      helper: "verify",
+    });
     const reviewers = Math.max(1, opts.reviewers ?? 2);
     const threshold = opts.threshold ?? 0.5;
-    const lenses = opts.lens ? (Array.isArray(opts.lens) ? opts.lens : [opts.lens]) : [];
+    const lenses = opts.lens
+      ? Array.isArray(opts.lens)
+        ? opts.lens
+        : [opts.lens]
+      : [];
     const claim = typeof item === "string" ? item : JSON.stringify(item);
     const votes = (
       await parallel(
@@ -1048,7 +1242,11 @@ export async function runWorkflow<T = unknown>(
       total: votes.length,
       votes,
     };
-    options.onRuntimeEvent?.({ type: "quality", stage: "end", helper: "verify" });
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "end",
+      helper: "verify",
+    });
     return verdict;
   };
 
@@ -1057,38 +1255,63 @@ export async function runWorkflow<T = unknown>(
     properties: { score: { type: "number" }, reason: { type: "string" } },
     required: ["score"],
   };
-  const judgePanel = async (attempts: unknown[], opts: { judges?: number; rubric?: string } = {}) => {
-    options.onRuntimeEvent?.({ type: "quality", stage: "start", helper: "judgePanel" });
+  const judgePanel = async (
+    attempts: unknown[],
+    opts: { judges?: number; rubric?: string } = {},
+  ) => {
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "start",
+      helper: "judgePanel",
+    });
     const judges = Math.max(1, opts.judges ?? 3);
     const rubric = opts.rubric ?? "overall quality and correctness";
     const scored = (
       await parallel(
-        (Array.isArray(attempts) ? attempts : []).map((att, idx) => async () => {
-          const text = typeof att === "string" ? att : JSON.stringify(att);
-          const js = (
-            await parallel(
-              Array.from(
-                { length: judges },
-                (_v, j) => () =>
-                  agent(
-                    `Score this candidate from 0 to 1 on: ${rubric}. Reply with the score.\n\nCandidate:\n${text}`,
-                    {
-                      label: `judge ${idx + 1}.${j + 1}`,
-                      schema: JUDGE_SCHEMA,
-                    },
-                  ),
-              ),
-            )
-          ).filter(Boolean) as Array<{ score?: number }>;
-          const score = js.length ? js.reduce((s, v) => s + (Number(v?.score) || 0), 0) / js.length : 0;
-          return { index: idx, attempt: att, score, judgments: js };
-        }),
+        (Array.isArray(attempts) ? attempts : []).map(
+          (att, idx) => async () => {
+            const text = typeof att === "string" ? att : JSON.stringify(att);
+            const js = (
+              await parallel(
+                Array.from(
+                  { length: judges },
+                  (_v, j) => () =>
+                    agent(
+                      `Score this candidate from 0 to 1 on: ${rubric}. Reply with the score.\n\nCandidate:\n${text}`,
+                      {
+                        label: `judge ${idx + 1}.${j + 1}`,
+                        schema: JUDGE_SCHEMA,
+                      },
+                    ),
+                ),
+              )
+            ).filter(Boolean) as Array<{ score?: number }>;
+            const score = js.length
+              ? js.reduce((s, v) => s + (Number(v?.score) || 0), 0) / js.length
+              : 0;
+            return { index: idx, attempt: att, score, judgments: js };
+          },
+        ),
       )
-    ).filter(Boolean) as Array<{ index: number; attempt: unknown; score: number; judgments: unknown[] }>;
+    ).filter(Boolean) as Array<{
+      index: number;
+      attempt: unknown;
+      score: number;
+      judgments: unknown[];
+    }>;
     // Highest mean score; stable tie-break by input index.
     let best = scored[0];
-    for (const s of scored) if (s.score > best.score || (s.score === best.score && s.index < best.index)) best = s;
-    options.onRuntimeEvent?.({ type: "quality", stage: "end", helper: "judgePanel" });
+    for (const s of scored)
+      if (
+        s.score > best.score ||
+        (s.score === best.score && s.index < best.index)
+      )
+        best = s;
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "end",
+      helper: "judgePanel",
+    });
     return best;
   };
 
@@ -1113,10 +1336,16 @@ export async function runWorkflow<T = unknown>(
       } catch (error) {
         // Budget / agent-limit exhaustion: return the partial result, don't abort.
         const code = (error as { code?: string })?.code;
-        if (code === WorkflowErrorCode.TOKEN_BUDGET_EXHAUSTED || code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED) break;
+        if (
+          code === WorkflowErrorCode.TOKEN_BUDGET_EXHAUSTED ||
+          code === WorkflowErrorCode.AGENT_LIMIT_EXCEEDED
+        )
+          break;
         throw error;
       }
-      const fresh = (Array.isArray(items) ? items : []).filter((x) => x != null && !seen.has(key(x)));
+      const fresh = (Array.isArray(items) ? items : []).filter(
+        (x) => x != null && !seen.has(key(x)),
+      );
       if (!fresh.length) {
         dry++;
         continue;
@@ -1132,16 +1361,27 @@ export async function runWorkflow<T = unknown>(
 
   const COMPLETENESS_SCHEMA = {
     type: "object",
-    properties: { complete: { type: "boolean" }, missing: { type: "array", items: { type: "string" } } },
+    properties: {
+      complete: { type: "boolean" },
+      missing: { type: "array", items: { type: "string" } },
+    },
     required: ["complete"],
   };
   const completenessCheck = async (taskArgs: unknown, results: unknown) => {
-    options.onRuntimeEvent?.({ type: "quality", stage: "start", helper: "completenessCheck" });
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "start",
+      helper: "completenessCheck",
+    });
     const verdict = await agent(
       `Given the task and the results gathered so far, list what is still MISSING (modalities not covered, claims unverified, gaps). Be specific and concise.\n\nTask:\n${JSON.stringify(taskArgs)}\n\nResults so far:\n${JSON.stringify(results).slice(0, 4000)}`,
       { label: "completeness critic", schema: COMPLETENESS_SCHEMA },
     );
-    options.onRuntimeEvent?.({ type: "quality", stage: "end", helper: "completenessCheck" });
+    options.onRuntimeEvent?.({
+      type: "quality",
+      stage: "end",
+      helper: "completenessCheck",
+    });
     return verdict;
   };
 
@@ -1159,14 +1399,26 @@ export async function runWorkflow<T = unknown>(
     for (let i = 0; i < attempts; i++) {
       last = await thunk(i);
       const accepted = !opts.until || opts.until(last);
-      options.onRuntimeEvent?.({ type: "control-attempt", helper: "retry", attempt: i + 1, accepted });
+      options.onRuntimeEvent?.({
+        type: "control-attempt",
+        helper: "retry",
+        attempt: i + 1,
+        accepted,
+      });
       if (accepted) return last;
     }
     return last; // attempts exhausted — return the last result (caller inspects it)
   };
   const gate = async (
-    thunk: (feedback: string | undefined, attempt: number) => Promise<unknown> | unknown,
-    validator: (r: unknown) => Promise<{ ok: boolean; feedback?: string }> | { ok: boolean; feedback?: string },
+    thunk: (
+      feedback: string | undefined,
+      attempt: number,
+    ) => Promise<unknown> | unknown,
+    validator: (
+      r: unknown,
+    ) =>
+      | Promise<{ ok: boolean; feedback?: string }>
+      | { ok: boolean; feedback?: string },
     opts: { attempts?: number } = {},
   ) => {
     const attempts = Math.max(1, opts.attempts ?? 3);
@@ -1176,7 +1428,12 @@ export async function runWorkflow<T = unknown>(
       last = await thunk(feedback, i);
       const verdict = await validator(last);
       const accepted = Boolean(verdict?.ok);
-      options.onRuntimeEvent?.({ type: "control-attempt", helper: "gate", attempt: i + 1, accepted });
+      options.onRuntimeEvent?.({
+        type: "control-attempt",
+        helper: "gate",
+        attempt: i + 1,
+        accepted,
+      });
       if (accepted) return { ok: true, value: last, attempts: i + 1 };
       feedback = verdict?.feedback; // fed into the next attempt
     }
@@ -1188,9 +1445,15 @@ export async function runWorkflow<T = unknown>(
   // replays by callIndex exactly like a cached agent() — the genuine edge over CC,
   // whose steering is in-session only. Headless (no UI threaded in): takes the
   // declared default and journals THAT, so a detached/background run never hangs.
-  const checkpoint = async (promptText: string, checkpointOptions: CheckpointOptions = {}) => {
+  const checkpoint = async (
+    promptText: string,
+    checkpointOptions: CheckpointOptions = {},
+  ) => {
     throwIfAborted();
-    if (typeof promptText !== "string") throw new TypeError("checkpoint(promptText, options?) needs a prompt string");
+    if (typeof promptText !== "string")
+      throw new TypeError(
+        "checkpoint(promptText, options?) needs a prompt string",
+      );
     if (shared.agentCount >= maxAgents) {
       throw agentLimitError();
     }
@@ -1199,11 +1462,16 @@ export async function runWorkflow<T = unknown>(
     // Namespaced by runId like agent()'s deltaKey — see JournalEntry.runId.
     const journalKey = `${runId}:${callIndex}`;
     const cached = options.resumeJournal?.get(journalKey);
-    if (cached != null && cached.hash === callHash && callIndex < state.firstMiss) {
+    if (
+      cached != null &&
+      cached.hash === callHash &&
+      callIndex < state.firstMiss
+    ) {
       shared.agentCount++;
       return cached.result; // replay the journaled human reply
     }
-    if (cached == null || cached.hash !== callHash) state.firstMiss = Math.min(state.firstMiss, callIndex);
+    if (cached == null || cached.hash !== callHash)
+      state.firstMiss = Math.min(state.firstMiss, callIndex);
     shared.agentCount++;
 
     let reply: unknown;
@@ -1219,7 +1487,12 @@ export async function runWorkflow<T = unknown>(
       reply = checkpointOptions.default ?? true;
     }
     throwIfAborted();
-    options.onAgentJournal?.({ index: callIndex, runId, hash: callHash, result: reply });
+    options.onAgentJournal?.({
+      index: callIndex,
+      runId,
+      hash: callHash,
+      result: reply,
+    });
     return reply;
   };
 
@@ -1249,7 +1522,9 @@ export async function runWorkflow<T = unknown>(
     },
   } satisfies WorkflowRuntimeImplementations;
   const { globals: projectGlobals, diagnostics: bindingDiagnostics } =
-    WORKFLOW_CAPABILITY_CONTRACT.assembleRuntimeBindings(runtimeImplementations);
+    WORKFLOW_CAPABILITY_CONTRACT.assembleRuntimeBindings(
+      runtimeImplementations,
+    );
   for (const diagnostic of bindingDiagnostics) logger.warn(diagnostic.message);
   const context = vm.createContext({
     ...projectGlobals,
@@ -1261,7 +1536,9 @@ export async function runWorkflow<T = unknown>(
 
   const wrapped = `${DETERMINISM_PRELUDE}\n(async () => {\n${body}\n})()`;
   try {
-    const result = await new vm.Script(wrapped, { filename: `${meta.name || "workflow"}.js` }).runInContext(context);
+    const result = await new vm.Script(wrapped, {
+      filename: `${meta.name || "workflow"}.ts`,
+    }).runInContext(context);
 
     // Persist logs
     const logFile = logger.persist();
@@ -1330,7 +1607,9 @@ export async function runWorkflow<T = unknown>(
       // Configure a finite agentTimeoutMs (run- or per-agent-level) for any
       // workflow where this is a real risk; there is no drain-side timeout.
       if (shared.inFlight.size > 0) {
-        log(`waiting for ${shared.inFlight.size} outstanding agent() call(s) to settle before this run completes`);
+        log(
+          `waiting for ${shared.inFlight.size} outstanding agent() call(s) to settle before this run completes`,
+        );
       }
       while (shared.inFlight.size > 0) {
         await Promise.allSettled(Array.from(shared.inFlight));
@@ -1340,7 +1619,10 @@ export async function runWorkflow<T = unknown>(
   }
 }
 
-export function parseWorkflowScript(script: string): { meta: WorkflowMeta; body: string } {
+export function parseWorkflowScript(script: string): {
+  meta: WorkflowMeta;
+  body: string;
+} {
   if (DETERMINISM_BLOCKLIST.test(script)) {
     throw new WorkflowError(
       "Workflow scripts must be deterministic: Date.now()/Math.random()/new Date() are unavailable",
@@ -1367,7 +1649,10 @@ export function parseWorkflowScript(script: string): { meta: WorkflowMeta; body:
   }
 
   const declaration = first.declaration as AnyNode | null;
-  if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const") {
+  if (
+    declaration?.type !== "VariableDeclaration" ||
+    declaration.kind !== "const"
+  ) {
     throw new WorkflowError(
       "meta export must be `export const meta = ...`",
       WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
@@ -1377,21 +1662,33 @@ export function parseWorkflowScript(script: string): { meta: WorkflowMeta; body:
     );
   }
   if (declaration.declarations.length !== 1) {
-    throw new WorkflowError("meta export must declare only `meta`", WorkflowErrorCode.SCRIPT_VALIDATION_ERROR, {
-      recoverable: false,
-    });
+    throw new WorkflowError(
+      "meta export must declare only `meta`",
+      WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+      {
+        recoverable: false,
+      },
+    );
   }
 
   const declarator = declaration.declarations[0] as AnyNode;
   if (declarator.id?.type !== "Identifier" || declarator.id.name !== "meta") {
-    throw new WorkflowError("meta export must declare `meta`", WorkflowErrorCode.SCRIPT_VALIDATION_ERROR, {
-      recoverable: false,
-    });
+    throw new WorkflowError(
+      "meta export must declare `meta`",
+      WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+      {
+        recoverable: false,
+      },
+    );
   }
   if (!declarator.init)
-    throw new WorkflowError("meta must have a literal value", WorkflowErrorCode.SCRIPT_VALIDATION_ERROR, {
-      recoverable: false,
-    });
+    throw new WorkflowError(
+      "meta must have a literal value",
+      WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+      {
+        recoverable: false,
+      },
+    );
 
   const meta = evaluateLiteral(declarator.init, "meta");
   validateMeta(meta);
@@ -1407,12 +1704,20 @@ function evaluateLiteral(node: AnyNode, path: string): unknown {
     case "ObjectExpression": {
       const out: Record<string, unknown> = {};
       for (const prop of node.properties as AnyNode[]) {
-        if (prop.type === "SpreadElement") throw new Error(`spread not allowed in ${path}`);
-        if (prop.type !== "Property") throw new Error(`only plain properties allowed in ${path}`);
-        if (prop.computed) throw new Error(`computed keys not allowed in ${path}`);
-        if (prop.kind !== "init" || prop.method) throw new Error(`methods/accessors not allowed in ${path}`);
+        if (prop.type === "SpreadElement")
+          throw new Error(`spread not allowed in ${path}`);
+        if (prop.type !== "Property")
+          throw new Error(`only plain properties allowed in ${path}`);
+        if (prop.computed)
+          throw new Error(`computed keys not allowed in ${path}`);
+        if (prop.kind !== "init" || prop.method)
+          throw new Error(`methods/accessors not allowed in ${path}`);
         const key = propertyKey(prop.key as AnyNode, path);
-        if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        if (
+          key === "__proto__" ||
+          key === "constructor" ||
+          key === "prototype"
+        ) {
           throw new Error(`reserved key name not allowed in ${path}: ${key}`);
         }
         out[key] = evaluateLiteral(prop.value as AnyNode, `${path}.${key}`);
@@ -1422,16 +1727,24 @@ function evaluateLiteral(node: AnyNode, path: string): unknown {
     case "ArrayExpression":
       return (node.elements as Array<AnyNode | null>).map((element, index) => {
         if (!element) throw new Error(`sparse arrays not allowed in ${path}`);
-        if (element.type === "SpreadElement") throw new Error(`spread not allowed in ${path}`);
+        if (element.type === "SpreadElement")
+          throw new Error(`spread not allowed in ${path}`);
         return evaluateLiteral(element, `${path}[${index}]`);
       });
     case "Literal":
       return node.value;
     case "TemplateLiteral":
-      if (node.expressions.length > 0) throw new Error(`template interpolation not allowed in ${path}`);
-      return node.quasis.map((quasi: AnyNode) => quasi.value.cooked ?? quasi.value.raw).join("");
+      if (node.expressions.length > 0)
+        throw new Error(`template interpolation not allowed in ${path}`);
+      return node.quasis
+        .map((quasi: AnyNode) => quasi.value.cooked ?? quasi.value.raw)
+        .join("");
     case "UnaryExpression":
-      if (node.operator === "-" && node.argument?.type === "Literal" && typeof node.argument.value === "number") {
+      if (
+        node.operator === "-" &&
+        node.argument?.type === "Literal" &&
+        typeof node.argument.value === "number"
+      ) {
         return -node.argument.value;
       }
       throw new Error(`only negative-number unary allowed in ${path}`);
@@ -1442,22 +1755,33 @@ function evaluateLiteral(node: AnyNode, path: string): unknown {
 
 function propertyKey(node: AnyNode, path: string): string {
   if (node.type === "Identifier") return node.name;
-  if (node.type === "Literal" && (typeof node.value === "string" || typeof node.value === "number"))
+  if (
+    node.type === "Literal" &&
+    (typeof node.value === "string" || typeof node.value === "number")
+  )
     return String(node.value);
   throw new Error(`unsupported key type in ${path}: ${node.type}`);
 }
 
 function validateMeta(meta: unknown): asserts meta is WorkflowMeta {
-  if (!meta || typeof meta !== "object") throw new Error("meta must be an object");
+  if (!meta || typeof meta !== "object")
+    throw new Error("meta must be an object");
   const value = meta as WorkflowMeta;
-  if (typeof value.name !== "string" || !value.name.trim()) throw new Error("meta.name must be a non-empty string");
+  if (typeof value.name !== "string" || !value.name.trim())
+    throw new Error("meta.name must be a non-empty string");
   if (typeof value.description !== "string" || !value.description.trim())
     throw new Error("meta.description must be a non-empty string");
-  if (value.model !== undefined && typeof value.model !== "string") throw new Error("meta.model must be a string");
+  if (value.model !== undefined && typeof value.model !== "string")
+    throw new Error("meta.model must be a string");
   if (value.phases !== undefined) {
-    if (!Array.isArray(value.phases)) throw new Error("meta.phases must be an array");
+    if (!Array.isArray(value.phases))
+      throw new Error("meta.phases must be an array");
     for (const phase of value.phases) {
-      if (!phase || typeof phase !== "object" || typeof (phase as WorkflowMetaPhase).title !== "string") {
+      if (
+        !phase ||
+        typeof phase !== "object" ||
+        typeof (phase as WorkflowMetaPhase).title !== "string"
+      ) {
         throw new Error("each meta phase must have a title string");
       }
     }
@@ -1472,7 +1796,8 @@ function createLimiter(limit: number) {
     queue.shift()?.();
   };
   return async <T>(fn: () => Promise<T>): Promise<T> => {
-    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
+    if (active >= limit)
+      await new Promise<void>((resolve) => queue.push(resolve));
     active++;
     try {
       return await fn();
@@ -1504,7 +1829,10 @@ function defaultAgentLabel(phase: string | undefined, index: number): string {
  * cached decision from before the identity surface was fixed is worse than a
  * one-time re-ask.
  */
-function hashCheckpoint(promptText: string, options: CheckpointOptions): string {
+function hashCheckpoint(
+  promptText: string,
+  options: CheckpointOptions,
+): string {
   const identity = JSON.stringify({
     promptText,
     kind: options.kind ?? "confirm",
@@ -1547,17 +1875,26 @@ function buildAgentInstructions(
   // A resolved agentType binds a real role prompt (the definition body). Only
   // fall back to the prose hint when the agentType named no known definition.
   if (def?.prompt) lines.push(def.prompt);
-  else if (options.agentType) lines.push(`Act as workflow subagent type: ${options.agentType}`);
+  else if (options.agentType)
+    lines.push(`Act as workflow subagent type: ${options.agentType}`);
   if (phase) lines.push(`Workflow phase: ${phase}`);
   // Use resolvedIsolation so the annotation fires whether isolation came from
   // the call site or from the agentDef's isolation field.
-  if (resolvedIsolation) lines.push(`Requested isolation: ${resolvedIsolation}`);
+  if (resolvedIsolation)
+    lines.push(`Requested isolation: ${resolvedIsolation}`);
   // Note: options.model is applied for real via the session, not injected as prose.
   return lines.length ? lines.join("\n\n") : undefined;
 }
 
-function isEmptyTextAgentResult(result: unknown, schema: TSchema | undefined): boolean {
-  return schema === undefined && typeof result === "string" && result.trim().length === 0;
+function isEmptyTextAgentResult(
+  result: unknown,
+  schema: TSchema | undefined,
+): boolean {
+  return (
+    schema === undefined &&
+    typeof result === "string" &&
+    result.trim().length === 0
+  );
 }
 
 function estimateTokens(value: unknown): number {
@@ -1565,12 +1902,14 @@ function estimateTokens(value: unknown): number {
 }
 
 function normalizeConcurrency(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 1) return 1;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1)
+    return 1;
   return Math.min(MAX_CONCURRENCY, Math.floor(value));
 }
 
 function normalizeAgentRetries(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return 0;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    return 0;
   return Math.min(MAX_AGENT_RETRIES, Math.floor(value));
 }
 

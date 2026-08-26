@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AssistantMessage, Model, TextContent } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  Model,
+  TextContent,
+} from "@earendil-works/pi-ai";
 import {
   type CreateAgentSessionOptions,
   createAgentSession,
@@ -18,7 +22,11 @@ import type { Static, TSchema } from "typebox";
 import { Check, Convert } from "typebox/value";
 import { type AgentHistoryEntry, compactAgentHistory } from "./agent-history.ts";
 import { applyToolPolicy } from "./agent-registry.ts";
-import { classifyProviderLimit, WorkflowError, WorkflowErrorCode } from "./errors.ts";
+import {
+  classifyProviderLimit,
+  WorkflowError,
+  WorkflowErrorCode,
+} from "./errors.ts";
 import { canonicalModelSpec, resolveModelSpecWithThinking } from "./model-spec.ts";
 import {
   formatTierFallbackNotice,
@@ -27,7 +35,10 @@ import {
   type RankableModel,
   resolveTierModel,
 } from "./model-tier-config.ts";
-import { createStructuredOutputTool, type StructuredOutputCapture } from "./structured-output.ts";
+import {
+  createStructuredOutputTool,
+  type StructuredOutputCapture,
+} from "./structured-output.ts";
 
 /**
  * Find a JSON object/array in free-form text: a fenced ```json block if present,
@@ -44,7 +55,8 @@ function findJsonBlock(text: string): string | undefined {
   let depth = 0;
   for (let i = start; i < text.length; i++) {
     if (text[i] === open) depth++;
-    else if (text[i] === close && --depth === 0) return text.slice(start, i + 1);
+    else if (text[i] === close && --depth === 0)
+      return text.slice(start, i + 1);
   }
   return undefined;
 }
@@ -54,7 +66,10 @@ function findJsonBlock(text: string): string | undefined {
  * it toward the schema, and accept it only if it then validates. Never fabricates
  * — returns undefined unless the parsed value genuinely satisfies the schema.
  */
-export function extractValidated<T>(text: string, schema: TSchema): T | undefined {
+export function extractValidated<T>(
+  text: string,
+  schema: TSchema,
+): T | undefined {
   const json = findJsonBlock(text);
   if (json === undefined) return undefined;
   let parsed: unknown;
@@ -78,11 +93,16 @@ export function extractValidated<T>(text: string, schema: TSchema): T | undefine
  * message with stopReason "error" and an errorMessage. This is the only place that
  * metadata is observable to the workflow layer.
  */
-export function lastAssistantError(messages: unknown[]): { stopReason?: string; errorMessage?: string } | undefined {
+export function lastAssistantError(
+  messages: unknown[],
+): { stopReason?: string; errorMessage?: string } | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i] as Partial<AssistantMessage> | undefined;
     if (message?.role !== "assistant") continue;
-    return { stopReason: message.stopReason, errorMessage: message.errorMessage };
+    return {
+      stopReason: message.stopReason,
+      errorMessage: message.errorMessage,
+    };
   }
   return undefined;
 }
@@ -94,7 +114,10 @@ export function lastAssistantError(messages: unknown[]): { stopReason?: string; 
  * "rate limit" is never misclassified. recoverable:false so the run checkpoints
  * (paused) rather than being retried into the same wall or collapsed to a silent null.
  */
-export function throwIfProviderLimit(messages: unknown[], label?: string): void {
+export function throwIfProviderLimit(
+  messages: unknown[],
+  label?: string,
+): void {
   const err = lastAssistantError(messages);
   if (err?.stopReason !== "error") return;
   const { matched, resetHint } = classifyProviderLimit(err.errorMessage);
@@ -192,7 +215,9 @@ export function resolveAgentModelSpec(
     // Tier requested but unconfigured → it silently falls back to mainModel.
     // Let the caller surface that (once) so the no-op is discoverable.
     if (!config) onTierWithoutConfig?.(options.tier);
-    return (config ? resolveTierModel(options.tier, config) : undefined) ?? mainModel;
+    return (
+      (config ? resolveTierModel(options.tier, config) : undefined) ?? mainModel
+    );
   }
   // Untagged agent: default to the configured medium tier when one exists.
   if (config) {
@@ -340,11 +365,16 @@ export function listAvailableModelSpecs(registry?: ModelRegistry): string[] {
  * no-op is discoverable. Diagnostics only — never lets a failure break a run.
  */
 let warnedTierUnconfigured = false;
-function warnTierUnconfiguredOnce(mainModel: string | undefined, registry: ModelRegistry): void {
+function warnTierUnconfiguredOnce(
+  mainModel: string | undefined,
+  registry: ModelRegistry,
+): void {
   if (warnedTierUnconfigured) return;
   warnedTierUnconfigured = true;
   try {
-    console.warn(formatTierFallbackNotice(mainModel, listAvailableModels(registry)));
+    console.warn(
+      formatTierFallbackNotice(mainModel, listAvailableModels(registry)),
+    );
   } catch {
     // best-effort diagnostic
   }
@@ -382,7 +412,13 @@ export interface AgentUsage {
  * on non-reporting providers render the same as before the split existed.
  */
 export function usageFromStats(stats: {
-  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  tokens: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
   cost: number;
 }): AgentUsage | undefined {
   const { tokens, cost } = stats;
@@ -397,7 +433,9 @@ export function usageFromStats(stats: {
   };
 }
 
-export interface AgentRunOptions<TSchemaDef extends TSchema | undefined = undefined> {
+export interface AgentRunOptions<
+  TSchemaDef extends TSchema | undefined = undefined,
+> {
   label?: string;
   /**
    * Display name recorded on the persisted session (session_info entry) when
@@ -494,9 +532,8 @@ export interface AgentRunOptions<TSchemaDef extends TSchema | undefined = undefi
   modelRegistry?: ModelRegistry;
 }
 
-export type AgentRunResult<TSchemaDef extends TSchema | undefined> = TSchemaDef extends TSchema
-  ? Static<TSchemaDef>
-  : string;
+export type AgentRunResult<TSchemaDef extends TSchema | undefined> =
+  TSchemaDef extends TSchema ? Static<TSchemaDef> : string;
 
 /**
  * Orchestration tools ALWAYS denied to workflow subagents. The `workflow` and
@@ -516,8 +553,15 @@ export const DEFAULT_EXCLUDED_SUBAGENT_TOOLS = ["workflow", "workflow_control"];
  * a spread-order regression that dropped the defaults would slip past a test
  * that only asserts the constant. The SDK dedupes, so overlap is harmless.
  */
-export function subagentExcludedTools(extra?: string[], sessionExclude?: string[]): string[] {
-  return [...DEFAULT_EXCLUDED_SUBAGENT_TOOLS, ...(sessionExclude ?? []), ...(extra ?? [])];
+export function subagentExcludedTools(
+  extra?: string[],
+  sessionExclude?: string[],
+): string[] {
+  return [
+    ...DEFAULT_EXCLUDED_SUBAGENT_TOOLS,
+    ...(sessionExclude ?? []),
+    ...(extra ?? []),
+  ];
 }
 
 export class WorkflowAgent {
@@ -590,7 +634,9 @@ export class WorkflowAgent {
    * WorkflowAgent per run, so this loader's lifetime is exactly one run: built
    * once, reused by all its subagents, then dropped with the agent.
    */
-  private getSharedResourceLoader(agentDir: string): Promise<DefaultResourceLoader> {
+  private getSharedResourceLoader(
+    agentDir: string,
+  ): Promise<DefaultResourceLoader> {
     if (!this.sharedResourceLoaderPromise) {
       this.sharedResourceLoaderPromise = (async () => {
         const loader = new DefaultResourceLoader({
@@ -618,7 +664,9 @@ export class WorkflowAgent {
    * across calls once built). Async because pi >= 0.80.8 builds registries from
    * an async-created ModelRuntime.
    */
-  private async getRegistry(perRunRegistry?: ModelRegistry): Promise<ModelRegistry> {
+  private async getRegistry(
+    perRunRegistry?: ModelRegistry,
+  ): Promise<ModelRegistry> {
     if (perRunRegistry) {
       return perRunRegistry;
     }
@@ -656,7 +704,9 @@ export class WorkflowAgent {
    * only ever consulted once, on the first call, regardless of what is passed
    * on later calls.
    */
-  private loadTierConfig(loader: () => ModelTierConfig | null = loadModelTierConfig): ModelTierConfig | null {
+  private loadTierConfig(
+    loader: () => ModelTierConfig | null = loadModelTierConfig,
+  ): ModelTierConfig | null {
     if (!this.tierConfigBox) {
       this.tierConfigBox = { value: loader() };
     }
@@ -704,11 +754,15 @@ export class WorkflowAgent {
     prompt: string,
     options: AgentRunOptions<TSchemaDef> = {},
   ): Promise<AgentRunResult<TSchemaDef>> {
-    const capture: StructuredOutputCapture<any> = { called: false, value: undefined };
+    const capture: StructuredOutputCapture<any> = {
+      called: false,
+      value: undefined,
+    };
     // Per-call cwd (e.g. a worktree) needs coding tools bound to that directory,
     // since tools capture their cwd at construction and can't be relocated.
     const runCwd = options.cwd ?? this.cwd;
-    const baseTools = runCwd === this.cwd ? this.baseTools : createCodingTools(runCwd);
+    const baseTools =
+      runCwd === this.cwd ? this.baseTools : createCodingTools(runCwd);
     // Apply the agentType tool policy BEFORE adding structured_output, so a
     // restrictive allowlist never strips the schema tool.
     const customTools: ToolDefinition[] = applyToolPolicy(
@@ -735,7 +789,12 @@ export class WorkflowAgent {
           { recoverable: false },
         );
       }
-      customTools.push(createStructuredOutputTool({ schema: options.schema, capture }) as unknown as ToolDefinition);
+      customTools.push(
+        createStructuredOutputTool({
+          schema: options.schema,
+          capture,
+        }) as unknown as ToolDefinition,
+      );
     }
 
     // Per-run modelRegistry wins over the constructor's shared registry, then
@@ -773,7 +832,9 @@ export class WorkflowAgent {
     //     still needs to be loud (onModelFallback), not a silent continuation.
     const isExplicitRequest = Boolean(options.model || options.tier);
     let resolvedModel: Model<any> | undefined;
-    let resolvedThinkingLevel: CreateAgentSessionOptions["thinkingLevel"] | undefined;
+    let resolvedThinkingLevel:
+      | CreateAgentSessionOptions["thinkingLevel"]
+      | undefined;
     if (modelSpec) {
       const resolved = resolveModelSpecWithThinking(modelSpec, modelRegistry);
       if (resolved.warning) console.warn(`[workflow] ${resolved.warning}`);
@@ -782,7 +843,8 @@ export class WorkflowAgent {
           // The resolver's error already names the spec and the remedy; the tier
           // branch swaps in its own message so the config source is named too.
           const message = options.model
-            ? (resolved.error ?? `Model "${modelSpec}" not found. Use /workflows-models to choose an available model.`)
+            ? (resolved.error ??
+              `Model "${modelSpec}" not found. Use /workflows-models to choose an available model.`)
             : `tier "${options.tier}" from model-tiers.json resolves to "${modelSpec}", which is not available. Use /workflows-models to choose an available model.`;
           throw new WorkflowError(message, WorkflowErrorCode.MODEL_NOT_FOUND, {
             recoverable: false,
@@ -791,12 +853,17 @@ export class WorkflowAgent {
         }
         if (!this.warnedDefaultTierUnavailable) {
           this.warnedDefaultTierUnavailable = true;
-          options.onModelFallback?.({ tier: "medium", requestedSpec: modelSpec });
+          options.onModelFallback?.({
+            tier: "medium",
+            requestedSpec: modelSpec,
+          });
         }
       } else {
         resolvedModel = resolved.model;
         resolvedThinkingLevel = resolved.thinkingLevel;
-        options.onModelResolved?.(resolved.resolvedSpec ?? canonicalModelSpec(resolved.model));
+        options.onModelResolved?.(
+          resolved.resolvedSpec ?? canonicalModelSpec(resolved.model),
+        );
       }
     }
 
@@ -823,7 +890,9 @@ export class WorkflowAgent {
       // getSharedResourceLoader. An injected resourceLoader (tests / embedders)
       // wins and skips the shared build entirely; the ...this.sessionOptions
       // spread below re-applies the same injected value harmlessly.
-      resourceLoader: this.sessionOptions.resourceLoader ?? (await this.getSharedResourceLoader(agentDir)),
+      resourceLoader:
+        this.sessionOptions.resourceLoader ??
+        (await this.getSharedResourceLoader(agentDir)),
       // Share the resolved registry's ModelRuntime (catalog + auth, including
       // extension-registered providers) with the subagent session. pi >= 0.80.8
       // takes modelRuntime here; the old modelRegistry option is gone.
@@ -831,16 +900,25 @@ export class WorkflowAgent {
       ...this.sessionOptions,
       // Per-call model/thinking wins over any sessionOptions defaults.
       ...(resolvedModel ? { model: resolvedModel } : {}),
-      ...(resolvedThinkingLevel ? { thinkingLevel: resolvedThinkingLevel } : {}),
+      ...(resolvedThinkingLevel
+        ? { thinkingLevel: resolvedThinkingLevel }
+        : {}),
       // Deny recursive-orchestration tools in the subagent (#107). Placed after
       // the sessionOptions spread so it always applies; folds in any denylist
       // the caller set on sessionOptions rather than dropping it.
-      excludeTools: subagentExcludedTools(this.excludeTools, this.sessionOptions.excludeTools),
+      excludeTools: subagentExcludedTools(
+        this.excludeTools,
+        this.sessionOptions.excludeTools,
+      ),
     });
 
     // Name the persisted session so it's identifiable in session pickers.
     // Skip when an injected session.sessionManager override won (tests/embedders).
-    if (this.persistAgentSessions && !this.sessionOptions.sessionManager && options.sessionName) {
+    if (
+      this.persistAgentSessions &&
+      !this.sessionOptions.sessionManager &&
+      options.sessionName
+    ) {
       try {
         sessionManager.appendSessionInfo(options.sessionName);
       } catch {
@@ -851,7 +929,8 @@ export class WorkflowAgent {
     let removeAbortListener: (() => void) | undefined;
     let removeHistoryListener: (() => void) | undefined;
     let lastHistoryEmit = 0;
-    const emitHistory = () => options.onHistory?.(compactAgentHistory(session.messages));
+    const emitHistory = () =>
+      options.onHistory?.(compactAgentHistory(session.messages));
     const maybeEmitHistory = () => {
       if (!options.onHistory) return;
       const now = Date.now();
@@ -864,13 +943,20 @@ export class WorkflowAgent {
       if (options.signal) {
         const onAbort = () => void session.abort();
         options.signal.addEventListener("abort", onAbort, { once: true });
-        removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
+        removeAbortListener = () =>
+          options.signal?.removeEventListener("abort", onAbort);
       }
       if (options.onHistory) {
         removeHistoryListener = session.subscribe(() => maybeEmitHistory());
       }
 
-      await session.prompt(this.buildPrompt(prompt, options as AgentRunOptions<any>, Boolean(options.schema)));
+      await session.prompt(
+        this.buildPrompt(
+          prompt,
+          options as AgentRunOptions<any>,
+          Boolean(options.schema),
+        ),
+      );
 
       if (options.signal?.aborted) throw new Error("Subagent was aborted");
 
@@ -881,8 +967,12 @@ export class WorkflowAgent {
       throwIfProviderLimit(session.messages, options.label);
 
       if (options.schema) {
-        return (await resolveStructuredOutput(session, capture, options.schema, options, (m) =>
-          this.lastAssistantText(m),
+        return (await resolveStructuredOutput(
+          session,
+          capture,
+          options.schema,
+          options,
+          (m) => this.lastAssistantText(m),
         )) as AgentRunResult<TSchemaDef>;
       }
 
@@ -892,10 +982,14 @@ export class WorkflowAgent {
       // and suppress the AGENT_EMPTY_OUTPUT retry (#111).
       const text = this.finalAssistantText(session.messages);
       if (!text.trim()) {
-        throw new WorkflowError("Subagent produced no assistant output", WorkflowErrorCode.AGENT_EMPTY_OUTPUT, {
-          recoverable: true,
-          agentLabel: options.label,
-        });
+        throw new WorkflowError(
+          "Subagent produced no assistant output",
+          WorkflowErrorCode.AGENT_EMPTY_OUTPUT,
+          {
+            recoverable: true,
+            agentLabel: options.label,
+          },
+        );
       }
       return text as AgentRunResult<TSchemaDef>;
     } finally {
@@ -919,7 +1013,11 @@ export class WorkflowAgent {
     }
   }
 
-  private buildPrompt(prompt: string, options: AgentRunOptions<any>, structured: boolean): string {
+  private buildPrompt(
+    prompt: string,
+    options: AgentRunOptions<any>,
+    structured: boolean,
+  ): string {
     const parts = [
       this.instructions,
       options.instructions,
@@ -945,7 +1043,8 @@ export class WorkflowAgent {
   private lastAssistantText(messages: unknown[]): string {
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i] as Partial<AssistantMessage> | undefined;
-      if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
+      if (message?.role !== "assistant" || !Array.isArray(message.content))
+        continue;
       const text = message.content
         .filter((part): part is TextContent => part.type === "text")
         .map((part) => part.text)
@@ -969,14 +1068,17 @@ export class WorkflowAgent {
     // Locate the last tool result; only assistant text strictly after it counts.
     let lastToolResult = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if ((messages[i] as { role?: string } | undefined)?.role === "toolResult") {
+      if (
+        (messages[i] as { role?: string } | undefined)?.role === "toolResult"
+      ) {
         lastToolResult = i;
         break;
       }
     }
     for (let i = messages.length - 1; i > lastToolResult; i--) {
       const message = messages[i] as Partial<AssistantMessage> | undefined;
-      if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
+      if (message?.role !== "assistant" || !Array.isArray(message.content))
+        continue;
       const text = message.content
         .filter((part): part is TextContent => part.type === "text")
         .map((part) => part.text)

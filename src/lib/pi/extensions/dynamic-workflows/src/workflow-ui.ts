@@ -21,11 +21,31 @@ import {
   renderDiff,
   type Theme,
 } from "@earendil-works/pi-coding-agent";
-import type { Component, Focusable, MarkdownTheme, TUI } from "@earendil-works/pi-tui";
-import { Markdown, parseKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type {
+  Component,
+  Focusable,
+  MarkdownTheme,
+  TUI,
+} from "@earendil-works/pi-tui";
+import {
+  Markdown,
+  parseKey,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { AgentUsage } from "./agent.ts";
-import type { ThemeLike, WorkflowAgentSnapshot, WorkflowSnapshot } from "./display.ts";
-import { aggregateAgentUsage, fmtCost, fmtTokenSegment, tokenFigures } from "./display.ts";
+import type {
+  ThemeLike,
+  WorkflowAgentSnapshot,
+  WorkflowSnapshot,
+} from "./display.ts";
+import {
+  aggregateAgentUsage,
+  fmtCost,
+  fmtTokenSegment,
+  tokenFigures,
+} from "./display.ts";
 import type { PersistedRunState } from "./run-persistence.ts";
 import { registerSavedWorkflow } from "./saved-commands.ts";
 import type { WorkflowManager } from "./workflow-manager.ts";
@@ -48,7 +68,10 @@ const PLAIN: ThemeLike = { fg: (_c, t) => t, bold: (t) => t };
 
 /** Bounded per-overlay cache for expensive Markdown parsing and highlighting. */
 class NavigatorTextRenderCache {
-  private readonly entries = new Map<string, { lines: string[]; weight: number }>();
+  private readonly entries = new Map<
+    string,
+    { lines: string[]; weight: number }
+  >();
   private readonly resultJson = new WeakMap<object, string>();
   private weight = 0;
 
@@ -84,7 +107,9 @@ class NavigatorTextRenderCache {
     this.entries.set(key, { lines, weight });
     this.weight += weight;
     while (this.entries.size > MAX_ENTRIES || this.weight > MAX_WEIGHT) {
-      const oldest = this.entries.entries().next().value as [string, { lines: string[]; weight: number }] | undefined;
+      const oldest = this.entries.entries().next().value as
+        | [string, { lines: string[]; weight: number }]
+        | undefined;
       if (!oldest) break;
       this.entries.delete(oldest[0]);
       this.weight -= oldest[1].weight;
@@ -176,11 +201,17 @@ export function shortModel(model: string | undefined): string | undefined {
 export class NavigatorModel {
   private frameDepth = 0;
   private frameRuns: PersistedRunState[] | undefined;
-  private readonly frameSnapshots = new Map<string, { snapshot: WorkflowSnapshot; status: string } | undefined>();
+  private readonly frameSnapshots = new Map<
+    string,
+    { snapshot: WorkflowSnapshot; status: string } | undefined
+  >();
 
   constructor(
     private readonly manager: Pick<WorkflowManager, "listRuns" | "getRun">,
-    private readonly storage?: { list(): SavedWorkflow[]; delete(name: string, location?: string): boolean },
+    private readonly storage?: {
+      list(): SavedWorkflow[];
+      delete(name: string, location?: string): boolean;
+    },
   ) {}
 
   /** Share persisted data across all model lookups performed by one render. */
@@ -204,14 +235,19 @@ export class NavigatorModel {
     return this.frameRuns;
   }
 
-  private snapshot(runId: string): { snapshot: WorkflowSnapshot; status: string } | undefined {
-    if (this.frameDepth > 0 && this.frameSnapshots.has(runId)) return this.frameSnapshots.get(runId);
+  private snapshot(
+    runId: string,
+  ): { snapshot: WorkflowSnapshot; status: string } | undefined {
+    if (this.frameDepth > 0 && this.frameSnapshots.has(runId))
+      return this.frameSnapshots.get(runId);
     const live = this.manager.getRun(runId);
     const value = live
       ? { snapshot: live.snapshot, status: live.status }
       : (() => {
           const p = this.persistedRuns().find((r) => r.runId === runId);
-          return p ? { snapshot: persistedToSnapshot(p), status: p.status } : undefined;
+          return p
+            ? { snapshot: persistedToSnapshot(p), status: p.status }
+            : undefined;
         })();
     if (this.frameDepth > 0) this.frameSnapshots.set(runId, value);
     return value;
@@ -224,7 +260,9 @@ export class NavigatorModel {
       // array) would otherwise throw "agents is not iterable" here and crash the
       // runs list itself — i.e. /workflows would fail to open at all.
       const rawAgents = live?.snapshot.agents ?? p.agents;
-      const agents = (Array.isArray(rawAgents) ? rawAgents : []) as WorkflowAgentSnapshot[];
+      const agents = (
+        Array.isArray(rawAgents) ? rawAgents : []
+      ) as WorkflowAgentSnapshot[];
       const usage = live?.snapshot.tokenUsage ?? p.tokenUsage;
       // The run-level aggregate is authoritative but only lands when the run
       // ends; per-agent figures update live. Use whichever accounts for more
@@ -233,7 +271,10 @@ export class NavigatorModel {
       const fromUsage = tokenFigures(usage);
       const fromAgents = aggregateAgentUsage(agents);
       const figures =
-        fromAgents.fresh + fromAgents.cacheRead > fromUsage.fresh + fromUsage.cacheRead ? fromAgents : fromUsage;
+        fromAgents.fresh + fromAgents.cacheRead >
+        fromUsage.fresh + fromUsage.cacheRead
+          ? fromAgents
+          : fromUsage;
       return {
         runId: p.runId,
         name: asText(live?.snapshot.name ?? p.workflowName),
@@ -303,7 +344,9 @@ export class NavigatorModel {
   agents(runId: string, phase: string): AgentRow[] {
     const snap = this.snapshot(runId)?.snapshot;
     if (!snap || !Array.isArray(snap.agents)) return [];
-    return snap.agents.filter((a) => agentPhaseKey(a) === phase).map((a) => toAgentRow(a));
+    return snap.agents
+      .filter((a) => agentPhaseKey(a) === phase)
+      .map((a) => toAgentRow(a));
   }
 
   /**
@@ -328,7 +371,10 @@ export class NavigatorModel {
     return out;
   }
 
-  agentDetail(runId: string, agentId: number): WorkflowAgentSnapshot | undefined {
+  agentDetail(
+    runId: string,
+    agentId: number,
+  ): WorkflowAgentSnapshot | undefined {
     return this.snapshot(runId)?.snapshot.agents.find((a) => a.id === agentId);
   }
 }
@@ -347,18 +393,26 @@ function persistedToSnapshot(p: PersistedRunState): WorkflowSnapshot {
   // the overlay. Resumable runs also avoid duplicating full results in agents[]
   // and the journal, so rehydrate done agents by namespaced call identity. The
   // positional index remains a fallback for files written before callId existed.
-  const agents = (Array.isArray(p.agents) ? p.agents : []).filter((agent) => agent && typeof agent === "object");
+  const agents = (Array.isArray(p.agents) ? p.agents : []).filter(
+    (agent) => agent && typeof agent === "object",
+  );
   const journalByIndex = new Map<number, unknown>();
   const journalByCallId = new Map<string, unknown>();
   for (const entry of Array.isArray(p.journal) ? p.journal : []) {
     if (entry && typeof entry === "object" && typeof entry.index === "number") {
       journalByIndex.set(entry.index, entry.result);
-      journalByCallId.set(`${entry.runId ?? p.runId}:${entry.index}`, entry.result);
+      journalByCallId.set(
+        `${entry.runId ?? p.runId}:${entry.index}`,
+        entry.result,
+      );
     }
   }
   const snapshotAgents = agents.map((a, callIndex) => {
-    const journalResult = a.callId ? journalByCallId.get(a.callId) : journalByIndex.get(callIndex);
-    const result = a.result === undefined && a.status === "done" ? journalResult : a.result;
+    const journalResult = a.callId
+      ? journalByCallId.get(a.callId)
+      : journalByIndex.get(callIndex);
+    const result =
+      a.result === undefined && a.status === "done" ? journalResult : a.result;
     return {
       id: a.id,
       callId: a.callId,
@@ -368,7 +422,11 @@ function persistedToSnapshot(p: PersistedRunState): WorkflowSnapshot {
       status: a.status,
       result,
       resultPreview:
-        result === undefined ? a.resultPreview : String(typeof result === "string" ? result : JSON.stringify(result)),
+        result === undefined
+          ? a.resultPreview
+          : String(
+              typeof result === "string" ? result : JSON.stringify(result),
+            ),
       error: a.error,
       errorCode: a.errorCode,
       recoverable: a.recoverable,
@@ -471,7 +529,8 @@ export class NavigatorState {
       this.scroll = Math.max(0, this.scroll + delta);
       return;
     }
-    if (count > 0) this.cursor = Math.max(0, Math.min(count - 1, this.cursor + delta));
+    if (count > 0)
+      this.cursor = Math.max(0, Math.min(count - 1, this.cursor + delta));
   }
 
   /** Jump to the beginning or end of the current list/detail. End also enables
@@ -542,7 +601,12 @@ export class NavigatorState {
       const phases = model.phases(t.runId);
       const ph = phases[t.cursor];
       if (!ph) return false;
-      this.stack.push({ kind: "agents", cursor: 0, runId: t.runId, phase: ph.title });
+      this.stack.push({
+        kind: "agents",
+        cursor: 0,
+        runId: t.runId,
+        phase: ph.title,
+      });
       return true;
     }
     if (t.kind === "agents" && t.runId && t.phase) {
@@ -552,7 +616,13 @@ export class NavigatorState {
       this.scroll = 0;
       this.tailing = false;
       this.pagerOpen = false;
-      this.stack.push({ kind: "detail", cursor: 0, runId: t.runId, phase: t.phase, agentId: ag.id });
+      this.stack.push({
+        kind: "detail",
+        cursor: 0,
+        runId: t.runId,
+        phase: t.phase,
+        agentId: ag.id,
+      });
       return true;
     }
     return false;
@@ -600,7 +670,16 @@ function pad(n: number): string {
 // ───────────────────────────────────────────────────────────────────────────
 
 // Light box-drawing glyphs (no heavy/double variants).
-const BX = { h: "─", v: "│", tl: "┌", tr: "┐", bl: "└", br: "┘", tj: "┬", bj: "┴" } as const;
+const BX = {
+  h: "─",
+  v: "│",
+  tl: "┌",
+  tr: "┐",
+  bl: "└",
+  br: "┘",
+  tj: "┬",
+  bj: "┴",
+} as const;
 const CARET = "›";
 const DOT = "●";
 const ELLIPSIS = "…";
@@ -631,8 +710,12 @@ function pluralize(word: string, n: number): string {
 }
 
 /** Aggregate phase status precedence: ERR > RUN > all-done(OK) > PEND. */
-function phaseStatusColor(p: { done: number; total: number }, agents: AgentRow[]): string {
-  if (agents.some((a) => a.status === "error" || a.status === "failed")) return "error";
+function phaseStatusColor(
+  p: { done: number; total: number },
+  agents: AgentRow[],
+): string {
+  if (agents.some((a) => a.status === "error" || a.status === "failed"))
+    return "error";
   if (agents.some((a) => a.status === "running")) return "warning";
   if (p.total > 0 && p.done === p.total) return "success";
   return "dim";
@@ -653,7 +736,12 @@ const AGENT_DOT_COLOR: Record<string, string> = {
 
 /** Compute the left ("Phases") box outer width, clamped per spec §3.1. */
 function computeLeftWidth(phases: PhaseRow[], width: number): number {
-  const titleNeed = visibleWidth("Phases") + 2 /*spaces*/ + 1 /*┌*/ + 1 /*┬*/ + 3 /*min dashes*/;
+  const titleNeed =
+    visibleWidth("Phases") +
+    2 /*spaces*/ +
+    1 /*┌*/ +
+    1 /*┬*/ +
+    3; /*min dashes*/
   let contentMax = 0;
   phases.forEach((p, i) => {
     const idx = String(i + 1);
@@ -686,13 +774,21 @@ function leftPhaseRow(
   const progress = hasAgents ? `${p.done}/${p.total}` : "";
   const marker = selected ? `${CARET} ` : "  ";
   // Fixed parts width: marker + idx + space + (space+progress if shown)
-  const fixed = 2 + visibleWidth(idx) + 1 + (progress ? 1 + visibleWidth(progress) : 0);
+  const fixed =
+    2 + visibleWidth(idx) + 1 + (progress ? 1 + visibleWidth(progress) : 0);
   const nameRoom = Math.max(0, innerW - fixed);
   const name = truncateToWidth(p.title, nameRoom, ELLIPSIS, false);
 
-  const styleMain = (s: string) => (selected ? theme.fg("accent", theme.bold(s)) : hasAgents ? s : theme.fg("dim", s));
+  const styleMain = (s: string) =>
+    selected
+      ? theme.fg("accent", theme.bold(s))
+      : hasAgents
+        ? s
+        : theme.fg("dim", s);
   const progStyle = (s: string) =>
-    selected ? theme.fg("accent", theme.bold(s)) : theme.fg(phaseStatusColor(p, agents), s);
+    selected
+      ? theme.fg("accent", theme.bold(s))
+      : theme.fg(phaseStatusColor(p, agents), s);
 
   const caret = selected ? theme.fg("accent", theme.bold(marker)) : marker;
   let row = caret + styleMain(`${idx} ${name}`);
@@ -709,7 +805,10 @@ function rightAgentRow(
   theme: ThemeLike,
 ): string {
   const dotColor = AGENT_DOT_COLOR[a.status] ?? "dim";
-  const stats = fmtTokenSegment(tokenFigures(a.tokenUsage, a.tokens), compactTokens);
+  const stats = fmtTokenSegment(
+    tokenFigures(a.tokenUsage, a.tokens),
+    compactTokens,
+  );
   const model = shortModel(a.model) ?? "";
 
   // Stable 2-cell marker so columns never shift on selection: "› " | "  ".
@@ -717,7 +816,10 @@ function rightAgentRow(
   const markerW = 2;
   const statsW = visibleWidth(stats);
   const nameStart = markerW + 2; // marker + dot + space
-  let modelStart = Math.max(nameStart + visibleWidth(a.label) + GAP_NM, markerW + modelColStart);
+  let modelStart = Math.max(
+    nameStart + visibleWidth(a.label) + GAP_NM,
+    markerW + modelColStart,
+  );
   const statsStart = innerW - statsW;
 
   // Available room for the model block (between modelStart and stats, min 1 gap).
@@ -739,7 +841,9 @@ function rightAgentRow(
 
   const marker = selected ? theme.fg("accent", theme.bold(`${CARET} `)) : "  ";
   const dot = theme.fg(dotColor, DOT);
-  const nameStyled = selected ? theme.fg("accent", theme.bold(nameOut)) : theme.fg("accent", nameOut);
+  const nameStyled = selected
+    ? theme.fg("accent", theme.bold(nameOut))
+    : theme.fg("accent", nameOut);
   const modelStyled = modelOut ? theme.fg("dim", modelOut) : "";
   const statsStyled = theme.fg("dim", stats);
 
@@ -757,18 +861,32 @@ function rightAgentRow(
 }
 
 /** Compose a titled top rule for one box side (between two join chars). */
-function topTitleSegment(title: string, innerW: number, leading: boolean, theme: ThemeLike): string {
+function topTitleSegment(
+  title: string,
+  innerW: number,
+  leading: boolean,
+  theme: ThemeLike,
+): string {
   // leading=true → right box (one ─ before the title); leading=false → left box.
   const label = ` ${title} `;
   const lead = leading ? BX.h : "";
   let labelOut = label;
   const fixed = visibleWidth(lead) + 1; // + at least one trailing dash
   if (visibleWidth(label) > innerW - fixed) {
-    labelOut = truncateToWidth(label, Math.max(0, innerW - fixed), ELLIPSIS, false);
+    labelOut = truncateToWidth(
+      label,
+      Math.max(0, innerW - fixed),
+      ELLIPSIS,
+      false,
+    );
   }
   const used = visibleWidth(lead) + visibleWidth(labelOut);
   const dashes = BX.h.repeat(Math.max(0, innerW - used));
-  return theme.fg("muted", lead) + theme.fg("dim", labelOut) + theme.fg("muted", dashes);
+  return (
+    theme.fg("muted", lead) +
+    theme.fg("dim", labelOut) +
+    theme.fg("muted", dashes)
+  );
 }
 
 interface TwoPaneArgs {
@@ -784,7 +902,8 @@ interface TwoPaneArgs {
 
 /** Emit the full combined frame (top rule, body rows, bottom rule). */
 function renderTwoPaneFrame(a: TwoPaneArgs): string[] {
-  const { width, bodyRows, left, right, leftTitle, rightTitle, leftW, theme } = a;
+  const { width, bodyRows, left, right, leftTitle, rightTitle, leftW, theme } =
+    a;
   // RW fills the remainder; the divider column is shared (overlaps 1 cell) so
   // net rendered width = LW + RW - 1 = width. Hence RW = width - LW + 1.
   const rightW = width - leftW + 1;
@@ -812,7 +931,13 @@ function renderTwoPaneFrame(a: TwoPaneArgs): string[] {
   }
 
   // Bottom rule: └ ─ ┴ ─ ┘
-  out.push(bc(BX.bl) + bc(BX.h.repeat(leftInner)) + bc(BX.bj) + bc(BX.h.repeat(rightInner)) + bc(BX.br));
+  out.push(
+    bc(BX.bl) +
+      bc(BX.h.repeat(leftInner)) +
+      bc(BX.bj) +
+      bc(BX.h.repeat(rightInner)) +
+      bc(BX.br),
+  );
   return out;
 }
 
@@ -834,18 +959,30 @@ function renderPhasesAgents(
   // visible phase's agents (status colour) and the selected phase's agents drive
   // the right pane; calling model.agents() per phase row was O(phases × agents).
   const agentsByPhase = model.agentsByPhase(runId);
-  const agentsOf = (title: string): AgentRow[] => agentsByPhase.get(title) ?? [];
+  const agentsOf = (title: string): AgentRow[] =>
+    agentsByPhase.get(title) ?? [];
   // Which phase is selected drives the right pane. In "phases" view it's the
   // cursor; in "agents" view it's the drilled-in phase (state.phase).
   const inAgents = state.kind === "agents";
-  let selPhaseIdx = inAgents ? phases.findIndex((p) => p.title === state.phase) : state.cursor;
+  let selPhaseIdx = inAgents
+    ? phases.findIndex((p) => p.title === state.phase)
+    : state.cursor;
   if (selPhaseIdx < 0) selPhaseIdx = 0;
   const selPhase = phases[selPhaseIdx];
   const agents = selPhase ? agentsOf(selPhase.title) : [];
 
   // Narrow-terminal degrade: single pane (spec §7.1).
   if (width < LW_MIN + RW_MIN - 1) {
-    return renderSinglePane(state, phases, selPhaseIdx, agents, width, theme, bodyCap, inAgents);
+    return renderSinglePane(
+      state,
+      phases,
+      selPhaseIdx,
+      agents,
+      width,
+      theme,
+      bodyCap,
+      inAgents,
+    );
   }
 
   const leftW = computeLeftWidth(phases, width);
@@ -854,9 +991,20 @@ function renderPhasesAgents(
   const rightInner = rightW - 2;
 
   // Vertical scroll so the active item stays visible (spec §7.2).
-  const leftRows = scrollWindow(phases.length, inAgents ? selPhaseIdx : state.cursor, bodyCap);
-  const rightRows = scrollWindow(agents.length, inAgents ? state.cursor : 0, bodyCap);
-  const bodyRows = Math.max(1, Math.min(bodyCap, Math.max(leftRows.count, rightRows.count)));
+  const leftRows = scrollWindow(
+    phases.length,
+    inAgents ? selPhaseIdx : state.cursor,
+    bodyCap,
+  );
+  const rightRows = scrollWindow(
+    agents.length,
+    inAgents ? state.cursor : 0,
+    bodyCap,
+  );
+  const bodyRows = Math.max(
+    1,
+    Math.min(bodyCap, Math.max(leftRows.count, rightRows.count)),
+  );
 
   // Left column (Phases).
   const left: string[] = [];
@@ -871,7 +1019,12 @@ function renderPhasesAgents(
     const ag = agentsOf(p.title);
     let row = leftPhaseRow(p, idx, selected, ag, leftInner, theme);
     if (k === bodyRows - 1 && leftRows.more) {
-      row = truncateToWidth(theme.fg("dim", `  ${ELLIPSIS}`), leftInner, "", true);
+      row = truncateToWidth(
+        theme.fg("dim", `  ${ELLIPSIS}`),
+        leftInner,
+        "",
+        true,
+      );
     }
     left.push(row);
   }
@@ -880,8 +1033,14 @@ function renderPhasesAgents(
   const modelColStart = computeModelColStart(agents, rightInner);
   const right: string[] = [];
   if (agents.length === 0) {
-    const msg = truncateToWidth(theme.fg("dim", "no agents"), rightInner, "", true);
-    for (let k = 0; k < bodyRows; k++) right.push(k === 0 ? msg : " ".repeat(rightInner));
+    const msg = truncateToWidth(
+      theme.fg("dim", "no agents"),
+      rightInner,
+      "",
+      true,
+    );
+    for (let k = 0; k < bodyRows; k++)
+      right.push(k === 0 ? msg : " ".repeat(rightInner));
   } else {
     for (let k = 0; k < bodyRows; k++) {
       const idx = rightRows.start + k;
@@ -890,9 +1049,20 @@ function renderPhasesAgents(
         continue;
       }
       const selected = inAgents && idx === state.cursor;
-      let row = rightAgentRow(agents[idx], selected, modelColStart, rightInner, theme);
+      let row = rightAgentRow(
+        agents[idx],
+        selected,
+        modelColStart,
+        rightInner,
+        theme,
+      );
       if (k === bodyRows - 1 && rightRows.more) {
-        row = truncateToWidth(theme.fg("dim", `  ${ELLIPSIS}`), rightInner, "", true);
+        row = truncateToWidth(
+          theme.fg("dim", `  ${ELLIPSIS}`),
+          rightInner,
+          "",
+          true,
+        );
       }
       right.push(row);
     }
@@ -953,7 +1123,9 @@ function renderSinglePane(
     const selPhase = phases[selPhaseIdx];
     const n = agents.length;
     const title = `${selPhase ? selPhase.title : "(none)"} · ${n} ${pluralize("agent", n)}`;
-    out.push(bc(BX.tl) + topTitleSegment(title, innerW, false, theme) + bc(BX.tr));
+    out.push(
+      bc(BX.tl) + topTitleSegment(title, innerW, false, theme) + bc(BX.tr),
+    );
     const win = scrollWindow(agents.length, state.cursor, bodyCap);
     const modelColStart = computeModelColStart(agents, innerW);
     const rows = Math.max(1, win.count);
@@ -963,12 +1135,26 @@ function renderSinglePane(
         out.push(bc(BX.v) + " ".repeat(innerW) + bc(BX.v));
         continue;
       }
-      let row = rightAgentRow(agents[idx], idx === state.cursor, modelColStart, innerW, theme);
-      if (k === rows - 1 && win.more) row = truncateToWidth(theme.fg("dim", `  ${ELLIPSIS}`), innerW, "", true);
+      let row = rightAgentRow(
+        agents[idx],
+        idx === state.cursor,
+        modelColStart,
+        innerW,
+        theme,
+      );
+      if (k === rows - 1 && win.more)
+        row = truncateToWidth(
+          theme.fg("dim", `  ${ELLIPSIS}`),
+          innerW,
+          "",
+          true,
+        );
       out.push(bc(BX.v) + row + bc(BX.v));
     }
   } else {
-    out.push(bc(BX.tl) + topTitleSegment("Phases", innerW, false, theme) + bc(BX.tr));
+    out.push(
+      bc(BX.tl) + topTitleSegment("Phases", innerW, false, theme) + bc(BX.tr),
+    );
     const win = scrollWindow(phases.length, state.cursor, bodyCap);
     const rows = Math.max(1, win.count);
     for (let k = 0; k < rows; k++) {
@@ -979,7 +1165,13 @@ function renderSinglePane(
       }
       const p = phases[idx];
       let row = leftPhaseRow(p, idx, idx === state.cursor, [], innerW, theme);
-      if (k === rows - 1 && win.more) row = truncateToWidth(theme.fg("dim", `  ${ELLIPSIS}`), innerW, "", true);
+      if (k === rows - 1 && win.more)
+        row = truncateToWidth(
+          theme.fg("dim", `  ${ELLIPSIS}`),
+          innerW,
+          "",
+          true,
+        );
       out.push(bc(BX.v) + row + bc(BX.v));
     }
   }
@@ -997,7 +1189,15 @@ export function renderNavigator(
   markdownTheme?: MarkdownTheme,
 ): string[] {
   return model.withRenderFrame(() =>
-    renderNavigatorFrame(state, model, width, theme, viewportRows, markdownTheme, undefined),
+    renderNavigatorFrame(
+      state,
+      model,
+      width,
+      theme,
+      viewportRows,
+      markdownTheme,
+      undefined,
+    ),
   );
 }
 
@@ -1013,7 +1213,9 @@ function renderNavigatorFrame(
   const lines: string[] = [];
   state.setPageSize(Math.max(1, viewportRows - 5));
   const sel = (i: number, text: string) =>
-    i === state.cursor ? theme.fg("accent", theme.bold(`❯ ${text}`)) : `  ${text}`;
+    i === state.cursor
+      ? theme.fg("accent", theme.bold(`❯ ${text}`))
+      : `  ${text}`;
   const dim = (t: string) => theme.fg("dim", t);
 
   // Render a detail body inside a FIXED-height viewport so j/k scrolls within a
@@ -1031,7 +1233,11 @@ function renderNavigatorFrame(
       const up = state.scroll > 0 ? "↑" : " ";
       const down = end < body.length ? "↓" : " ";
       const mode = state.kind === "detail" && state.tailing ? " TAIL" : "";
-      lines.push(dim(`  [${state.scroll + 1}-${end} / ${body.length}] ${up}${down}${mode}`));
+      lines.push(
+        dim(
+          `  [${state.scroll + 1}-${end} / ${body.length}] ${up}${down}${mode}`,
+        ),
+      );
     }
   };
 
@@ -1058,26 +1264,44 @@ function renderNavigatorFrame(
     let win = scrollWindow(total, state.cursor, bodyCap);
     const windowEnd = () => win.start + win.count;
     const crossesSavedBoundary = () =>
-      runs.length > 0 && saved.length > 0 && win.start < runs.length && windowEnd() > runs.length;
-    if (crossesSavedBoundary() && bodyCap > 1) win = scrollWindow(total, state.cursor, bodyCap - 1);
+      runs.length > 0 &&
+      saved.length > 0 &&
+      win.start < runs.length &&
+      windowEnd() > runs.length;
+    if (crossesSavedBoundary() && bodyCap > 1)
+      win = scrollWindow(total, state.cursor, bodyCap - 1);
     const up = win.start > 0 ? "↑" : " ";
     const down = windowEnd() < total ? "↓" : " ";
     const range =
-      win.start > 0 || windowEnd() < total ? dim(`  [${up} ${win.start + 1}-${windowEnd()} / ${total} ${down}]`) : "";
+      win.start > 0 || windowEnd() < total
+        ? dim(`  [${up} ${win.start + 1}-${windowEnd()} / ${total} ${down}]`)
+        : "";
     lines.push(theme.bold(`Workflows${range}`));
 
     if (total === 0) {
       lines.push(dim("  No runs yet. Start one with a background workflow."));
     }
     for (let i = win.start; i < windowEnd(); i++) {
-      if (i === runs.length && runs.length > 0 && saved.length > 0) lines.push(dim("  ── saved ──"));
+      if (i === runs.length && runs.length > 0 && saved.length > 0)
+        lines.push(dim("  ── saved ──"));
       if (i < runs.length) {
         const r = runs[i];
         if (!r) continue;
         const icon = STATUS_ICON[r.status] ?? "?";
         const tok = fmtTokenSegment(r, pad);
-        const meta = [`${r.done}/${r.total}`, tok, r.cost > 0 ? fmtCost(r.cost) : ""].filter(Boolean).join(" · ");
-        lines.push(sel(i, `${icon} ${r.name}  ${dim(`${r.runId} · ${r.status} · ${meta}`)}`));
+        const meta = [
+          `${r.done}/${r.total}`,
+          tok,
+          r.cost > 0 ? fmtCost(r.cost) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        lines.push(
+          sel(
+            i,
+            `${icon} ${r.name}  ${dim(`${r.runId} · ${r.status} · ${meta}`)}`,
+          ),
+        );
       } else {
         const w = saved[i - runs.length];
         if (!w) continue;
@@ -1092,15 +1316,22 @@ function renderNavigatorFrame(
     // Two-line header (name + description/status) then the combined frame.
     lines.push(...twoPaneHeader(model, state.runId, phases, width, theme));
     // Body cap: total height minus 2 header + 2 frame rules + blank + footer.
-    const bodyCap = Math.max(1, viewportRows - 2 /*header*/ - 2 /*rules*/ - 2 /*blank+footer*/);
-    lines.push(...renderPhasesAgents(state, model, state.runId, width, theme, bodyCap));
+    const bodyCap = Math.max(
+      1,
+      viewportRows - 2 /*header*/ - 2 /*rules*/ - 2 /*blank+footer*/,
+    );
+    lines.push(
+      ...renderPhasesAgents(state, model, state.runId, width, theme, bodyCap),
+    );
   } else if (state.kind === "agents" && state.runId && state.phase) {
     const agents = model.agents(state.runId, state.phase);
     state.clamp(agents.length);
     const phases = model.phases(state.runId);
     lines.push(...twoPaneHeader(model, state.runId, phases, width, theme));
     const bodyCap = Math.max(1, viewportRows - 2 - 2 - 2);
-    lines.push(...renderPhasesAgents(state, model, state.runId, width, theme, bodyCap));
+    lines.push(
+      ...renderPhasesAgents(state, model, state.runId, width, theme, bodyCap),
+    );
   } else if (state.kind === "detail" && state.runId && state.agentId != null) {
     const a = model.agentDetail(state.runId, state.agentId);
     lines.push(theme.bold(a ? asText(a.label) : "agent"));
@@ -1115,16 +1346,42 @@ function renderNavigatorFrame(
         if (a.model) body.push(dim("Model: ") + (shortModel(a.model) ?? ""));
         if (a.error) body.push(dim("Error: ") + asText(a.error));
         if (a.errorCode) {
-          body.push(`${dim("Error code: ")}${asText(a.errorCode)}${a.recoverable ? " (recoverable)" : ""}`);
+          body.push(
+            `${dim("Error code: ")}${asText(a.errorCode)}${a.recoverable ? " (recoverable)" : ""}`,
+          );
         }
         body.push("", theme.fg("accent", theme.bold("Prompt:")));
-        body.push(...renderMarkdownLines(asText(a.prompt ?? ""), width, markdownTheme, renderCache));
+        body.push(
+          ...renderMarkdownLines(
+            asText(a.prompt ?? ""),
+            width,
+            markdownTheme,
+            renderCache,
+          ),
+        );
         body.push("", theme.fg("accent", theme.bold("Result:")));
-        body.push(...renderResultLines(a.result, a.resultPreview, width, markdownTheme, renderCache));
+        body.push(
+          ...renderResultLines(
+            a.result,
+            a.resultPreview,
+            width,
+            markdownTheme,
+            renderCache,
+          ),
+        );
         if (Array.isArray(a.history) && a.history.length) {
           body.push("", theme.fg("accent", theme.bold("History:")));
           for (let i = 0; i < a.history.length; i++) {
-            body.push(...renderHistoryEntryLines(a.history, i, width, markdownTheme, dim, renderCache));
+            body.push(
+              ...renderHistoryEntryLines(
+                a.history,
+                i,
+                width,
+                markdownTheme,
+                dim,
+                renderCache,
+              ),
+            );
           }
         }
         pushScrollable(body);
@@ -1132,7 +1389,15 @@ function renderNavigatorFrame(
         // Completed agents default to their useful final output; prompt/history
         // remain one keypress away in the full pager.
         body.push(theme.fg("accent", theme.bold("Result:")));
-        body.push(...renderResultLines(a.result, a.resultPreview, width, markdownTheme, renderCache));
+        body.push(
+          ...renderResultLines(
+            a.result,
+            a.resultPreview,
+            width,
+            markdownTheme,
+            renderCache,
+          ),
+        );
         pushCompact(body);
       } else {
         // Active/failed agents default to context plus the latest two events.
@@ -1140,19 +1405,35 @@ function renderNavigatorFrame(
         if (a.model) body.push(dim("Model: ") + (shortModel(a.model) ?? ""));
         if (a.error) body.push(dim("Error: ") + asText(a.error));
         if (a.errorCode) {
-          body.push(`${dim("Error code: ")}${asText(a.errorCode)}${a.recoverable ? " (recoverable)" : ""}`);
+          body.push(
+            `${dim("Error code: ")}${asText(a.errorCode)}${a.recoverable ? " (recoverable)" : ""}`,
+          );
         }
         body.push("", theme.fg("accent", theme.bold("Prompt:")));
-        const promptLines = renderMarkdownLines(asText(a.prompt ?? ""), width, markdownTheme, renderCache);
+        const promptLines = renderMarkdownLines(
+          asText(a.prompt ?? ""),
+          width,
+          markdownTheme,
+          renderCache,
+        );
         body.push(...promptLines.slice(0, 5));
-        if (promptLines.length > 5) body.push(dim("  … prompt continues in pager"));
+        if (promptLines.length > 5)
+          body.push(dim("  … prompt continues in pager"));
         body.push("", theme.fg("accent", theme.bold("Recent activity:")));
         if (a.history?.length) {
           const start = Math.max(0, a.history.length - 2);
           for (let i = start; i < a.history.length; i++) {
-            const eventLines = renderHistoryEntryLines(a.history, i, width, markdownTheme, dim, renderCache);
+            const eventLines = renderHistoryEntryLines(
+              a.history,
+              i,
+              width,
+              markdownTheme,
+              dim,
+              renderCache,
+            );
             body.push(...eventLines.slice(0, 4));
-            if (eventLines.length > 4) body.push(dim("  … event continues in pager"));
+            if (eventLines.length > 4)
+              body.push(dim("  … event continues in pager"));
           }
         } else {
           body.push(dim("  Waiting for the first agent event…"));
@@ -1166,13 +1447,26 @@ function renderNavigatorFrame(
     lines.push(theme.bold(w ? w.name : "saved workflow"));
     if (w) {
       const body: string[] = [];
-      if (w.description) body.push(dim("Description: ") + asText(w.description));
-      body.push(dim("Location: ") + (w.location === "user" ? "user (~/.pi)" : "project (.pi)"));
+      if (w.description)
+        body.push(dim("Description: ") + asText(w.description));
+      body.push(
+        dim("Location: ") +
+          (w.location === "user" ? "user (~/.pi)" : "project (.pi)"),
+      );
       body.push(dim("Saved at: ") + asText(w.savedAt));
-      if (w.parameters) body.push(dim("Parameters: ") + JSON.stringify(w.parameters));
+      if (w.parameters)
+        body.push(dim("Parameters: ") + JSON.stringify(w.parameters));
       body.push("", theme.fg("accent", theme.bold("Script:")));
       // Coerce (#110): corrupt saved-workflow JSON can carry a non-string script.
-      body.push(...renderCodeLines(asText(w.script), "javascript", width, markdownTheme, renderCache));
+      body.push(
+        ...renderCodeLines(
+          asText(w.script),
+          "javascript",
+          width,
+          markdownTheme,
+          renderCache,
+        ),
+      );
       pushScrollable(body);
     }
   }
@@ -1223,7 +1517,8 @@ function twoPaneHeader(
     line1 = theme.fg("dim", truncateToWidth(rightRaw, width, ELLIPSIS, false));
   } else {
     const availL = width - rightW - gap;
-    const leftText = availL > 0 ? truncateToWidth(status, availL, ELLIPSIS, false) : "";
+    const leftText =
+      availL > 0 ? truncateToWidth(status, availL, ELLIPSIS, false) : "";
     const leftW = visibleWidth(leftText);
     const fill = " ".repeat(Math.max(gap, width - leftW - rightW));
     line1 = theme.fg("dim", leftText) + fill + theme.fg("dim", rightRaw);
@@ -1231,14 +1526,22 @@ function twoPaneHeader(
   return [line0, line1];
 }
 
-function historyLabel(entry: NonNullable<WorkflowAgentSnapshot["history"]>[number]): string {
-  if (entry.kind === "toolCall") return entry.toolName ? `assistant tool ${asText(entry.toolName)}` : "assistant tool";
-  if (entry.role === "tool") return entry.toolName ? `tool ${asText(entry.toolName)}` : "tool";
+function historyLabel(
+  entry: NonNullable<WorkflowAgentSnapshot["history"]>[number],
+): string {
+  if (entry.kind === "toolCall")
+    return entry.toolName
+      ? `assistant tool ${asText(entry.toolName)}`
+      : "assistant tool";
+  if (entry.role === "tool")
+    return entry.toolName ? `tool ${asText(entry.toolName)}` : "tool";
   if (entry.kind === "error") return `${asText(entry.role)} error`;
   return asText(entry.role);
 }
 
-function editCallPath(entry: NonNullable<WorkflowAgentSnapshot["history"]>[number]): string | undefined {
+function editCallPath(
+  entry: NonNullable<WorkflowAgentSnapshot["history"]>[number],
+): string | undefined {
   if (entry.kind !== "toolCall" || entry.toolName !== "edit") return undefined;
   if (typeof entry.path === "string") return entry.path;
   // Backward compatibility for persisted histories from before edit paths were
@@ -1255,11 +1558,15 @@ function writeCallSource(
   entry: NonNullable<WorkflowAgentSnapshot["history"]>[number],
 ): { path: string; content: string } | undefined {
   if (entry.kind !== "toolCall" || entry.toolName !== "write") return undefined;
-  if (typeof entry.path === "string") return { path: entry.path, content: asText(entry.text) };
+  if (typeof entry.path === "string")
+    return { path: entry.path, content: asText(entry.text) };
   // Backward compatibility for older persisted histories that stored the whole
   // write argument envelope as JSON.
   try {
-    const args = JSON.parse(asText(entry.text)) as { path?: unknown; content?: unknown };
+    const args = JSON.parse(asText(entry.text)) as {
+      path?: unknown;
+      content?: unknown;
+    };
     return typeof args.path === "string" && typeof args.content === "string"
       ? { path: args.path, content: args.content }
       : undefined;
@@ -1281,14 +1588,17 @@ function historyEntryLanguage(
     const write = writeCallSource(entry);
     return write ? (getLanguageFromPath(write.path) ?? "text") : "json";
   }
-  if (entry.kind !== "toolResult" || entry.toolName !== "read") return undefined;
+  if (entry.kind !== "toolResult" || entry.toolName !== "read")
+    return undefined;
 
   for (let i = index - 1; i >= 0; i--) {
     const call = history[i];
     if (call?.kind !== "toolCall" || call.toolName !== "read") continue;
     try {
       const args = JSON.parse(asText(call.text)) as { path?: unknown };
-      return typeof args.path === "string" ? getLanguageFromPath(args.path) : undefined;
+      return typeof args.path === "string"
+        ? getLanguageFromPath(args.path)
+        : undefined;
     } catch {
       return undefined;
     }
@@ -1315,7 +1625,11 @@ function renderHistoryEntryLines(
   // The edit result carries the same display-oriented diff used by Pi's built-in
   // edit renderer. Render it with Pi's native colors, line numbers, and
   // intra-line highlighting instead of showing the raw replacement JSON.
-  if (entry.kind === "toolResult" && entry.toolName === "edit" && typeof entry.diff === "string") {
+  if (
+    entry.kind === "toolResult" &&
+    entry.toolName === "edit" &&
+    typeof entry.diff === "string"
+  ) {
     return [header, ...renderDiffLines(entry.diff, width, renderCache)];
   }
   if (editPath) return [header];
@@ -1330,7 +1644,11 @@ function renderHistoryEntryLines(
   ];
 }
 
-function footerHint(state: NavigatorState, model: NavigatorModel, theme: ThemeLike): string {
+function footerHint(
+  state: NavigatorState,
+  model: NavigatorModel,
+  theme: ThemeLike,
+): string {
   const parts: string[] = [];
   switch (state.kind) {
     case "detail":
@@ -1348,10 +1666,19 @@ function footerHint(state: NavigatorState, model: NavigatorModel, theme: ThemeLi
       }
       break;
     case "savedDetail":
-      parts.push("↑/↓ line", "PgUp/PgDn page", "g/G ends", "esc back", "x delete");
+      parts.push(
+        "↑/↓ line",
+        "PgUp/PgDn page",
+        "g/G ends",
+        "esc back",
+        "x delete",
+      );
       break;
     case "runs": {
-      const itemKind = model.saved().length > 0 ? state.itemKindAt(model, state.cursor) : "run";
+      const itemKind =
+        model.saved().length > 0
+          ? state.itemKindAt(model, state.cursor)
+          : "run";
       parts.push("↑/↓ select", "enter open", "esc back");
       if (itemKind === "run") {
         parts.push("p pause", "x stop", "r restart", "s save");
@@ -1386,12 +1713,22 @@ function renderMarkdownLines(
   const cached = renderCache?.get(key);
   if (cached) return cached;
   const lines = new Markdown(safeText, 0, 0, markdownTheme).render(renderWidth);
-  return renderCache?.set(key, lines, key.length + lines.reduce((sum, line) => sum + line.length, 0)) ?? lines;
+  return (
+    renderCache?.set(
+      key,
+      lines,
+      key.length + lines.reduce((sum, line) => sum + line.length, 0),
+    ) ?? lines
+  );
 }
 
 /** Render Pi's display-oriented edit diff inside the navigator's bounded
  * viewport while preserving its ANSI colors and intra-line highlights. */
-function renderDiffLines(diff: string, width: number, renderCache?: NavigatorTextRenderCache): string[] {
+function renderDiffLines(
+  diff: string,
+  width: number,
+  renderCache?: NavigatorTextRenderCache,
+): string[] {
   const renderWidth = Math.max(1, width);
   const key = `diff:${renderWidth}:${diff}`;
   const cached = renderCache?.get(key);
@@ -1399,7 +1736,13 @@ function renderDiffLines(diff: string, width: number, renderCache?: NavigatorTex
   const lines = renderDiff(diff)
     .split("\n")
     .flatMap((line) => wrapTextWithAnsi(`  ${line}`, renderWidth));
-  return renderCache?.set(key, lines, key.length + lines.reduce((sum, line) => sum + line.length, 0)) ?? lines;
+  return (
+    renderCache?.set(
+      key,
+      lines,
+      key.length + lines.reduce((sum, line) => sum + line.length, 0),
+    ) ?? lines
+  );
 }
 
 /** Render a known-language source block without requiring Markdown fences (a
@@ -1416,9 +1759,18 @@ function renderCodeLines(
   const key = `code:${language}:${renderWidth}:${safeText}`;
   const cached = renderCache?.get(key);
   if (cached) return cached;
-  const sourceLines = markdownTheme?.highlightCode?.(safeText, language) ?? safeText.split("\n");
-  const lines = sourceLines.flatMap((line) => wrapTextWithAnsi(`  ${line}`, renderWidth));
-  return renderCache?.set(key, lines, key.length + lines.reduce((sum, line) => sum + line.length, 0)) ?? lines;
+  const sourceLines =
+    markdownTheme?.highlightCode?.(safeText, language) ?? safeText.split("\n");
+  const lines = sourceLines.flatMap((line) =>
+    wrapTextWithAnsi(`  ${line}`, renderWidth),
+  );
+  return (
+    renderCache?.set(
+      key,
+      lines,
+      key.length + lines.reduce((sum, line) => sum + line.length, 0),
+    ) ?? lines
+  );
 }
 
 function renderResultLines(
@@ -1467,7 +1819,11 @@ export type NavAction =
   | { type: "deleteSaved" }
   | { type: "none" };
 
-export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?: "run" | "saved"): NavAction {
+export function keyToAction(
+  keyId: string | undefined,
+  kind: ViewKind,
+  itemKind?: "run" | "saved",
+): NavAction {
   switch (keyId) {
     case "up":
       return { type: "move", delta: -1 };
@@ -1486,7 +1842,9 @@ export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?
     case "ctrl+f":
       return { type: "page", direction: 1 };
     case "space":
-      return kind === "detail" || kind === "savedDetail" ? { type: "page", direction: 1 } : { type: "none" };
+      return kind === "detail" || kind === "savedDetail"
+        ? { type: "page", direction: 1 }
+        : { type: "none" };
     case "home":
     case "g":
       return { type: "jump", edge: "start" };
@@ -1514,7 +1872,8 @@ export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?
     case "p":
       return { type: "pause" };
     case "x":
-      if (kind === "savedDetail" || itemKind === "saved") return { type: "deleteSaved" };
+      if (kind === "savedDetail" || itemKind === "saved")
+        return { type: "deleteSaved" };
       return { type: "stop" };
     case "r":
       return { type: "restart" };
@@ -1528,8 +1887,10 @@ export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?
 
 function currentCount(state: NavigatorState, model: NavigatorModel): number {
   if (state.kind === "runs") return model.runs().length + model.saved().length;
-  if (state.kind === "phases" && state.runId) return model.phases(state.runId).length;
-  if (state.kind === "agents" && state.runId && state.phase) return model.agents(state.runId, state.phase).length;
+  if (state.kind === "phases" && state.runId)
+    return model.phases(state.runId).length;
+  if (state.kind === "agents" && state.runId && state.phase)
+    return model.agents(state.runId, state.phase).length;
   return 0;
 }
 
@@ -1570,7 +1931,17 @@ export function openWorkflowNavigator(
       const rerender = () => tui.requestRender();
       const markdownTheme = getMarkdownTheme();
       const renderCache = new NavigatorTextRenderCache();
-      const events = ["agentStart", "agentEnd", "phase", "log", "complete", "error", "stopped", "paused", "resumed"];
+      const events = [
+        "agentStart",
+        "agentEnd",
+        "phase",
+        "log",
+        "complete",
+        "error",
+        "stopped",
+        "paused",
+        "resumed",
+      ];
       const onEvent = () => rerender();
       for (const ev of events) manager.on(ev, onEvent);
 
@@ -1598,7 +1969,12 @@ export function openWorkflowNavigator(
           historyRenderTimer = undefined;
           const target = historyRenderTarget;
           historyRenderTarget = undefined;
-          if (target && state.kind === "detail" && target.runId === state.runId && target.agentId === state.agentId) {
+          if (
+            target &&
+            state.kind === "detail" &&
+            target.runId === state.runId &&
+            target.agentId === state.agentId
+          ) {
             rerender();
           }
         }, 125);
@@ -1615,7 +1991,10 @@ export function openWorkflowNavigator(
       };
 
       const act = (data: string) => {
-        const itemKind = state.kind === "runs" ? state.itemKindAt(model, state.cursor) : undefined;
+        const itemKind =
+          state.kind === "runs"
+            ? state.itemKindAt(model, state.cursor)
+            : undefined;
         const action = keyToAction(parseKey(data), state.kind, itemKind);
         // Keep the whole dispatch behind one error boundary so corrupt on-disk
         // data or persistence failures cannot crash the overlay input handler.
@@ -1670,24 +2049,45 @@ export function openWorkflowNavigator(
             }
             case "pause": {
               const id = state.activeRunId(model);
-              if (id) ui.notify(manager.pause(id) ? `Paused ${id}` : `Cannot pause ${id}`, "info");
+              if (id)
+                ui.notify(
+                  manager.pause(id) ? `Paused ${id}` : `Cannot pause ${id}`,
+                  "info",
+                );
               break;
             }
             case "stop": {
               const id = state.activeRunId(model);
-              if (id) ui.notify(manager.stop(id) ? `Stopped ${id}` : `Cannot stop ${id}`, "info");
+              if (id)
+                ui.notify(
+                  manager.stop(id) ? `Stopped ${id}` : `Cannot stop ${id}`,
+                  "info",
+                );
               break;
             }
             case "restart": {
               const id = state.activeRunId(model);
-              const run = id ? manager.listRuns().find((r) => r.runId === id) : undefined;
+              const run = id
+                ? manager.listRuns().find((r) => r.runId === id)
+                : undefined;
               if (!run?.script) {
-                ui.notify(id ? `Cannot restart ${id} (no script saved)` : "No run selected to restart", "warning");
+                ui.notify(
+                  id
+                    ? `Cannot restart ${id} (no script saved)`
+                    : "No run selected to restart",
+                  "warning",
+                );
                 break;
               }
               try {
-                const { runId: newId } = manager.startInBackground(run.script, run.args);
-                ui.notify(`Restarted ${run.workflowName || "workflow"} as ${newId}`, "info");
+                const { runId: newId } = manager.startInBackground(
+                  run.script,
+                  run.args,
+                );
+                ui.notify(
+                  `Restarted ${run.workflowName || "workflow"} as ${newId}`,
+                  "info",
+                );
               } catch (error) {
                 ui.notify(
                   `Failed to restart ${run.workflowName || "workflow"}: ${error instanceof Error ? error.message : error}`,
@@ -1698,7 +2098,9 @@ export function openWorkflowNavigator(
             }
             case "save": {
               const id = state.activeRunId(model);
-              const run = id ? manager.listRuns().find((r) => r.runId === id) : undefined;
+              const run = id
+                ? manager.listRuns().find((r) => r.runId === id)
+                : undefined;
               const storage = opts.getStorage?.() ?? opts.storage;
               if (!run?.script) {
                 ui.notify("No saved run script to save", "warning");
@@ -1715,7 +2117,10 @@ export function openWorkflowNavigator(
                     location: "project",
                   });
                 } catch (error) {
-                  ui.notify(error instanceof Error ? error.message : String(error), "error");
+                  ui.notify(
+                    error instanceof Error ? error.message : String(error),
+                    "error",
+                  );
                   break;
                 }
                 // Match /workflows save and registerAllSavedWorkflows: live
@@ -1724,7 +2129,8 @@ export function openWorkflowNavigator(
                 // registration-time snapshot / inline fallback).
                 const getCwd = opts.getCwd ?? (() => opts.cwd ?? process.cwd());
                 const getManager = opts.getManager ?? (() => manager);
-                const getLiveStorage = () => opts.getStorage?.() ?? opts.storage ?? storage;
+                const getLiveStorage = () =>
+                  opts.getStorage?.() ?? opts.storage ?? storage;
                 registerSavedWorkflow(
                   pi,
                   getCwd,
@@ -1764,8 +2170,10 @@ export function openWorkflowNavigator(
         },
         render: (width: number) => {
           // Brighter border when focused, muted when not
-          const borderColor = (s: string) => (_focused ? theme.fg("accent", s) : theme.fg("borderMuted", s));
-          const titleColor = (s: string) => (_focused ? theme.fg("dim", theme.bold(s)) : theme.fg("muted", s));
+          const borderColor = (s: string) =>
+            _focused ? theme.fg("accent", s) : theme.fg("borderMuted", s);
+          const titleColor = (s: string) =>
+            _focused ? theme.fg("dim", theme.bold(s)) : theme.fg("muted", s);
           const bgColor = (s: string) => theme.bg("customMessageBg", s);
           const innerWidth = Math.max(10, width - BOX_BORDER_OVERHEAD);
           // Match the navigator's own viewport to the overlay's 92% maxHeight;
@@ -1775,20 +2183,42 @@ export function openWorkflowNavigator(
           const overlayRows = Math.max(8, Math.floor(terminalRows * 0.92));
           const contentRows = Math.max(6, overlayRows - 2); // top + bottom box borders
           const raw = model.withRenderFrame(() =>
-            renderNavigatorFrame(state, model, innerWidth, theme, contentRows, markdownTheme, renderCache),
+            renderNavigatorFrame(
+              state,
+              model,
+              innerWidth,
+              theme,
+              contentRows,
+              markdownTheme,
+              renderCache,
+            ),
           );
           const title = titleColor(" workflows ");
           const topBorder =
-            borderColor("╭─") + title + borderColor("─".repeat(Math.max(0, innerWidth - 10))) + borderColor("╮");
-          const botBorder = borderColor(`╰${"─".repeat(Math.max(0, innerWidth + 2))}╯`);
+            borderColor("╭─") +
+            title +
+            borderColor("─".repeat(Math.max(0, innerWidth - 10))) +
+            borderColor("╮");
+          const botBorder = borderColor(
+            `╰${"─".repeat(Math.max(0, innerWidth + 2))}╯`,
+          );
           const wrapAndBg = (line: string) => {
             const padded = truncateToWidth(line, innerWidth, "", true);
-            const fullLine = borderColor(BOX_BORDER_LEFT) + padded + borderColor(BOX_BORDER_RIGHT);
+            const fullLine =
+              borderColor(BOX_BORDER_LEFT) +
+              padded +
+              borderColor(BOX_BORDER_RIGHT);
             // Fill trailing whitespace for consistent background across the width
             const trailingPad = width - visibleWidth(fullLine);
-            return bgColor(fullLine + (trailingPad > 0 ? " ".repeat(trailingPad) : ""));
+            return bgColor(
+              fullLine + (trailingPad > 0 ? " ".repeat(trailingPad) : ""),
+            );
           };
-          return [bgColor(topBorder), ...raw.map(wrapAndBg), bgColor(botBorder)];
+          return [
+            bgColor(topBorder),
+            ...raw.map(wrapAndBg),
+            bgColor(botBorder),
+          ];
         },
         handleInput: (data: string) => act(data),
         invalidate: () => {},

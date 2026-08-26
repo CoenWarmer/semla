@@ -98,8 +98,8 @@ const RECIPES = [
 export const REQUIRED_WORKFLOW_PACKAGE_RESOURCES = [
   `${SKILL_ROOT}/SKILL.md`,
   ...FOCUSED_REFERENCES.map((name) => `${SKILL_ROOT}/references/${name}.md`),
-  ...PATTERNS.map((name) => `${SKILL_ROOT}/examples/${name}.ts`),
-  ...RECIPES.map((name) => `${SKILL_ROOT}/examples/${name}.ts`),
+  ...PATTERNS.map((name) => `${SKILL_ROOT}/examples/${name}.js`),
+  ...RECIPES.map((name) => `${SKILL_ROOT}/examples/${name}.js`),
 ] as const;
 
 function diagnostic(

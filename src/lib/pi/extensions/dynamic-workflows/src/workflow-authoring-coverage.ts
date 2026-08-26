@@ -27,7 +27,9 @@ export interface WorkflowAuthoringCoverageEntry {
 }
 
 /** Scenario identifiers that release checks may accept as provider-backed evidence. */
-export const WORKFLOW_COMPREHENSION_SCENARIO_IDS = COMPREHENSION_SCENARIOS.map(({ id }) => id);
+export const WORKFLOW_COMPREHENSION_SCENARIO_IDS = COMPREHENSION_SCENARIOS.map(
+  ({ id }) => id,
+);
 
 /** Mixed guidance files that require explicit acceptance while behavioral coverage remains partial. */
 export const WORKFLOW_AUTHORING_FROZEN_FILES = [
@@ -45,7 +47,7 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   },
   {
     path: "skills/workflow-authoring/references/specialized-helpers.md",
-    sha256: "7597c94bbacea885697fb2d05a96ed9ec39403ca6d3a94547bf8ce5e233b2c76",
+    sha256: "16d600b0bbc64909584252e48fc86788d0149c619e56d7aa74fdda0ec3756e14",
   },
   {
     path: "skills/workflow-authoring/references/lifecycle.md",
@@ -57,7 +59,7 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   },
   {
     path: "skills/workflow-authoring/references/focused-recipes.md",
-    sha256: "8cdacc3e659c2ce7bab7f73a311dc0d94ce1df5ed6fc7c66515e73e1bb8b157e",
+    sha256: "335dd53294d290b11b0b9b5028d89c3cb4f3a272baf080ff1b06362514585edf",
   },
   {
     path: "skills/workflow-authoring/references/registry-ownership.md",
@@ -86,9 +88,11 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
 ] as const;
 
 const RUNTIME_PATH = "skills/workflow-authoring/references/runtime.md";
-const SPECIALIZED_HELPERS_PATH = "skills/workflow-authoring/references/specialized-helpers.md";
+const SPECIALIZED_HELPERS_PATH =
+  "skills/workflow-authoring/references/specialized-helpers.md";
 const LIFECYCLE_PATH = "skills/workflow-authoring/references/lifecycle.md";
-const PATTERN_PATH = "skills/workflow-authoring/references/pattern-selection.md";
+const PATTERN_PATH =
+  "skills/workflow-authoring/references/pattern-selection.md";
 const RECIPE_PATH = "skills/workflow-authoring/references/focused-recipes.md";
 const SKILL_PATH = "skills/workflow-authoring/SKILL.md";
 const WRITE_EDIT_ROUTE: ProtectedGuidanceSurface = {
@@ -125,7 +129,9 @@ const CAPABILITY_SCENARIOS: Readonly<Record<string, readonly string[]>> = {
   "workflow.script.return-value": WORKFLOW_COMPREHENSION_SCENARIO_IDS,
 };
 
-const FROZEN_GUIDANCE_BY_CAPABILITY: Readonly<Record<string, readonly ProtectedGuidanceSurface[]>> = {
+const FROZEN_GUIDANCE_BY_CAPABILITY: Readonly<
+  Record<string, readonly ProtectedGuidanceSurface[]>
+> = {
   "workflow.runtime.pipeline": [
     {
       path: RUNTIME_PATH,
@@ -167,7 +173,11 @@ const FROZEN_GUIDANCE_BY_CAPABILITY: Readonly<Record<string, readonly ProtectedG
     },
   ],
   "workflow.runtime.log": [
-    { path: SKILL_PATH, requiredText: "Use `log()` for new code; `console` is compatibility-only." },
+    {
+      path: SKILL_PATH,
+      requiredText:
+        "Use `log()` for new code; `console` is compatibility-only.",
+    },
   ],
   "workflow.runtime.args": [
     {
@@ -198,13 +208,20 @@ const FROZEN_GUIDANCE_BY_CAPABILITY: Readonly<Record<string, readonly ProtectedG
     },
   ],
   "workflow.runtime.console": [
-    { path: SKILL_PATH, requiredText: "Use `log()` for new code; `console` is compatibility-only." },
+    {
+      path: SKILL_PATH,
+      requiredText:
+        "Use `log()` for new code; `console` is compatibility-only.",
+    },
   ],
-  "workflow.tool-input.script": [{ path: RUNTIME_PATH, anchor: "script-envelope" }],
+  "workflow.tool-input.script": [
+    { path: RUNTIME_PATH, anchor: "script-envelope" },
+  ],
   "workflow.tool-input.args": [
     {
       path: LIFECYCLE_PATH,
-      requiredText: "Pass timestamps, randomness, and external decisions through `args`.",
+      requiredText:
+        "Pass timestamps, randomness, and external decisions through `args`.",
     },
   ],
   "workflow.tool-input.background": [
@@ -245,7 +262,8 @@ const FROZEN_GUIDANCE_BY_CAPABILITY: Readonly<Record<string, readonly ProtectedG
   "workflow.tool-input.tokenBudget": [
     {
       path: LIFECYCLE_PATH,
-      requiredText: "Omit `tokenBudget` unless the user supplies a cap or explicitly asks you to choose one.",
+      requiredText:
+        "Omit `tokenBudget` unless the user supplies a cap or explicitly asks you to choose one.",
     },
     {
       path: LIFECYCLE_PATH,
@@ -332,7 +350,10 @@ const PATTERN_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "pattern",
     reference: { path: PATTERN_PATH, anchor: "fan-out-and-synthesize" },
     example: "skills/workflow-authoring/examples/fan-out-and-synthesize.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["coverage-fan-out-synthesize"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -342,7 +363,10 @@ const PATTERN_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "pattern",
     reference: { path: PATTERN_PATH },
     example: "skills/workflow-authoring/examples/adversarial-verification.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["full-review"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -352,7 +376,10 @@ const PATTERN_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "pattern",
     reference: { path: PATTERN_PATH },
     example: "skills/workflow-authoring/examples/generate-and-filter.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["coverage-generate-filter"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -362,7 +389,7 @@ const PATTERN_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "pattern",
     reference: { path: PATTERN_PATH },
     example: "skills/workflow-authoring/examples/tournament.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts"],
+    behaviorEvidence: ["tests/workflow-authoring-skill.test.js"],
     comprehensionScenarios: [],
     protection: WorkflowAuthoringProtection.GUIDANCE_FROZEN,
     protectedGuidance: [
@@ -379,7 +406,10 @@ const PATTERN_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "pattern",
     reference: { path: PATTERN_PATH },
     example: "skills/workflow-authoring/examples/loop-until-done.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["full-loop"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -392,7 +422,10 @@ const RECIPE_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "recipe",
     reference: { path: RECIPE_PATH },
     example: "skills/workflow-authoring/examples/phased-budgets.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["full-edit"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -402,7 +435,10 @@ const RECIPE_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "recipe",
     reference: { path: RECIPE_PATH },
     example: "skills/workflow-authoring/examples/saved-nested-workflows.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["full-edit"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -412,7 +448,10 @@ const RECIPE_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "recipe",
     reference: { path: RECIPE_PATH },
     example: "skills/workflow-authoring/examples/bounded-semantic-retry.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
     comprehensionScenarios: ["full-retry"],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
@@ -439,8 +478,16 @@ const RECIPE_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
     kind: "recipe",
     reference: { path: RECIPE_PATH },
     example: "skills/workflow-authoring/examples/structured-output.js",
-    behaviorEvidence: ["tests/workflow-authoring-skill.test.ts", "tests/workflow-comprehension.test.ts"],
-    comprehensionScenarios: ["full-write", "full-debug", "full-loop", "full-retry"],
+    behaviorEvidence: [
+      "tests/workflow-authoring-skill.test.ts",
+      "tests/workflow-comprehension.test.ts",
+    ],
+    comprehensionScenarios: [
+      "full-write",
+      "full-debug",
+      "full-loop",
+      "full-retry",
+    ],
     protection: WorkflowAuthoringProtection.BEHAVIORALLY_COVERED,
     protectedGuidance: [],
   },
@@ -456,35 +503,40 @@ const HELPER_CAPABILITY_IDS = new Set([
   "workflow.runtime.checkpoint",
 ]);
 
-const CONTRACT_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = WORKFLOW_CAPABILITY_DEFINITION.capabilities
-  .filter(({ discovery, support }) => discovery !== DiscoveryPlacement.NONE && support !== CapabilitySupport.INTERNAL)
-  .map((capability) => {
-    const comprehensionScenarios = CAPABILITY_SCENARIOS[capability.id] ?? [];
-    const frozenGuidance = FROZEN_GUIDANCE_BY_CAPABILITY[capability.id] ?? [];
-    const route =
-      capability.classification === CapabilityClassification.DYNAMIC_REFERENCE
-        ? ROUTING_ROUTE
-        : HELPER_CAPABILITY_IDS.has(capability.id)
-          ? HELPER_ROUTE
-          : WRITE_EDIT_ROUTE;
-    const protectedGuidance = comprehensionScenarios.length > 0 ? [] : [...frozenGuidance, route];
-    return {
-      id: capability.id,
-      kind: capability.classification,
-      reference: capability.staticReference ?? { path: "skills/workflow-authoring/references/capabilities.md" },
-      behaviorEvidence: capability.behaviorEvidence,
-      comprehensionScenarios,
-      protection:
-        comprehensionScenarios.length > 0
-          ? WorkflowAuthoringProtection.BEHAVIORALLY_COVERED
-          : WorkflowAuthoringProtection.GUIDANCE_FROZEN,
-      protectedGuidance,
-    };
-  });
+const CONTRACT_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] =
+  WORKFLOW_CAPABILITY_DEFINITION.capabilities
+    .filter(
+      ({ discovery, support }) =>
+        discovery !== DiscoveryPlacement.NONE &&
+        support !== CapabilitySupport.INTERNAL,
+    )
+    .map((capability) => {
+      const comprehensionScenarios = CAPABILITY_SCENARIOS[capability.id] ?? [];
+      const frozenGuidance = FROZEN_GUIDANCE_BY_CAPABILITY[capability.id] ?? [];
+      const route =
+        capability.classification === CapabilityClassification.DYNAMIC_REFERENCE
+          ? ROUTING_ROUTE
+          : HELPER_CAPABILITY_IDS.has(capability.id)
+            ? HELPER_ROUTE
+            : WRITE_EDIT_ROUTE;
+      const protectedGuidance =
+        comprehensionScenarios.length > 0 ? [] : [...frozenGuidance, route];
+      return {
+        id: capability.id,
+        kind: capability.classification,
+        reference: capability.staticReference ?? {
+          path: "skills/workflow-authoring/references/capabilities.md",
+        },
+        behaviorEvidence: capability.behaviorEvidence,
+        comprehensionScenarios,
+        protection:
+          comprehensionScenarios.length > 0
+            ? WorkflowAuthoringProtection.BEHAVIORALLY_COVERED
+            : WorkflowAuthoringProtection.GUIDANCE_FROZEN,
+        protectedGuidance,
+      };
+    });
 
 /** Complete release-gated inventory of behavioral coverage and frozen authoring guidance. */
-export const WORKFLOW_AUTHORING_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] = [
-  ...CONTRACT_COVERAGE,
-  ...PATTERN_COVERAGE,
-  ...RECIPE_COVERAGE,
-];
+export const WORKFLOW_AUTHORING_COVERAGE: readonly WorkflowAuthoringCoverageEntry[] =
+  [...CONTRACT_COVERAGE, ...PATTERN_COVERAGE, ...RECIPE_COVERAGE];

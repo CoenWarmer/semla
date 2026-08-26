@@ -7,7 +7,11 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { MAX_AGENT_RETRIES, MAX_CONCURRENCY, normalizeKeywordTriggerWord } from "./config.ts";
+import {
+  MAX_AGENT_RETRIES,
+  MAX_CONCURRENCY,
+  normalizeKeywordTriggerWord,
+} from "./config.ts";
 import { workflowHomeDir, workflowProjectPaths } from "./workflow-paths.ts";
 
 export interface WorkflowSettings {
@@ -78,11 +82,16 @@ export function getWorkflowProjectSettingsPath(cwd: string): string {
 }
 
 /** Load settings from disk. Missing, corrupt, or invalid files resolve to {}. */
-export function loadWorkflowSettings(settingsPathOrOptions?: string | WorkflowSettingsOptions): WorkflowSettings {
+export function loadWorkflowSettings(
+  settingsPathOrOptions?: string | WorkflowSettingsOptions,
+): WorkflowSettings {
   const options = normalizeOptions(settingsPathOrOptions);
-  const globalSettings = readSettings(options.settingsPath ?? getWorkflowSettingsPath());
+  const globalSettings = readSettings(
+    options.settingsPath ?? getWorkflowSettingsPath(),
+  );
   const projectPath =
-    options.projectSettingsPath ?? (options.cwd ? getWorkflowProjectSettingsPath(options.cwd) : undefined);
+    options.projectSettingsPath ??
+    (options.cwd ? getWorkflowProjectSettingsPath(options.cwd) : undefined);
   if (!projectPath) return globalSettings;
   return { ...globalSettings, ...readSettings(projectPath) };
 }
@@ -94,26 +103,41 @@ export function saveWorkflowSettings(
 ): void {
   const options = normalizeOptions(settingsPathOrOptions);
   const projectPath =
-    options.projectSettingsPath ?? (options.cwd ? getWorkflowProjectSettingsPath(options.cwd) : undefined);
+    options.projectSettingsPath ??
+    (options.cwd ? getWorkflowProjectSettingsPath(options.cwd) : undefined);
   const path =
-    options.scope === "project" && projectPath ? projectPath : (options.settingsPath ?? getWorkflowSettingsPath());
+    options.scope === "project" && projectPath
+      ? projectPath
+      : (options.settingsPath ?? getWorkflowSettingsPath());
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
   const existing = readObject(path);
-  writeFileSync(path, `${JSON.stringify({ ...existing, ...normalizeSettings(settings) }, null, 2)}\n`, "utf-8");
+  writeFileSync(
+    path,
+    `${JSON.stringify({ ...existing, ...normalizeSettings(settings) }, null, 2)}\n`,
+    "utf-8",
+  );
 }
 
 /** Save a global preference and update an existing project override if one is present. */
-export function saveWorkflowSettingsForCwd(settings: WorkflowSettings, cwd: string): void {
+export function saveWorkflowSettingsForCwd(
+  settings: WorkflowSettings,
+  cwd: string,
+): void {
   saveWorkflowSettings(settings);
   const projectPath = getWorkflowProjectSettingsPath(cwd);
   if (existsSync(projectPath)) {
-    saveWorkflowSettings(settings, { projectSettingsPath: projectPath, scope: "project" });
+    saveWorkflowSettings(settings, {
+      projectSettingsPath: projectPath,
+      scope: "project",
+    });
   }
 }
 
-function normalizeOptions(settingsPathOrOptions?: string | WorkflowSettingsOptions): WorkflowSettingsOptions {
+function normalizeOptions(
+  settingsPathOrOptions?: string | WorkflowSettingsOptions,
+): WorkflowSettingsOptions {
   return typeof settingsPathOrOptions === "string"
     ? { settingsPath: settingsPathOrOptions }
     : (settingsPathOrOptions ?? {});
@@ -135,8 +159,11 @@ function normalizeSettings(value: unknown): WorkflowSettings {
   if (typeof raw.keywordTriggerEnabled === "boolean") {
     settings.keywordTriggerEnabled = raw.keywordTriggerEnabled;
   }
-  const keywordTriggerWord = normalizeKeywordTriggerWord(raw.keywordTriggerWord);
-  if (keywordTriggerWord !== undefined) settings.keywordTriggerWord = keywordTriggerWord;
+  const keywordTriggerWord = normalizeKeywordTriggerWord(
+    raw.keywordTriggerWord,
+  );
+  if (keywordTriggerWord !== undefined)
+    settings.keywordTriggerWord = keywordTriggerWord;
   if (raw.defaultAgentTimeoutMs === null) {
     settings.defaultAgentTimeoutMs = null;
   } else if (
@@ -149,14 +176,32 @@ function normalizeSettings(value: unknown): WorkflowSettings {
   if (raw.defaultTokenBudget === null) {
     settings.defaultTokenBudget = null;
   } else {
-    const defaultTokenBudget = normalizeInteger(raw.defaultTokenBudget, 1, Number.MAX_SAFE_INTEGER);
-    if (defaultTokenBudget !== undefined) settings.defaultTokenBudget = defaultTokenBudget;
+    const defaultTokenBudget = normalizeInteger(
+      raw.defaultTokenBudget,
+      1,
+      Number.MAX_SAFE_INTEGER,
+    );
+    if (defaultTokenBudget !== undefined)
+      settings.defaultTokenBudget = defaultTokenBudget;
   }
-  const defaultConcurrency = normalizeInteger(raw.defaultConcurrency, 1, MAX_CONCURRENCY);
-  if (defaultConcurrency !== undefined) settings.defaultConcurrency = defaultConcurrency;
-  const defaultAgentRetries = normalizeInteger(raw.defaultAgentRetries, 0, MAX_AGENT_RETRIES);
-  if (defaultAgentRetries !== undefined) settings.defaultAgentRetries = defaultAgentRetries;
-  if (raw.progressPanelMode === "compact" || raw.progressPanelMode === "detailed") {
+  const defaultConcurrency = normalizeInteger(
+    raw.defaultConcurrency,
+    1,
+    MAX_CONCURRENCY,
+  );
+  if (defaultConcurrency !== undefined)
+    settings.defaultConcurrency = defaultConcurrency;
+  const defaultAgentRetries = normalizeInteger(
+    raw.defaultAgentRetries,
+    0,
+    MAX_AGENT_RETRIES,
+  );
+  if (defaultAgentRetries !== undefined)
+    settings.defaultAgentRetries = defaultAgentRetries;
+  if (
+    raw.progressPanelMode === "compact" ||
+    raw.progressPanelMode === "detailed"
+  ) {
     settings.progressPanelMode = raw.progressPanelMode;
   }
   if (
@@ -164,22 +209,37 @@ function normalizeSettings(value: unknown): WorkflowSettings {
     Number.isFinite(raw.progressPanelMaxAgents) &&
     raw.progressPanelMaxAgents >= 1
   ) {
-    settings.progressPanelMaxAgents = Math.min(1000, Math.floor(raw.progressPanelMaxAgents));
+    settings.progressPanelMaxAgents = Math.min(
+      1000,
+      Math.floor(raw.progressPanelMaxAgents),
+    );
   }
   if (typeof raw.persistAgentSessions === "boolean") {
     settings.persistAgentSessions = raw.persistAgentSessions;
   }
-  const deliveredResultMaxChars = normalizeInteger(raw.deliveredResultMaxChars, 1, 1_000_000);
-  if (deliveredResultMaxChars !== undefined) settings.deliveredResultMaxChars = deliveredResultMaxChars;
+  const deliveredResultMaxChars = normalizeInteger(
+    raw.deliveredResultMaxChars,
+    1,
+    1_000_000,
+  );
+  if (deliveredResultMaxChars !== undefined)
+    settings.deliveredResultMaxChars = deliveredResultMaxChars;
   if (Array.isArray(raw.excludeSubagentTools)) {
-    const names = raw.excludeSubagentTools.filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+    const names = raw.excludeSubagentTools.filter(
+      (t): t is string => typeof t === "string" && t.trim().length > 0,
+    );
     if (names.length) settings.excludeSubagentTools = names;
   }
   return settings;
 }
 
-function normalizeInteger(value: unknown, min: number, max: number): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < min) return undefined;
+function normalizeInteger(
+  value: unknown,
+  min: number,
+  max: number,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min)
+    return undefined;
   return Math.min(max, Math.floor(value));
 }
 
@@ -187,7 +247,9 @@ function readObject(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   try {
     const parsed = JSON.parse(readFileSync(path, "utf-8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }

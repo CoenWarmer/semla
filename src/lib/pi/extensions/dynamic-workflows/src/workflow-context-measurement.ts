@@ -3,7 +3,8 @@ import { join, relative } from "node:path";
 import { createWorkflowTool } from "./workflow-tool.ts";
 
 /** Package-relative generated context-measurement artifact. */
-export const WORKFLOW_CONTEXT_MEASUREMENT_PATH = "docs/workflow-context-surfaces.json";
+export const WORKFLOW_CONTEXT_MEASUREMENT_PATH =
+  "docs/workflow-context-surfaces.tson";
 const ROOT = join(import.meta.dirname, "..");
 const SKILL_ROOT = "skills/workflow-authoring";
 const SKILL_PATH = `${SKILL_ROOT}/SKILL.md`;
@@ -91,18 +92,24 @@ export interface SkillDiscoverySurface extends ByteSurface {
 export interface WorkflowContextMeasurement {
   formatVersion: 3;
   encoding: "utf8";
-  sources: ["src/workflow-tool.ts", "skills/workflow-authoring", "package.json#pi.skills"];
+  sources: [
+    "src/workflow-tool.ts",
+    "skills/workflow-authoring",
+    "package.tson#pi.skills",
+  ];
   surfaces: {
     permanentWorkflowPrompt: ByteSurface;
     providerVisibleWorkflowToolDefinition: ByteSurface;
     /**
-     * Every skill this package registers (package.json's `pi.skills` — read
+     * Every skill this package registers (package.tson's `pi.skills` — read
      * from disk, not hardcoded here) contributes an always-on discovery entry
      * (name + description) the model sees regardless of whether the skill is
      * ever loaded. This sums all of them, not just workflow-authoring, so a
      * new skill's always-on cost can't silently go untracked.
      */
-    registeredSkillsDiscovery: ByteSurface & { skills: SkillDiscoverySurface[] };
+    registeredSkillsDiscovery: ByteSurface & {
+      skills: SkillDiscoverySurface[];
+    };
     ordinaryWorkflowOwnedAlwaysOn: ByteSurface;
     workflowAuthoringSkillCorpus: ByteSurface & { files: number };
     representativeAuthoringProfiles: {
@@ -131,24 +138,33 @@ function skillFiles(root: string): string[] {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const absolute = join(directory, entry.name);
       if (entry.isDirectory()) pending.push(absolute);
-      else if (entry.isFile()) files.push(relative(root, absolute).replaceAll("\\", "/"));
+      else if (entry.isFile())
+        files.push(relative(root, absolute).replaceAll("\\", "/"));
     }
   }
   return files.sort();
 }
 
 /**
- * Every skill root this package registers, read from package.json's
+ * Every skill root this package registers, read from package.tson's
  * `pi.skills` array rather than hardcoded — so a newly added skill is picked
  * up automatically instead of silently missing from the always-on tally.
  */
 function registeredSkillRoots(root: string): string[] {
-  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+  const manifest = JSON.parse(
+    readFileSync(join(root, "package.tson"), "utf8"),
+  ) as {
     pi?: { skills?: unknown };
   };
   const skills = manifest.pi?.skills;
-  if (!Array.isArray(skills) || skills.length === 0 || !skills.every((s) => typeof s === "string")) {
-    throw new Error("package.json must declare a non-empty pi.skills array of skill root paths");
+  if (
+    !Array.isArray(skills) ||
+    skills.length === 0 ||
+    !skills.every((s) => typeof s === "string")
+  ) {
+    throw new Error(
+      "package.tson must declare a non-empty pi.skills array of skill root paths",
+    );
   }
   return skills;
 }
@@ -158,7 +174,8 @@ function skillDiscoveryEntry(root: string, skillRoot: string): string {
   const skill = readFileSync(join(root, skillPath), "utf8");
   const name = /^name:\s*(.+)$/m.exec(skill)?.[1]?.trim();
   const description = /^description:\s*(.+)$/m.exec(skill)?.[1]?.trim();
-  if (!name || !description) throw new Error(`${skillPath} must declare name and description`);
+  if (!name || !description)
+    throw new Error(`${skillPath} must declare name and description`);
   return [
     "<skill>",
     `  <name>${name}</name>`,
@@ -177,7 +194,9 @@ function median(values: number[]): number {
 }
 
 /** Measures permanent, discovery, corpus, and canonical on-demand workflow context surfaces. */
-export function measureWorkflowContextSurfaces(root: string = ROOT): WorkflowContextMeasurement {
+export function measureWorkflowContextSurfaces(
+  root: string = ROOT,
+): WorkflowContextMeasurement {
   const tool = createWorkflowTool();
   const permanentWorkflowPrompt = [
     `- workflow: ${tool.promptSnippet}`,
@@ -189,14 +208,23 @@ export function measureWorkflowContextSurfaces(root: string = ROOT): WorkflowCon
     parameters: tool.parameters,
   });
   const skillRoots = registeredSkillRoots(root);
-  const skillDiscoverySurfaces: SkillDiscoverySurface[] = skillRoots.map((skillRoot) => ({
-    root: skillRoot,
-    serialization: "UTF-8 bytes of normalized Pi skill XML with package-relative location",
-    bytes: bytes(skillDiscoveryEntry(root, skillRoot)),
-  }));
-  const registeredSkillsDiscoveryBytes = skillDiscoverySurfaces.reduce((sum, surface) => sum + surface.bytes, 0);
+  const skillDiscoverySurfaces: SkillDiscoverySurface[] = skillRoots.map(
+    (skillRoot) => ({
+      root: skillRoot,
+      serialization:
+        "UTF-8 bytes of normalized Pi skill XML with package-relative location",
+      bytes: bytes(skillDiscoveryEntry(root, skillRoot)),
+    }),
+  );
+  const registeredSkillsDiscoveryBytes = skillDiscoverySurfaces.reduce(
+    (sum, surface) => sum + surface.bytes,
+    0,
+  );
   const corpusFiles = skillFiles(root);
-  const corpusBytes = corpusFiles.reduce((sum, path) => sum + fileBytes(root, path), 0);
+  const corpusBytes = corpusFiles.reduce(
+    (sum, path) => sum + fileBytes(root, path),
+    0,
+  );
   const profiles = WORKFLOW_AUTHORING_PROFILES.map((profile) => ({
     name: profile.name,
     files: [...profile.files],
@@ -208,19 +236,24 @@ export function measureWorkflowContextSurfaces(root: string = ROOT): WorkflowCon
   return {
     formatVersion: 3,
     encoding: "utf8",
-    sources: ["src/workflow-tool.ts", "skills/workflow-authoring", "package.json#pi.skills"],
+    sources: [
+      "src/workflow-tool.ts",
+      "skills/workflow-authoring",
+      "package.tson#pi.skills",
+    ],
     surfaces: {
       permanentWorkflowPrompt: {
         serialization: "UTF-8 bytes of LF-joined Pi prompt lines",
         bytes: promptBytes,
       },
       providerVisibleWorkflowToolDefinition: {
-        serialization: "UTF-8 bytes of JSON.stringify({ name, description, parameters })",
+        serialization:
+          "UTF-8 bytes of JSON.stringify({ name, description, parameters })",
         bytes: toolBytes,
       },
       registeredSkillsDiscovery: {
         serialization:
-          "sum of UTF-8 bytes of normalized Pi skill XML (name + description + location) across every root in package.json's pi.skills",
+          "sum of UTF-8 bytes of normalized Pi skill XML (name + description + location) across every root in package.tson's pi.skills",
         bytes: registeredSkillsDiscoveryBytes,
         skills: skillDiscoverySurfaces,
       },
@@ -230,13 +263,17 @@ export function measureWorkflowContextSurfaces(root: string = ROOT): WorkflowCon
         bytes: promptBytes + toolBytes + registeredSkillsDiscoveryBytes,
       },
       workflowAuthoringSkillCorpus: {
-        serialization: "sum of UTF-8 bytes for every file under skills/workflow-authoring",
+        serialization:
+          "sum of UTF-8 bytes for every file under skills/workflow-authoring",
         files: corpusFiles.length,
         bytes: corpusBytes,
       },
       representativeAuthoringProfiles: {
-        serialization: "sum of UTF-8 bytes for each profile's declared package-relative files",
-        medianBytes: median(profiles.map(({ bytes: profileBytes }) => profileBytes)),
+        serialization:
+          "sum of UTF-8 bytes for each profile's declared package-relative files",
+        medianBytes: median(
+          profiles.map(({ bytes: profileBytes }) => profileBytes),
+        ),
         profiles,
       },
     },
@@ -249,14 +286,27 @@ export function renderWorkflowContextMeasurement(): string {
 }
 
 /** Write the generated measurement under root and return the measured values. */
-export function writeWorkflowContextMeasurement(root: string): WorkflowContextMeasurement {
+export function writeWorkflowContextMeasurement(
+  root: string,
+): WorkflowContextMeasurement {
   const measurement = measureWorkflowContextSurfaces(root);
-  writeFileSync(join(root, WORKFLOW_CONTEXT_MEASUREMENT_PATH), `${JSON.stringify(measurement, null, 2)}\n`);
+  writeFileSync(
+    join(root, WORKFLOW_CONTEXT_MEASUREMENT_PATH),
+    `${JSON.stringify(measurement, null, 2)}\n`,
+  );
   return measurement;
 }
 
 /** Report whether committed or supplied measurement JSON matches current package bytes. */
-export function checkWorkflowContextMeasurement(root: string, actual?: string): boolean {
-  const committed = actual ?? readFileSync(join(root, WORKFLOW_CONTEXT_MEASUREMENT_PATH), "utf8");
-  return committed === `${JSON.stringify(measureWorkflowContextSurfaces(root), null, 2)}\n`;
+export function checkWorkflowContextMeasurement(
+  root: string,
+  actual?: string,
+): boolean {
+  const committed =
+    actual ??
+    readFileSync(join(root, WORKFLOW_CONTEXT_MEASUREMENT_PATH), "utf8");
+  return (
+    committed ===
+    `${JSON.stringify(measureWorkflowContextSurfaces(root), null, 2)}\n`
+  );
 }

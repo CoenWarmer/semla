@@ -13,7 +13,11 @@
  * When editing a tier, users pick a model, then an optional thinking level.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
   Container,
   type SelectItem,
@@ -42,7 +46,8 @@ import {
  */
 export function registerWorkflowModelsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("workflows-models", {
-    description: "View and edit model tiers used by workflows (small/medium/big)",
+    description:
+      "View and edit model tiers used by workflows (small/medium/big)",
     handler: async (_args, ctx) => {
       await ctx.waitForIdle();
 
@@ -52,9 +57,15 @@ export function registerWorkflowModelsCommand(pi: ExtensionAPI): void {
       // registry explicitly: since pi 0.80.8 the no-registry fallback inside
       // listAvailableModels() initializes asynchronously and reports [] on the
       // first call, which would rank defaults from an empty model list.
-      const currentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+      const currentModel = ctx.model
+        ? `${ctx.model.provider}/${ctx.model.id}`
+        : undefined;
       let config =
-        loadModelTierConfig() ?? buildDefaultTierConfig(currentModel, listAvailableModels(ctx.modelRegistry));
+        loadModelTierConfig() ??
+        buildDefaultTierConfig(
+          currentModel,
+          listAvailableModels(ctx.modelRegistry),
+        );
       let dirty = false;
 
       const ensureFresh = (cfg: typeof config) => {
@@ -77,7 +88,10 @@ export function registerWorkflowModelsCommand(pi: ExtensionAPI): void {
         menuOptions.push("Reset to defaults");
         menuOptions.push(dirty ? "Save and exit" : "Exit");
 
-        const choice = await ctx.ui.select("Model tier configuration", menuOptions);
+        const choice = await ctx.ui.select(
+          "Model tier configuration",
+          menuOptions,
+        );
 
         if (!choice) break;
 
@@ -98,8 +112,16 @@ export function registerWorkflowModelsCommand(pi: ExtensionAPI): void {
             "This will reset tiers from your available model list. Continue?",
           );
           if (confirmed) {
-            ensureFresh(buildDefaultTierConfig(currentModel, listAvailableModels(ctx.modelRegistry)));
-            ctx.ui.notify("Tiers reset to defaults. Use 'Save and exit' to persist.", "info");
+            ensureFresh(
+              buildDefaultTierConfig(
+                currentModel,
+                listAvailableModels(ctx.modelRegistry),
+              ),
+            );
+            ctx.ui.notify(
+              "Tiers reset to defaults. Use 'Save and exit' to persist.",
+              "info",
+            );
           }
         }
 
@@ -118,7 +140,9 @@ export function registerWorkflowModelsCommand(pi: ExtensionAPI): void {
 const DEFAULT_THINKING_CHOICE = "Default thinking (session setting)";
 const THINKING_CHOICES = [DEFAULT_THINKING_CHOICE, ...THINKING_LEVELS] as const;
 
-function fromThinkingChoice(choice: string | undefined): ModelThinkingLevel | undefined {
+function fromThinkingChoice(
+  choice: string | undefined,
+): ModelThinkingLevel | undefined {
   return THINKING_LEVELS.find((level) => level === choice);
 }
 
@@ -146,56 +170,67 @@ export async function editSingleTier(
   // Build SelectItems: all available models as scrollable list
   const items: SelectItem[] = available.map((m) => ({ value: m, label: m }));
 
-  const selectedModel = await ctx.ui.custom<string | null>((tui: TUI, theme: Theme, _keybindings, done) => {
-    const container = new Container();
+  const selectedModel = await ctx.ui.custom<string | null>(
+    (tui: TUI, theme: Theme, _keybindings, done) => {
+      const container = new Container();
 
-    // Title showing current model
-    const titleText = current
-      ? `Pick a model for "${tierName}" (current: ${current})`
-      : `Pick a model for "${tierName}"`;
-    container.addChild(new Text(theme.fg("accent", titleText), 1, 0));
-    container.addChild(new Spacer(1));
+      // Title showing current model
+      const titleText = current
+        ? `Pick a model for "${tierName}" (current: ${current})`
+        : `Pick a model for "${tierName}"`;
+      container.addChild(new Text(theme.fg("accent", titleText), 1, 0));
+      container.addChild(new Spacer(1));
 
-    // SelectList theme
-    const selectTheme: SelectListTheme = {
-      selectedPrefix: (t: string) => theme.bg("selectedBg", theme.fg("accent", t)),
-      selectedText: (t: string) => theme.bg("selectedBg", theme.bold(t)),
-      description: (t: string) => theme.fg("muted", t),
-      scrollInfo: (t: string) => theme.fg("dim", t),
-      noMatch: (t: string) => theme.fg("warning", t),
-    };
+      // SelectList theme
+      const selectTheme: SelectListTheme = {
+        selectedPrefix: (t: string) =>
+          theme.bg("selectedBg", theme.fg("accent", t)),
+        selectedText: (t: string) => theme.bg("selectedBg", theme.bold(t)),
+        description: (t: string) => theme.fg("muted", t),
+        scrollInfo: (t: string) => theme.fg("dim", t),
+        noMatch: (t: string) => theme.fg("warning", t),
+      };
 
-    const selectList = new SelectList(items, 12, selectTheme);
+      const selectList = new SelectList(items, 12, selectTheme);
 
-    // Preselect the current base model even when the stored tier has :thinking.
-    if (currentParts.modelSpec) {
-      const idx = items.findIndex((i) => i.value === currentParts.modelSpec);
-      if (idx >= 0) selectList.setSelectedIndex(idx);
-    }
+      // Preselect the current base model even when the stored tier has :thinking.
+      if (currentParts.modelSpec) {
+        const idx = items.findIndex((i) => i.value === currentParts.modelSpec);
+        if (idx >= 0) selectList.setSelectedIndex(idx);
+      }
 
-    // Wire up callbacks
-    selectList.onSelect = (item) => done(item.value);
-    selectList.onCancel = () => done(null);
+      // Wire up callbacks
+      selectList.onSelect = (item) => done(item.value);
+      selectList.onCancel = () => done(null);
 
-    container.addChild(selectList);
-    container.addChild(new Spacer(1));
-    container.addChild(
-      new Text(theme.fg("dim", "↑↓ navigate  enter select  esc cancel  · thinking is chosen next"), 1, 0),
-    );
+      container.addChild(selectList);
+      container.addChild(new Spacer(1));
+      container.addChild(
+        new Text(
+          theme.fg(
+            "dim",
+            "↑↓ navigate  enter select  esc cancel  · thinking is chosen next",
+          ),
+          1,
+          0,
+        ),
+      );
 
-    return {
-      render: (w: number) => container.render(w),
-      invalidate: () => container.invalidate(),
-      handleInput: (data: string) => {
-        selectList.handleInput(data);
-        tui.requestRender();
-      },
-    };
-  });
+      return {
+        render: (w: number) => container.render(w),
+        invalidate: () => container.invalidate(),
+        handleInput: (data: string) => {
+          selectList.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    },
+  );
 
   if (!selectedModel) return null;
 
-  const currentThinkingLabel = currentParts.thinkingLevel ?? DEFAULT_THINKING_CHOICE;
+  const currentThinkingLabel =
+    currentParts.thinkingLevel ?? DEFAULT_THINKING_CHOICE;
   const thinkingChoice = await ctx.ui.select(
     `Thinking for "${tierName}" tier (current: ${currentThinkingLabel})`,
     THINKING_CHOICES.map((choice) => String(choice)),
