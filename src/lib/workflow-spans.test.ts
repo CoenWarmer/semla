@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { SessionMessage } from "@/hooks/use-session-messages";

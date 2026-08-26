@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 
 import { readWorkflowRun } from "./workflow-run-reader.ts";
 
@@ -44,7 +44,7 @@ function writeRun(runId: string, ext: ".json" | ".tson", content = MINIMAL_RUN) 
   writeFileSync(join(RUNS_DIR, `${runId}${ext}`), JSON.stringify({ ...content, runId }));
 }
 
-after(() => {
+afterAll(() => {
   rmSync(RUNS_DIR, { recursive: true, force: true });
 });
 

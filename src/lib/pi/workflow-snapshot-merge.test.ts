@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { mergeLiveSnapshot, type LiveSnapshot } from "./workflow-snapshot-merge.ts";
 import type { PersistedRunState } from "./workflow-run-reader.ts";

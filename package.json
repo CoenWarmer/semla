@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts'",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tsc": "npx tsc",
     "generate:db-types": "npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > src/types/database.types.ts",
     "postinstall": "npm install --prefix .pi/packages/semla-otel && npm run generate:db-types"
@@ -68,6 +69,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

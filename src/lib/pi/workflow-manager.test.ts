@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 
 import { WorkflowManager } from "./extensions/dynamic-workflows/src/workflow-manager.ts";
 
@@ -12,11 +12,11 @@ const mockAgent = { run: async () => "mock result" } as any;
 
 let tmpDir: string;
 
-before(() => {
+beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "semla-wf-test-"));
 });
 
-after(() => {
+afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
