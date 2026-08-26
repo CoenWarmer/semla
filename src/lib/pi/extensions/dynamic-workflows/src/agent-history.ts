@@ -1,6 +1,6 @@
 export type AgentHistoryRole = "user" | "assistant" | "tool";
 
-export type AgentHistoryKind = "text" | "toolCall" | "toolResult" | "error";
+export type AgentHistoryKind = "text" | "thinking" | "toolCall" | "toolResult" | "error";
 
 export interface AgentHistoryEntry {
   role: AgentHistoryRole;
@@ -20,6 +20,9 @@ export interface AgentHistoryOptions {
   maxTextChars?: number;
   maxTotalChars?: number;
 }
+
+/** Placeholder for reasoning the provider withheld. */
+const REDACTED_THINKING = "[redacted by the provider\u2019s safety filter]";
 
 const DEFAULT_MAX_ENTRIES = 40;
 const DEFAULT_MAX_TEXT_CHARS = 2000;
@@ -49,6 +52,17 @@ export function compactAgentHistory(messages: unknown[], options: AgentHistoryOp
         if (!block || typeof block.type !== "string") continue;
         if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
           entries.push({ role: "assistant", kind: "text", text: block.text, timestamp });
+        } else if (block.type === "thinking") {
+          // Pi records reasoning as its own content part. A redacted block has
+          // no readable text — only the opaque signature the API needs for
+          // multi-turn continuity — so report it as withheld instead.
+          const text =
+            block.redacted === true
+              ? REDACTED_THINKING
+              : typeof block.thinking === "string" && block.thinking.trim()
+                ? block.thinking
+                : "";
+          if (text) entries.push({ role: "assistant", kind: "thinking", text, timestamp });
         } else if (block.type === "toolCall" && typeof block.name === "string") {
           const args = asRecord(block.arguments);
           const filePath =

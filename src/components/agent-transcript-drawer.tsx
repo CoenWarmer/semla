@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/drawer";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { XIcon } from "lucide-react";
+import { BrainIcon, ChevronDownIcon, XIcon } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
 import { TokenUsage } from "@/components/token-usage";
 import ReactMarkdown from "react-markdown";
@@ -42,6 +47,23 @@ type AgentData = {
 function HistoryEntryRow({ entry }: { entry: AgentHistoryEntry }) {
   const isUser = entry.role === "user";
   const isTool = entry.kind === "toolCall" || entry.kind === "toolResult";
+
+  // Collapsed by default: reasoning explains why a turn went the way it did,
+  // and is often longer than the turn itself.
+  if (entry.kind === "thinking") {
+    return (
+      <Collapsible>
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors [&[data-state=open]>svg:last-child]:rotate-180">
+          <BrainIcon className="size-3.5 shrink-0" />
+          Thinking
+          <ChevronDownIcon className="size-3.5 shrink-0 transition-transform" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-1.5 border-l-2 border-muted pl-3 text-sm text-muted-foreground">
+          <span className="whitespace-pre-wrap break-words">{entry.text}</span>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  }
 
   if (isTool) {
     return (

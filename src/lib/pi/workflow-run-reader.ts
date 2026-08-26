@@ -14,7 +14,7 @@ import { basename, join, resolve } from "node:path";
 export type AgentHistoryEntry = {
   diff?: string;
   isError?: boolean;
-  kind: "error" | "text" | "toolCall" | "toolResult";
+  kind: "error" | "text" | "thinking" | "toolCall" | "toolResult";
   path?: string;
   role: "assistant" | "tool" | "user";
   text: string;
