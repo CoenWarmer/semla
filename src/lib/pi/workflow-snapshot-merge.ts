@@ -81,6 +81,44 @@ function agentClock(
 }
 
 /**
+ * Fill in the timestamps a live snapshot has no way to carry.
+ *
+ * A snapshot delivered straight off the SSE stream is the WorkflowManager's own
+ * — status but no timing, not even a run start. workflow-spans then anchors a
+ * running agent's bar to the trace start and its end to `now`, so every agent
+ * renders full-width until the polling snapshot (which goes through
+ * mergeLiveSnapshot) replaces it a second or two later. Stamping the same
+ * first-seen clock here makes both paths agree from the first frame.
+ *
+ * Recorded timestamps always win; this only fills gaps. Generic so the caller's
+ * extra fields survive — the debug writer persists the whole snapshot.
+ */
+export function stampLiveTimestamps<
+  T extends {
+    agents: Array<{ endedAt?: string; id: number; startedAt?: string; status: string }>;
+    startedAt?: string;
+  },
+>(runId: string, snapshot: T, now: () => string = () => new Date().toISOString()): T {
+  const agents = snapshot.agents.map((agent) => {
+    const clock = agentClock(runId, agent.id, agent.status, now);
+    return {
+      ...agent,
+      endedAt:
+        agent.endedAt ??
+        (TERMINAL_AGENT_STATUSES.has(agent.status) ? clock.terminalAt : undefined),
+      startedAt: agent.startedAt ?? clock.firstSeenAt,
+    };
+  });
+
+  const earliestStart = agents
+    .map((agent) => agent.startedAt)
+    .filter((at): at is string => Boolean(at))
+    .sort()[0];
+
+  return { ...snapshot, agents, startedAt: snapshot.startedAt ?? earliestStart };
+}
+
+/**
  * Combine the live manager snapshot with the persisted run file.
  *
  * Membership and status come from the manager (the only place a queued or

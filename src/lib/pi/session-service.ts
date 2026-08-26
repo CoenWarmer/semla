@@ -40,7 +40,10 @@ import {
   type PersistedRunState,
 } from "@/lib/pi/workflow-run-reader";
 import { summarizeRunResult } from "@/lib/pi/workflow-result-summary";
-import { historyToTurns } from "@/lib/pi/workflow-snapshot-merge";
+import {
+  historyToTurns,
+  stampLiveTimestamps,
+} from "@/lib/pi/workflow-snapshot-merge";
 import { getParams, summarizeArguments } from "@/lib/pi/transcript";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
@@ -158,6 +161,20 @@ const withRunId = (
   runId: string | undefined,
 ): WorkflowSnapshot =>
   !snapshot.runId && runId ? { ...snapshot, runId } : snapshot;
+
+/**
+ * Resolve a snapshot straight off the agent stream into one the timeline can
+ * draw: attach the run id, then stamp the timing the manager never reports.
+ * Without the stamp, every agent renders as a full-width bar until the polling
+ * snapshot takes over.
+ */
+const liveSnapshot = (
+  snapshot: WorkflowSnapshot,
+  runId: string | undefined,
+): WorkflowSnapshot => {
+  const withId = withRunId(snapshot, runId);
+  return withId.runId ? stampLiveTimestamps(withId.runId, withId) : withId;
+};
 
 // Run states after which no further agent work happens, so a result that has
 // not been delivered yet never will be without intervention.
@@ -447,7 +464,7 @@ export const runPiPrompt = async ({
 
         const snapshot = asWorkflowSnapshot(event.result);
         if (snapshot) {
-          const enriched = withRunId(snapshot, backgroundRunId);
+          const enriched = liveSnapshot(snapshot, backgroundRunId);
           debug.onWorkflowSnapshot(enriched, "foreground");
           void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
           onEvent({ snapshot: enriched, type: "workflow-snapshot" });
@@ -461,7 +478,7 @@ export const runPiPrompt = async ({
     ) {
       const snapshot = asWorkflowSnapshot(event.partialResult);
       if (snapshot) {
-        const enriched = withRunId(snapshot, detectedBackgroundRunId);
+        const enriched = liveSnapshot(snapshot, detectedBackgroundRunId);
         debug.onWorkflowSnapshot(enriched, "foreground");
         void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
         onEvent({ snapshot: enriched, type: "workflow-snapshot" });
@@ -574,7 +591,7 @@ const runBackgroundContinuation = async (
     if (e.type === "tool_execution_update" && e.toolName === "workflow") {
       const snapshot = asWorkflowSnapshot(e.partialResult);
       if (snapshot) {
-        const enriched = withRunId(snapshot, runId);
+        const enriched = liveSnapshot(snapshot, runId);
         debug.onWorkflowSnapshot(enriched, "background");
         void persistWorkflowSnapshot(semlaSessionId, enriched, "background");
       }
@@ -583,7 +600,7 @@ const runBackgroundContinuation = async (
     if (e.type === "tool_execution_end" && e.toolName === "workflow") {
       const snapshot = asWorkflowSnapshot(e.result);
       if (snapshot) {
-        const enriched = withRunId(snapshot, runId);
+        const enriched = liveSnapshot(snapshot, runId);
         debug.onWorkflowSnapshot(enriched, "background");
         void persistWorkflowSnapshot(semlaSessionId, enriched, "background");
       }

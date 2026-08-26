@@ -274,9 +274,13 @@ export function workflowSnapshotToSpans(
       });
 
       for (const agent of phaseAgents) {
+        // An agent with no recorded start has not been placed in time yet —
+        // anchoring it to the phase start claims a duration we do not know and
+        // draws it across the whole trace. Anchor it to now instead; the
+        // stamped snapshot normally supplies a real start before this matters.
         const aStart = agent.startedAt
           ? new Date(agent.startedAt).getTime()
-          : agent.status === "queued"
+          : agent.status === "queued" || agent.status === "running"
             ? now
             : phaseStart;
         const aEnd = agent.endedAt

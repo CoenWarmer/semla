@@ -5,6 +5,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { workflowSnapshotToSpans } from "./workflow-spans.ts";
 import { applyLiveToolEvent, mergeToolCalls } from "./live-tool-calls.ts";
+import { stampLiveTimestamps } from "./pi/workflow-snapshot-merge.ts";
 
 const T0 = Date.parse("2026-08-24T12:00:00.000Z");
 const NOW = T0 + 60_000;
@@ -362,4 +363,62 @@ test("an assistant turn's thinking rides along on its marker for the span drawer
   const userMarker = spans.find((s) => s.name === "↑ User");
   assert.ok(userMarker);
   assert.ok(!("pi.thinking" in (userMarker.attributes ?? {})));
+});
+
+test("a just-started agent with no recorded start does not span the whole trace", () => {
+  // The defect in the screenshot: a live snapshot carries no timestamps, and
+  // the agent bars ran 0 → now across the full width.
+  const justStarted = {
+    agentCount: 2,
+    agents: [
+      { id: 1, label: "agent 1", status: "running" },
+      { id: 2, label: "agent 2", status: "running" },
+    ],
+    doneCount: 0,
+    errorCount: 0,
+    name: "cute_animals",
+    phases: [],
+    runId: "run-live",
+    runningCount: 2,
+  } as unknown as WorkflowSnapshot;
+
+  const spans = workflowSnapshotToSpans(justStarted, messages, { now: NOW });
+
+  for (const label of ["agent 1", "agent 2"]) {
+    const span = spans.find((s) => s.name === label);
+    assert.ok(span, `no span named ${label}`);
+    const ms = (nano: string) => Number(nano.slice(0, -6));
+    assert.equal(
+      ms(span.startTimeUnixNano),
+      NOW,
+      `${label} anchors to now, not to the start of the trace`,
+    );
+    assert.equal(ms(span.endTimeUnixNano), NOW);
+  }
+});
+
+test("a stamped live snapshot renders agent bars from their real start", () => {
+  // What the SSE path now delivers: stampLiveTimestamps has filled the gaps.
+  const stamped = stampLiveTimestamps(
+    "run-stamped",
+    {
+      agentCount: 1,
+      agents: [{ id: 1, label: "agent 1", status: "running" }],
+      doneCount: 0,
+      errorCount: 0,
+      name: "cute_animals",
+      phases: [],
+      runId: "run-stamped",
+      runningCount: 1,
+    } as unknown as WorkflowSnapshot,
+    () => new Date(T0 + 2_000).toISOString(),
+  );
+
+  const spans = workflowSnapshotToSpans(stamped, messages, { now: NOW });
+  const span = spans.find((s) => s.name === "agent 1");
+  assert.ok(span);
+  const ms = (nano: string) => Number(nano.slice(0, -6));
+
+  assert.equal(ms(span.startTimeUnixNano), T0 + 2_000, "starts when first seen");
+  assert.equal(ms(span.endTimeUnixNano), NOW, "still running, so it grows to now");
 });
