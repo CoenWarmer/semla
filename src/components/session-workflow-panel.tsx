@@ -41,6 +41,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import { CodeBlockContent } from "@/components/ai-elements/code/code-block";
@@ -295,9 +296,33 @@ function InlineSpanRow({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             flex: 1,
-          }}
+            // Shimmer reads its base and sweep colours from these two vars.
+            // Its defaults follow the app theme, but this panel is always dark
+            // (theme={darkTheme}), so in light mode the default base would be
+            // dark grey on a dark row. Restate them in the waterfall's own
+            // palette: the row's normal label colour, swept by the same
+            // highlight the running bar uses.
+            ...(isRunning && !isError
+              ? {
+                  "--color-muted-foreground": t.spanNameColor,
+                  "--color-background": "rgba(255,255,255,0.85)",
+                }
+              : {}),
+          } as React.CSSProperties}
         >
-          {span.name}
+          {isRunning && !isError ? (
+            // Shimmer paints an inline-block, which the parent's ellipsis
+            // cannot truncate — so it truncates itself.
+            <Shimmer
+              as="span"
+              className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+              duration={2}
+            >
+              {span.name}
+            </Shimmer>
+          ) : (
+            span.name
+          )}
         </span>
         {isRunning && (
           <span style={{ flexShrink: 0, marginLeft: 6, opacity: 0.7 }}>
