@@ -270,28 +270,35 @@ function SpanName({ span }: SpanNameProps) {
         } as React.CSSProperties
       }
     >
-      <span
-        style={{
-          minWidth: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {isRunning && !isError ? (
-          // Shimmer paints an inline-block, which the parent's ellipsis cannot
-          // truncate — so it truncates itself.
-          <Shimmer
-            as="span"
-            className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            duration={2}
-          >
-            {span.name}
-          </Shimmer>
-        ) : (
-          span.name
-        )}
-      </span>
+      {/*
+        Shimmer only for a running span. It paints the text itself
+        (bg-clip-text + text-transparent), so rendering it unconditionally with
+        duration 0 would drop both the inherited spanNameErrorColor on failed
+        rows and the row's own label colour on the rest — and leave an
+        infinitely repeating animation mounted on every row.
+      */}
+      {isRunning && !isError ? (
+        // Shimmer paints an inline-block, which the parent's ellipsis cannot
+        // truncate — so it truncates itself.
+        <Shimmer
+          as="span"
+          className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+          duration={2}
+        >
+          {span.name}
+        </Shimmer>
+      ) : (
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {span.name}
+        </span>
+      )}
       {isRunning && (
         <span style={{ display: "inline-flex", flexShrink: 0, opacity: 0.7 }}>
           <Spinner className="size-3" />
