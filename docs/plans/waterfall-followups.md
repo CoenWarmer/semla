@@ -3,13 +3,51 @@
 **Goal:** remove the remaining friction between the waterfall component and
 Semla, now that 0.8.0's row slots have landed.
 
-**Status:** not started. Written 2026-08-26.
+**Status:** items 1–6 shipped in **0.9.0** and Semla adopted five of them in
+commit `721d481`. **Item 7 is the only outstanding work** — skip to it. Items
+1–6 are kept for the record, and because their "Semla follow-up" notes describe
+code that no longer looks the way they say.
 **Predecessor:** `docs/plans/waterfall-row-slots.md` — parts A1/A2/A3 shipped in
 0.8.0 and Semla's port landed in commit `0e10a6e`, which deleted `InlineSpanRow`
 (−206 lines). Read that document first for repo context; **§0 there (you need
 the library source, it is not in this repo) applies here unchanged.**
 
 Each item below is independent. Ship them in any order, or cherry-pick.
+
+---
+
+## Outcome of 0.9.0
+
+All six shipped. Five were adopted in Semla (`721d481`):
+
+| Item | Shipped as | Adopted? |
+|---|---|---|
+| 1 Millisecond timings | `startTimeMs` / `endTimeMs` union, `makeSpanId`, `makeTraceId` | yes |
+| 2 Inspect panel portal | `inspectPanelContainer` | **no — see below** |
+| 3 Folded marker status colour | shared colour helper in both paths | yes (Semla deleted `EventMarker`) |
+| 4 Reset without remount | `resetKey` | yes |
+| 5 Themeable name size | `spanNameFontSize` token | yes (Semla sets 13) |
+| 6 Typed attribute access | `stringAttr`, `numberAttr` | yes (removed 9 casts) |
+
+**Item 2 was not adopted, and the reason is a design question worth deciding.**
+The panel renders only while a span is selected:
+
+```js
+selected && !disableInspectPanel && container
+  ? createPortal(<Panel span={selected} onClose={…} />, container)
+  : null
+```
+
+`SpanInspectProps.span` is therefore non-null, and the component mounts and
+unmounts with the selection. Semla's `SpanDetailDrawer` is an animated base-ui
+`Drawer` driven by `open={span !== null}`, so routing it through
+`SpanInspectComponent` would mount it already-open and unmount it without its
+exit animation. Semla kept `disableInspectPanel` and its own selection state.
+
+To make the prop usable for animated panels, keep the panel mounted and widen
+the contract to `span: SpanNode | null`, letting the component own its own
+enter/exit. That is a breaking change to `SpanInspectProps` — worth doing
+deliberately or not at all.
 
 ---
 
@@ -246,6 +284,62 @@ Low value, near-zero risk. Do it last, or skip it.
 
 ---
 
+## 7. A row with folded markers should not draw its own bar  ← a bug
+
+**Problem.** With `foldEventsIntoParent`, a parent row shows its EVENT children
+as inline markers. The built-in `SpanRow` draws that parent's **own bar as well**,
+so a span that exists purely to group markers renders a bar stretching from its
+first marker to its last — implying a continuous activity that never happened.
+
+In Semla the Conversation branch is exactly this shape:
+
+```
+Conversation
+├── Prompts      (INTERNAL, spans min→max of its EVENT children)
+│   └── ↑ User / ↓ Assistant   (EVENT, folded onto the row above)
+└── Tool calls   (INTERNAL, same shape)
+    └── ⚙ bash / ↩ bash        (EVENT, folded)
+```
+
+`Prompts` and `Tool calls` each drew a full-width bar behind their dots. The
+user reported it as "full size spans being displayed in the prompts and tool
+call rows. There should only be event spans in those rows."
+
+**This is not a regression in the library** — it has always behaved this way.
+Semla's old `InlineSpanRow` happened to hide it, gating the bar on
+`events.length === 0`, and that rule was lost when Semla moved to the library's
+row in `0e10a6e`. Any consumer using `foldEventsIntoParent` will hit it.
+
+**Change.** Skip the bar for a row with folded events. The one-line form is:
+
+```js
+const hasFoldedEvents = (row.events?.length ?? 0) > 0;
+// …then render the bar (and its hit area) only when !hasFoldedEvents
+```
+
+Two calls to make:
+
+- **Default or opt-out?** Drawing a bar behind markers looks like a mistake in
+  every case we can think of, so defaulting to hidden seems right — but it *is*
+  a visual change for existing consumers. A theme token or prop
+  (`showBarOnFoldedRows`, default false) is the conservative option.
+- **The hit area and guide line.** Semla's old row rendered neither for these
+  rows. The current fix returns `null` from `SpanBarComponent`, which leaves the
+  library's empty hit-area wrapper and the 1px start-of-bar guide line in place.
+  Whatever you do for the bar, do the same for those two.
+
+**Semla follow-up:** `SpanBar` in `session-workflow-panel.tsx` currently opens
+with
+
+```tsx
+if (row.events?.length) return null;
+```
+
+(commit `0f1f9e3`). Delete that guard once the library handles it, and check
+whether the leftover hit area and guide line disappear with it.
+
+---
+
 ## Validation
 
 **Library:** `npm run build` (`tsc --noEmit && vite build`) and
@@ -271,6 +365,8 @@ Check specifically, per item:
 - **3** — a failed tool call's marker is red, both folded and unfolded.
 - **4** — switching runs resets expansion but keeps scroll position.
 - **5** — label text at the intended size.
+- **7** — the Prompts and Tool calls rows show markers only, with no bar behind
+  them, and no stray clickable strip where the bar used to be.
 
 Also worth an eye regardless, since `0e10a6e` changed them and nobody has looked
 yet: the library draws a 1px guide line at each bar's start that Semla's old row
