@@ -26,7 +26,12 @@ import type { SpanNode, SpanComponentProps } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
-import { GanttChartIcon, NetworkIcon, XIcon } from "lucide-react";
+import { BrainIcon, ChevronDownIcon, GanttChartIcon, NetworkIcon, XIcon } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -513,6 +518,26 @@ function foldedEvents(span: SpanNode | null): SpanNode[] {
   return (span?.children ?? []).filter((child) => child.kind === "EVENT");
 }
 
+/**
+ * The model's reasoning for a turn. Collapsed by default: it is context for
+ * why a turn went the way it did, not the turn itself, and it is often longer
+ * than the response it explains.
+ */
+function ThinkingBlock({ children }: { children: string }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors [&[data-state=open]>svg:last-child]:rotate-180">
+        <BrainIcon className="size-3.5" />
+        Thinking
+        <ChevronDownIcon className="size-3.5 transition-transform" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2 border-l-2 border-muted pl-3 text-muted-foreground">
+        <MarkdownBlock>{children}</MarkdownBlock>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function SpanDetailDrawer({
   onClose,
   span,
@@ -534,7 +559,12 @@ function SpanDetailDrawer({
   const workflowDescription = span?.attributes?.["workflow.description"] as string | undefined;
   const piText = span?.attributes?.["pi.text"] as string | undefined;
   const piResult = span?.attributes?.["pi.result"] as string | undefined;
-  const attrs = allAttrs.filter(([k]) => !k.startsWith("pi.param.") && !["workflow.description", "pi.text", "pi.result"].includes(k));
+  const piThinking = span?.attributes?.["pi.thinking"] as string | undefined;
+  const attrs = allAttrs.filter(
+    ([k]) =>
+      !k.startsWith("pi.param.") &&
+      !["workflow.description", "pi.text", "pi.result", "pi.thinking"].includes(k),
+  );
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
   const spanStart = span ? Number(span.startTimeUnixNano) : 0;
@@ -592,6 +622,7 @@ function SpanDetailDrawer({
               <AttrRow label="kind" value={span.kind} />
             )}
           </div>
+          {piThinking && <ThinkingBlock>{piThinking}</ThinkingBlock>}
           {piText && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Prompt</p>

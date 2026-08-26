@@ -333,3 +333,33 @@ test("a completed live call gains its result marker, and persisting adds no dupl
     "the persisted row wins, so the marker can scroll the transcript",
   );
 });
+
+test("an assistant turn's thinking rides along on its marker for the span drawer", () => {
+  const withThinking = [
+    { createdAt: new Date(T0).toISOString(), id: "m1", role: "user", text: "audit this" },
+    {
+      createdAt: new Date(T0 + 5_000).toISOString(),
+      id: "m2",
+      role: "assistant",
+      text: "Done.",
+      thinking: "Straightforward — no tools needed.",
+    },
+  ] as unknown as SessionMessage[];
+
+  const spans = workflowSnapshotToSpans(snapshot([{ status: "done" }]), withThinking, {
+    now: NOW,
+  });
+
+  const assistantMarker = spans.find((s) => s.name === "↓ Assistant");
+  assert.ok(assistantMarker);
+  assert.equal(
+    assistantMarker.attributes?.["pi.thinking"],
+    "Straightforward — no tools needed.",
+  );
+
+  // A turn without reasoning must not gain an empty attribute — the drawer
+  // renders the section on presence alone.
+  const userMarker = spans.find((s) => s.name === "↑ User");
+  assert.ok(userMarker);
+  assert.ok(!("pi.thinking" in (userMarker.attributes ?? {})));
+});

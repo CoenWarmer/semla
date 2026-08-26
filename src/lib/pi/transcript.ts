@@ -10,7 +10,7 @@ type PiUsage = {
   totalTokens?: number;
 };
 
-type PiMessage = {
+export type PiMessage = {
   content: unknown;
   isError?: boolean;
   role: string;
@@ -24,6 +24,8 @@ export type SessionTranscriptEntry = {
   inputTokens?: number;
   role: "assistant" | "user";
   text: string;
+  /** The model's reasoning for this turn, when the provider returned any. */
+  thinking?: string;
   tokenUsage?: { cost: number; total: number };
 };
 
@@ -145,6 +147,32 @@ const getMessageText = (message: PiMessage): string => {
     .join("");
 };
 
+/** Placeholder for reasoning the provider withheld. */
+const REDACTED_THINKING = "[redacted by the provider\u2019s safety filter]";
+
+/**
+ * The model\u2019s reasoning for a turn, joined across blocks.
+ *
+ * Pi records it as `{ type: "thinking" }` content parts alongside the text and
+ * tool calls (pi-ai types.d.ts), so it is already in every persisted entry —
+ * getMessageText just filters it out. A redacted block carries no readable
+ * text, only an opaque `thinkingSignature` the API needs for continuity, so it
+ * is reported as withheld rather than dumped.
+ */
+export const getThinkingText = (message: PiMessage): string | undefined => {
+  if (!Array.isArray(message.content)) return undefined;
+
+  const blocks = message.content.flatMap((part) => {
+    if (!isRecord(part) || part.type !== "thinking") return [];
+    if (part.redacted === true) return [REDACTED_THINKING];
+    return typeof part.thinking === "string" && part.thinking.trim()
+      ? [part.thinking]
+      : [];
+  });
+
+  return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+};
+
 const isDisplayMessage = (
   message: PiMessage
 ): message is PiMessage & { role: "assistant" | "user" } =>
@@ -237,12 +265,15 @@ export const getTranscript = async (
           (message.usage.cacheWrite ?? 0)
         : null;
     const inputTokens = contextTokens != null && contextTokens > 0 ? contextTokens : null;
+    const thinking =
+      message.role === "assistant" ? getThinkingText(message) : undefined;
     return [
       {
         createdAt,
         id: entry.id,
         role: message.role,
         text: getMessageText(message),
+        ...(thinking ? { thinking } : {}),
         ...(message.role === "assistant" && cost != null && total != null
           ? { tokenUsage: { cost, total } }
           : {}),

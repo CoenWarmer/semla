@@ -141,7 +141,11 @@ export function workflowSnapshotToSpans(
           startTimeUnixNano: nano,
           endTimeUnixNano: nano,
           kind: "EVENT",
-          attributes: { msg_id: msg.id, "pi.text": msg.text.trim() },
+          attributes: {
+            msg_id: msg.id,
+            "pi.text": msg.text.trim(),
+            ...(msg.thinking ? { "pi.thinking": msg.thinking } : {}),
+          },
           resource: { "service.name": msg.role === "user" ? "user" : "assistant" },
         });
       }

@@ -6,6 +6,8 @@ export type SessionMessage = {
   inputTokens?: number;
   role: "assistant" | "user";
   text: string;
+  /** The model's reasoning for this turn, when the provider returned any. */
+  thinking?: string;
   tokenUsage?: { cost: number; total: number };
 };
 
