@@ -20,6 +20,7 @@ import {
   type WorkflowSnapshot,
 } from "./display.ts";
 import { WorkflowError, WorkflowErrorCode } from "./errors.ts";
+import { formatResultSection } from "./result-text.ts";
 import { parseWorkflowScript, type WorkflowRunResult } from "./workflow.ts";
 import { WorkflowManager } from "./workflow-manager.ts";
 import { createWorkflowStorage, type WorkflowStorage } from "./workflow-saved.ts";
@@ -361,16 +362,11 @@ export function createWorkflowTool(
         ? `\n\nToken usage: ${tokenSegment}${result.tokenUsage?.cost ? ` (${fmtCost(result.tokenUsage.cost)})` : ""}`
         : "";
 
-      const formattedResult =
-        result.result !== undefined
-          ? `\n\`\`\`json\n${JSON.stringify(result.result, null, 2)}\n\`\`\``
-          : "";
-
       return {
         content: [
           {
             type: "text",
-            text: `Workflow **${result.meta.name}** completed with **${result.agentCount}** agent(s).${tokenInfo}\n\n## Result${formattedResult}\n\n${reviseHint(result.runId)}`,
+            text: `Workflow **${result.meta.name}** completed with **${result.agentCount}** agent(s).${tokenInfo}\n\n${formatResultSection(result.result, result.logs)}\n\n${reviseHint(result.runId)}`,
           },
         ],
         details: {
