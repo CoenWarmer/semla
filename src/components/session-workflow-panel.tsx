@@ -21,7 +21,11 @@ import type {
   Node as FlowNode,
   NodeProps,
 } from "@xyflow/react";
-import { TraceWaterfall, darkTheme, useTheme } from "react-otel-trace-waterfall";
+import {
+  TraceWaterfall,
+  darkTheme,
+  useTheme,
+} from "react-otel-trace-waterfall";
 import type {
   SpanBarProps,
   SpanNameProps,
@@ -31,7 +35,13 @@ import { numberAttr, stringAttr } from "react-otel-trace-waterfall";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
-import { BrainIcon, ChevronDownIcon, GanttChartIcon, NetworkIcon, XIcon } from "lucide-react";
+import {
+  BrainIcon,
+  ChevronDownIcon,
+  GanttChartIcon,
+  NetworkIcon,
+  XIcon,
+} from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -419,9 +429,7 @@ function ParamValue({
     );
   }
 
-  return (
-    <span className="flex-1 break-all font-mono text-xs">{value}</span>
-  );
+  return <span className="flex-1 break-all font-mono text-xs">{value}</span>;
 }
 
 function MarkdownBlock({ children }: { children: string }) {
@@ -501,14 +509,18 @@ function SpanDetailDrawer({
   const params = allAttrs
     .filter(([k]) => k.startsWith("pi.param."))
     .map(([k, v]) => [k.slice("pi.param.".length), v] as [string, unknown]);
-  const workflowDescription = span ? stringAttr(span, "workflow.description") : undefined;
+  const workflowDescription = span
+    ? stringAttr(span, "workflow.description")
+    : undefined;
   const piText = span ? stringAttr(span, "pi.text") : undefined;
   const piResult = span ? stringAttr(span, "pi.result") : undefined;
   const piThinking = span ? stringAttr(span, "pi.thinking") : undefined;
   const attrs = allAttrs.filter(
     ([k]) =>
       !k.startsWith("pi.param.") &&
-      !["workflow.description", "pi.text", "pi.result", "pi.thinking"].includes(k),
+      !["workflow.description", "pi.text", "pi.result", "pi.thinking"].includes(
+        k,
+      ),
   );
   const resourceAttrs = span ? Object.entries(span.resource ?? {}) : [];
   const events = foldedEvents(span);
@@ -541,12 +553,22 @@ function SpanDetailDrawer({
             {workflowDescription && (
               <AttrRow label="description" value={workflowDescription} />
             )}
-            {span && <AttrRow label="time" mono value={formatTimestamp(span.startTimeUnixNano)} />}
+            {span && (
+              <AttrRow
+                label="time"
+                mono
+                value={formatTimestamp(span.startTimeUnixNano)}
+              />
+            )}
             {service && <AttrRow label="service" value={service} />}
-            {duration && !isEvent && <AttrRow label="duration" value={duration} />}
+            {duration && !isEvent && (
+              <AttrRow label="duration" value={duration} />
+            )}
             {statusCode && statusCode !== "UNSET" && (
               <div className="flex gap-2 text-xs items-start">
-                <span className="text-muted-foreground shrink-0 w-28">status</span>
+                <span className="text-muted-foreground shrink-0 w-28">
+                  status
+                </span>
                 <div className="flex-1 min-w-0">
                   <span
                     className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
@@ -570,13 +592,17 @@ function SpanDetailDrawer({
           {piThinking && <ThinkingBlock>{piThinking}</ThinkingBlock>}
           {piText && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Prompt</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Prompt
+              </p>
               <MarkdownBlock>{piText}</MarkdownBlock>
             </div>
           )}
           {piResult && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Result</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Result
+              </p>
               <MarkdownBlock>{piResult}</MarkdownBlock>
             </div>
           )}
@@ -612,8 +638,14 @@ function SpanDetailDrawer({
                   if (lang || isMultiline) {
                     return (
                       <div key={key}>
-                        <p className="text-xs text-muted-foreground mb-1">{key}</p>
-                        <ParamValue paramKey={key} toolName={toolName} value={strVal} />
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {key}
+                        </p>
+                        <ParamValue
+                          paramKey={key}
+                          toolName={toolName}
+                          value={strVal}
+                        />
                       </div>
                     );
                   }
@@ -870,58 +902,64 @@ export function SessionWorkflowPanel({
         <div className="flex-1 min-h-0">
           {viewMode === "timeline" ? (
             <>
-            <style>{SHIMMER_STYLE}</style>
-            <TraceWaterfall
-              resetKey={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
-              spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
-                now: liveNow,
-                sessionRunning,
-                toolCalls,
-                additionalSnapshots: workflowRuns
-                  ?.filter((r) => r.run_id !== snapshot.runId && r.snapshot?.runId)
-                  .map((r) => r.snapshot),
-              })}
-              height={240}
-              theme={TIMELINE_THEME}
-              liveMode={snapshot.runningCount > 0}
-              initialState="expanded"
-              clampZoomToBounds
-              // Messages and tool calls are EVENT spans under Conversation; fold
-              // them onto that one row as markers instead of a row each.
-              foldEventsIntoParent
-              timelinePadding={10}
-              SpanNameComponent={SpanName}
-              SpanBarComponent={SpanBar}
-              TooltipComponent={InlineEventTooltip}
-              // We render our own panel below, so switch the built-in one off
-              // rather than showing both. Ours also portals to the body, which
-              // the 260px overflow-auto inspect container would otherwise clip.
-              disableInspectPanel
-              onSelectSpan={(span: SpanNode | null) => {
-                if (!span) {
-                  setSelectedSpan(null);
-                  return;
-                }
-                // Agent rows have a richer drawer of their own (the transcript).
-                const agentId = numberAttr(span, "pi.agent_id");
-                const runId = stringAttr(span, "pi.run_id");
-                if (onAgentClick && agentId !== undefined && runId !== undefined) {
-                  onAgentClick(agentId, runId);
-                  return;
-                }
-                // Conversation markers name the transcript entry they came
-                // from, so selecting one scrolls the chat to it.
-                const msgId = stringAttr(span, "msg_id");
-                if (msgId) {
-                  document
-                    .getElementById(msgId)
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                }
-                setSelectedSpan((prev) =>
-                  prev?.spanId === span.spanId ? null : span,
-                );
-              }}
-            />
+              <style>{SHIMMER_STYLE}</style>
+              <TraceWaterfall
+                resetKey={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
+                spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
+                  now: liveNow,
+                  sessionRunning,
+                  toolCalls,
+                  additionalSnapshots: workflowRuns
+                    ?.filter(
+                      (r) => r.run_id !== snapshot.runId && r.snapshot?.runId,
+                    )
+                    .map((r) => r.snapshot),
+                })}
+                height={240}
+                theme={TIMELINE_THEME}
+                liveMode={snapshot.runningCount > 0}
+                initialState="expanded"
+                clampZoomToBounds
+                // Messages and tool calls are EVENT spans under Conversation; fold
+                // them onto that one row as markers instead of a row each.
+                foldEventsIntoParent
+                timelinePadding={10}
+                SpanNameComponent={SpanName}
+                SpanBarComponent={SpanBar}
+                TooltipComponent={InlineEventTooltip}
+                // We render our own panel below, so switch the built-in one off
+                // rather than showing both. Ours also portals to the body, which
+                // the 260px overflow-auto inspect container would otherwise clip.
+                disableInspectPanel
+                onSelectSpan={(span: SpanNode | null) => {
+                  if (!span) {
+                    setSelectedSpan(null);
+                    return;
+                  }
+                  // Agent rows have a richer drawer of their own (the transcript).
+                  const agentId = numberAttr(span, "pi.agent_id");
+                  const runId = stringAttr(span, "pi.run_id");
+                  if (
+                    onAgentClick &&
+                    agentId !== undefined &&
+                    runId !== undefined
+                  ) {
+                    onAgentClick(agentId, runId);
+                    return;
+                  }
+                  // Conversation markers name the transcript entry they came
+                  // from, so selecting one scrolls the chat to it.
+                  const msgId = stringAttr(span, "msg_id");
+                  if (msgId) {
+                    document
+                      .getElementById(msgId)
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }
+                  setSelectedSpan((prev) =>
+                    prev?.spanId === span.spanId ? null : span,
+                  );
+                }}
+              />
             </>
           ) : (
             <Canvas
