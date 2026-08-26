@@ -14,7 +14,7 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 // ---- Helpers ------------------------------------------------------------
 
@@ -141,6 +141,15 @@ export function InspectorPanel({
   const { data: result } = useContextCheckResult(sessionId);
   const trigger = useTriggerContextCheck(sessionId);
   const router = useRouter();
+
+  // Auto-run on first open when there is no cached result yet.
+  useEffect(() => {
+    if (!result && !trigger.isPending) {
+      trigger.mutate();
+    }
+    // Only run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleIntervention = useCallback(
     (action: ContextCheckResult["interventions"][number]["action"]) => {
