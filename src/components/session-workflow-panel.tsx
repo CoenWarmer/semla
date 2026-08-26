@@ -314,9 +314,10 @@ function SpanName({ span }: SpanNameProps) {
 /**
  * A span's bar, coloured by service and animated while the span is running.
  * The library owns the bar's position and its click/hit area; this fills the
- * container it is given.
+ * container it is given, or renders nothing for a row that is only a container
+ * for folded markers.
  */
-function SpanBar({ span }: SpanBarProps) {
+function SpanBar({ row, span }: SpanBarProps) {
   const t = useTheme();
   const isError = span.status?.code === "ERROR";
   const status = piStatusOf(span);
@@ -324,6 +325,11 @@ function SpanBar({ span }: SpanBarProps) {
   const barColor = isError
     ? t.barErrorColor
     : paletteColor(stringAttr(span, "service.name"), t.barPalette);
+
+  // Prompts and Tool calls are containers for the markers folded onto them, not
+  // work with a duration of their own. Their bar would just sit behind the dots,
+  // spanning first marker to last and implying an activity that never happened.
+  if (row.events?.length) return null;
 
   if (status === "queued") {
     // A queued agent has no duration yet. Show a fixed-width placeholder
