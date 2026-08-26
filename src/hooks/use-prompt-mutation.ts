@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   sessionMessagesQueryKey,
@@ -31,15 +31,38 @@ type PiStreamEvent =
   | { title: string; type: "title-updated" }
   | { type: "complete" };
 
+// Flip to true to trace the prompt lifecycle in the browser console: every
+// stage of the mutation, the MutationCache transitions behind it, and the
+// mount/unmount of each hook instance. Kept because this app has hit several
+// "turn finished but the UI never settled" bugs, and the useMutation observer
+// detaching from an in-flight mutation is invisible without the cache events.
+const TRACE_PROMPT_LIFECYCLE = false;
+let traceSeq = 0;
+const trace = (stage: string, data?: Record<string, unknown>) => {
+  if (!TRACE_PROMPT_LIFECYCLE) return;
+  const at = new Date().toISOString().slice(11, 23);
+  console.log(`[prompt-trace ${at}] ${stage}`, data ?? "");
+};
+
 export const usePromptMutation = (sessionId: string) => {
   const queryClient = useQueryClient();
   const router = useRouter();
+  // Non-zero while a submit is in flight; >1 means overlapping submits, which
+  // would leave isPending true off the newest one after the first settles.
+  const inFlightRef = useRef(0);
+  // Identifies this hook instance, so a trace line can be attributed to the
+  // component that is actually rendering the spinner.
+  const [inst] = useState(() => Math.random().toString(36).slice(2, 7));
   const [streamingText, setStreamingText] = useState("");
   const [activeTool, setActiveTool] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
-  const [titleUpdated, setTitleUpdated] = useState(false);
+  // A ref, not state. This is written from inside the SSE reader loop and read
+  // by onSettled a couple of milliseconds later, with no render in between — so
+  // as state, onSettled always closed over the stale `false` and the refresh
+  // below never fired. Nothing renders from it, so a ref is the right tool.
+  const titleUpdatedRef = useRef(false);
 
   const mutation = useMutation<
     void,
@@ -48,10 +71,18 @@ export const usePromptMutation = (sessionId: string) => {
     { previousMessages: SessionMessage[] }
   >({
     mutationFn: async ({ model, text, tools }) => {
+      const id = ++traceSeq;
+      trace("mutationFn:start", { id, textLength: text.length });
       const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
         body: JSON.stringify({ model, text, tools }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
+      });
+      trace("mutationFn:response", {
+        id,
+        ok: response.ok,
+        status: response.status,
+        hasBody: Boolean(response.body),
       });
 
       if (!response.ok || !response.body) {
@@ -113,21 +144,28 @@ export const usePromptMutation = (sessionId: string) => {
               runningCount: 0,
             });
           } else if (piEvent.type === "title-updated") {
-            setTitleUpdated(true);
+            trace("event:title-updated", { id });
+            titleUpdatedRef.current = true;
+          } else if (piEvent.type === "complete") {
+            trace("event:complete", { id });
           } else if (piEvent.type === "error") {
+            trace("event:error", { id, message: piEvent.message });
             piError = new Error(piEvent.message);
             setStreamError(piEvent.message);
           }
         }
 
         if (done) {
+          trace("mutationFn:stream-done", { id });
           break;
         }
       }
 
       if (piError) {
+        trace("mutationFn:throwing", { id, message: piError.message });
         throw piError;
       }
+      trace("mutationFn:resolved", { id });
     },
     onError: (mutationError, _variables, context) => {
       if (context?.previousMessages) {
@@ -147,12 +185,19 @@ export const usePromptMutation = (sessionId: string) => {
       );
     },
     onMutate: async ({ text }) => {
+      inFlightRef.current += 1;
+      trace(
+        inFlightRef.current > 1
+          ? "onMutate:start ⚠️ OVERLAPPING SUBMIT"
+          : "onMutate:start",
+        { inFlight: inFlightRef.current },
+      );
       setStreamError(undefined);
       setStreamingText("");
       setActiveTool(undefined);
       setWorkflowSnapshot(undefined);
       setPendingQuestion(null);
-      setTitleUpdated(false);
+      titleUpdatedRef.current = false;
       await queryClient.cancelQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
@@ -181,23 +226,70 @@ export const usePromptMutation = (sessionId: string) => {
         }
       );
 
+      trace("onMutate:end");
       return { previousMessages };
     },
     onSettled: async () => {
+      trace("onSettled:start", { titleUpdated: titleUpdatedRef.current });
       setStreamingText("");
       setActiveTool(undefined);
       setPendingQuestion(null);
+      trace("onSettled:invalidate-begin");
       await queryClient.invalidateQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
-      // Defer router.refresh() until after the stream has fully closed.
-      // Calling it mid-stream (on title-updated) can disrupt the SSE reader loop.
-      if (titleUpdated) {
-        router.refresh();
-        setTitleUpdated(false);
+      trace("onSettled:invalidate-done");
+      inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+      trace("onSettled:end", { inFlight: inFlightRef.current });
+
+      // The server only sends title-updated on a session's first prompt, so
+      // this picks up the generated title for the topbar and the sidebar list.
+      //
+      // Deferred until after the stream has fully closed — calling it mid-stream
+      // can disrupt the SSE reader loop — and past this callback, so a route
+      // re-render can never sit between onSettled resolving and query-core
+      // marking the mutation settled.
+      if (titleUpdatedRef.current) {
+        titleUpdatedRef.current = false;
+        setTimeout(() => {
+          trace("router-refresh");
+          router.refresh();
+        }, 0);
       }
     },
   });
+
+  useEffect(() => {
+    trace("mount", { inst });
+    return () => trace("unmount", { inst });
+  }, [inst]);
+
+  // TanStack's own transitions, straight off the MutationCache and independent
+  // of React rendering. query-core dispatches "success" on the line right after
+  // our onSettled resolves, so if that shows up here while the "status" trace
+  // below stays pending, the mutation settled and the observer/render missed it.
+  useEffect(() => {
+    return queryClient.getMutationCache().subscribe((event) => {
+      trace("cache", {
+        inst,
+        event: event.type,
+        status: event.mutation?.state.status,
+        isPaused: event.mutation?.state.isPaused,
+      });
+    });
+  }, [queryClient, inst]);
+
+  // The decisive line: if "onSettled:end" logs but this never reports
+  // isPending=false, the mutation settled and React simply is not rendering it.
+  // If this never logs after onSettled:start, the stall is inside onSettled.
+  useEffect(() => {
+    trace("status", {
+      inst,
+      status: mutation.status,
+      isPending: mutation.isPending,
+      streamingTextLength: streamingText.length,
+    });
+  }, [inst, mutation.status, mutation.isPending, streamingText.length]);
 
   return { activeTool, mutation, pendingQuestion, streamError, streamingText, workflowSnapshot };
 };

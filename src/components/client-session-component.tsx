@@ -28,7 +28,10 @@ import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { TokenUsage } from "./token-usage";
 import { MessageSquareIcon } from "lucide-react";
-import { PENDING_PROMPT_KEY } from "@/components/new-session-client";
+import {
+  usePendingPrompt,
+  type PendingPrompt,
+} from "@/components/pending-prompt-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -54,6 +57,7 @@ export function ClientSessionComponent({
     workflowSnapshot,
   } = usePromptMutation(sessionId);
 
+  const { consume: consumePendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
 
   const handleGoalSave = useCallback(async (next: string | null) => {
@@ -192,25 +196,52 @@ export function ClientSessionComponent({
     [promptMutation],
   );
 
-  // Auto-submit a pending prompt (and goal) stored before navigating from /sessions/new.
+  const pendingPromptRef = useRef<{
+    prompt: PendingPrompt | null;
+    sessionId: string;
+  } | null>(null);
+  const submittedForRef = useRef<string | null>(null);
+
+  // Submit the first prompt of a session, handed over by /sessions/new.
+  //
+  // The mutation is started from a timeout rather than inline. useMutation
+  // attaches its observer to the mutation inside mutate() — that is the only
+  // place it ever attaches — while React detaches it on unsubscribe and never
+  // re-attaches. Starting the mutation during this commit means StrictMode's
+  // teardown detaches the observer permanently: the mutation runs, dispatches
+  // "success", and reaches nobody, so isPending stays true forever even though
+  // the turn finished. Deferring past the commit leaves the subscription stable
+  // by the time mutate() runs. The handoff is cleared when read, so it is
+  // cached here for StrictMode's second effect pass.
   useEffect(() => {
-    const raw = sessionStorage.getItem(PENDING_PROMPT_KEY);
-    if (!raw) return;
-    sessionStorage.removeItem(PENDING_PROMPT_KEY);
-    let pending: { goal?: string | null; model: PromptEditorModel; text: string; tools: string[] };
-    try {
-      pending = JSON.parse(raw) as typeof pending;
-    } catch {
-      return;
+    if (submittedForRef.current === sessionId) return;
+
+    if (pendingPromptRef.current?.sessionId !== sessionId) {
+      pendingPromptRef.current = {
+        prompt: consumePendingPrompt(sessionId),
+        sessionId,
+      };
     }
-    if (!pending.text.trim()) return;
-    if (pending.goal) {
-      setGoal(pending.goal);
-      void handleGoalSave(pending.goal);
-    }
-    void promptMutation.mutateAsync(pending);
+
+    const pending = pendingPromptRef.current.prompt;
+    if (!pending?.text.trim()) return;
+
+    const timer = setTimeout(() => {
+      submittedForRef.current = sessionId;
+      if (pending.goal) {
+        setGoal(pending.goal);
+        void handleGoalSave(pending.goal);
+      }
+      // Rejections surface through the mutation's onError as streamError.
+      promptMutation.mutateAsync(pending).catch(() => {});
+    }, 0);
+
+    return () => clearTimeout(timer);
+    // promptMutation and handleGoalSave are deliberately omitted: they change
+    // identity every render, and rescheduling the timer on each one could
+    // starve it. Both are only read inside the timeout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [consumePendingPrompt, sessionId]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">

@@ -4,15 +4,15 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { GoalEditor } from "@/components/goal-editor";
+import { usePendingPrompt } from "@/components/pending-prompt-provider";
 import {
   PromptEditor,
   type PromptEditorModel,
 } from "@/components/prompt-editor";
 
-export const PENDING_PROMPT_KEY = "semla.pending-prompt";
-
 export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
   const router = useRouter();
+  const { set: setPendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(null);
   const [error, setError] = useState<string>();
 
@@ -39,14 +39,13 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
         return;
       }
 
-      sessionStorage.setItem(
-        PENDING_PROMPT_KEY,
-        JSON.stringify({ goal, model, text, tools }),
-      );
+      // The session page submits this once it mounts: the first turn's stream
+      // only reaches the request that starts it, so it has to be started there.
+      setPendingPrompt(body.id, { goal, model, text, tools });
 
       router.replace(`/sessions/${body.id}`);
     },
-    [goal, router],
+    [goal, router, setPendingPrompt],
   );
 
   return (
