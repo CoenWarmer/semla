@@ -4,6 +4,7 @@ import { test } from "vitest";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { workflowSnapshotToSpans } from "./workflow-spans.ts";
+import { applyLiveToolEvent, mergeToolCalls } from "./live-tool-calls.ts";
 
 const T0 = Date.parse("2026-08-24T12:00:00.000Z");
 const NOW = T0 + 60_000;
@@ -242,4 +243,93 @@ test("additionalSnapshots each get their own workflow branch under Session", () 
     (s) => s.attributes?.["pi.run_id"] === "run-success" && s.attributes?.["pi.status"] === "done",
   );
   assert.ok(doneAgent, "done agent appears in the successful run's branch");
+});
+
+test("tool calls seen on the stream render before anything is persisted", () => {
+  // What the timeline has mid-turn: no persisted rows at all (entries are
+  // written in one pass at prompt-complete), only what the SSE stream reported.
+  const live = applyLiveToolEvent(
+    applyLiveToolEvent([], {
+      at: new Date(T0 + 1_000).toISOString(),
+      summary: "npm test",
+      toolCallId: "call-1",
+      toolName: "bash",
+      type: "tool-start",
+    }),
+    {
+      at: new Date(T0 + 2_000).toISOString(),
+      toolCallId: "call-2",
+      toolName: "read",
+      type: "tool-start",
+    },
+  );
+
+  const spans = workflowSnapshotToSpans(snapshot([{ status: "running" }]), messages, {
+    now: NOW,
+    sessionRunning: true,
+    toolCalls: mergeToolCalls([], live),
+  });
+
+  const toolsRow = spans.find((s) => s.name === "Tool calls");
+  assert.ok(toolsRow, "the Tool calls row exists while the turn is still running");
+
+  const markers = spans.filter((s) => s.parentSpanId === toolsRow.spanId);
+  assert.deepEqual(
+    markers.map((s) => s.name),
+    ["⚙ bash: npm test", "⚙ read"],
+    "both in-flight calls are on the row, labelled as the persisted rows will be",
+  );
+
+  // No result markers yet — neither call has returned.
+  assert.equal(
+    spans.filter((s) => s.name.startsWith("↩ ")).length,
+    0,
+    "an unfinished call contributes no result marker",
+  );
+});
+
+test("a completed live call gains its result marker, and persisting adds no duplicate", () => {
+  const started = applyLiveToolEvent([], {
+    at: new Date(T0 + 1_000).toISOString(),
+    toolCallId: "call-1",
+    toolName: "bash",
+    type: "tool-start",
+  });
+  const live = applyLiveToolEvent(started, {
+    at: new Date(T0 + 3_000).toISOString(),
+    isError: false,
+    toolCallId: "call-1",
+    toolName: "bash",
+    type: "tool-end",
+  });
+
+  const liveSpans = workflowSnapshotToSpans(snapshot([{ status: "running" }]), messages, {
+    now: NOW,
+    toolCalls: mergeToolCalls([], live),
+  });
+  assert.equal(liveSpans.filter((s) => s.name === "↩ bash").length, 1);
+
+  // The refetch lands: the same call, now persisted under its entry id. The
+  // merge is keyed by tool call id, so the marker count must not double.
+  const persisted = [
+    {
+      createdAt: new Date(T0 + 1_000).toISOString(),
+      id: "call-1",
+      messageId: "entry-7",
+      name: "bash",
+      resultAt: new Date(T0 + 3_000).toISOString(),
+      resultText: "ok",
+    },
+  ];
+  const settledSpans = workflowSnapshotToSpans(snapshot([{ status: "done" }]), messages, {
+    now: NOW,
+    toolCalls: mergeToolCalls(persisted, live),
+  });
+
+  assert.equal(settledSpans.filter((s) => s.name === "⚙ bash").length, 1);
+  assert.equal(
+    settledSpans.find((s) => s.name === "⚙ bash")?.attributes?.["msg_id"],
+    "entry-7",
+    "the persisted row wins, so the marker can scroll the transcript",
+  );
 });

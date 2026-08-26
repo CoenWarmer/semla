@@ -6,7 +6,9 @@ import {
   sessionMessagesQueryKey,
   type SessionMessage,
   type SessionMessagesResult,
+  type SessionToolCall,
 } from "@/hooks/use-session-messages";
+import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 
@@ -24,7 +26,7 @@ type PromptInput = {
 type PiStreamEvent =
   | { delta: string; type: "assistant-delta" }
   | { message: string; type: "error" }
-  | { toolName: string; type: "tool-end" | "tool-start" }
+  | LiveToolEvent
   | { runId: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -55,6 +57,11 @@ export const usePromptMutation = (sessionId: string) => {
   const [inst] = useState(() => Math.random().toString(36).slice(2, 7));
   const [streamingText, setStreamingText] = useState("");
   const [activeTool, setActiveTool] = useState<string>();
+  // Tool calls seen on the stream, so the timeline can show them as they happen
+  // rather than only after the turn's entries are persisted. Kept until the
+  // next prompt: the merge with the persisted rows is keyed by tool call id, so
+  // a live row is replaced rather than duplicated once the refetch lands.
+  const [liveToolCalls, setLiveToolCalls] = useState<SessionToolCall[]>([]);
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
@@ -123,8 +130,10 @@ export const usePromptMutation = (sessionId: string) => {
             setStreamingText((current) => current + piEvent.delta);
           } else if (piEvent.type === "tool-start") {
             setActiveTool(piEvent.toolName);
+            setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
           } else if (piEvent.type === "tool-end") {
             setActiveTool(undefined);
+            setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
             if (piEvent.toolName === "ask_user") {
               setPendingQuestion(null);
             }
@@ -195,6 +204,7 @@ export const usePromptMutation = (sessionId: string) => {
       setStreamError(undefined);
       setStreamingText("");
       setActiveTool(undefined);
+      setLiveToolCalls([]);
       setWorkflowSnapshot(undefined);
       setPendingQuestion(null);
       titleUpdatedRef.current = false;
@@ -291,5 +301,13 @@ export const usePromptMutation = (sessionId: string) => {
     });
   }, [inst, mutation.status, mutation.isPending, streamingText.length]);
 
-  return { activeTool, mutation, pendingQuestion, streamError, streamingText, workflowSnapshot };
+  return {
+    activeTool,
+    liveToolCalls,
+    mutation,
+    pendingQuestion,
+    streamError,
+    streamingText,
+    workflowSnapshot,
+  };
 };

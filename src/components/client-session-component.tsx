@@ -14,6 +14,7 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useSessionMessages } from "@/hooks/use-session-messages";
+import { mergeToolCalls } from "@/lib/live-tool-calls";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,
@@ -50,6 +51,7 @@ export function ClientSessionComponent({
 }) {
   const {
     activeTool,
+    liveToolCalls,
     mutation: promptMutation,
     pendingQuestion,
     streamError,
@@ -73,7 +75,14 @@ export function ClientSessionComponent({
   const messagesQuery = useSessionMessages(sessionId, initialMessagesData);
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data?.messages ?? [];
-  const toolCalls = messagesQuery.data?.toolCalls ?? [];
+  // Persisted rows arrive only when the turn's entries are written, so fold in
+  // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
+  // row becomes the persisted row rather than a second marker.
+  const persistedToolCalls = messagesQuery.data?.toolCalls;
+  const toolCalls = useMemo(
+    () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
+    [persistedToolCalls, liveToolCalls],
+  );
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
 
   // Trigger an immediate re-fetch of workflow runs when a background workflow

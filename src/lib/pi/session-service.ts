@@ -41,6 +41,7 @@ import {
 } from "@/lib/pi/workflow-run-reader";
 import { summarizeRunResult } from "@/lib/pi/workflow-result-summary";
 import { historyToTurns } from "@/lib/pi/workflow-snapshot-merge";
+import { getParams, summarizeArguments } from "@/lib/pi/transcript";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 const workflowExtensionPath = join(
@@ -80,8 +81,21 @@ type PiSessionEntry = {
 
 type PiSessionEvent =
   | { delta: string; type: "assistant-delta" }
-  | { toolName: string; type: "tool-start" }
-  | { toolName: string; type: "tool-end" }
+  | {
+      at: string;
+      params?: Record<string, string>;
+      summary?: string;
+      toolCallId: string;
+      toolName: string;
+      type: "tool-start";
+    }
+  | {
+      at: string;
+      isError: boolean;
+      toolCallId: string;
+      toolName: string;
+      type: "tool-end";
+    }
   | { runId: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -391,13 +405,32 @@ export const runPiPrompt = async ({
     if (event.type === "tool_execution_start") {
       log(semlaSessionId, "tool start", { tool: event.toolName });
       debug.onToolStart(event.toolName);
-      onEvent({ toolName: event.toolName, type: "tool-start" });
+      // toolCallId and a server timestamp let the client place this call on the
+      // timeline now, instead of waiting for the entries to be persisted at the
+      // end of the turn. The same summary/params the transcript derives keep the
+      // live marker labelled identically to the persisted one that replaces it.
+      const summary = summarizeArguments(event.args);
+      const params = getParams(event.args);
+      onEvent({
+        at: new Date().toISOString(),
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        type: "tool-start",
+        ...(summary ? { summary } : {}),
+        ...(params ? { params } : {}),
+      });
     }
 
     if (event.type === "tool_execution_end") {
       log(semlaSessionId, "tool end", { tool: event.toolName });
       debug.onToolEnd(event.toolName, event.result);
-      onEvent({ toolName: event.toolName, type: "tool-end" });
+      onEvent({
+        at: new Date().toISOString(),
+        isError: Boolean(event.isError),
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        type: "tool-end",
+      });
 
       if (event.toolName === "workflow") {
         const backgroundRunId = getBackgroundWorkflowRunId(event.result);

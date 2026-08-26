@@ -52,7 +52,7 @@ export type SessionTranscript = {
 };
 
 /** Scalar arguments as truncated strings, for display in the detail drawer. */
-const getParams = (value: unknown): Record<string, string> | undefined => {
+export const getParams = (value: unknown): Record<string, string> | undefined => {
   if (!isRecord(value)) return undefined;
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(value)) {
@@ -64,7 +64,7 @@ const getParams = (value: unknown): Record<string, string> | undefined => {
 };
 
 /** First scalar argument, for a marker tooltip: `bash: npm test`. */
-const summarizeArguments = (value: unknown): string | undefined => {
+export const summarizeArguments = (value: unknown): string | undefined => {
   if (!isRecord(value)) return undefined;
 
   for (const key of ["command", "path", "file_path", "pattern", "name"]) {
