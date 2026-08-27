@@ -14,10 +14,18 @@ export function SessionContextWindowBar({
 
   if (!result) return null;
 
-  const { assistantFraction, contextWindowFraction, systemPromptFraction, toolResultFraction, userFraction } =
-    result.dimensions.composition;
+  const {
+    assistantFraction,
+    contextWindowFraction,
+    systemPromptFraction,
+    toolResultFraction,
+    userFraction,
+  } = result.dimensions.composition;
 
-  const scale = mode === "absolute" && contextWindowFraction != null ? contextWindowFraction : 1;
+  const scale =
+    mode === "absolute" && contextWindowFraction != null
+      ? contextWindowFraction
+      : 1;
   const seg = {
     system: systemPromptFraction * scale,
     user: userFraction * scale,
@@ -33,7 +41,7 @@ export function SessionContextWindowBar({
   return (
     <div className="group relative shrink-0">
       {/* Collapsed — always in-flow, defines the 4px height */}
-      <div className="flex h-1 w-full overflow-hidden border-b border-border/40 bg-muted">
+      <div className="flex h-2 w-full overflow-hidden border-b border-border/40 bg-muted">
         {seg.system > 0.001 && (
           <div
             className="bg-emerald-500"
@@ -64,14 +72,22 @@ export function SessionContextWindowBar({
       {/* Expanded — absolute, shown on hover, doesn't affect layout */}
       <div className="pointer-events-none absolute left-0 right-0 top-full z-20 border-b border-border/40 bg-background px-6 pb-2.5 pt-2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-xs font-medium text-foreground">Composition</span>
+          <span className="text-xs font-medium text-foreground">
+            Composition
+          </span>
           {contextWindowFraction != null && (
             <button
               className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
               onClick={() =>
-                setMode((m: CompositionMode) => (m === "absolute" ? "relative" : "absolute"))
+                setMode((m: CompositionMode) =>
+                  m === "absolute" ? "relative" : "absolute",
+                )
               }
-              title={mode === "absolute" ? "Switch to proportional view" : "Switch to context window view"}
+              title={
+                mode === "absolute"
+                  ? "Switch to proportional view"
+                  : "Switch to context window view"
+              }
             >
               {mode === "absolute" ? "vs. context window" : "proportional"}
             </button>
