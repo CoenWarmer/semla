@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Node as FlowNode, Edge as FlowEdge, NodeProps } from "@xyflow/react";
 import { Handle, MarkerType, Position } from "@xyflow/react";
+import { useQuery } from "@tanstack/react-query";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
@@ -35,13 +36,26 @@ interface WikiNodeData extends Record<string, unknown> {
   pageType: WikiPageType;
   navGroup: string;
   isSelected: boolean;
-  description?: string;
   expanded: boolean;
-  onToggle: (id: string) => void;
 }
 
 function WikiPageNode({ id, data }: NodeProps<FlowNode<WikiNodeData>>) {
-  const { label, pageType, navGroup, isSelected, description, expanded, onToggle } = data;
+  const { label, pageType, navGroup, isSelected, expanded } = data;
+
+  const query = useQuery<{ content: string }>({
+    queryKey: ["wiki-page", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/wiki/page?path=${encodeURIComponent(id)}`);
+      if (!res.ok) throw new Error(`Failed to load page (${res.status})`);
+      return res.json() as Promise<{ content: string }>;
+    },
+    enabled: expanded,
+    staleTime: Infinity,
+  });
+
+  // Strip YAML frontmatter so we don't show raw --- blocks.
+  const content = query.data?.content?.replace(/^---[\s\S]*?---\n*/m, "").trim();
+
   return (
     <div
       className={cn(
@@ -50,8 +64,7 @@ function WikiPageNode({ id, data }: NodeProps<FlowNode<WikiNodeData>>) {
           ? "border-primary ring-1 ring-primary"
           : "border-border/60 hover:border-border",
       )}
-      style={{ width: NODE_W }}
-      onClick={() => onToggle(id)}
+      style={{ width: expanded ? NODE_W * 2.5 : NODE_W }}
     >
       <Handle
         type="target"
@@ -67,10 +80,20 @@ function WikiPageNode({ id, data }: NodeProps<FlowNode<WikiNodeData>>) {
       <p className={cn("mt-0.5 text-[10px]", TYPE_ACCENT[pageType])}>
         {navGroup === "observation" ? "observation" : pageType}
       </p>
-      {expanded && description && (
-        <p className="mt-2 border-t border-border/40 pt-2 text-[10px] leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+      {expanded && (
+        <div className="mt-2 border-t border-border/40 pt-2">
+          {query.isPending && (
+            <p className="text-[10px] text-muted-foreground">Loading…</p>
+          )}
+          {query.isError && (
+            <p className="text-[10px] text-destructive">Could not load page.</p>
+          )}
+          {content && (
+            <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-[10px] leading-relaxed text-muted-foreground">
+              {content}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -217,10 +240,8 @@ async function computeLayout(
           pageType: meta.type,
           navGroup: navGroupFor(meta),
           isSelected: false,
-          description: meta.description,
-          // expanded and onToggle are merged in at render time.
+          // expanded is merged in at render time.
           expanded: false,
-          onToggle: () => undefined,
         },
         draggable: false,
         selectable: false,
@@ -282,8 +303,8 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
     );
   }, [pages, links]);
 
-  // Merge per-render state (selection, expansion, toggle callback) into node
-  // data without triggering a full ELK re-run.
+  // Merge per-render state (selection, expansion) into node data without
+  // triggering a full ELK re-run.
   const nodes = baseNodes.map((node) =>
     node.type === "wikiPage"
       ? {
@@ -292,7 +313,6 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
             ...node.data,
             isSelected: node.id === selectedPath,
             expanded: expandedIds.has(node.id),
-            onToggle,
           },
         }
       : node,
