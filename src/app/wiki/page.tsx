@@ -1,5 +1,6 @@
 import { WikiBrowser } from "@/components/wiki/wiki-browser";
 import {
+  computeAllBacklinks,
   getWikiConfig,
   getWikiRegistry,
   isWikiInitialized,
@@ -19,12 +20,18 @@ export default function WikiPage() {
 
   const config = getWikiConfig();
   const registry = getWikiRegistry();
+  const backlinks = registry ? computeAllBacklinks(registry) : {};
 
   const initialPath = registry
     ? (Object.keys(registry.pages)[0] ?? null)
     : null;
 
   return (
-    <WikiBrowser config={config} registry={registry} initialPath={initialPath} />
+    <WikiBrowser
+      config={config}
+      registry={registry}
+      backlinks={backlinks}
+      initialPath={initialPath}
+    />
   );
 }

@@ -1,29 +1,42 @@
 "use client";
 
-import { useState } from "react";
-import { WikiConfig, WikiPageMeta, WikiRegistry } from "@/lib/wiki";
+import { useMemo, useState } from "react";
+import {
+  WikiConfig,
+  WikiPageMeta,
+  WikiRegistry,
+  buildTitleMap,
+} from "@/lib/wiki";
 import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";
 
 interface WikiBrowserProps {
   config: WikiConfig | null;
   registry: WikiRegistry | null;
+  backlinks: Record<string, string[]>;
   initialPath: string | null;
 }
 
 export function WikiBrowser({
   config,
   registry,
+  backlinks,
   initialPath,
 }: WikiBrowserProps) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(
-    initialPath,
-  );
+  const [selectedPath, setSelectedPath] = useState<string | null>(initialPath);
 
   const pages = registry?.pages ?? {};
+
+  const titleToPath = useMemo(
+    () => (registry ? buildTitleMap(registry) : {}),
+    [registry],
+  );
+
   const selectedMeta: WikiPageMeta | undefined = selectedPath
     ? pages[selectedPath]
     : undefined;
+
+  const selectedBacklinks = selectedPath ? (backlinks[selectedPath] ?? []) : [];
 
   const title =
     config?.name && config.name !== "pending" ? config.name : "Wiki";
@@ -49,7 +62,14 @@ export function WikiBrowser({
 
       <main className="flex-1 overflow-y-auto">
         {selectedPath ? (
-          <WikiPageView path={selectedPath} meta={selectedMeta} />
+          <WikiPageView
+            path={selectedPath}
+            meta={selectedMeta}
+            pages={pages}
+            titleToPath={titleToPath}
+            backlinkPaths={selectedBacklinks}
+            onNavigate={setSelectedPath}
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             Select a page from the navigation.

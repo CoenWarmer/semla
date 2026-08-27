@@ -70,3 +70,51 @@ function stripFrontmatter(content: string): string {
   if (end === -1) return content;
   return content.slice(end + 4).trimStart();
 }
+
+/** Map from page title → path, used to resolve [[Title]] wiki links. */
+export function buildTitleMap(
+  registry: WikiRegistry,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const [path, meta] of Object.entries(registry.pages)) {
+    map[meta.title] = path;
+  }
+  return map;
+}
+
+/** Extract all [[Title]] link targets from page markdown. */
+export function extractWikiLinks(content: string): string[] {
+  const matches = content.matchAll(/\[\[([^\]]+)\]\]/g);
+  return [...matches].map((m) => m[1]);
+}
+
+/**
+ * Reads every page in the registry and returns a map of path → paths-that-link-to-it.
+ * Run server-side only.
+ */
+export function computeAllBacklinks(
+  registry: WikiRegistry,
+): Record<string, string[]> {
+  const titleToPath = buildTitleMap(registry);
+  const backlinks: Record<string, string[]> = {};
+
+  for (const path of Object.keys(registry.pages)) {
+    backlinks[path] = [];
+  }
+
+  for (const path of Object.keys(registry.pages)) {
+    const content = getWikiPageContent(path);
+    if (!content) continue;
+    const seen = new Set<string>();
+    for (const title of extractWikiLinks(content)) {
+      const target = titleToPath[title];
+      if (target && target !== path && !seen.has(target)) {
+        seen.add(target);
+        backlinks[target] ??= [];
+        backlinks[target].push(path);
+      }
+    }
+  }
+
+  return backlinks;
+}
