@@ -7,7 +7,8 @@ export type WorkflowRun = {
   error: string | null;
   mode: "background" | "foreground";
   run_id: string;
-  snapshot: WorkflowSnapshot;
+  /** Null when the run has neither a file on disk nor a stored snapshot. */
+  snapshot: WorkflowSnapshot | null;
   status: "completed" | "failed" | "interrupted" | "paused" | "running" | "stopped";
   updated_at: string;
 };

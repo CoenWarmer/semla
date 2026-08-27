@@ -922,11 +922,13 @@ export function SessionWorkflowPanel({
                   now: liveNow,
                   sessionRunning,
                   toolCalls,
-                  additionalSnapshots: workflowRuns
-                    ?.filter(
-                      (r) => r.run_id !== snapshot.runId && r.snapshot?.runId,
-                    )
-                    .map((r) => r.snapshot),
+                  // flatMap rather than filter+map so the null snapshots are
+                  // narrowed out for the type checker, not just at runtime.
+                  additionalSnapshots: workflowRuns?.flatMap((r) =>
+                    r.run_id !== snapshot.runId && r.snapshot?.runId
+                      ? [r.snapshot]
+                      : [],
+                  ),
                 })}
                 height={240}
                 theme={TIMELINE_THEME}
