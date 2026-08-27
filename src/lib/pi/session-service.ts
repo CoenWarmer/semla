@@ -23,6 +23,7 @@ import {
   PI_TOOLS,
   PI_WORKSPACE_ROOT,
   WIKI_EXTENSION_PATH,
+  WIKI_INGEST_BRIDGE_PATH,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
 import {
@@ -307,7 +308,7 @@ export const runPiPrompt = async ({
   });
 
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath, askUserExtensionPath, WIKI_EXTENSION_PATH],
+    additionalExtensionPaths: [workflowExtensionPath, askUserExtensionPath, WIKI_EXTENSION_PATH, WIKI_INGEST_BRIDGE_PATH],
     // The workflow skills ship inside the package but are only contributed when
     // it is loaded as a package. We load the extension file directly, so point
     // at this repo's copy explicitly rather than inheriting them from whatever

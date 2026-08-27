@@ -15,6 +15,14 @@ export const WIKI_EXTENSION_PATH = join(
   ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/index.ts",
 );
 
+// Bridge that intercepts wiki_ingest background synthesis and runs it as Semla
+// dynamic workflows so each source appears in the trace waterfall. Must load
+// AFTER both the workflow extension and the wiki extension.
+export const WIKI_INGEST_BRIDGE_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/wiki-ingest-bridge.ts",
+);
+
 // WIKI_HOME controls where pi-llm-wiki's personal vault lives. Defaulting it
 // to a Semla-owned directory keeps wiki files out of the repos being worked in
 // and out of the user's home dir. Exposed so the agent's bash tool can resolve

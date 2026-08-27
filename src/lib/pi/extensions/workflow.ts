@@ -103,13 +103,38 @@ export function sessionFileCwd(
   }
 }
 
+const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
+const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
+
 function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
   const settings = loadWorkflowSettings({ cwd });
+  // Proxy so toolsets registered after manager construction (e.g. wiki-ingest-bridge)
+  // are visible without requiring a manager rebuild.
+  const toolsets = new Proxy(
+    { "web-research": () => [...createCodingTools(cwd), ...createWebTools()] } as Record<
+      string,
+      () => ReturnType<typeof createCodingTools>
+    >,
+    {
+      get(target, key) {
+        if (typeof key !== "string") return Reflect.get(target, key);
+        const extra = (globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] as
+          | Record<string, () => ReturnType<typeof createCodingTools>>
+          | undefined;
+        return extra?.[key] ?? Reflect.get(target, key);
+      },
+      has(target, key) {
+        if (typeof key !== "string") return Reflect.has(target, key);
+        const extra = (globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] as
+          | Record<string, unknown>
+          | undefined;
+        return Reflect.has(target, key) || Boolean(extra && key in extra);
+      },
+    },
+  );
   return {
     loadSavedWorkflow: (name: string) => storage.load(name)?.script,
-    toolsets: {
-      "web-research": () => [...createCodingTools(cwd), ...createWebTools()],
-    },
+    toolsets,
     excludeSubagentTools: settings.excludeSubagentTools,
     defaultAgentTimeoutMs: settings.defaultAgentTimeoutMs ?? null,
     defaultTokenBudget: settings.defaultTokenBudget ?? null,
@@ -341,6 +366,8 @@ export default function extension(pi: ExtensionAPI) {
     }
     manager.setSessionId(sessionId);
     manager.adoptLiveRunsToSession(sessionId);
+    // Expose active manager for cross-extension access (e.g. wiki-ingest-bridge).
+    (globalThis as Record<symbol, unknown>)[ACTIVE_MANAGER_KEY] = manager;
 
     // Runtime is bound now (session_start fires after bindCore). Unsuspend and
     // flush anything queued while the previous ctx was dying or this factory
