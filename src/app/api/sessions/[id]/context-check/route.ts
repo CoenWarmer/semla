@@ -18,6 +18,7 @@ export type DimensionScore = {
 export type CompositionBreakdown = {
   assistantFraction: number;
   summary: string;
+  systemPromptFraction: number;
   toolResultFraction: number;
   userFraction: number;
 };
@@ -68,6 +69,7 @@ function computeCorrectionRate(messages: SessionTranscriptEntry[]) {
 function computeComposition(
   messages: SessionTranscriptEntry[],
   toolCalls: SessionToolCall[],
+  systemPromptChars: number,
 ) {
   const userChars = messages
     .filter((m) => m.role === "user")
@@ -79,13 +81,18 @@ function computeComposition(
     (sum, t) => sum + (t.resultText?.length ?? 0),
     0,
   );
-  const total = userChars + assistantChars + toolResultChars || 1;
+  const total = systemPromptChars + userChars + assistantChars + toolResultChars || 1;
+  const systemPromptFraction = systemPromptChars / total;
   const userFraction = userChars / total;
   const assistantFraction = assistantChars / total;
   const toolResultFraction = toolResultChars / total;
-  const pct = Math.round(toolResultFraction * 100);
-  const summary = `User ${Math.round(userFraction * 100)}% · Assistant ${Math.round(assistantFraction * 100)}% · Tool results ${pct}%`;
-  return { assistantFraction, summary, toolResultFraction, userFraction };
+  const summary = [
+    systemPromptChars > 0 ? `System ${Math.round(systemPromptFraction * 100)}%` : null,
+    `User ${Math.round(userFraction * 100)}%`,
+    `Assistant ${Math.round(assistantFraction * 100)}%`,
+    `Tool results ${Math.round(toolResultFraction * 100)}%`,
+  ].filter(Boolean).join(" · ");
+  return { assistantFraction, summary, systemPromptFraction, toolResultFraction, userFraction };
 }
 
 // ---- Compact transcript for the inspector LLM --------------------------
@@ -199,7 +206,7 @@ export async function POST(
       return Response.json({
         checkedAt: new Date().toISOString(),
         dimensions: {
-          composition: { assistantFraction: 0, summary: "No messages yet.", toolResultFraction: 0, userFraction: 0 },
+          composition: { assistantFraction: 0, summary: "No messages yet.", systemPromptFraction: 0, toolResultFraction: 0, userFraction: 0 },
           correctionRate: { correctionCount: 0, level: "good", rate: 0, summary: "No messages yet.", userTurns: 0 },
           goalDrift: { level: "good", summary: "No messages yet." },
           staleness: { level: "good", summary: "No messages yet." },
@@ -212,17 +219,20 @@ export async function POST(
       } satisfies ContextCheckResult);
     }
 
-    // Fetch goal from sessions table
-    const { data: sessionRow } = await supabase
-      .from("sessions")
-      .select("goal")
-      .eq("id", id)
-      .maybeSingle();
+    // Fetch goal and system prompt in parallel
+    const [{ data: sessionRow }, { data: userSettings }] = await Promise.all([
+      supabase.from("sessions").select("goal").eq("id", id).maybeSingle(),
+      supabase.from("user_settings").select("system_prompt").maybeSingle(),
+    ]);
     const goal = sessionRow?.goal ?? null;
+    const systemPromptChars =
+      typeof userSettings?.system_prompt === "string"
+        ? userSettings.system_prompt.length
+        : 0;
 
     // Algorithmic metrics
     const correctionMetrics = computeCorrectionRate(messages);
-    const compositionMetrics = computeComposition(messages, toolCalls);
+    const compositionMetrics = computeComposition(messages, toolCalls, systemPromptChars);
 
     // Resolve model for this session
     const admin = createAdminClient();
@@ -298,6 +308,7 @@ export async function POST(
         composition: {
           assistantFraction: compositionMetrics.assistantFraction,
           summary: compositionMetrics.summary,
+          systemPromptFraction: compositionMetrics.systemPromptFraction,
           toolResultFraction: compositionMetrics.toolResultFraction,
           userFraction: compositionMetrics.userFraction,
         },

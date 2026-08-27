@@ -77,18 +77,30 @@ function DimensionRow({
 // ---- Composition bar ----------------------------------------------------
 
 function CompositionBar({
-  userFraction,
   assistantFraction,
+  systemPromptFraction,
   toolResultFraction,
+  userFraction,
 }: {
   assistantFraction: number;
+  systemPromptFraction: number;
   toolResultFraction: number;
   userFraction: number;
 }) {
-  const other = Math.max(0, 1 - userFraction - assistantFraction - toolResultFraction);
+  const other = Math.max(
+    0,
+    1 - systemPromptFraction - userFraction - assistantFraction - toolResultFraction,
+  );
   return (
     <div className="mt-1 mb-0.5">
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+        {systemPromptFraction > 0.001 && (
+          <div
+            className="bg-emerald-500"
+            style={{ flexBasis: 0, flexGrow: systemPromptFraction }}
+            title={`System prompt: ${Math.round(systemPromptFraction * 100)}%`}
+          />
+        )}
         <div
           className="bg-blue-500"
           style={{ flexBasis: 0, flexGrow: userFraction }}
@@ -111,7 +123,13 @@ function CompositionBar({
           />
         )}
       </div>
-      <div className="mt-1 flex gap-3 text-[10px] text-muted-foreground">
+      <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+        {systemPromptFraction > 0.001 && (
+          <span>
+            <span className="inline-block size-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
+            System {Math.round(systemPromptFraction * 100)}%
+          </span>
+        )}
         <span>
           <span className="inline-block size-1.5 rounded-full bg-blue-500 mr-1 align-middle" />
           User {Math.round(userFraction * 100)}%
@@ -244,6 +262,7 @@ export function InspectorPanel({
               <span className="text-xs font-medium text-foreground">Composition</span>
               <CompositionBar
                 assistantFraction={result.dimensions.composition.assistantFraction}
+                systemPromptFraction={result.dimensions.composition.systemPromptFraction}
                 toolResultFraction={result.dimensions.composition.toolResultFraction}
                 userFraction={result.dimensions.composition.userFraction}
               />
