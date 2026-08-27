@@ -6,7 +6,7 @@ import {
   WikiPageMeta,
   WikiRegistry,
   buildTitleMap,
-} from "@/lib/wiki";
+} from "@/lib/wiki-types";
 import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { WikiPageMeta, WikiPageType } from "@/lib/wiki";
+import { WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 type NavGroup = WikiPageType | "observation";
 

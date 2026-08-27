@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
-import { WikiPageMeta, WikiPageType } from "@/lib/wiki";
+import { WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 const TYPE_COLORS: Record<WikiPageType, string> = {
   entity: "bg-blue-500/15 text-blue-400 border-blue-500/30",
