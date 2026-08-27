@@ -93,6 +93,7 @@ export function WikiPageView({
         <div className="prose prose-sm prose-invert max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
+            urlTransform={(url) => url}
             components={{
               a: ({ href, children }) => {
                 if (href?.startsWith(WIKI_SCHEME)) {
