@@ -15,14 +15,17 @@ export type DimensionScore = {
   summary: string;
 };
 
+export type CompositionBreakdown = {
+  assistantFraction: number;
+  summary: string;
+  toolResultFraction: number;
+  userFraction: number;
+};
+
 export type ContextCheckResult = {
   checkedAt: string;
   dimensions: {
-    composition: DimensionScore & {
-      assistantFraction: number;
-      toolResultFraction: number;
-      userFraction: number;
-    };
+    composition: CompositionBreakdown;
     correctionRate: DimensionScore & {
       correctionCount: number;
       rate: number;
@@ -80,16 +83,9 @@ function computeComposition(
   const userFraction = userChars / total;
   const assistantFraction = assistantChars / total;
   const toolResultFraction = toolResultChars / total;
-  const level: DimensionLevel =
-    toolResultFraction >= 0.55 ? "degraded" : toolResultFraction >= 0.35 ? "warning" : "good";
   const pct = Math.round(toolResultFraction * 100);
-  const summary =
-    pct < 20
-      ? `Healthy mix — tool results occupy ${pct}% of context.`
-      : pct < 35
-        ? `Tool results are ${pct}% of context — manageable.`
-        : `Tool results dominate at ${pct}% of context, crowding out dialogue.`;
-  return { assistantFraction, level, summary, toolResultFraction, userFraction };
+  const summary = `User ${Math.round(userFraction * 100)}% · Assistant ${Math.round(assistantFraction * 100)}% · Tool results ${pct}%`;
+  return { assistantFraction, summary, toolResultFraction, userFraction };
 }
 
 // ---- Compact transcript for the inspector LLM --------------------------
@@ -203,7 +199,7 @@ export async function POST(
       return Response.json({
         checkedAt: new Date().toISOString(),
         dimensions: {
-          composition: { assistantFraction: 0, level: "good", summary: "No messages yet.", toolResultFraction: 0, userFraction: 0 },
+          composition: { assistantFraction: 0, summary: "No messages yet.", toolResultFraction: 0, userFraction: 0 },
           correctionRate: { correctionCount: 0, level: "good", rate: 0, summary: "No messages yet.", userTurns: 0 },
           goalDrift: { level: "good", summary: "No messages yet." },
           staleness: { level: "good", summary: "No messages yet." },
@@ -274,10 +270,9 @@ export async function POST(
       summary: goal ? "Unable to assess." : "No goal set.",
     };
 
-    // Overall quality = worst of all dimensions
+    // Overall quality = worst of all scored dimensions (composition is informational only)
     const levels: DimensionLevel[] = [
       correctionMetrics.level,
-      compositionMetrics.level,
       supersessionDepth.level,
       staleness.level,
       goalDrift.level,
@@ -302,7 +297,6 @@ export async function POST(
       dimensions: {
         composition: {
           assistantFraction: compositionMetrics.assistantFraction,
-          level: compositionMetrics.level,
           summary: compositionMetrics.summary,
           toolResultFraction: compositionMetrics.toolResultFraction,
           userFraction: compositionMetrics.userFraction,

@@ -239,27 +239,14 @@ export function InspectorPanel({
               score={result.dimensions.correctionRate}
             />
 
-            {/* Composition with visual bar */}
-            <div className="flex items-start gap-2 py-1.5">
-              <LevelIcon level={result.dimensions.composition.level} />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-foreground">Composition</span>
-                  <span
-                    className={`text-xs font-medium capitalize ${levelColor(result.dimensions.composition.level)}`}
-                  >
-                    {result.dimensions.composition.level}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {result.dimensions.composition.summary}
-                </p>
-                <CompositionBar
-                  assistantFraction={result.dimensions.composition.assistantFraction}
-                  toolResultFraction={result.dimensions.composition.toolResultFraction}
-                  userFraction={result.dimensions.composition.userFraction}
-                />
-              </div>
+            {/* Composition — informational only, no pass/fail */}
+            <div className="py-1.5">
+              <span className="text-xs font-medium text-foreground">Composition</span>
+              <CompositionBar
+                assistantFraction={result.dimensions.composition.assistantFraction}
+                toolResultFraction={result.dimensions.composition.toolResultFraction}
+                userFraction={result.dimensions.composition.userFraction}
+              />
             </div>
 
             <DimensionRow
