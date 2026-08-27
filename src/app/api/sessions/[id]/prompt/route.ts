@@ -4,7 +4,6 @@ import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { PI_TOOLS } from "@/lib/pi/runtime-config";
-import { getRepoMemory } from "@/lib/repo-memories";
 
 export const runtime = "nodejs";
 
@@ -78,12 +77,8 @@ export async function POST(
   ]);
 
   const projectPath = sessionData?.project_path ?? null;
-  const repoMemory = projectPath ? await getRepoMemory(projectPath) : null;
   const basePrompt = settingsData?.system_prompt ?? DEFAULT_SYSTEM_PROMPT;
-
-  // Always append the memory context block so the agent knows about the memory
-  // system regardless of whether a custom system prompt is set.
-  const systemPrompt = `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath, repoMemory)}`;
+  const systemPrompt = `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath)}`;
 
   const stream = new ReadableStream({
     start(controller) {

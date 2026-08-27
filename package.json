@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "tsc": "npx tsc",
     "generate:db-types": "npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > src/types/database.types.ts",
-    "postinstall": "npm install --prefix .pi/packages/semla-otel && npm run generate:db-types"
+    "postinstall": "npm install --prefix .pi/packages/semla-otel && npm install --prefix .pi/npm && npm run generate:db-types"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

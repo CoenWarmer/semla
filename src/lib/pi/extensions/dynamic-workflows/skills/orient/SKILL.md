@@ -1,80 +1,59 @@
 ---
 name: orient
-description: Scan a code repository and write a persistent codebase memory file to $SEMLA_MEMORIES_DIR. Invoke when asked to orient yourself on a repo, or when the system prompt says no memory exists for the current project.
+description: Initialise the pi-llm-wiki knowledge base for a code repository. Use when asked to orient yourself on a repo, or when wiki_recall returns no results for the active project.
 ---
 
-# Orient: generate codebase memory
+# Orient: bootstrap codebase knowledge in the wiki
 
-`orient` scans a repository and writes a structured memory file that bootstraps future agent sessions. Once written, the memory is automatically injected into the Semla system prompt so future sessions start with full context.
+`orient` initialises and populates the wiki for a repository so that future sessions start with structured codebase knowledge. It uses pi-llm-wiki's ingest pipeline rather than writing flat files.
 
-## Determine the target
+## When to invoke
 
-Default to the current working directory. Accept an explicit path as an argument if the user provides one (e.g. `/orient /Users/coen/Dev/kibana`).
+- Explicitly requested: "orient yourself", "learn this codebase", `/orient`
+- Automatically: the system prompt will tell you when `wiki_recall` returns no results for the active project
 
-## Compute the memory file path
+## Steps
 
-1. Get the absolute path of the target repo.
-2. Derive the slug: strip the leading `/`, then replace every non-alphanumeric character with `_`.
-   Example: `/Users/coen/Dev/kibana` → `Users_coen_Dev_kibana`
-3. The memory file path is `$SEMLA_MEMORIES_DIR/{slug}.md`.
+### 1. Confirm the target
 
-Run `echo $SEMLA_MEMORIES_DIR` in bash to confirm the resolved directory.
+Default to the current working directory. Accept an explicit path if the user provides one.
 
-## Scan the repository
+### 2. Check for existing wiki knowledge
 
-Use the `workflow` tool to scan in parallel. Assign one subagent per facet below — each reads only what it needs and returns a concise structured summary.
+Call `wiki_recall` with the repo name (e.g. `kibana`, `semla`). If it returns relevant pages the wiki is already populated — summarise what you found and stop.
 
-| Facet | What to read |
-|---|---|
-| Overview | README.md, AGENTS.md, CLAUDE.md, any top-level `.md` files |
-| Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml — list the key packages and what they do in this project |
-| Structure | Directory tree to depth 3; identify the main source dirs, entry points, and config files |
-| Conventions | tsconfig.json / eslint config / .prettierrc / test setup — note patterns, naming conventions, anything that would surprise a newcomer |
-| Recent history | `git log --oneline -20` — summarise the recent direction of work |
+### 3. Initialise the wiki if needed
 
-If the `workflow` tool is not available, run the facets sequentially yourself.
-
-## Write the memory file
-
-First create the directory: `mkdir -p $SEMLA_MEMORIES_DIR`
-
-Then write the memory file in this format:
-
-```markdown
-# {project-name} — Codebase Memory
-Generated: {ISO date}
-Path: {absolute repo path}
-
-## Summary
-**This section is injected verbatim into the Semla system prompt on every session — keep it under ~300 words.**
-
-A 3–5 sentence paragraph covering: what the project does, its tech stack, how it is structured, and the 2–3 most important things to know before making changes. Write for an agent that has never seen this codebase and needs to orient in seconds.
-
-## Stack
-One-liner: language, framework, runtime, test runner.
-
-## Key dependencies
-- `{package}`: what it does in this project
-
-## Architecture
-2–3 sentences describing how the codebase is structured and how data/requests flow through it.
-
-## Key modules
-- `{path}`: what it does
-
-## Patterns & conventions
-Short bullets. Focus on things that would not be obvious from reading the code — hidden constraints, important invariants, non-standard choices.
-
-## Getting started
-How to run dev, test, and build — pulled from the project docs or config.
+```
+/wiki-init {repo-name}
 ```
 
-**Important:** The `## Summary` section must come first. Semla injects only the first ~8 000 characters of the file into the system prompt; everything beyond that is available in the file but not pre-loaded. The summary ensures the most critical facts are always in context even for large repos.
+This creates the vault structure under `$WIKI_HOME/.llm-wiki/`.
 
-Use the `write` tool to write the file.
+### 4. Capture sources in parallel
 
-## After writing
+Use the `workflow` tool to spawn parallel subagents, each capturing a different facet:
 
-Report:
-- The path of the written file
-- A one-paragraph summary of the key facts for the current session
+| Subagent | Sources to capture |
+|---|---|
+| Overview | README.md, AGENTS.md, CLAUDE.md — any top-level `.md` files |
+| Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
+| Structure | Directory tree (`find . -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
+| Conventions | tsconfig.json, eslint config, test setup |
+| History | `git log --oneline -30` |
+
+Each subagent uses `wiki_capture_source` to add its content to the wiki vault.
+
+If the `workflow` tool is unavailable, capture the sources sequentially yourself.
+
+### 5. Ingest
+
+```
+/wiki-ingest
+```
+
+This synthesises the captured sources into structured wiki pages (entities, concepts, analyses) with cross-links.
+
+### 6. Report
+
+Call `wiki_recall` once more with the repo name and report a one-paragraph summary of the key pages now available.

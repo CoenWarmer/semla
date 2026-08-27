@@ -6,12 +6,13 @@ const hostDevelopmentEnabled =
   process.env.NODE_ENV === "development" &&
   process.env.PI_ALLOW_HOST_DEV === "true";
 
-// Repo memories live in this Semla-owned directory, not inside the repos the
-// agent works in. Exposed as an env var so the agent's bash tool can resolve
-// the path when writing a new memory file.
-export const SEMLA_MEMORIES_DIR = (() => {
-  const dir = process.env.SEMLA_MEMORIES_DIR ?? join(process.cwd(), ".semla-memories");
-  process.env.SEMLA_MEMORIES_DIR = dir;
+// WIKI_HOME controls where pi-llm-wiki's personal vault lives. Defaulting it
+// to a Semla-owned directory keeps wiki files out of the repos being worked in
+// and out of the user's home dir. Exposed so the agent's bash tool can resolve
+// the path (e.g. to check if a wiki has been initialised for a repo).
+export const WIKI_HOME = (() => {
+  const dir = process.env.WIKI_HOME ?? join(process.cwd(), ".semla-wiki");
+  process.env.WIKI_HOME = dir;
   return dir;
 })();
 
