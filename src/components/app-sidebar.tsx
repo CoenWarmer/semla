@@ -10,7 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Settings } from "lucide-react";
+import { BookOpen, Settings } from "lucide-react";
 import Link from "next/link";
 import { NewSessionButton } from "./new-session-button";
 import { ProjectsCombobox } from "./projects-combobox";
@@ -37,6 +37,15 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={<Link href="/wiki" />}
+              tooltip="Wiki"
+            >
+              <BookOpen />
+              <span>Wiki</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               render={<Link href="/settings" />}
