@@ -18,8 +18,12 @@
 import { join } from "node:path";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { WIKI_HOME } from "@/lib/pi/runtime-config";
 import type { WorkflowManager } from "./dynamic-workflows/src/workflow-manager.ts";
+
+// WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
+// Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
+// Next.js convention that jiti (the pi extension loader) does not resolve.
+const WIKI_HOME = process.env.WIKI_HOME ?? join(process.cwd(), ".semla-wiki");
 
 // ── Global symbol keys (shared with workflow.ts and pi-llm-wiki) ──────────────
 
