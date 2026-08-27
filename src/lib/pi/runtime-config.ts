@@ -11,7 +11,7 @@ const hostDevelopmentEnabled =
 // jiti cannot import. Load the actual entry point directly instead, bypassing
 // the package's pi.extensions declaration entirely.
 export const WIKI_EXTENSION_PATH = join(
-  process.env.PI_WORKSPACE_ROOT ?? process.cwd(),
+  process.cwd(),
   ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/index.ts",
 );
 
