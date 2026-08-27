@@ -90,24 +90,24 @@ function CompositionBar({
     <div className="mt-1 mb-0.5">
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className="bg-blue-500 transition-all"
-          style={{ width: `${userFraction * 100}%` }}
+          className="bg-blue-500"
+          style={{ flexBasis: 0, flexGrow: userFraction }}
           title={`User: ${Math.round(userFraction * 100)}%`}
         />
         <div
-          className="bg-violet-500 transition-all"
-          style={{ width: `${assistantFraction * 100}%` }}
+          className="bg-violet-500"
+          style={{ flexBasis: 0, flexGrow: assistantFraction }}
           title={`Assistant: ${Math.round(assistantFraction * 100)}%`}
         />
         <div
-          className="bg-amber-500 transition-all"
-          style={{ width: `${toolResultFraction * 100}%` }}
+          className="bg-amber-500"
+          style={{ flexBasis: 0, flexGrow: toolResultFraction }}
           title={`Tool results: ${Math.round(toolResultFraction * 100)}%`}
         />
         {other > 0.01 && (
           <div
-            className="bg-muted-foreground/20 transition-all"
-            style={{ width: `${other * 100}%` }}
+            className="bg-muted-foreground/20"
+            style={{ flexBasis: 0, flexGrow: other }}
           />
         )}
       </div>
