@@ -1,19 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
-
-type NavGroup = WikiPageType | "observation";
-
-const GROUP_ORDER: NavGroup[] = [
-  "entity",
-  "concept",
-  "synthesis",
-  "analysis",
-  "requirement",
-  "source",
-  "observation",
-];
+import {
+  NavGroup,
+  NAV_GROUP_ORDER,
+  navGroupFor,
+  WikiPageMeta,
+} from "@/lib/wiki-types";
 
 const GROUP_LABELS: Record<NavGroup, string> = {
   entity: "Entities",
@@ -36,7 +29,7 @@ export function WikiNav({ pages, selectedPath, onSelect }: WikiNavProps) {
 
   return (
     <nav className="flex flex-col gap-4 p-3">
-      {GROUP_ORDER.filter((group) => grouped[group]?.length).map((group) => (
+      {NAV_GROUP_ORDER.filter((group) => grouped[group]?.length).map((group) => (
         <div key={group}>
           <p className="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {GROUP_LABELS[group]}
@@ -62,13 +55,6 @@ export function WikiNav({ pages, selectedPath, onSelect }: WikiNavProps) {
       ))}
     </nav>
   );
-}
-
-function navGroupFor(meta: WikiPageMeta): NavGroup {
-  if (meta.type === "source" && meta.status === "observation") {
-    return "observation";
-  }
-  return meta.type;
 }
 
 function groupByNavGroup(

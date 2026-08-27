@@ -32,6 +32,25 @@ export interface WikiConfig {
   knowledge_format: string;
 }
 
+export type NavGroup = WikiPageType | "observation";
+
+export const NAV_GROUP_ORDER: NavGroup[] = [
+  "entity",
+  "concept",
+  "synthesis",
+  "analysis",
+  "requirement",
+  "source",
+  "observation",
+];
+
+export function navGroupFor(meta: WikiPageMeta): NavGroup {
+  if (meta.type === "source" && meta.status === "observation") {
+    return "observation";
+  }
+  return meta.type;
+}
+
 /** Map from page title → path, used to resolve [[Title]] wiki links. */
 export function buildTitleMap(
   registry: WikiRegistry,
