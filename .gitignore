@@ -48,3 +48,12 @@ next-env.d.ts
 # GitButler conflict resolution) deletes them along with the uncommitted work
 # of whoever is using them.
 /.claude/worktrees/
+
+# Audit and review reports dropped by agent runs. Scratch artifacts rather than
+# documentation, and they quote whatever they find — the reports these patterns
+# were written for had the Supabase service-role key in plaintext, so keeping
+# them out of history is the point. Scoped to the repo root and .pi/ so
+# deliberate write-ups under docs/ are unaffected.
+/*audit*.md
+/*-report.md
+/.pi/*.md
