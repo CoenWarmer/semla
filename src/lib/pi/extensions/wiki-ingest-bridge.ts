@@ -311,6 +311,13 @@ type IngestSource = {
 
 export type WikiIngestDispatcher = (sources: IngestSource[]) => boolean;
 
+// ── Per-run toolset key counter (avoids Date.now() collisions) ───────────────
+
+let runCounter = 0;
+function nextRunKey(prefix: string): string {
+  return `${prefix}:${++runCounter}`;
+}
+
 // ── Extension entry point ──────────────────────────────────────────────────────
 
 // pi is required by the extension contract even though this bridge doesn't
@@ -363,7 +370,7 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
     const extraToolsets = ((globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] ??=
       {}) as Record<string, () => ReturnType<typeof createRunReindexTool>[]>;
 
-    const toolsetKey = `wiki-reindex:${Date.now()}`;
+    const toolsetKey = nextRunKey("wiki-reindex");
     extraToolsets[toolsetKey] = () => [createRunReindexTool(embedder, paths, force)];
 
     manager.startInBackground(WIKI_REINDEX_SCRIPT, { model: embedder.model }, { toolset: toolsetKey });
