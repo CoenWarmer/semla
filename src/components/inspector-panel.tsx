@@ -6,7 +6,10 @@ import {
   useContextInspections,
   useTriggerContextCheck,
 } from "@/hooks/use-context-check";
-import type { ContextCheckResult, DimensionLevel } from "@/app/api/sessions/[id]/context-check/route";
+import type {
+  ContextCheckResult,
+  DimensionLevel,
+} from "@/app/api/sessions/[id]/context-check/route";
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
@@ -64,106 +67,15 @@ function DimensionRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-foreground">{label}</span>
-          <span className={`text-xs font-medium capitalize ${levelColor(score.level)}`}>
+          <span
+            className={`text-xs font-medium capitalize ${levelColor(score.level)}`}
+          >
             {score.level}
           </span>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">{score.summary}</p>
-      </div>
-    </div>
-  );
-}
-
-// ---- Composition bar ----------------------------------------------------
-
-type CompositionMode = "absolute" | "relative";
-
-function CompositionBar({
-  assistantFraction,
-  contextWindowFraction,
-  mode,
-  systemPromptFraction,
-  toolResultFraction,
-  userFraction,
-}: {
-  assistantFraction: number;
-  contextWindowFraction: number | null;
-  mode: CompositionMode;
-  systemPromptFraction: number;
-  toolResultFraction: number;
-  userFraction: number;
-}) {
-  // In absolute mode the segments scale down by the context window fill so the
-  // bar's used area represents actual context consumption. Fall back to relative
-  // if contextWindowFraction is unknown.
-  const scale = mode === "absolute" && contextWindowFraction != null ? contextWindowFraction : 1;
-
-  const seg = {
-    system: systemPromptFraction * scale,
-    user: userFraction * scale,
-    assistant: assistantFraction * scale,
-    toolResult: toolResultFraction * scale,
-  };
-  // In relative mode fill the bar fully; in absolute mode leave the rest as background.
-  const remainder = mode === "absolute" && contextWindowFraction != null
-    ? Math.max(0, 1 - contextWindowFraction)
-    : 0;
-
-  const pct = (f: number) => `${Math.round(f * 100)}%`;
-
-  return (
-    <div className="mt-1 mb-0.5">
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-        {seg.system > 0.001 && (
-          <div
-            className="bg-emerald-500"
-            style={{ flexBasis: 0, flexGrow: seg.system }}
-            title={`System prompt: ${pct(systemPromptFraction)}`}
-          />
-        )}
-        <div
-          className="bg-blue-500"
-          style={{ flexBasis: 0, flexGrow: seg.user }}
-          title={`User: ${pct(userFraction)}`}
-        />
-        <div
-          className="bg-violet-500"
-          style={{ flexBasis: 0, flexGrow: seg.assistant }}
-          title={`Assistant: ${pct(assistantFraction)}`}
-        />
-        <div
-          className="bg-amber-500"
-          style={{ flexBasis: 0, flexGrow: seg.toolResult }}
-          title={`Tool results: ${pct(toolResultFraction)}`}
-        />
-        {remainder > 0.001 && (
-          <div style={{ flexBasis: 0, flexGrow: remainder }} />
-        )}
-      </div>
-      <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-        {systemPromptFraction > 0.001 && (
-          <span>
-            <span className="inline-block size-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
-            System {pct(systemPromptFraction)}
-          </span>
-        )}
-        <span>
-          <span className="inline-block size-1.5 rounded-full bg-blue-500 mr-1 align-middle" />
-          User {pct(userFraction)}
-        </span>
-        <span>
-          <span className="inline-block size-1.5 rounded-full bg-violet-500 mr-1 align-middle" />
-          Assistant {pct(assistantFraction)}
-        </span>
-        <span>
-          <span className="inline-block size-1.5 rounded-full bg-amber-500 mr-1 align-middle" />
-          Tool results {pct(toolResultFraction)}
-        </span>
-        {mode === "absolute" && contextWindowFraction != null && (
-          <span className="ml-auto text-muted-foreground/60">
-            {pct(contextWindowFraction)} of context window
-          </span>
-        )}
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {score.summary}
+        </p>
       </div>
     </div>
   );
@@ -178,15 +90,16 @@ export function InspectorPanel({
   goal?: string | null;
   sessionId: string;
 }) {
-  const { data: inspections, isLoading: inspectionsLoading } = useContextInspections(sessionId);
+  const { data: inspections, isLoading: inspectionsLoading } =
+    useContextInspections(sessionId);
   const trigger = useTriggerContextCheck(sessionId);
   const router = useRouter();
-  const [compositionMode, setCompositionMode] = useState<CompositionMode>("absolute");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const hasHistory = (inspections?.length ?? 0) > 0;
   // Most recent first; selectedId tracks which one the user is viewing.
-  const selected = inspections?.find((r) => r.id === selectedId) ?? inspections?.[0] ?? null;
+  const selected =
+    inspections?.find((r) => r.id === selectedId) ?? inspections?.[0] ?? null;
   const result = selected?.result ?? null;
 
   // Auto-run on first open when there is no history yet.
@@ -221,7 +134,9 @@ export function InspectorPanel({
           </div>
         )}
         {!inspectionsLoading && !hasHistory && (
-          <span className="px-1 text-[10px] text-muted-foreground">No runs yet</span>
+          <span className="px-1 text-[10px] text-muted-foreground">
+            No runs yet
+          </span>
         )}
         {inspections?.map((insp, i) => {
           const isActive = insp.id === (selected?.id ?? null);
@@ -243,7 +158,9 @@ export function InspectorPanel({
                   {insp.result.quality}
                 </span>
                 {i === 0 && (
-                  <span className="text-[9px] text-muted-foreground/60 ml-auto">latest</span>
+                  <span className="text-[9px] text-muted-foreground/60 ml-auto">
+                    latest
+                  </span>
                 )}
               </div>
               <span className="mt-0.5 text-[10px] text-muted-foreground">
@@ -259,7 +176,9 @@ export function InspectorPanel({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between pb-2">
           <span className="text-xs font-semibold text-foreground">
-            {result ? formatCheckedAt(selected!.createdAt) : "Context Inspector"}
+            {result
+              ? formatCheckedAt(selected!.createdAt)
+              : "Context Inspector"}
           </span>
           <Button
             disabled={trigger.isPending}
@@ -267,8 +186,16 @@ export function InspectorPanel({
             size="sm"
             variant="outline"
           >
-            {trigger.isPending ? <Spinner className="size-3" /> : <RefreshCwIcon className="size-3" />}
-            {trigger.isPending ? "Inspecting…" : hasHistory ? "Re-run" : "Run inspector"}
+            {trigger.isPending ? (
+              <Spinner className="size-3" />
+            ) : (
+              <RefreshCwIcon className="size-3" />
+            )}
+            {trigger.isPending
+              ? "Inspecting…"
+              : hasHistory
+                ? "Re-run"
+                : "Run inspector"}
           </Button>
         </div>
 
@@ -284,8 +211,8 @@ export function InspectorPanel({
         {!trigger.isPending && !result && (
           <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center px-4">
             <p className="text-sm text-muted-foreground">
-              The inspector runs as a separate agent and evaluates context health
-              without touching this session.
+              The inspector runs as a separate agent and evaluates context
+              health without touching this session.
             </p>
             <p className="text-xs text-muted-foreground/70 mt-1">
               It also runs automatically every 10 turns.
@@ -300,48 +227,36 @@ export function InspectorPanel({
             <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
               <DotIndicator level={result.quality} />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className={`text-xs font-semibold capitalize ${levelColor(result.quality)}`}>
+                <span
+                  className={`text-xs font-semibold capitalize ${levelColor(result.quality)}`}
+                >
                   {result.quality}
                 </span>
-                <p className="text-xs text-muted-foreground leading-relaxed">{result.summary}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {result.summary}
+                </p>
               </div>
             </div>
 
             {/* Dimensions */}
             <div className="flex flex-col divide-y divide-border/40">
-              <DimensionRow label="Correction rate" score={result.dimensions.correctionRate} />
+              <DimensionRow
+                label="Correction rate"
+                score={result.dimensions.correctionRate}
+              />
 
-              {/* Composition */}
-              <div className="py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-foreground">Composition</span>
-                  {result.dimensions.composition.contextWindowFraction != null && (
-                    <button
-                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() =>
-                        setCompositionMode((m: CompositionMode) =>
-                          m === "absolute" ? "relative" : "absolute",
-                        )
-                      }
-                      title={compositionMode === "absolute" ? "Switch to proportional view" : "Switch to context window view"}
-                    >
-                      {compositionMode === "absolute" ? "vs. context window" : "proportional"}
-                    </button>
-                  )}
-                </div>
-                <CompositionBar
-                  assistantFraction={result.dimensions.composition.assistantFraction}
-                  contextWindowFraction={result.dimensions.composition.contextWindowFraction}
-                  mode={compositionMode}
-                  systemPromptFraction={result.dimensions.composition.systemPromptFraction}
-                  toolResultFraction={result.dimensions.composition.toolResultFraction}
-                  userFraction={result.dimensions.composition.userFraction}
-                />
-              </div>
-
-              <DimensionRow label="Supersession depth" score={result.dimensions.supersessionDepth} />
-              <DimensionRow label="Staleness" score={result.dimensions.staleness} />
-              <DimensionRow label="Goal drift" score={result.dimensions.goalDrift} />
+              <DimensionRow
+                label="Supersession depth"
+                score={result.dimensions.supersessionDepth}
+              />
+              <DimensionRow
+                label="Staleness"
+                score={result.dimensions.staleness}
+              />
+              <DimensionRow
+                label="Goal drift"
+                score={result.dimensions.goalDrift}
+              />
             </div>
 
             {/* Interventions */}
@@ -356,7 +271,9 @@ export function InspectorPanel({
                       key={iv.action}
                       onClick={() => handleIntervention(iv.action)}
                       size="sm"
-                      variant={iv.action === "restart" ? "destructive" : "outline"}
+                      variant={
+                        iv.action === "restart" ? "destructive" : "outline"
+                      }
                     >
                       {iv.label}
                     </Button>

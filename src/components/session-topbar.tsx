@@ -16,6 +16,7 @@ import { GoalEditor } from "./goal-editor";
 import { InspectorPanel } from "./inspector-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 import { TokenUsage, formatTokens } from "./token-usage";
+import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
   title: string | null;
@@ -75,7 +76,12 @@ function ContextQualityDot({ sessionId }: { sessionId: string }) {
     degraded: "bg-destructive",
   };
   const dot = colors[latest.result.quality] ?? "bg-muted";
-  return <span className={`size-2 rounded-full shrink-0 ${dot}`} title={latest.result.summary} />;
+  return (
+    <span
+      className={`size-2 rounded-full shrink-0 ${dot}`}
+      title={latest.result.summary}
+    />
+  );
 }
 
 export function SessionTopbar({
@@ -92,6 +98,8 @@ export function SessionTopbar({
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
+  const { data: inspections } = useContextInspections(sessionId);
+  const result = inspections?.[0]?.result ?? null;
 
   const agentCount = snapshot?.agentCount ?? 0;
   const runningCount = snapshot?.runningCount ?? 0;
@@ -114,7 +122,11 @@ export function SessionTopbar({
         <div className="flex min-w-0 flex-1 justify-center">
           {onGoalSave && (
             <div className="w-full max-w-lg">
-              <GoalEditor goal={goal ?? null} onSave={onGoalSave} variant="inline" />
+              <GoalEditor
+                goal={goal ?? null}
+                onSave={onGoalSave}
+                variant="inline"
+              />
             </div>
           )}
         </div>
@@ -152,6 +164,7 @@ export function SessionTopbar({
           </div>
         </div>
       </div>
+      <SessionContextWindowBar result={result} />
 
       {/* Panel area */}
       {panelMode === "agents" && (
