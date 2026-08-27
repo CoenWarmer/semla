@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import type { Node as FlowNode, Edge as FlowEdge, NodeProps } from "@xyflow/react";
 import { Handle, MarkerType, Position } from "@xyflow/react";
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
@@ -89,9 +91,11 @@ function WikiPageNode({ id, data }: NodeProps<FlowNode<WikiNodeData>>) {
             <p className="text-[10px] text-destructive">Could not load page.</p>
           )}
           {content && (
-            <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-[10px] leading-relaxed text-muted-foreground">
-              {content}
-            </p>
+            <div className="max-h-48 overflow-y-auto">
+              <div className="prose prose-xs prose-invert max-w-none [&_*]:text-[10px] [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-xs">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              </div>
+            </div>
           )}
         </div>
       )}
