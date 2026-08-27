@@ -6,7 +6,7 @@ import { Handle, MarkerType, Position } from "@xyflow/react";
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
 import { cn } from "@/lib/utils";
-import { NavGroup, navGroupFor, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
+import { NavGroup, navGroupFor, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ const nodeTypes = { wikiPage: WikiPageNode };
 
 function buildGraphElements(
   pages: Record<string, WikiPageMeta>,
-  backlinks: Record<string, string[]>,
+  links: WikiLink[],
   selectedPath: string | null,
 ): { nodes: FlowNode[]; edges: FlowEdge[] } {
   // Group paths by column
@@ -113,26 +113,24 @@ function buildGraphElements(
     };
   });
 
-  // Invert backlinks (target→sources) into directed edges (source→target)
-  const edges: FlowEdge[] = [];
-  for (const [target, sources] of Object.entries(backlinks)) {
-    for (const source of sources) {
-      if (!(source in pages) || !(target in pages)) continue;
-      edges.push({
-        id: `${source}__${target}`,
-        source,
-        target,
-        type: "smoothstep",
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 10,
-          height: 10,
-          color: "hsl(var(--muted-foreground))",
-        },
-        style: { stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 },
-      });
-    }
-  }
+  // Build edges directly from the pre-computed link pairs.
+  // Use var(--muted-foreground) directly — this project uses OKLCH vars,
+  // so wrapping in hsl() would produce invalid CSS and invisible edges.
+  const edges: FlowEdge[] = links
+    .filter(({ source, target }) => source in pages && target in pages)
+    .map(({ source, target }) => ({
+      id: `${source}__${target}`,
+      source,
+      target,
+      type: "smoothstep",
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 10,
+        height: 10,
+        color: "var(--muted-foreground)",
+      },
+      style: { stroke: "var(--muted-foreground)", strokeWidth: 1 },
+    }));
 
   return { nodes, edges };
 }
@@ -141,18 +139,18 @@ function buildGraphElements(
 
 interface WikiGraphProps {
   pages: Record<string, WikiPageMeta>;
-  backlinks: Record<string, string[]>;
+  links: WikiLink[];
   selectedPath: string | null;
   onNavigate: (path: string) => void;
 }
 
 export function WikiGraph({
   pages,
-  backlinks,
+  links,
   selectedPath,
   onNavigate,
 }: WikiGraphProps) {
-  const { nodes, edges } = buildGraphElements(pages, backlinks, selectedPath);
+  const { nodes, edges } = buildGraphElements(pages, links, selectedPath);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {

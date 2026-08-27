@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { List, Network } from "lucide-react";
 import {
   WikiConfig,
+  WikiLink,
   WikiPageMeta,
   WikiRegistry,
   buildTitleMap,
@@ -19,14 +20,14 @@ type ViewMode = "list" | "graph";
 interface WikiBrowserProps {
   config: WikiConfig | null;
   registry: WikiRegistry | null;
-  backlinks: Record<string, string[]>;
+  links: WikiLink[];
   initialPath: string | null;
 }
 
 export function WikiBrowser({
   config,
   registry,
-  backlinks,
+  links,
   initialPath,
 }: WikiBrowserProps) {
   const searchParams = useSearchParams();
@@ -45,6 +46,16 @@ export function WikiBrowser({
     },
     [router, searchParams],
   );
+
+  // Derive per-page backlinks from the flat links list for the "Referenced by" section.
+  const backlinks = useMemo(() => {
+    const bl: Record<string, string[]> = {};
+    for (const { source, target } of links) {
+      bl[target] ??= [];
+      bl[target].push(source);
+    }
+    return bl;
+  }, [links]);
 
   const selectedMeta: WikiPageMeta | undefined = selectedPath
     ? pages[selectedPath]
@@ -104,7 +115,7 @@ export function WikiBrowser({
         {viewMode === "graph" ? (
           <WikiGraph
             pages={pages}
-            backlinks={backlinks}
+            links={links}
             selectedPath={selectedPath}
             onNavigate={(path) => {
               navigate(path);

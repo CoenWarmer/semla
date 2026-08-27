@@ -5,11 +5,13 @@ import {
   buildTitleMap,
   extractWikiLinks,
   WikiConfig,
+  WikiLink,
   WikiRegistry,
 } from "./wiki-types";
 
 export type {
   WikiConfig,
+  WikiLink,
   WikiPageMeta,
   WikiPageType,
   WikiRegistry,
@@ -52,18 +54,12 @@ function stripFrontmatter(content: string): string {
 }
 
 /**
- * Reads every page in the registry and returns a map of path → paths-that-link-to-it.
+ * Scans every page and returns all directed [[wiki links]] as explicit pairs.
  * Run server-side only.
  */
-export function computeAllBacklinks(
-  registry: WikiRegistry,
-): Record<string, string[]> {
+export function computeWikiLinks(registry: WikiRegistry): WikiLink[] {
   const titleToPath = buildTitleMap(registry);
-  const backlinks: Record<string, string[]> = {};
-
-  for (const path of Object.keys(registry.pages)) {
-    backlinks[path] = [];
-  }
+  const links: WikiLink[] = [];
 
   for (const path of Object.keys(registry.pages)) {
     const content = getWikiPageContent(path);
@@ -73,11 +69,10 @@ export function computeAllBacklinks(
       const target = titleToPath[title];
       if (target && target !== path && !seen.has(target)) {
         seen.add(target);
-        backlinks[target] ??= [];
-        backlinks[target].push(path);
+        links.push({ source: path, target });
       }
     }
   }
 
-  return backlinks;
+  return links;
 }

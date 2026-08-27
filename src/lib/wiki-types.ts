@@ -51,6 +51,11 @@ export function navGroupFor(meta: WikiPageMeta): NavGroup {
   return meta.type;
 }
 
+export interface WikiLink {
+  source: string;
+  target: string;
+}
+
 /** Map from page title → path, used to resolve [[Title]] wiki links. */
 export function buildTitleMap(
   registry: WikiRegistry,

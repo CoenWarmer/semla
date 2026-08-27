@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { WikiBrowser } from "@/components/wiki/wiki-browser";
 import {
-  computeAllBacklinks,
+  computeWikiLinks,
   getWikiConfig,
   getWikiRegistry,
   isWikiInitialized,
@@ -21,7 +21,7 @@ export default function WikiPage() {
 
   const config = getWikiConfig();
   const registry = getWikiRegistry();
-  const backlinks = registry ? computeAllBacklinks(registry) : {};
+  const links = registry ? computeWikiLinks(registry) : [];
 
   const initialPath = registry
     ? (Object.keys(registry.pages)[0] ?? null)
@@ -32,7 +32,7 @@ export default function WikiPage() {
       <WikiBrowser
         config={config}
         registry={registry}
-        backlinks={backlinks}
+        links={links}
         initialPath={initialPath}
       />
     </Suspense>
