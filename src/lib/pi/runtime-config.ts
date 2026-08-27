@@ -42,6 +42,28 @@ export const PI_TOOLS = [
   "ask_user",
 ] as const;
 
+// Tools contributed by pi extension packages loaded via .pi/settings.json.
+// These are always active regardless of the user's tool selection — the server
+// re-adds them after setActiveToolsByName (see session-service.ts).
+export const EXTENSION_TOOLS = [
+  // @zosmaai/pi-llm-wiki — codebase knowledge vault
+  "wiki_recall",
+  "wiki_capture_source",
+  "wiki_ingest",
+  "wiki_bootstrap",
+  "wiki_ensure_page",
+  "wiki_search",
+  "wiki_lint",
+  "wiki_status",
+  "wiki_rebuild_meta",
+  "wiki_reindex_embeddings",
+  "wiki_log_event",
+  "wiki_watch",
+  "wiki_retro",
+  "wiki_capture_trajectory",
+  "wiki_recall_skill",
+] as const;
+
 export const getPiRuntimeConfig = () => ({
   apiKeyConfigured: Boolean(process.env.PI_MODEL_API_KEY),
   hostDevelopmentEnabled,

@@ -37,6 +37,7 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { useModels, type PiModel } from "@/hooks/use-models";
+import { useTools } from "@/hooks/use-tools";
 import {
   useUpdateUserSettings,
   useUserSettings,
@@ -170,6 +171,7 @@ export function PromptEditor({
     error: userSettingsError,
     isSuccess: userSettingsLoaded,
   } = useUserSettings();
+  const { data: piTools } = useTools();
 
   const { error: updateUserSettingsError, mutate: updateUserSettings } =
     useUpdateUserSettings();
@@ -209,7 +211,11 @@ export function PromptEditor({
     (candidate) =>
       `${candidate.provider}:${candidate.modelId}` === selectedModelKey,
   );
-  const matchingTools = defaultTools.filter((tool) =>
+  const extensionTools = piTools?.extensionTools ?? [];
+  const matchingToggleableTools = defaultTools.filter((tool) =>
+    tool.toLowerCase().includes(toolQuery.toLowerCase()),
+  );
+  const matchingExtensionTools = extensionTools.filter((tool) =>
     tool.toLowerCase().includes(toolQuery.toLowerCase()),
   );
 
@@ -329,7 +335,7 @@ export function PromptEditor({
                   onClick={() => setToolPickerOpen((open) => !open)}
                 >
                   <WrenchIcon size={16} />
-                  <span>{tools.length} tools</span>
+                  <span>{tools.length + extensionTools.length} tools</span>
                 </PromptInputButton>
                 {toolPickerOpen && (
                   <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
@@ -341,31 +347,49 @@ export function PromptEditor({
                       value={toolQuery}
                     />
                     <div className="max-h-56 overflow-y-auto" role="listbox">
-                      {matchingTools.length > 0 ? (
-                        matchingTools.map((tool) => {
-                          const selected = tools.includes(tool);
+                      {matchingToggleableTools.map((tool) => {
+                        const selected = tools.includes(tool);
 
-                          return (
-                            <button
-                              aria-selected={selected}
-                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        return (
+                          <button
+                            aria-selected={selected}
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                            key={tool}
+                            onClick={() => toggleTool(tool)}
+                            role="option"
+                            type="button"
+                          >
+                            <span className="flex size-4 items-center justify-center">
+                              {selected && <CheckIcon className="size-4" />}
+                            </span>
+                            {tool}
+                          </button>
+                        );
+                      })}
+                      {matchingExtensionTools.length > 0 && (
+                        <>
+                          <p className="mt-1 px-2 py-1 text-xs font-medium text-muted-foreground">
+                            Extensions (always active)
+                          </p>
+                          {matchingExtensionTools.map((tool) => (
+                            <div
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm opacity-60"
                               key={tool}
-                              onClick={() => toggleTool(tool)}
-                              role="option"
-                              type="button"
                             >
                               <span className="flex size-4 items-center justify-center">
-                                {selected && <CheckIcon className="size-4" />}
+                                <CheckIcon className="size-4" />
                               </span>
                               {tool}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                          No tools found.
-                        </p>
+                            </div>
+                          ))}
+                        </>
                       )}
+                      {matchingToggleableTools.length === 0 &&
+                        matchingExtensionTools.length === 0 && (
+                          <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                            No tools found.
+                          </p>
+                        )}
                     </div>
                   </div>
                 )}
