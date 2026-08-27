@@ -1,3 +1,4 @@
+import { MEMORY_INJECT_LIMIT, repoMemoryPath } from "@/lib/repo-memories";
 import { SEMLA_MEMORIES_DIR } from "@/lib/pi/runtime-config";
 
 /** Base orchestration guidelines — user-editable and shown in the settings UI. */
@@ -25,14 +26,25 @@ export const buildMemoryContextBlock = (
   ];
 
   if (repoMemory && projectPath) {
+    const memoryPath = repoMemoryPath(projectPath);
+    const truncated = repoMemory.length > MEMORY_INJECT_LIMIT;
+    const injected = truncated ? repoMemory.slice(0, MEMORY_INJECT_LIMIT) : repoMemory;
+
     lines.push(
       "",
-      `The memory for \`${projectPath}\` has been loaded below. Use it to inform your work. If you observe something that contradicts the memory, trust your observation and optionally update the relevant section of the file.`,
+      `The memory for \`${projectPath}\` has been loaded below${truncated ? ` (first ${MEMORY_INJECT_LIMIT.toLocaleString()} characters; full file at \`${memoryPath}\`)` : ""}. Use it to inform your work. If you observe something that contradicts the memory, trust your observation and optionally update the relevant section of the file.`,
       "",
       "---",
       "",
-      repoMemory,
+      injected,
     );
+
+    if (truncated) {
+      lines.push(
+        "",
+        `*(Memory truncated. Read \`${memoryPath}\` for the complete file.)*`,
+      );
+    }
   } else if (projectPath) {
     lines.push(
       "",

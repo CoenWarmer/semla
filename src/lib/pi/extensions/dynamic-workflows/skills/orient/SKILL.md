@@ -45,6 +45,11 @@ Then write the memory file in this format:
 Generated: {ISO date}
 Path: {absolute repo path}
 
+## Summary
+**This section is injected verbatim into the Semla system prompt on every session — keep it under ~300 words.**
+
+A 3–5 sentence paragraph covering: what the project does, its tech stack, how it is structured, and the 2–3 most important things to know before making changes. Write for an agent that has never seen this codebase and needs to orient in seconds.
+
 ## Stack
 One-liner: language, framework, runtime, test runner.
 
@@ -63,6 +68,8 @@ Short bullets. Focus on things that would not be obvious from reading the code �
 ## Getting started
 How to run dev, test, and build — pulled from the project docs or config.
 ```
+
+**Important:** The `## Summary` section must come first. Semla injects only the first ~8 000 characters of the file into the system prompt; everything beyond that is available in the file but not pre-loaded. The summary ensures the most critical facts are always in context even for large repos.
 
 Use the `write` tool to write the file.
 
