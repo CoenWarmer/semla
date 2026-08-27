@@ -112,23 +112,23 @@ function CompositionBar({
         )}
       </div>
       <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-        {systemPromptFraction > 0.001 && (
+        {seg.system > 0.001 && (
           <span>
             <span className="inline-block size-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
-            System {pct(systemPromptFraction)}
+            System {pct(seg.system)}
           </span>
         )}
         <span>
           <span className="inline-block size-1.5 rounded-full bg-blue-500 mr-1 align-middle" />
-          User {pct(userFraction)}
+          User {pct(seg.user)}
         </span>
         <span>
           <span className="inline-block size-1.5 rounded-full bg-violet-500 mr-1 align-middle" />
-          Assistant {pct(assistantFraction)}
+          Assistant {pct(seg.assistant)}
         </span>
         <span>
           <span className="inline-block size-1.5 rounded-full bg-amber-500 mr-1 align-middle" />
-          Tool results {pct(toolResultFraction)}
+          Tool results {pct(seg.toolResult)}
         </span>
         {mode === "absolute" && contextWindowFraction != null && (
           <span className="ml-auto text-muted-foreground/60">
