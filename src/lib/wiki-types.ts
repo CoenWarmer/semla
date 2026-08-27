@@ -10,6 +10,7 @@ export interface WikiPageMeta {
   type: WikiPageType;
   title: string;
   created: string;
+  description?: string;
   updated?: string;
   repo?: string;
   status?: string;
