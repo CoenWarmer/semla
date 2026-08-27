@@ -1,7 +1,8 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { WorkspaceProject } from "@/lib/pi/workspace";
 import { Button } from "@/components/ui/button";
@@ -18,15 +19,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export function ProjectsCombobox() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [navigating, setNavigating] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then((data: WorkspaceProject[]) => setProjects(data))
-      .catch(() => {});
-  }, []);
+  // Only fetched once the popover opens: the list is rendered nowhere else, and
+  // this component sits in the sidebar on every page, so fetching on mount put
+  // a request on the critical path of every page load for data nobody had asked
+  // to see. React Query also dedupes it — the previous raw fetch in an effect
+  // ran twice per mount under StrictMode.
+  const { data: projects } = useQuery<WorkspaceProject[]>({
+    enabled: open,
+    queryFn: async () => {
+      const response = await fetch("/api/projects");
+      if (!response.ok) throw new Error("Unable to load projects.");
+      return response.json() as Promise<WorkspaceProject[]>;
+    },
+    queryKey: ["workspace-projects"],
+  });
 
   async function handleSelect(project: WorkspaceProject) {
     setOpen(false);
@@ -67,7 +75,7 @@ export function ProjectsCombobox() {
           <CommandList>
             <CommandEmpty>No projects found.</CommandEmpty>
             <CommandGroup>
-              {projects.map((project) => (
+              {(projects ?? []).map((project) => (
                 <CommandItem
                   key={project.path}
                   value={project.name}

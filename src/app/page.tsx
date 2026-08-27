@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export default async function Page() {
-  const projects = getWorkspaceProjects();
+  const projects = await getWorkspaceProjects();
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 p-6 sm:p-10">
