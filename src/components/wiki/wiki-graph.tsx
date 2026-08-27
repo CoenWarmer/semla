@@ -305,18 +305,19 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
 
   // Merge per-render state (selection, expansion) into node data without
   // triggering a full ELK re-run.
-  const nodes = baseNodes.map((node) =>
-    node.type === "wikiPage"
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            isSelected: node.id === selectedPath,
-            expanded: expandedIds.has(node.id),
-          },
-        }
-      : node,
-  );
+  const nodes = baseNodes.map((node) => {
+    if (node.type !== "wikiPage") return node;
+    const expanded = expandedIds.has(node.id);
+    return {
+      ...node,
+      zIndex: expanded ? 1000 : 1,
+      data: {
+        ...node.data,
+        isSelected: node.id === selectedPath,
+        expanded,
+      },
+    };
+  });
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {
