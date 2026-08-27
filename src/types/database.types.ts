@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      context_inspections: {
+        Row: {
+          created_at: string
+          id: string
+          result: Json
+          semla_session_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          result: Json
+          semla_session_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          result?: Json
+          semla_session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "context_inspections_semla_session_id_fkey"
+            columns: ["semla_session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pi_session_entries: {
         Row: {
           created_at: string

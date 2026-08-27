@@ -312,7 +312,7 @@ export async function POST(
           : "Context window is significantly degraded."
     );
 
-    return Response.json({
+    const result: ContextCheckResult = {
       checkedAt: new Date().toISOString(),
       dimensions: {
         composition: {
@@ -338,8 +338,51 @@ export async function POST(
       quality,
       summary,
       turnCount: messages.length,
-    } satisfies ContextCheckResult);
+    };
+
+    // Persist — non-fatal if it fails
+    await supabase
+      .from("context_inspections")
+      .insert({ result: result as unknown as import("@/types/database.types").Json, semla_session_id: id })
+      .then(({ error }) => {
+        if (error) console.error("[context-check] Failed to persist inspection:", error.message);
+      });
+
+    return Response.json(result);
   } catch (error) {
     return handleRouteError(error, "Unable to run context check.");
+  }
+}
+
+export type StoredInspection = { createdAt: string; id: string; result: ContextCheckResult };
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  try {
+    await requireSessionOwner(id);
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("context_inspections")
+      .select("id, created_at, result")
+      .eq("semla_session_id", id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) return handleRouteError(error, "Unable to load inspections.");
+
+    const inspections: StoredInspection[] = (data ?? []).map((row) => ({
+      createdAt: row.created_at,
+      id: row.id,
+      result: row.result as unknown as ContextCheckResult,
+    }));
+
+    return Response.json({ inspections });
+  } catch (error) {
+    return handleRouteError(error, "Unable to load inspections.");
   }
 }

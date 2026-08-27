@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
-import { useContextCheckResult } from "@/hooks/use-context-check";
+import { useContextInspections } from "@/hooks/use-context-check";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import type {
   SessionMessage,
@@ -65,16 +65,17 @@ function ContextFillBar({ sessionId }: { sessionId: string }) {
 }
 
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
-  const { data } = useContextCheckResult(sessionId);
-  if (!data) return null;
+  const { data: inspections } = useContextInspections(sessionId);
+  const latest = inspections?.[0];
+  if (!latest) return null;
 
   const colors: Record<string, string> = {
     good: "bg-green-500",
     warning: "bg-yellow-500",
     degraded: "bg-destructive",
   };
-  const dot = colors[data.quality] ?? "bg-muted";
-  return <span className={`size-2 rounded-full shrink-0 ${dot}`} title={data.summary} />;
+  const dot = colors[latest.result.quality] ?? "bg-muted";
+  return <span className={`size-2 rounded-full shrink-0 ${dot}`} title={latest.result.summary} />;
 }
 
 export function SessionTopbar({
