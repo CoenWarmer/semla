@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   WikiConfig,
   WikiPageMeta,
@@ -23,13 +24,20 @@ export function WikiBrowser({
   backlinks,
   initialPath,
 }: WikiBrowserProps) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(initialPath);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
+  const selectedPath = searchParams.get("page") ?? initialPath;
   const pages = registry?.pages ?? {};
+  const titleToPath = registry ? buildTitleMap(registry) : {};
 
-  const titleToPath = useMemo(
-    () => (registry ? buildTitleMap(registry) : {}),
-    [registry],
+  const navigate = useCallback(
+    (path: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("page", path);
+      router.push(`/wiki?${params.toString()}`);
+    },
+    [router, searchParams],
   );
 
   const selectedMeta: WikiPageMeta | undefined = selectedPath
@@ -51,7 +59,7 @@ export function WikiBrowser({
           <WikiNav
             pages={pages}
             selectedPath={selectedPath}
-            onSelect={setSelectedPath}
+            onSelect={navigate}
           />
         ) : (
           <p className="p-4 text-xs text-muted-foreground">
@@ -68,7 +76,7 @@ export function WikiBrowser({
             pages={pages}
             titleToPath={titleToPath}
             backlinkPaths={selectedBacklinks}
-            onNavigate={setSelectedPath}
+            onNavigate={navigate}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

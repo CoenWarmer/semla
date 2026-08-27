@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { WikiBrowser } from "@/components/wiki/wiki-browser";
 import {
   computeAllBacklinks,
@@ -27,11 +28,13 @@ export default function WikiPage() {
     : null;
 
   return (
-    <WikiBrowser
-      config={config}
-      registry={registry}
-      backlinks={backlinks}
-      initialPath={initialPath}
-    />
+    <Suspense>
+      <WikiBrowser
+        config={config}
+        registry={registry}
+        backlinks={backlinks}
+        initialPath={initialPath}
+      />
+    </Suspense>
   );
 }
