@@ -6,6 +6,15 @@ const hostDevelopmentEnabled =
   process.env.NODE_ENV === "development" &&
   process.env.PI_ALLOW_HOST_DEV === "true";
 
+// The wiki extension's pi.extensions field declares "./extensions" (a directory
+// with no index.ts at its root), so the package manager resolves it to a path
+// jiti cannot import. Load the actual entry point directly instead, bypassing
+// the package's pi.extensions declaration entirely.
+export const WIKI_EXTENSION_PATH = join(
+  process.env.PI_WORKSPACE_ROOT ?? process.cwd(),
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/index.ts",
+);
+
 // WIKI_HOME controls where pi-llm-wiki's personal vault lives. Defaulting it
 // to a Semla-owned directory keeps wiki files out of the repos being worked in
 // and out of the user's home dir. Exposed so the agent's bash tool can resolve
