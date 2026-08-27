@@ -27,6 +27,7 @@ const DISPATCHER_KEY = Symbol.for("semla.wiki-ingest-dispatcher");
 const REINDEX_DISPATCHER_KEY = Symbol.for("semla.wiki-reindex-dispatcher");
 const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
 const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
+const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
 
 // ── Types replicated from pi-llm-wiki (avoids importing outside tsconfig) ─────
 
@@ -344,7 +345,7 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
         createCommitSynthesisTool(source.id, source.manifest, paths),
       ];
 
-      manager.startInBackground(
+      const { runId } = manager.startInBackground(
         WIKI_INGEST_SCRIPT,
         {
           sourceId: source.id,
@@ -353,6 +354,10 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
         },
         { toolset: toolsetKey },
       );
+      const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
+        | ((runId: string) => void)
+        | undefined;
+      notifier?.(runId);
     }
 
     return true;
@@ -373,7 +378,15 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
     const toolsetKey = nextRunKey("wiki-reindex");
     extraToolsets[toolsetKey] = () => [createRunReindexTool(embedder, paths, force)];
 
-    manager.startInBackground(WIKI_REINDEX_SCRIPT, { model: embedder.model }, { toolset: toolsetKey });
+    const { runId: reindexRunId } = manager.startInBackground(
+      WIKI_REINDEX_SCRIPT,
+      { model: embedder.model },
+      { toolset: toolsetKey },
+    );
+    const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
+      | ((runId: string) => void)
+      | undefined;
+    notifier?.(reindexRunId);
     return true;
   };
 

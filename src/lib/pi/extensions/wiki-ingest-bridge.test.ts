@@ -16,6 +16,7 @@ const DISPATCHER_KEY = Symbol.for("semla.wiki-ingest-dispatcher");
 const REINDEX_DISPATCHER_KEY = Symbol.for("semla.wiki-reindex-dispatcher");
 const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
 const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
+const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
 
 type G = Record<symbol, unknown>;
 
@@ -40,6 +41,7 @@ function clearGlobals() {
   delete (globalThis as G)[DISPATCHER_KEY];
   delete (globalThis as G)[REINDEX_DISPATCHER_KEY];
   delete (globalThis as G)[EXTRA_TOOLSETS_KEY];
+  delete (globalThis as G)[BRIDGE_RUN_STARTED_KEY];
 }
 
 // ── Setup / teardown ─────────────────────────────────────────────────────────
@@ -137,6 +139,28 @@ describe("ingest dispatcher", () => {
     dispatch([{ id: "x", extracted: "y", manifest: {} }]);
   });
 
+  it("calls the bridge run notifier for each dispatched source", () => {
+    wikiIngestBridge(makeMockPi());
+    const manager = makeMockManager();
+    installManager(manager);
+
+    const notifier = vi.fn();
+    (globalThis as G)[BRIDGE_RUN_STARTED_KEY] = notifier;
+
+    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
+      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
+    ) => boolean;
+    dispatch([
+      { id: "a", extracted: "x", manifest: {} },
+      { id: "b", extracted: "y", manifest: {} },
+    ]);
+
+    expect(notifier).toHaveBeenCalledTimes(2);
+    // notifier receives the runId returned by startInBackground
+    const [firstRunId] = notifier.mock.calls[0];
+    expect(typeof firstRunId).toBe("string");
+  });
+
   it("truncates long extracted content to 24 000 characters", () => {
     wikiIngestBridge(makeMockPi());
     const manager = makeMockManager();
@@ -211,6 +235,25 @@ describe("reindex dispatcher", () => {
     }) => boolean;
 
     dispatch({ paths: {}, embedder: { model: "text-emb-3", embed: vi.fn() }, force: true });
+  });
+
+  it("calls the bridge run notifier with the returned runId", () => {
+    wikiIngestBridge(makeMockPi());
+    const manager = makeMockManager();
+    manager.startInBackground.mockReturnValue({ runId: "wf_reindex_test", promise: Promise.resolve() });
+    installManager(manager);
+
+    const notifier = vi.fn();
+    (globalThis as G)[BRIDGE_RUN_STARTED_KEY] = notifier;
+
+    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: {
+      paths: unknown;
+      embedder: { model: string; embed: unknown };
+      force: boolean;
+    }) => boolean;
+    dispatch({ paths: {}, embedder: { model: "emb", embed: vi.fn() }, force: false });
+
+    expect(notifier).toHaveBeenCalledWith("wf_reindex_test");
   });
 
   it("uses a unique toolset key per call", () => {

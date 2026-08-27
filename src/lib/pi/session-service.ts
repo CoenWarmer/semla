@@ -65,6 +65,12 @@ const workflowSkillsPath = join(
   "src/lib/pi/extensions/dynamic-workflows/skills",
 );
 
+// Cross-extension notifier: wiki-ingest-bridge calls this to register background
+// workflow runs it dispatches directly (i.e. without going through the `workflow`
+// tool), so they appear in the trace waterfall. Set per-prompt-turn, cleared in
+// the finally block. Bridge calls are fire-and-forget (no delivery back to agent).
+const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
+
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.
 const log = (sid: string, msg: string, data?: Record<string, unknown>) => {
   const prefix = `[pi:session:${sid.slice(0, 8)}]`;
@@ -411,6 +417,19 @@ export const runPiPrompt = async ({
   // wait for. Subscribed after the stuck-run recovery above, so the messages it
   // injects cannot be mistaken for this turn's delivery.
   let deliveredDuringPrompt = false;
+
+  // Register per-turn notifier for bridge-dispatched background runs (e.g. from
+  // wiki-ingest-bridge). These run via manager.startInBackground() directly and
+  // never emit a `workflow` tool event, so they must notify via globalThis.
+  // Fire-and-forget: delivery back to the agent is not expected for these runs.
+  type BridgeRunNotifier = (runId: string) => void;
+  const bridgeRunNotifier: BridgeRunNotifier = (runId) => {
+    log(semlaSessionId, "bridge background run started", { run: runId });
+    void persistBackgroundWorkflowStart(semlaSessionId, runId);
+    onEvent({ runId, type: "workflow-started" });
+  };
+  (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] = bridgeRunNotifier;
+
   const unsubscribe = session.subscribe((event) => {
     if (
       event.type === "message_start" &&
@@ -528,6 +547,8 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
+    // Clear the bridge run notifier so a stale reference can't fire after turn end.
+    delete (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY];
     const settledDuringPrompt =
       deliveredDuringPrompt &&
       (!detectedBackgroundRunId ||
