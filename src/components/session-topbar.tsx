@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextInspections } from "@/hooks/use-context-check";
-import { useSessionMessages } from "@/hooks/use-session-messages";
 import type {
   SessionMessage,
   SessionToolCall,
@@ -15,7 +14,7 @@ import { useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { InspectorPanel } from "./inspector-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
-import { TokenUsage, formatTokens } from "./token-usage";
+import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
@@ -33,37 +32,6 @@ interface SessionTopbarProps {
 
 type PanelMode = "agents" | "inspector" | null;
 
-function ContextFillBar({ sessionId }: { sessionId: string }) {
-  const messagesQuery = useSessionMessages(sessionId);
-  const messages = messagesQuery.data?.messages ?? [];
-  const contextWindow = messagesQuery.data?.contextWindow ?? null;
-
-  const latestInput =
-    [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant" && m.inputTokens != null)
-      ?.inputTokens ?? null;
-
-  if (latestInput == null || contextWindow == null) return null;
-
-  const pct = Math.min(100, (latestInput / contextWindow) * 100);
-  const fillColor =
-    pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary";
-
-  return (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="relative h-1.5 w-24 rounded-full bg-muted overflow-hidden shrink-0">
-        <div
-          className={`absolute inset-y-0 left-0 rounded-full transition-all ${fillColor}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
-        {formatTokens(latestInput)} / {formatTokens(contextWindow)}
-      </span>
-    </div>
-  );
-}
 
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
   const { data: inspections } = useContextInspections(sessionId);
@@ -133,8 +101,6 @@ export function SessionTopbar({
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
-          <ContextFillBar sessionId={sessionId} />
-
           {/* Agent count — clicking opens the workflow panel */}
           {showAgentCount && (
             <button
