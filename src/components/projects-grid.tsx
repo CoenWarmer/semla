@@ -49,7 +49,7 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: project.name }),
+        body: JSON.stringify({ title: project.name, projectPath: project.path }),
       });
       const body = await res.json().catch(() => null);
       if (res.ok && body?.id) {

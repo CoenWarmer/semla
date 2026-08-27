@@ -1,8 +1,19 @@
+import { join } from "node:path";
+
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const hostDevelopmentEnabled =
   process.env.NODE_ENV === "development" &&
   process.env.PI_ALLOW_HOST_DEV === "true";
+
+// Repo memories live in this Semla-owned directory, not inside the repos the
+// agent works in. Exposed as an env var so the agent's bash tool can resolve
+// the path when writing a new memory file.
+export const SEMLA_MEMORIES_DIR = (() => {
+  const dir = process.env.SEMLA_MEMORIES_DIR ?? join(process.cwd(), ".semla-memories");
+  process.env.SEMLA_MEMORIES_DIR = dir;
+  return dir;
+})();
 
 export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
   ?? (hostDevelopmentEnabled ? process.cwd() : "/workspace");

@@ -15,10 +15,13 @@ export async function POST(request: Request) {
   const title = typeof body?.title === "string" && body.title.trim()
     ? body.title.trim()
     : "New Session";
+  const projectPath = typeof body?.projectPath === "string" && body.projectPath.trim()
+    ? body.projectPath.trim()
+    : null;
 
   const { data, error } = await userClient
     .from("sessions")
-    .insert({ title, user_id: user.id })
+    .insert({ title, project_path: projectPath, user_id: user.id })
     .select("id")
     .single();
 

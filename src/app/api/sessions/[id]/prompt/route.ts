@@ -1,8 +1,10 @@
 import { handleRouteError } from "@/lib/api-helpers";
+import { buildMemoryContextBlock, DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
 import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { PI_TOOLS } from "@/lib/pi/runtime-config";
+import { getRepoMemory } from "@/lib/repo-memories";
 
 export const runtime = "nodejs";
 
@@ -62,12 +64,26 @@ export async function POST(
   }
 
   const supabase = await createClient();
-  const { data: settingsData } = await supabase
-    .from("user_settings")
-    .select("system_prompt")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const systemPrompt = settingsData?.system_prompt ?? null;
+  const [{ data: settingsData }, { data: sessionData }] = await Promise.all([
+    supabase
+      .from("user_settings")
+      .select("system_prompt")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("sessions")
+      .select("project_path")
+      .eq("id", id)
+      .maybeSingle(),
+  ]);
+
+  const projectPath = sessionData?.project_path ?? null;
+  const repoMemory = projectPath ? await getRepoMemory(projectPath) : null;
+  const basePrompt = settingsData?.system_prompt ?? DEFAULT_SYSTEM_PROMPT;
+
+  // Always append the memory context block so the agent knows about the memory
+  // system regardless of whether a custom system prompt is set.
+  const systemPrompt = `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath, repoMemory)}`;
 
   const stream = new ReadableStream({
     start(controller) {
