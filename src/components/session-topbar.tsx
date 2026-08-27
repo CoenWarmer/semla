@@ -32,7 +32,6 @@ interface SessionTopbarProps {
 
 type PanelMode = "agents" | "inspector" | null;
 
-
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
   const { data: inspections } = useContextInspections(sessionId);
   const latest = inspections?.[0];
@@ -135,7 +134,7 @@ export function SessionTopbar({
       {/* Panel area */}
       {panelMode === "agents" && (
         <div
-          className="shrink-0 border-b border-border/40 overflow-auto px-3"
+          className="shrink-0 border-b border-border/40 overflow-auto p-3"
           style={{ height: 348 }}
         >
           <SessionWorkflowPanel
