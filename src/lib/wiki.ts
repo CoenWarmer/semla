@@ -54,23 +54,40 @@ function stripFrontmatter(content: string): string {
 }
 
 /**
- * Scans every page and returns all directed [[wiki links]] as explicit pairs.
+ * Scans every page and returns all directed links as explicit pairs.
+ * Handles two link syntaxes that pi-llm-wiki produces:
+ *   1. [[entities/some-page]] — path-based wikilinks (primary format)
+ *   2. [[Page Title]]         — title-based wikilinks (fallback)
+ *   3. [text](/sources/SRC-xxx.md) — markdown links in Links sections
  * Run server-side only.
  */
 export function computeWikiLinks(registry: WikiRegistry): WikiLink[] {
+  const pages = registry.pages;
   const titleToPath = buildTitleMap(registry);
   const links: WikiLink[] = [];
 
-  for (const path of Object.keys(registry.pages)) {
+  for (const path of Object.keys(pages)) {
     const content = getWikiPageContent(path);
     if (!content) continue;
     const seen = new Set<string>();
-    for (const title of extractWikiLinks(content)) {
-      const target = titleToPath[title];
+
+    const addLink = (target: string) => {
       if (target && target !== path && !seen.has(target)) {
         seen.add(target);
         links.push({ source: path, target });
       }
+    };
+
+    // [[...]] wikilinks: try as path first, then as title
+    for (const raw of extractWikiLinks(content)) {
+      const target = pages[raw] ? raw : titleToPath[raw];
+      if (target) addLink(target);
+    }
+
+    // Markdown links: [text](/folder/slug.md) — strip leading / and .md suffix
+    for (const match of content.matchAll(/\((\/?(?:entities|concepts|sources|syntheses|analyses|requirements)[^)]+\.md)\)/g)) {
+      const mdPath = match[1].replace(/^\//, "").replace(/\.md$/, "");
+      if (pages[mdPath]) addLink(mdPath);
     }
   }
 
