@@ -17,6 +17,8 @@ export type DimensionScore = {
 
 export type CompositionBreakdown = {
   assistantFraction: number;
+  /** Fraction of the model's context window currently in use. Null if unknown. */
+  contextWindowFraction: number | null;
   summary: string;
   systemPromptFraction: number;
   toolResultFraction: number;
@@ -206,7 +208,7 @@ export async function POST(
       return Response.json({
         checkedAt: new Date().toISOString(),
         dimensions: {
-          composition: { assistantFraction: 0, summary: "No messages yet.", systemPromptFraction: 0, toolResultFraction: 0, userFraction: 0 },
+          composition: { assistantFraction: 0, contextWindowFraction: null, summary: "No messages yet.", systemPromptFraction: 0, toolResultFraction: 0, userFraction: 0 },
           correctionRate: { correctionCount: 0, level: "good", rate: 0, summary: "No messages yet.", userTurns: 0 },
           goalDrift: { level: "good", summary: "No messages yet." },
           staleness: { level: "good", summary: "No messages yet." },
@@ -245,6 +247,7 @@ export async function POST(
       .maybeSingle();
 
     let llmOutput: InspectorOutput | null = null;
+    let contextWindowFraction: number | null = null;
 
     if (piSession?.model_id && piSession?.model_provider) {
       const modelRuntime = await ModelRuntime.create({ refreshOnCreate: false });
@@ -255,6 +258,13 @@ export async function POST(
       const model = modelRuntime.getModel(piSession.model_provider, piSession.model_id);
 
       if (model) {
+        const latestInputTokens = [...messages]
+          .reverse()
+          .find((m) => m.role === "assistant" && m.inputTokens != null)?.inputTokens ?? null;
+        if (latestInputTokens != null && model.contextWindow) {
+          contextWindowFraction = Math.min(1, latestInputTokens / model.contextWindow);
+        }
+
         const compactTranscript = buildCompactTranscript(messages);
         llmOutput = await runInspectorLlm(modelRuntime, model, {
           compactTranscript,
@@ -307,6 +317,7 @@ export async function POST(
       dimensions: {
         composition: {
           assistantFraction: compositionMetrics.assistantFraction,
+          contextWindowFraction,
           summary: compositionMetrics.summary,
           systemPromptFraction: compositionMetrics.systemPromptFraction,
           toolResultFraction: compositionMetrics.toolResultFraction,
