@@ -20,6 +20,7 @@ import {
 import {
   PI_AGENT_DIR,
   PI_SESSION_DIR,
+  PI_TOOLS,
   PI_WORKSPACE_ROOT,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
@@ -354,7 +355,15 @@ export const runPiPrompt = async ({
       ),
   });
 
-  session.setActiveToolsByName(tools);
+  // Extensions register their own tools during bindExtensions. Capture them
+  // before setActiveToolsByName restricts the set to the user-selected built-ins,
+  // then re-add them so extension tools are always available regardless of which
+  // built-in tools the user has toggled on/off.
+  const extensionTools = session
+    .getActiveToolNames()
+    .filter((t) => !(PI_TOOLS as readonly string[]).includes(t));
+
+  session.setActiveToolsByName([...tools, ...extensionTools]);
   const activeTools = session.getActiveToolNames();
   log(semlaSessionId, "active tools", { tools: activeTools.join(",") });
 
