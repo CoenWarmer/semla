@@ -12,6 +12,8 @@ const encoder = new TextEncoder();
 const eventPayload = (event: unknown) =>
   encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
+const heartbeatPayload = encoder.encode(": keep-alive\n\n");
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -103,13 +105,23 @@ export async function POST(
         }
       };
 
-      // Hard deadline: if runPiPrompt hasn't closed the stream after 5 minutes,
-      // force-close it so the client mutation always settles.
+      // Heartbeat: keeps the SSE connection alive across browser/proxy idle timeouts.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(heartbeatPayload);
+        } catch {
+          // Client disconnected.
+        }
+      }, 30_000);
+
+      // Hard deadline: force-close if runPiPrompt hasn't finished after 30 minutes.
+      // Wiki ingestion sessions can run 10–20 min; 30 min is a safe upper bound.
       const deadline = setTimeout(() => {
         console.error(`[api:sessions/prompt] Stream deadline exceeded for session ${id} — force-closing`);
         send({ message: "Session timed out. Please retry.", type: "error" });
         close();
-      }, 5 * 60 * 1000);
+      }, 30 * 60 * 1000);
 
       void runPiPrompt({
         model: { modelId, provider },
@@ -127,6 +139,7 @@ export async function POST(
           });
         })
         .finally(() => {
+          clearInterval(heartbeat);
           clearTimeout(deadline);
           close();
         });
