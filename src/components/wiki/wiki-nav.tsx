@@ -3,22 +3,26 @@
 import { cn } from "@/lib/utils";
 import { WikiPageMeta, WikiPageType } from "@/lib/wiki";
 
-const TYPE_ORDER: WikiPageType[] = [
+type NavGroup = WikiPageType | "observation";
+
+const GROUP_ORDER: NavGroup[] = [
   "entity",
   "concept",
   "synthesis",
   "analysis",
   "requirement",
   "source",
+  "observation",
 ];
 
-const TYPE_LABELS: Record<WikiPageType, string> = {
+const GROUP_LABELS: Record<NavGroup, string> = {
   entity: "Entities",
   concept: "Concepts",
   synthesis: "Syntheses",
   analysis: "Analyses",
   requirement: "Requirements",
   source: "Sources",
+  observation: "Observations",
 };
 
 interface WikiNavProps {
@@ -28,17 +32,17 @@ interface WikiNavProps {
 }
 
 export function WikiNav({ pages, selectedPath, onSelect }: WikiNavProps) {
-  const grouped = groupByType(pages);
+  const grouped = groupByNavGroup(pages);
 
   return (
     <nav className="flex flex-col gap-4 p-3">
-      {TYPE_ORDER.filter((type) => grouped[type]?.length).map((type) => (
-        <div key={type}>
+      {GROUP_ORDER.filter((group) => grouped[group]?.length).map((group) => (
+        <div key={group}>
           <p className="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {TYPE_LABELS[type]}
+            {GROUP_LABELS[group]}
           </p>
           <ul className="space-y-0.5">
-            {(grouped[type] ?? []).map(([path, meta]) => (
+            {(grouped[group] ?? []).map(([path, meta]) => (
               <li key={path}>
                 <button
                   onClick={() => onSelect(path)}
@@ -60,13 +64,21 @@ export function WikiNav({ pages, selectedPath, onSelect }: WikiNavProps) {
   );
 }
 
-function groupByType(
+function navGroupFor(meta: WikiPageMeta): NavGroup {
+  if (meta.type === "source" && meta.status === "observation") {
+    return "observation";
+  }
+  return meta.type;
+}
+
+function groupByNavGroup(
   pages: Record<string, WikiPageMeta>,
-): Partial<Record<WikiPageType, [string, WikiPageMeta][]>> {
-  const result: Partial<Record<WikiPageType, [string, WikiPageMeta][]>> = {};
+): Partial<Record<NavGroup, [string, WikiPageMeta][]>> {
+  const result: Partial<Record<NavGroup, [string, WikiPageMeta][]>> = {};
   for (const [path, meta] of Object.entries(pages)) {
-    if (!result[meta.type]) result[meta.type] = [];
-    result[meta.type]!.push([path, meta]);
+    const group = navGroupFor(meta);
+    if (!result[group]) result[group] = [];
+    result[group]!.push([path, meta]);
   }
   return result;
 }
