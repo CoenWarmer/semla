@@ -108,7 +108,7 @@ type PiSessionEvent =
       toolName: string;
       type: "tool-end";
     }
-  | { runId: string; type: "workflow-started" }
+  | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { message: string; type: "error" }
@@ -425,8 +425,9 @@ export const runPiPrompt = async ({
   type BridgeRunNotifier = (runId: string) => void;
   const bridgeRunNotifier: BridgeRunNotifier = (runId) => {
     log(semlaSessionId, "bridge background run started", { run: runId });
+    const startedAt = new Date().toISOString();
     void persistBackgroundWorkflowStart(semlaSessionId, runId);
-    onEvent({ runId, type: "workflow-started" });
+    onEvent({ runId, startedAt, type: "workflow-started" });
   };
   (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] = bridgeRunNotifier;
 
@@ -488,8 +489,9 @@ export const runPiPrompt = async ({
             run: backgroundRunId,
           });
           retainBackgroundSession(backgroundRunId, session);
+          const backgroundStartedAt = new Date().toISOString();
           void persistBackgroundWorkflowStart(semlaSessionId, backgroundRunId);
-          onEvent({ runId: backgroundRunId, type: "workflow-started" });
+          onEvent({ runId: backgroundRunId, startedAt: backgroundStartedAt, type: "workflow-started" });
         }
 
         const snapshot = asWorkflowSnapshot(event.result);

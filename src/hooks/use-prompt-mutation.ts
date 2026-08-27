@@ -27,7 +27,7 @@ type PiStreamEvent =
   | { delta: string; type: "assistant-delta" }
   | { message: string; type: "error" }
   | LiveToolEvent
-  | { runId: string; type: "workflow-started" }
+  | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
@@ -151,6 +151,7 @@ export const usePromptMutation = (sessionId: string) => {
               phases: [],
               runId: piEvent.runId,
               runningCount: 0,
+              startedAt: piEvent.startedAt,
             });
           } else if (piEvent.type === "title-updated") {
             trace("event:title-updated", { id });
