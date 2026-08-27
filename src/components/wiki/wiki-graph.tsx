@@ -6,50 +6,22 @@ import { Handle, MarkerType, Position } from "@xyflow/react";
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
 import { cn } from "@/lib/utils";
-import {
-  NAV_GROUP_ORDER,
-  NavGroup,
-  navGroupFor,
-  WikiLink,
-  WikiPageMeta,
-  WikiPageType,
-} from "@/lib/wiki-types";
+import { navGroupFor, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 
 const NODE_W = 172;
 const NODE_H = 52;
-const PAD = 14;           // padding inside group node
-const HEADER_H = 28;      // group label bar height
-const ROW_GAP = 72;       // per-node vertical step inside a group
-const GROUP_COL_GAP = 240; // horizontal gap between group columns
+const PAD = 14;
+const HEADER_H = 32;
+const ROW_GAP = 72;
+const GROUP_GAP = 48; // horizontal gap between repo groups
 
 const GROUP_W = NODE_W + PAD * 2;
 
 function groupHeight(childCount: number) {
   return HEADER_H + PAD + childCount * ROW_GAP;
 }
-
-/** Left-to-right column index by nav group. */
-const GROUP_COLUMN: Record<NavGroup, number> = {
-  entity: 0,
-  concept: 1,
-  synthesis: 1,
-  analysis: 1,
-  requirement: 1,
-  source: 2,
-  observation: 2,
-};
-
-const GROUP_LABELS: Record<NavGroup, string> = {
-  entity: "Entities",
-  concept: "Concepts",
-  synthesis: "Syntheses",
-  analysis: "Analyses",
-  requirement: "Requirements",
-  source: "Sources",
-  observation: "Observations",
-};
 
 // ─── Node components ─────────────────────────────────────────────────────────
 
@@ -65,11 +37,12 @@ const TYPE_ACCENT: Record<WikiPageType, string> = {
 interface WikiNodeData extends Record<string, unknown> {
   label: string;
   pageType: WikiPageType;
+  navGroup: string;
   isSelected: boolean;
 }
 
 function WikiPageNode({ data }: NodeProps<FlowNode<WikiNodeData>>) {
-  const { label, pageType, isSelected } = data;
+  const { label, pageType, navGroup, isSelected } = data;
   return (
     <div
       className={cn(
@@ -92,20 +65,20 @@ function WikiPageNode({ data }: NodeProps<FlowNode<WikiNodeData>>) {
       />
       <p className="truncate text-xs font-medium leading-tight">{label}</p>
       <p className={cn("mt-0.5 text-[10px]", TYPE_ACCENT[pageType])}>
-        {pageType}
+        {navGroup === "observation" ? "observation" : pageType}
       </p>
     </div>
   );
 }
 
-interface GroupNodeData extends Record<string, unknown> {
+interface RepoGroupData extends Record<string, unknown> {
   label: string;
 }
 
-function WikiGroupNode({ data }: NodeProps<FlowNode<GroupNodeData>>) {
+function WikiRepoGroup({ data }: NodeProps<FlowNode<RepoGroupData>>) {
   return (
     <div className="h-full w-full rounded-lg border border-border/40 bg-secondary/30">
-      <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="px-3 py-2 font-heading text-xs font-semibold">
         {data.label}
       </p>
     </div>
@@ -115,7 +88,7 @@ function WikiGroupNode({ data }: NodeProps<FlowNode<GroupNodeData>>) {
 // nodeTypes must be stable — defined at module level, never inside a component.
 const nodeTypes = {
   wikiPage: WikiPageNode,
-  wikiGroup: WikiGroupNode,
+  wikiRepo: WikiRepoGroup,
 };
 
 // ─── Graph builder ───────────────────────────────────────────────────────────
@@ -125,83 +98,55 @@ function buildGraphElements(
   links: WikiLink[],
   selectedPath: string | null,
 ): { nodes: FlowNode[]; edges: FlowEdge[] } {
-  // Collect page paths per nav group, preserving NAV_GROUP_ORDER.
-  const groupPaths: Partial<Record<NavGroup, string[]>> = {};
+  // Collect paths per repo, preserving insertion order.
+  const repoPaths = new Map<string, string[]>();
   for (const [path, meta] of Object.entries(pages)) {
-    const group = navGroupFor(meta);
-    groupPaths[group] ??= [];
-    groupPaths[group]!.push(path);
+    const repo = meta.repo ?? "Unknown";
+    if (!repoPaths.has(repo)) repoPaths.set(repo, []);
+    repoPaths.get(repo)!.push(path);
   }
 
-  // Present groups are the non-empty ones, in defined order.
-  const activeGroups = NAV_GROUP_ORDER.filter((g) => groupPaths[g]?.length);
-
-  // Collect groups per column and compute per-column total height.
-  const colGroups: Record<number, NavGroup[]> = { 0: [], 1: [], 2: [] };
-  for (const g of activeGroups) {
-    colGroups[GROUP_COLUMN[g]].push(g);
-  }
-
-  const colHeight = (col: number) =>
-    colGroups[col].reduce(
-      (sum, g) => sum + groupHeight(groupPaths[g]!.length) + PAD,
-      0,
-    );
-
-  const maxColH = Math.max(colHeight(0), colHeight(1), colHeight(2));
-
-  // Build group + child nodes.
+  const repos = [...repoPaths.keys()];
   const nodes: FlowNode[] = [];
 
-  for (const col of [0, 1, 2]) {
-    const groups = colGroups[col];
-    if (!groups.length) continue;
+  let x = 0;
+  for (const repo of repos) {
+    const children = repoPaths.get(repo)!;
+    const gH = groupHeight(children.length);
+    const groupId = `repo:${repo}`;
 
-    const totalH = colHeight(col);
-    let y = (maxColH - totalH) / 2;
-    const x = col * (GROUP_W + GROUP_COL_GAP);
+    nodes.push({
+      id: groupId,
+      type: "wikiRepo",
+      position: { x, y: 0 },
+      style: { width: GROUP_W, height: gH },
+      data: { label: repo },
+      draggable: false,
+      selectable: false,
+    });
 
-    for (const group of groups) {
-      const children = groupPaths[group]!;
-      const gH = groupHeight(children.length);
-      const groupId = `group:${group}`;
-
-      // Group container node
+    children.forEach((path, idx) => {
+      const meta = pages[path];
       nodes.push({
-        id: groupId,
-        type: "wikiGroup",
-        position: { x, y },
-        style: { width: GROUP_W, height: gH },
-        data: { label: GROUP_LABELS[group] },
+        id: path,
+        type: "wikiPage",
+        parentId: groupId,
+        extent: "parent",
+        position: { x: PAD, y: HEADER_H + PAD + idx * ROW_GAP },
+        data: {
+          label: meta.title,
+          pageType: meta.type,
+          navGroup: navGroupFor(meta),
+          isSelected: path === selectedPath,
+        },
         draggable: false,
         selectable: false,
       });
+    });
 
-      // Child page nodes, positioned relative to parent
-      children.forEach((path, idx) => {
-        const meta = pages[path];
-        nodes.push({
-          id: path,
-          type: "wikiPage",
-          parentId: groupId,
-          extent: "parent",
-          position: { x: PAD, y: HEADER_H + PAD + idx * ROW_GAP },
-          data: {
-            label: meta.title,
-            pageType: meta.type,
-            isSelected: path === selectedPath,
-          },
-          draggable: false,
-          selectable: false,
-        });
-      });
-
-      y += gH + PAD;
-    }
+    x += GROUP_W + GROUP_GAP;
   }
 
-  // Edges — use var() directly; this project defines --muted-foreground as oklch,
-  // so hsl(var(...)) would produce invalid CSS and invisible edges.
   const edges: FlowEdge[] = links
     .filter(({ source, target }) => source in pages && target in pages)
     .map(({ source, target }) => ({
@@ -240,8 +185,7 @@ export function WikiGraph({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {
-      // Only navigate on page nodes, not group containers.
-      if (!node.id.startsWith("group:")) {
+      if (!node.id.startsWith("repo:")) {
         onNavigate(node.id);
       }
     },

@@ -11,6 +11,7 @@ export interface WikiPageMeta {
   title: string;
   created: string;
   updated?: string;
+  repo?: string;
   status?: string;
   source_id?: string;
   format?: string;
