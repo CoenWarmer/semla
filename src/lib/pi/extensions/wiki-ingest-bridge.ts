@@ -1,15 +1,18 @@
 /**
- * Wiki ingest bridge: intercepts wiki_ingest background synthesis and runs it
- * as Semla dynamic workflows so each source appears in the trace waterfall.
+ * Wiki background-task bridge: intercepts pi-llm-wiki background operations
+ * and runs them as Semla dynamic workflows so they appear in the trace waterfall.
+ *
+ * Covered operations:
+ * - wiki_ingest synthesis: one workflow run per source, "Synthesize" phase
+ * - wiki_reindex_embeddings: one workflow run, "Embed" phase with run_reindex tool
  *
  * How it works:
- * 1. Registers Symbol.for("semla.wiki-ingest-dispatcher") in globalThis.
- * 2. pi-llm-wiki's tools.ts checks for this symbol before its own launchTask.
- * 3. When called, the dispatcher launches one WorkflowManager.startInBackground()
- *    run per source, each with a per-source "wiki-synthesis:<id>" toolset that
- *    includes a commit_synthesis tool backed by pi-llm-wiki's commitSynthesis().
- * 4. workflow.ts's toolset Proxy reads the per-source toolsets from
- *    Symbol.for("semla.workflow.extra-toolsets") at run time.
+ * 1. Registers global dispatcher symbols that pi-llm-wiki's tools.ts checks.
+ * 2. Dispatchers capture per-call context (paths, embedder, …) in closures,
+ *    register per-run toolsets in Symbol.for("semla.workflow.extra-toolsets"),
+ *    and call WorkflowManager.startInBackground().
+ * 3. workflow.ts's toolset Proxy reads extra toolsets from globalThis at
+ *    lookup time so late-registered toolsets are visible without a rebuild.
  */
 
 import { join } from "node:path";
@@ -21,10 +24,22 @@ import type { WorkflowManager } from "./dynamic-workflows/src/workflow-manager.t
 // ── Global symbol keys (shared with workflow.ts and pi-llm-wiki) ──────────────
 
 const DISPATCHER_KEY = Symbol.for("semla.wiki-ingest-dispatcher");
+const REINDEX_DISPATCHER_KEY = Symbol.for("semla.wiki-reindex-dispatcher");
 const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
 const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
 
 // ── Types replicated from pi-llm-wiki (avoids importing outside tsconfig) ─────
+
+interface WikiEmbedder {
+  model: string;
+  embed: unknown;
+}
+
+interface ReindexStats {
+  embedded: number;
+  skipped: number;
+  pruned: number;
+}
 
 interface WikiVaultPaths {
   root: string;
@@ -127,6 +142,75 @@ const METADATA_PATH = join(
   process.cwd(),
   ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/metadata.ts",
 );
+const EMBEDDINGS_PATH = join(
+  process.cwd(),
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/embeddings.ts",
+);
+
+// ── Run-reindex tool factory ──────────────────────────────────────────────────
+
+type AppendEventFn = (
+  paths: WikiVaultPaths,
+  event: { kind: string; embedded: number; skipped: number; pruned: number; model: string },
+) => void;
+
+function createRunReindexTool(embedder: WikiEmbedder, paths: WikiVaultPaths, force: boolean) {
+  return defineTool({
+    name: "run_reindex",
+    label: "Run Embedding Reindex",
+    description:
+      "Embed all stale registered wiki pages and prune deleted entries. Call exactly once.",
+    promptSnippet: "Run the embedding reindex",
+    parameters: Type.Object({}),
+    async execute() {
+      const embeddings = (await import(EMBEDDINGS_PATH)) as {
+        reindexEmbeddings: (
+          paths: WikiVaultPaths,
+          embedder: WikiEmbedder,
+          opts: { force?: boolean },
+        ) => Promise<ReindexStats>;
+      };
+      const meta = (await import(METADATA_PATH)) as { appendEvent: AppendEventFn };
+
+      const stats = await embeddings.reindexEmbeddings(paths, embedder, { force });
+
+      meta.appendEvent(paths, {
+        kind: "reindex_embeddings",
+        embedded: stats.embedded,
+        skipped: stats.skipped,
+        pruned: stats.pruned,
+        model: embedder.model,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Embeddings reindexed (${embedder.model}): ${stats.embedded} embedded, ${stats.skipped} fresh, ${stats.pruned} pruned. Reply with a one-line confirmation and stop.`,
+          },
+        ],
+        details: { ...stats, model: embedder.model } as Record<string, unknown>,
+      };
+    },
+  });
+}
+
+// ── Reindex workflow script ───────────────────────────────────────────────────
+
+const WIKI_REINDEX_SCRIPT = `
+export const meta = {
+  name: "wiki-reindex",
+  description: "Embed all stale wiki pages and prune deleted entries",
+  phases: [{ title: "Embed" }],
+};
+
+await agent(
+  \`You are the LLM Wiki embedding agent. Run the embedding reindex by calling run_reindex exactly once, then confirm with one line.
+
+Model: \${args.model}\`,
+  { label: \`Reindex embeddings: \${args.model}\`, phase: "Embed" }
+);
+`;
 
 // ── Commit synthesis tool factory ─────────────────────────────────────────────
 
@@ -268,4 +352,23 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
   };
 
   (globalThis as Record<symbol, unknown>)[DISPATCHER_KEY] = dispatcher;
+
+  type ReindexArgs = { paths: WikiVaultPaths; embedder: WikiEmbedder; force: boolean };
+  const reindexDispatcher = ({ paths, embedder, force }: ReindexArgs): boolean => {
+    const manager = (globalThis as Record<symbol, unknown>)[ACTIVE_MANAGER_KEY] as
+      | WorkflowManager
+      | undefined;
+    if (!manager) return false;
+
+    const extraToolsets = ((globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] ??=
+      {}) as Record<string, () => ReturnType<typeof createRunReindexTool>[]>;
+
+    const toolsetKey = `wiki-reindex:${Date.now()}`;
+    extraToolsets[toolsetKey] = () => [createRunReindexTool(embedder, paths, force)];
+
+    manager.startInBackground(WIKI_REINDEX_SCRIPT, { model: embedder.model }, { toolset: toolsetKey });
+    return true;
+  };
+
+  (globalThis as Record<symbol, unknown>)[REINDEX_DISPATCHER_KEY] = reindexDispatcher;
 }
