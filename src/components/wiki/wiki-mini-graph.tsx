@@ -58,7 +58,7 @@ export function WikiMiniGraph() {
   const nodeCount = Object.keys(query.data?.registry?.pages ?? {}).length;
 
   const repoColors = useMemo(
-    () => buildRepoColorMap(query.data?.registry?.pages ?? {}, null),
+    () => buildRepoColorMap(query.data?.registry?.pages ?? {}),
     [query.data],
   );
   const graph = useMemo(
@@ -67,7 +67,6 @@ export function WikiMiniGraph() {
         query.data?.registry?.pages ?? {},
         query.data?.links ?? [],
         repoColors,
-        null,
       ),
     [query.data, repoColors],
   );

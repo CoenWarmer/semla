@@ -180,7 +180,6 @@ export function WikiBrowser() {
             pages={pages}
             links={links}
             selectedPath={selectedPath}
-            defaultRepo={config?.name && config.name !== "pending" ? config.name : null}
             onNavigate={(path) => {
               navigate(path);
               setViewMode("list");
