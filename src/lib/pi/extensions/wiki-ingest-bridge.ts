@@ -3,15 +3,20 @@
  * and runs them as Semla dynamic workflows so they appear in the trace waterfall.
  *
  * Covered operations:
- * - wiki_ingest synthesis: one workflow run per source, "Synthesize" phase
+ * - wiki_ingest synthesis: one coordinator workflow per batch, fanning out all
+ *   sources as parallel subagents — a single delivery signals completion.
  * - wiki_reindex_embeddings: one workflow run, "Embed" phase with run_reindex tool
  *
  * How it works:
  * 1. Registers global dispatcher symbols that pi-llm-wiki's tools.ts checks.
- * 2. Dispatchers capture per-call context (paths, embedder, …) in closures,
- *    register per-run toolsets in Symbol.for("semla.workflow.extra-toolsets"),
- *    and call WorkflowManager.startInBackground().
- * 3. workflow.ts's toolset Proxy reads extra toolsets from globalThis at
+ * 2. The ingest dispatcher starts ONE coordinating workflow per batch, using
+ *    parallel() to fan out all sources. A shared commit_synthesis tool (with a
+ *    source_id param) is registered in the batch toolset so each parallel
+ *    subagent can commit its own source.
+ * 3. The coordinator is marked as "primary" so session-service arms a proper
+ *    background continuation — the agent is notified once when the batch is done,
+ *    rather than once per source.
+ * 4. workflow.ts's toolset Proxy reads extra toolsets from globalThis at
  *    lookup time so late-registered toolsets are visible without a rebuild.
  */
 
@@ -87,9 +92,13 @@ type CommitFn = (
 
 type RebuildFn = (paths: WikiVaultPaths) => void;
 
-// ── Schema (mirrors CommitSynthesisSchema in pi-llm-wiki ingest-worker.ts) ────
+// ── Schema ────────────────────────────────────────────────────────────────────
+// Batch version adds source_id so the shared tool knows which source to commit.
 
-const CommitSynthesisParams = Type.Object({
+const BatchCommitSynthesisParams = Type.Object({
+  source_id: Type.String({
+    description: "The sourceId of the source being synthesized (e.g. SRC-2026-08-28-001).",
+  }),
   summary: Type.String({ minLength: 1, description: "2-3 paragraph summary." }),
   key_takeaways: Type.Array(Type.String({ minLength: 1 }), {
     description: "The most important points.",
@@ -217,31 +226,45 @@ Model: \${args.model}\`,
 );
 `;
 
-// ── Commit synthesis tool factory ─────────────────────────────────────────────
+// ── Batch commit-synthesis tool factory ───────────────────────────────────────
+// One shared tool per batch; source_id param routes each call to the right manifest.
 
-function createCommitSynthesisTool(
-  sourceId: string,
-  manifest: Record<string, unknown>,
+function createBatchCommitSynthesisTool(
+  manifests: Map<string, Record<string, unknown>>,
   paths: WikiVaultPaths,
 ) {
   return defineTool({
     name: "commit_synthesis",
     label: "Commit Synthesis",
     description:
-      "Persist the structured synthesis of this source into wiki pages. Call exactly once.",
+      "Persist the structured synthesis of one source into wiki pages. Call exactly once per source, passing the correct source_id.",
     promptSnippet: "Commit synthesis to the wiki",
-    parameters: CommitSynthesisParams,
+    parameters: BatchCommitSynthesisParams,
     async execute(_id, params) {
-      // Dynamic import at call time — path is a string variable so tsc skips
-      // module resolution, and jiti (the extension loader) resolves .ts files.
+      const { source_id, ...synthesisData } = params as { source_id: string } & CommitSynthesisData;
+
+      const manifest = manifests.get(source_id);
+      if (!manifest) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Unknown source_id "${source_id}". Valid IDs: ${[...manifests.keys()].join(", ")}`,
+            },
+          ],
+          details: { source_id } as Record<string, unknown>,
+          isError: true,
+        };
+      }
+
       const worker = (await import(INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
       const meta = (await import(METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
 
       const outcome = worker.commitSynthesis(
         paths,
-        sourceId,
+        source_id,
         manifest,
-        params as unknown as CommitSynthesisData,
+        synthesisData as unknown as CommitSynthesisData,
       );
 
       if (!outcome.ok) {
@@ -249,7 +272,7 @@ function createCommitSynthesisTool(
           content: [
             { type: "text" as const, text: `Failed: ${outcome.diagnostics[0].message}` },
           ],
-          details: { sourceId } as Record<string, unknown>,
+          details: { source_id } as Record<string, unknown>,
           isError: true,
         };
       }
@@ -281,32 +304,36 @@ function createCommitSynthesisTool(
   });
 }
 
-// ── Workflow script ────────────────────────────────────────────────────────────
+// ── Batch ingest workflow script ──────────────────────────────────────────────
+// One coordinator per wiki_ingest call; sources fan out as parallel subagents.
 
-const WIKI_INGEST_SCRIPT = `
+const WIKI_INGEST_BATCH_SCRIPT = `
 export const meta = {
   name: "wiki-ingest",
-  description: "Synthesize a captured wiki source into structured knowledge",
+  description: "Synthesize captured wiki sources into structured knowledge",
   phases: [{ title: "Synthesize" }],
 };
 
-await agent(
-  \`You are the LLM Wiki ingestion synthesizer. Synthesize this captured source by calling commit_synthesis exactly once.
+await parallel(args.sources.map((source) => () =>
+  agent(
+    \`You are the LLM Wiki ingestion synthesizer. Synthesize this captured source by calling commit_synthesis exactly once.
 
-SOURCE: \${args.title} (\${args.sourceId})
+SOURCE: \${source.title} (\${source.sourceId})
 
 EXTRACTED CONTENT:
-\${args.extractedContent}
+\${source.extractedContent}
 
 Rules:
 - Never fabricate. Only include entities/concepts present in the source.
 - Keep descriptions to one line.
+- Call commit_synthesis with source_id="\${source.sourceId}" and your synthesis.
 - After calling commit_synthesis once, reply with a one-line confirmation and stop.\`,
-  { label: \`Synthesize: \${args.title}\`, phase: "Synthesize" }
-);
+    { label: \`Synthesize: \${source.title}\`, phase: "Synthesize" }
+  )
+));
 `;
 
-// ── Dispatcher type ────────────────────────────────────────────────────────────
+// ── Dispatcher types ───────────────────────────────────────────────────────────
 
 type IngestSource = {
   id: string;
@@ -323,6 +350,10 @@ function nextRunKey(prefix: string): string {
   return `${prefix}:${++runCounter}`;
 }
 
+// ── Bridge notifier type (shared with session-service.ts) ─────────────────────
+
+export type BridgeRunNotifier = (runId: string, opts?: { primary?: boolean }) => void;
+
 // ── Extension entry point ──────────────────────────────────────────────────────
 
 // pi is required by the extension contract even though this bridge doesn't
@@ -336,33 +367,31 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
     if (!manager) return false;
 
     const extraToolsets = ((globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] ??=
-      {}) as Record<string, () => ReturnType<typeof createCommitSynthesisTool>[]>;
+      {}) as Record<string, () => ReturnType<typeof createBatchCommitSynthesisTool>[]>;
 
     const paths = buildVaultPaths();
+    const manifests = new Map(sources.map((s) => [s.id, s.manifest]));
+    const toolsetKey = nextRunKey("wiki-synthesis");
 
-    for (const source of sources) {
-      const toolsetKey = `wiki-synthesis:${source.id}`;
-      const title = String(source.manifest.title ?? source.id);
+    // Single shared commit_synthesis tool — source_id param routes each call.
+    extraToolsets[toolsetKey] = () => [createBatchCommitSynthesisTool(manifests, paths)];
 
-      // Per-source toolset with commit_synthesis tool captured in closure.
-      extraToolsets[toolsetKey] = () => [
-        createCommitSynthesisTool(source.id, source.manifest, paths),
-      ];
+    const { runId } = manager.startInBackground(
+      WIKI_INGEST_BATCH_SCRIPT,
+      {
+        sources: sources.map((s) => ({
+          sourceId: s.id,
+          title: String(s.manifest.title ?? s.id),
+          extractedContent: s.extracted.slice(0, 24_000),
+        })),
+      },
+      { toolset: toolsetKey },
+    );
 
-      const { runId } = manager.startInBackground(
-        WIKI_INGEST_SCRIPT,
-        {
-          sourceId: source.id,
-          title,
-          extractedContent: source.extracted.slice(0, 24_000),
-        },
-        { toolset: toolsetKey, suppressDelivery: true },
-      );
-      const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
-        | ((runId: string) => void)
-        | undefined;
-      notifier?.(runId);
-    }
+    const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
+      | BridgeRunNotifier
+      | undefined;
+    notifier?.(runId, { primary: true });
 
     return true;
   };
@@ -382,13 +411,15 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
     const toolsetKey = nextRunKey("wiki-reindex");
     extraToolsets[toolsetKey] = () => [createRunReindexTool(embedder, paths, force)];
 
+    // Reindex is still fire-and-forget: embedding completion doesn't need a
+    // report turn; the agent checks wiki_status if it wants confirmation.
     const { runId: reindexRunId } = manager.startInBackground(
       WIKI_REINDEX_SCRIPT,
       { model: embedder.model },
       { toolset: toolsetKey, suppressDelivery: true },
     );
     const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
-      | ((runId: string) => void)
+      | BridgeRunNotifier
       | undefined;
     notifier?.(reindexRunId);
     return true;

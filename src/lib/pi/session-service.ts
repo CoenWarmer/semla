@@ -440,13 +440,21 @@ export const runPiPrompt = async ({
   // Register per-turn notifier for bridge-dispatched background runs (e.g. from
   // wiki-ingest-bridge). These run via manager.startInBackground() directly and
   // never emit a `workflow` tool event, so they must notify via globalThis.
-  // Fire-and-forget: delivery back to the agent is not expected for these runs.
-  type BridgeRunNotifier = (runId: string) => void;
-  const bridgeRunNotifier: BridgeRunNotifier = (runId) => {
+  // Primary runs (e.g. wiki-ingest batch coordinators) arm the background
+  // continuation so the agent is notified once when the batch completes.
+  type BridgeRunNotifier = (runId: string, opts?: { primary?: boolean }) => void;
+  const bridgeRunNotifier: BridgeRunNotifier = (runId, opts = {}) => {
     log(semlaSessionId, "bridge background run started", { run: runId });
     const startedAt = new Date().toISOString();
     void persistBackgroundWorkflowStart(semlaSessionId, runId);
     emit({ runId, startedAt, type: "workflow-started" });
+
+    if (opts.primary && !hasBackgroundWorkflow) {
+      hasBackgroundWorkflow = true;
+      detectedBackgroundRunId = runId;
+      retainBackgroundSession(runId, session);
+      log(semlaSessionId, "bridge primary run — background continuation armed", { run: runId });
+    }
   };
   (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] = bridgeRunNotifier;
 

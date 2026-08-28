@@ -80,7 +80,7 @@ describe("ingest dispatcher", () => {
     expect(dispatch([])).toBe(false);
   });
 
-  it("returns true and calls startInBackground for each source", () => {
+  it("returns true and calls startInBackground once per batch (not per source)", () => {
     wikiIngestBridge(makeMockPi());
     const manager = makeMockManager();
     installManager(manager);
@@ -97,10 +97,11 @@ describe("ingest dispatcher", () => {
     const result = dispatch(sources);
 
     expect(result).toBe(true);
-    expect(manager.startInBackground).toHaveBeenCalledTimes(2);
+    // One coordinator workflow per wiki_ingest call, regardless of source count.
+    expect(manager.startInBackground).toHaveBeenCalledTimes(1);
   });
 
-  it("passes correct args to startInBackground for a source", () => {
+  it("passes all sources as a parallel-ready array to startInBackground", () => {
     wikiIngestBridge(makeMockPi());
     const manager = makeMockManager();
     installManager(manager);
@@ -111,9 +112,13 @@ describe("ingest dispatcher", () => {
 
     dispatch([{ id: "my-source", extracted: "some text", manifest: { title: "My Source" } }]);
 
-    const [_script, args] = manager.startInBackground.mock.calls[0];
-    expect(args).toMatchObject({ sourceId: "my-source", title: "My Source" });
-    expect(typeof args.extractedContent).toBe("string");
+    const [_script, args] = manager.startInBackground.mock.calls[0] as [
+      string,
+      { sources: Array<{ sourceId: string; title: string; extractedContent: string }> },
+    ];
+    expect(args.sources).toHaveLength(1);
+    expect(args.sources[0]).toMatchObject({ sourceId: "my-source", title: "My Source" });
+    expect(typeof args.sources[0].extractedContent).toBe("string");
   });
 
   it("registers a per-source toolset in extra-toolsets before startInBackground", () => {
@@ -139,7 +144,7 @@ describe("ingest dispatcher", () => {
     dispatch([{ id: "x", extracted: "y", manifest: {} }]);
   });
 
-  it("calls the bridge run notifier for each dispatched source", () => {
+  it("calls the bridge run notifier once per batch with primary:true", () => {
     wikiIngestBridge(makeMockPi());
     const manager = makeMockManager();
     installManager(manager);
@@ -155,10 +160,11 @@ describe("ingest dispatcher", () => {
       { id: "b", extracted: "y", manifest: {} },
     ]);
 
-    expect(notifier).toHaveBeenCalledTimes(2);
-    // notifier receives the runId returned by startInBackground
-    const [firstRunId] = notifier.mock.calls[0];
-    expect(typeof firstRunId).toBe("string");
+    // One notifier call per coordinator workflow, not per source.
+    expect(notifier).toHaveBeenCalledTimes(1);
+    const [runId, opts] = notifier.mock.calls[0] as [string, { primary?: boolean }];
+    expect(typeof runId).toBe("string");
+    expect(opts?.primary).toBe(true);
   });
 
   it("truncates long extracted content to 24 000 characters", () => {
@@ -173,8 +179,11 @@ describe("ingest dispatcher", () => {
     const longContent = "x".repeat(50_000);
     dispatch([{ id: "big", extracted: longContent, manifest: {} }]);
 
-    const [_script, args] = manager.startInBackground.mock.calls[0];
-    expect((args as { extractedContent: string }).extractedContent.length).toBe(24_000);
+    const [_script, args] = manager.startInBackground.mock.calls[0] as [
+      string,
+      { sources: Array<{ extractedContent: string }> },
+    ];
+    expect(args.sources[0].extractedContent.length).toBe(24_000);
   });
 });
 
