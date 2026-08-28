@@ -89,33 +89,29 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const { zoomIn, zoomOut, reset } = useCamera({ duration: 200 });
   const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
     settings: {
-      gravity: 0.05,
-      scalingRatio: 100,
-      slowDown: 10,
+      gravity: 0.1,
+      scalingRatio: 30,
+      slowDown: 8,
       barnesHutOptimize: true,
       barnesHutTheta: 0.5,
-      // linLogMode uses logarithmic attraction so hub nodes don't collapse
-      // their neighbours into a tight ball.
-      linLogMode: true,
-      // adjustSizes makes FA2 repel nodes based on their size during force
-      // computation — essential to avoid overlaps forming in the first place.
-      adjustSizes: true,
     },
   });
   const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    settings: { margin: 20, expansion: 1.4 },
+    // Small margin — just enough to separate touching nodes without
+    // overriding the cluster structure FA2 produced.
+    settings: { margin: 3, expansion: 1.1 },
   });
 
-  // Run FA2 for 8 s (adjustSizes needs longer to settle), then noverlap for
-  // 5 s to sweep up any remaining overlaps.
+  // Run FA2 for 5 s to establish cluster structure, then noverlap for 2 s
+  // to clean up any remaining pixel-level overlaps.
   useEffect(() => {
     startFA2();
     const fa2Timer = setTimeout(() => {
       killFA2();
       startNoverlap();
-      const noverlapTimer = setTimeout(killNoverlap, 5000);
+      const noverlapTimer = setTimeout(killNoverlap, 2000);
       return () => clearTimeout(noverlapTimer);
-    }, 8000);
+    }, 5000);
     return () => {
       clearTimeout(fa2Timer);
       killFA2();
