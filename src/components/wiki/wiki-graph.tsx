@@ -44,21 +44,29 @@ const REPO_PALETTE = [
 const SHARED_COLOR = "#22d3ee";  // cyan — visually distinct from all palette entries
 const UNKNOWN_COLOR = "#475569"; // slate — no repo field at all
 
-/** Derive a stable repo→color mapping from the pages actually present. */
-function buildRepoColorMap(pages: Record<string, WikiPageMeta>): Map<string, string> {
-  const repos = Array.from(
-    new Set(Object.values(pages).flatMap((m) => repoList(m))),
-  ).sort();
+/** Derive a stable repo→color mapping from the pages actually present, plus the default. */
+function buildRepoColorMap(
+  pages: Record<string, WikiPageMeta>,
+  defaultRepo: string | null,
+): Map<string, string> {
+  const explicit = new Set(Object.values(pages).flatMap((m) => repoList(m)));
+  if (defaultRepo) explicit.add(defaultRepo);
+  const repos = Array.from(explicit).sort();
   const map = new Map<string, string>();
   repos.forEach((repo, i) => map.set(repo, REPO_PALETTE[i % REPO_PALETTE.length]!));
   return map;
 }
 
 /** Pick the node color: repo color, shared, or unknown. */
-function nodeColor(meta: WikiPageMeta, repoColors: Map<string, string>): string {
+function nodeColor(
+  meta: WikiPageMeta,
+  repoColors: Map<string, string>,
+  defaultRepo: string | null,
+): string {
   const repos = repoList(meta);
-  if (repos.length === 0) return UNKNOWN_COLOR;
-  if (repos.length === 1) return repoColors.get(repos[0]!) ?? UNKNOWN_COLOR;
+  const effective = repos.length > 0 ? repos : defaultRepo ? [defaultRepo] : [];
+  if (effective.length === 0) return UNKNOWN_COLOR;
+  if (effective.length === 1) return repoColors.get(effective[0]!) ?? UNKNOWN_COLOR;
   return SHARED_COLOR;
 }
 
@@ -68,6 +76,7 @@ function buildGraph(
   pages: Record<string, WikiPageMeta>,
   links: WikiLink[],
   repoColors: Map<string, string>,
+  defaultRepo: string | null,
 ): MultiGraph {
   const graph = new MultiGraph();
   const entries = Object.entries(pages);
@@ -76,7 +85,7 @@ function buildGraph(
   entries.forEach(([path, meta], i) => {
     const angle = (2 * Math.PI * i) / Math.max(total, 1);
     const r = 200;
-    const color = nodeColor(meta, repoColors);
+    const color = nodeColor(meta, repoColors, defaultRepo);
     graph.addNode(path, {
       label: meta.title,
       x: r * Math.cos(angle),
@@ -223,11 +232,12 @@ interface ExpandedPanelProps {
   path: string;
   meta: WikiPageMeta | undefined;
   repoColors: Map<string, string>;
+  defaultRepo: string | null;
   onNavigate: (path: string) => void;
   onClose: () => void;
 }
 
-function ExpandedPanel({ path, meta, repoColors, onNavigate, onClose }: ExpandedPanelProps) {
+function ExpandedPanel({ path, meta, repoColors, defaultRepo, onNavigate, onClose }: ExpandedPanelProps) {
   const query = useQuery<{ content: string }>({
     queryKey: ["wiki-page", path],
     queryFn: async () => {
@@ -241,8 +251,9 @@ function ExpandedPanel({ path, meta, repoColors, onNavigate, onClose }: Expanded
   const content = query.data?.content?.replace(/^---[\s\S]*?---\n*/m, "").trim();
   const navGroup = meta ? navGroupFor(meta) : null;
   const repos = meta ? repoList(meta) : [];
-  const color = meta ? nodeColor(meta, repoColors) : UNKNOWN_COLOR;
-  const repoLabel = repos.length === 0 ? null : repos.join(", ");
+  const color = meta ? nodeColor(meta, repoColors, defaultRepo) : UNKNOWN_COLOR;
+  const effectiveRepos = repos.length > 0 ? repos : defaultRepo ? [defaultRepo] : [];
+  const repoLabel = effectiveRepos.length === 0 ? null : effectiveRepos.join(", ");
 
   return (
     <div className="absolute right-3 top-3 z-20 flex w-80 flex-col rounded-lg border border-border bg-card shadow-lg">
@@ -334,25 +345,31 @@ interface WikiGraphProps {
   pages: Record<string, WikiPageMeta>;
   links: WikiLink[];
   selectedPath: string | null;
+  /** Fallback repo slug for pages that have no repo: field. */
+  defaultRepo: string | null;
   onNavigate: (path: string) => void;
 }
 
-export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphProps) {
+export function WikiGraph({ pages, links, selectedPath, defaultRepo, onNavigate }: WikiGraphProps) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
-  const repoColors = useMemo(() => buildRepoColorMap(pages), [pages]);
-  const graph = useMemo(() => buildGraph(pages, links, repoColors), [pages, links, repoColors]);
+  const repoColors = useMemo(() => buildRepoColorMap(pages, defaultRepo), [pages, defaultRepo]);
+  const graph = useMemo(
+    () => buildGraph(pages, links, repoColors, defaultRepo),
+    [pages, links, repoColors, defaultRepo],
+  );
 
   const { hasShared, hasUnknown } = useMemo(() => {
     let shared = false, unknown = false;
     for (const meta of Object.values(pages)) {
       const repos = repoList(meta);
-      if (repos.length === 0) unknown = true;
-      else if (repos.length > 1) shared = true;
+      const effective = repos.length > 0 ? repos : defaultRepo ? [defaultRepo] : [];
+      if (effective.length === 0) unknown = true;
+      else if (effective.length > 1) shared = true;
       if (shared && unknown) break;
     }
     return { hasShared: shared, hasUnknown: unknown };
-  }, [pages]);
+  }, [pages, defaultRepo]);
 
   const handleNodeClick = useCallback((path: string) => {
     setExpandedPath(path || null);
@@ -401,6 +418,7 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
           path={expandedPath}
           meta={expandedMeta}
           repoColors={repoColors}
+          defaultRepo={defaultRepo}
           onNavigate={handleNavigate}
           onClose={() => setExpandedPath(null)}
         />
