@@ -9,6 +9,7 @@ import {
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
+import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 
@@ -187,12 +188,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       },
       onError: (message) => setStreamError(message),
       onWikiTool: (toolName) => {
-        if (
-          !wikiActiveRef.current &&
-          (toolName === "wiki_bootstrap" ||
-            toolName === "wiki_init" ||
-            toolName === "wiki_capture_source")
-        ) {
+        if (!wikiActiveRef.current && startsWikiActivity(toolName)) {
           wikiActiveRef.current = true;
           setWikiActive(true);
         }
