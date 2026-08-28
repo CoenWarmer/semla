@@ -1,5 +1,6 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { EXTENSION_TOOLS, PI_TOOLS } from "@/lib/pi/runtime-config";
+import { EXTENSION_TOOLS } from "@/lib/pi/extension-manifest";
+import { PI_TOOLS } from "@/lib/pi/runtime-config";
 
 export const runtime = "nodejs";
 

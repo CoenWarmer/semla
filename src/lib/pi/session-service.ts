@@ -5,7 +5,6 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   releaseBackgroundSession,
@@ -22,10 +21,23 @@ import {
   PI_SESSION_DIR,
   PI_TOOLS,
   PI_WORKSPACE_ROOT,
-  WIKI_EXTENSION_PATH,
-  WIKI_INGEST_BRIDGE_PATH,
+  WORKFLOW_SKILLS_PATH,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
+import {
+  assertExtensionLoad,
+  assertExtensionPathsExist,
+  assertManifestIsCoherent,
+  buildExtensionLoadReport,
+  extensionPathsInLoadOrder,
+} from "@/lib/pi/extension-manifest";
+import {
+  BRIDGE_RUN_STARTED,
+  clearSlot,
+  writeSlot,
+  type BridgeRunNotifier,
+} from "@/lib/pi/extension-contract";
+import { recordExtensionLoad } from "@/lib/pi/extension-health";
 import {
   createSessionFile,
   ensurePiSession,
@@ -55,27 +67,6 @@ import {
 } from "@/lib/pi/workflow-snapshot-merge";
 import { getParams, summarizeArguments } from "@/lib/pi/transcript";
 import type { WorkflowSnapshot } from "@/types/workflow";
-
-const workflowExtensionPath = join(
-  process.cwd(),
-  "src/lib/pi/extensions/workflow.ts",
-);
-
-const askUserExtensionPath = join(
-  process.cwd(),
-  "src/lib/pi/extensions/ask-user.ts",
-);
-
-const workflowSkillsPath = join(
-  process.cwd(),
-  "src/lib/pi/extensions/dynamic-workflows/skills",
-);
-
-// Cross-extension notifier: wiki-ingest-bridge calls this to register background
-// workflow runs it dispatches directly (i.e. without going through the `workflow`
-// tool), so they appear in the trace waterfall. Set per-prompt-turn, cleared in
-// the finally block. Bridge calls are fire-and-forget (no delivery back to agent).
-const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
 
 // Short prefix for terminal readability. sid = first 8 chars of semla session ID.
 const log = (sid: string, msg: string, data?: Record<string, unknown>) => {
@@ -332,13 +323,15 @@ export const runPiPrompt = async ({
     emit({ payload, type: "ask-user-question" });
   });
 
+  // Validate before Pi ever sees the paths: a missing entry file or an
+  // inconsistent manifest fails here with a fix attached, rather than becoming
+  // a session that quietly runs without the tools it was supposed to have.
+  assertManifestIsCoherent();
+  assertExtensionPathsExist();
+
   const resourceLoader = new DefaultResourceLoader({
-    additionalExtensionPaths: [workflowExtensionPath, askUserExtensionPath, WIKI_EXTENSION_PATH, WIKI_INGEST_BRIDGE_PATH],
-    // The workflow skills ship inside the package but are only contributed when
-    // it is loaded as a package. We load the extension file directly, so point
-    // at this repo's copy explicitly rather than inheriting them from whatever
-    // is installed in the developer's agent dir.
-    additionalSkillPaths: [workflowSkillsPath],
+    additionalExtensionPaths: extensionPathsInLoadOrder(),
+    additionalSkillPaths: [WORKFLOW_SKILLS_PATH],
     agentDir: PI_AGENT_DIR,
     cwd: PI_WORKSPACE_ROOT,
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
@@ -353,18 +346,10 @@ export const runPiPrompt = async ({
   });
 
   const loadedExtensions = extensionsResult.extensions.map((e) => e.path);
-  const extensionErrors = extensionsResult.errors.map(
-    (e) => `${e.path}: ${e.error}`,
-  );
   log(semlaSessionId, "extensions loaded", {
     loaded: loadedExtensions.length,
-    errors: extensionErrors.length,
+    errors: extensionsResult.errors.length,
   });
-  if (extensionErrors.length > 0) {
-    console.warn(
-      `[pi:session:${semlaSessionId.slice(0, 8)}] extension errors:\n${extensionErrors.join("\n")}`,
-    );
-  }
 
   // Extensions are only told they are live when pi emits `session_start`, and
   // pi emits it from bindExtensions() — which only its built-in CLI modes call.
@@ -382,26 +367,47 @@ export const runPiPrompt = async ({
       ),
   });
 
-  // Extensions register their own tools during bindExtensions. Capture them
-  // before setActiveToolsByName restricts the set to the user-selected built-ins,
-  // then re-add them so extension tools are always available regardless of which
-  // built-in tools the user has toggled on/off.
-  const extensionTools = session
-    .getActiveToolNames()
-    .filter((t) => !(PI_TOOLS as readonly string[]).includes(t));
+  // Extension tools register during bindExtensions, and contract slots are
+  // published from session_start handlers that Pi fires from the same call, so
+  // this is the first moment the whole extension set can be checked against
+  // what the manifest declared. Previously only a missing `workflow` tool was
+  // fatal — every other extension could fail to load and the session would run
+  // on silently without its tools.
+  const boundTools = session.getActiveToolNames();
+  const extensionReport = buildExtensionLoadReport({
+    loadedPaths: loadedExtensions,
+    loadErrors: extensionsResult.errors,
+    registeredTools: boundTools,
+  });
+
+  // Publish before any throw, so a failed load is visible at /api/pi/health
+  // rather than only in this process's logs.
+  recordExtensionLoad(extensionReport);
+
+  if (extensionReport.unexpectedErrors.length > 0) {
+    // Not from the manifest — most likely a project-scope package configured in
+    // the workspace's own .pi/settings.json. Worth seeing, not worth refusing
+    // the session over.
+    console.warn(
+      `[pi:session:${semlaSessionId.slice(0, 8)}] non-manifest extension errors:\n${extensionReport.unexpectedErrors.join("\n")}`,
+    );
+  }
+
+  if (!extensionReport.ok) {
+    session.dispose();
+    assertExtensionLoad(extensionReport);
+  }
+
+  // Capture extension tools before setActiveToolsByName restricts the set to
+  // the user-selected built-ins, then re-add them so extension tools are always
+  // available regardless of which built-ins the user has toggled on/off.
+  const extensionTools = boundTools.filter(
+    (t) => !(PI_TOOLS as readonly string[]).includes(t),
+  );
 
   session.setActiveToolsByName([...tools, ...extensionTools]);
   const activeTools = session.getActiveToolNames();
   log(semlaSessionId, "active tools", { tools: activeTools.join(",") });
-
-  if (tools.includes("workflow") && !activeTools.includes("workflow")) {
-    session.dispose();
-    throw new Error(
-      extensionErrors.length > 0
-        ? `Pi workflow extension failed to load.\n${extensionErrors.join("\n")}`
-        : "Pi workflow extension did not register its workflow tool.",
-    );
-  }
 
   // Recover background workflows whose delivery was lost (e.g. server restart mid-run).
   // Inject the result as a context message so Pi sees the completed workflow in this prompt.
@@ -442,7 +448,6 @@ export const runPiPrompt = async ({
   // never emit a `workflow` tool event, so they must notify via globalThis.
   // Primary runs (e.g. wiki-ingest batch coordinators) arm the background
   // continuation so the agent is notified once when the batch completes.
-  type BridgeRunNotifier = (runId: string, opts?: { primary?: boolean }) => void;
   const bridgeRunNotifier: BridgeRunNotifier = (runId, opts = {}) => {
     log(semlaSessionId, "bridge background run started", { run: runId });
     const startedAt = new Date().toISOString();
@@ -456,7 +461,7 @@ export const runPiPrompt = async ({
       log(semlaSessionId, "bridge primary run — background continuation armed", { run: runId });
     }
   };
-  (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] = bridgeRunNotifier;
+  writeSlot(BRIDGE_RUN_STARTED, bridgeRunNotifier);
 
   const unsubscribe = session.subscribe((event) => {
     if (
@@ -577,7 +582,7 @@ export const runPiPrompt = async ({
     unsubscribe();
     unregisterNotifier();
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
-    delete (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY];
+    clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);
     const settledDuringPrompt =
       deliveredDuringPrompt &&

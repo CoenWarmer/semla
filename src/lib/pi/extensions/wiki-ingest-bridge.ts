@@ -23,20 +23,24 @@
 import { join } from "node:path";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { WorkflowManager } from "./dynamic-workflows/src/workflow-manager.ts";
+import {
+  ACTIVE_WORKFLOW_MANAGER,
+  BRIDGE_RUN_STARTED,
+  readOrInitSlot,
+  readSlot,
+  WIKI_INGEST_DISPATCHER,
+  WIKI_REINDEX_DISPATCHER,
+  WORKFLOW_EXTRA_TOOLSETS,
+  writeSlot,
+  type WikiIngestDispatcher,
+  type WikiReindexDispatcher,
+} from "../extension-contract.js";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
 // Next.js convention that jiti (the pi extension loader) does not resolve.
 const WIKI_HOME = process.env.WIKI_HOME ?? join(process.cwd(), ".semla-wiki");
 
-// ── Global symbol keys (shared with workflow.ts and pi-llm-wiki) ──────────────
-
-const DISPATCHER_KEY = Symbol.for("semla.wiki-ingest-dispatcher");
-const REINDEX_DISPATCHER_KEY = Symbol.for("semla.wiki-reindex-dispatcher");
-const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
-const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
-const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
 
 // ── Types replicated from pi-llm-wiki (avoids importing outside tsconfig) ─────
 
@@ -160,6 +164,21 @@ const EMBEDDINGS_PATH = join(
   process.cwd(),
   ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/embeddings.ts",
 );
+
+/**
+ * The deep imports above are computed strings, so tsc cannot check them and a
+ * pi-llm-wiki release that moves a file or renames a function breaks synthesis
+ * at runtime with no build-time signal. Declaring what each module owes lets
+ * wiki-package-contract.test.ts restore that signal.
+ */
+export const WIKI_PACKAGE_DEEP_IMPORTS: ReadonlyArray<{
+  path: string;
+  exports: readonly string[];
+}> = [
+  { path: INGEST_WORKER_PATH, exports: ["commitSynthesis"] },
+  { path: METADATA_PATH, exports: ["appendEvent", "rebuildMetadataLight"] },
+  { path: EMBEDDINGS_PATH, exports: ["reindexEmbeddings"] },
+];
 
 // ── Run-reindex tool factory ──────────────────────────────────────────────────
 
@@ -333,26 +352,12 @@ Rules:
 ));
 `;
 
-// ── Dispatcher types ───────────────────────────────────────────────────────────
-
-type IngestSource = {
-  id: string;
-  extracted: string;
-  manifest: Record<string, unknown>;
-};
-
-export type WikiIngestDispatcher = (sources: IngestSource[]) => boolean;
-
 // ── Per-run toolset key counter (avoids Date.now() collisions) ───────────────
 
 let runCounter = 0;
 function nextRunKey(prefix: string): string {
   return `${prefix}:${++runCounter}`;
 }
-
-// ── Bridge notifier type (shared with session-service.ts) ─────────────────────
-
-export type BridgeRunNotifier = (runId: string, opts?: { primary?: boolean }) => void;
 
 // ── Extension entry point ──────────────────────────────────────────────────────
 
@@ -361,13 +366,10 @@ export type BridgeRunNotifier = (runId: string, opts?: { primary?: boolean }) =>
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function wikiIngestBridge(_pi: ExtensionAPI) {
   const dispatcher: WikiIngestDispatcher = (sources) => {
-    const manager = (globalThis as Record<symbol, unknown>)[ACTIVE_MANAGER_KEY] as
-      | WorkflowManager
-      | undefined;
+    const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
     if (!manager) return false;
 
-    const extraToolsets = ((globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] ??=
-      {}) as Record<string, () => ReturnType<typeof createBatchCommitSynthesisTool>[]>;
+    const extraToolsets = readOrInitSlot(WORKFLOW_EXTRA_TOOLSETS, () => ({}));
 
     const paths = buildVaultPaths();
     const manifests = new Map(sources.map((s) => [s.id, s.manifest]));
@@ -388,25 +390,24 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
       { toolset: toolsetKey },
     );
 
-    const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
-      | BridgeRunNotifier
-      | undefined;
-    notifier?.(runId, { primary: true });
+    readSlot(BRIDGE_RUN_STARTED)?.(runId, { primary: true });
 
     return true;
   };
 
-  (globalThis as Record<symbol, unknown>)[DISPATCHER_KEY] = dispatcher;
+  writeSlot(WIKI_INGEST_DISPATCHER, dispatcher);
 
-  type ReindexArgs = { paths: WikiVaultPaths; embedder: WikiEmbedder; force: boolean };
-  const reindexDispatcher = ({ paths, embedder, force }: ReindexArgs): boolean => {
-    const manager = (globalThis as Record<symbol, unknown>)[ACTIVE_MANAGER_KEY] as
-      | WorkflowManager
-      | undefined;
+  const reindexDispatcher: WikiReindexDispatcher = (args) => {
+    // pi-llm-wiki types these as `unknown` at the contract boundary; they are
+    // the vault paths and embedder it just built for this call.
+    const paths = args.paths as WikiVaultPaths;
+    const embedder = args.embedder as WikiEmbedder;
+    const force = args.force;
+
+    const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
     if (!manager) return false;
 
-    const extraToolsets = ((globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] ??=
-      {}) as Record<string, () => ReturnType<typeof createRunReindexTool>[]>;
+    const extraToolsets = readOrInitSlot(WORKFLOW_EXTRA_TOOLSETS, () => ({}));
 
     const toolsetKey = nextRunKey("wiki-reindex");
     extraToolsets[toolsetKey] = () => [createRunReindexTool(embedder, paths, force)];
@@ -418,12 +419,9 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
       { model: embedder.model },
       { toolset: toolsetKey, suppressDelivery: true },
     );
-    const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
-      | BridgeRunNotifier
-      | undefined;
-    notifier?.(reindexRunId);
+    readSlot(BRIDGE_RUN_STARTED)?.(reindexRunId);
     return true;
   };
 
-  (globalThis as Record<symbol, unknown>)[REINDEX_DISPATCHER_KEY] = reindexDispatcher;
+  writeSlot(WIKI_REINDEX_DISPATCHER, reindexDispatcher);
 }

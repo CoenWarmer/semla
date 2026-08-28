@@ -23,6 +23,28 @@ export const WIKI_INGEST_BRIDGE_PATH = join(
   "src/lib/pi/extensions/wiki-ingest-bridge.ts",
 );
 
+// Semla's own extensions. Anchored to the server's cwd like the wiki paths
+// above: PI_WORKSPACE_ROOT is the repo the agent operates *on*, not the repo
+// these files live in.
+export const WORKFLOW_EXTENSION_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/workflow.ts",
+);
+
+export const ASK_USER_EXTENSION_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/ask-user.ts",
+);
+
+// The workflow skills ship inside the dynamic-workflows package but are only
+// contributed when it is loaded as a package. Sessions load the extension file
+// directly, so the skills are pointed at explicitly rather than inherited from
+// whatever is installed in the developer's agent dir.
+export const WORKFLOW_SKILLS_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/dynamic-workflows/skills",
+);
+
 // WIKI_HOME controls where pi-llm-wiki's personal vault lives. Defaulting it
 // to a Semla-owned directory keeps wiki files out of the repos being worked in
 // and out of the user's home dir. Exposed so the agent's bash tool can resolve
@@ -57,28 +79,6 @@ export const PI_TOOLS = [
   "workflow",
   "workflow_control",
   "ask_user",
-] as const;
-
-// Tools contributed by pi extension packages loaded via .pi/settings.json.
-// These are always active regardless of the user's tool selection — the server
-// re-adds them after setActiveToolsByName (see session-service.ts).
-export const EXTENSION_TOOLS = [
-  // @zosmaai/pi-llm-wiki — codebase knowledge vault
-  "wiki_recall",
-  "wiki_capture_source",
-  "wiki_ingest",
-  "wiki_bootstrap",
-  "wiki_ensure_page",
-  "wiki_search",
-  "wiki_lint",
-  "wiki_status",
-  "wiki_rebuild_meta",
-  "wiki_reindex_embeddings",
-  "wiki_log_event",
-  "wiki_watch",
-  "wiki_retro",
-  "wiki_capture_trajectory",
-  "wiki_recall_skill",
 ] as const;
 
 export const getPiRuntimeConfig = () => ({

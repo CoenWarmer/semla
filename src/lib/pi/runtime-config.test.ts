@@ -1,8 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { EXTENSION_TOOLS, PI_TOOLS, WIKI_EXTENSION_PATH } from "./runtime-config.ts";
+import { PI_TOOLS, WIKI_EXTENSION_PATH } from "./runtime-config.ts";
 
 describe("PI_TOOLS", () => {
   it("contains the expected built-in tools", () => {
@@ -10,21 +10,6 @@ describe("PI_TOOLS", () => {
     expect(PI_TOOLS).toContain("bash");
     expect(PI_TOOLS).toContain("workflow");
     expect(PI_TOOLS).toContain("ask_user");
-  });
-});
-
-describe("EXTENSION_TOOLS", () => {
-  it("contains the expected wiki tools", () => {
-    expect(EXTENSION_TOOLS).toContain("wiki_recall");
-    expect(EXTENSION_TOOLS).toContain("wiki_capture_source");
-    expect(EXTENSION_TOOLS).toContain("wiki_bootstrap");
-  });
-
-  it("has no overlap with PI_TOOLS", () => {
-    const piSet = new Set(PI_TOOLS as readonly string[]);
-    for (const tool of EXTENSION_TOOLS) {
-      expect(piSet.has(tool)).toBe(false);
-    }
   });
 });
 

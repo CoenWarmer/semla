@@ -38,6 +38,12 @@ import {
   WorkflowManager,
 } from "./dynamic-workflows/src/index";
 import type { WorkflowStorage } from "./dynamic-workflows/src/workflow-saved";
+import {
+  ACTIVE_WORKFLOW_MANAGER,
+  readSlot,
+  WORKFLOW_EXTRA_TOOLSETS,
+  writeSlot,
+} from "../extension-contract.js";
 
 /**
  * Bound for the read-only session-header probe (first line only). Independent of
@@ -103,8 +109,6 @@ export function sessionFileCwd(
   }
 }
 
-const EXTRA_TOOLSETS_KEY = Symbol.for("semla.workflow.extra-toolsets");
-const ACTIVE_MANAGER_KEY = Symbol.for("semla.active-workflow-manager");
 
 function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
   const settings = loadWorkflowSettings({ cwd });
@@ -118,16 +122,12 @@ function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
     {
       get(target, key) {
         if (typeof key !== "string") return Reflect.get(target, key);
-        const extra = (globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] as
-          | Record<string, () => ReturnType<typeof createCodingTools>>
-          | undefined;
+        const extra = readSlot(WORKFLOW_EXTRA_TOOLSETS);
         return extra?.[key] ?? Reflect.get(target, key);
       },
       has(target, key) {
         if (typeof key !== "string") return Reflect.has(target, key);
-        const extra = (globalThis as Record<symbol, unknown>)[EXTRA_TOOLSETS_KEY] as
-          | Record<string, unknown>
-          | undefined;
+        const extra = readSlot(WORKFLOW_EXTRA_TOOLSETS);
         return Reflect.has(target, key) || Boolean(extra && key in extra);
       },
     },
@@ -367,7 +367,7 @@ export default function extension(pi: ExtensionAPI) {
     manager.setSessionId(sessionId);
     manager.adoptLiveRunsToSession(sessionId);
     // Expose active manager for cross-extension access (e.g. wiki-ingest-bridge).
-    (globalThis as Record<symbol, unknown>)[ACTIVE_MANAGER_KEY] = manager;
+    writeSlot(ACTIVE_WORKFLOW_MANAGER, manager);
 
     // Runtime is bound now (session_start fires after bindCore). Unsuspend and
     // flush anything queued while the previous ctx was dying or this factory

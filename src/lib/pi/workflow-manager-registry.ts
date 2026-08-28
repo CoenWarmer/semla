@@ -1,20 +1,18 @@
-// Minimal interface — we only call getSnapshot() on the manager.
-interface WorkflowManagerLike {
-  getSnapshot(runId: string): unknown;
-}
+import {
+  readOrInitSlot,
+  WORKFLOW_MANAGER_REGISTRY,
+  type WorkflowSnapshotSource,
+} from "@/lib/pi/extension-contract";
 
-// Shared key between this module and the workflow manager (packages/pi-dynamic-workflows),
-// which runs in a different module scope (loaded by pi-coding-agent via import()). Symbol.for
-// ensures both sides refer to the exact same slot in globalThis.
-const REGISTRY_KEY = Symbol.for("semla.workflow.managers");
-const g = globalThis as Record<symbol, Map<string, WeakRef<WorkflowManagerLike>> | undefined>;
+// The workflow manager runs in a different module scope (loaded by
+// pi-coding-agent via import()), so the registry lives in a globalThis slot
+// declared once in extension-contract.ts and shared by both sides.
+const registry = (): Map<string, WeakRef<WorkflowSnapshotSource>> =>
+  readOrInitSlot(WORKFLOW_MANAGER_REGISTRY, () => new Map());
 
-const registry = (): Map<string, WeakRef<WorkflowManagerLike>> => {
-  g[REGISTRY_KEY] ??= new Map();
-  return g[REGISTRY_KEY]!;
-};
-
-export const getActiveManager = (runId: string): WorkflowManagerLike | null => {
+export const getActiveManager = (
+  runId: string,
+): WorkflowSnapshotSource | null => {
   const ref = registry().get(runId);
   const manager = ref?.deref() ?? null;
   if (!manager) {
