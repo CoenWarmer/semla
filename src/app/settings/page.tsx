@@ -11,6 +11,7 @@ import {
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
 import { getInstalledPiPackages } from "@/lib/pi/packages";
+import { ExtensionHealthCard } from "@/components/extension-health-card";
 import { SystemPromptEditor } from "@/components/system-prompt-editor";
 
 export const runtime = "nodejs";
@@ -65,6 +66,8 @@ export default async function SettingsPage() {
           <SystemPromptEditor />
         </CardContent>
       </Card>
+
+      <ExtensionHealthCard />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
