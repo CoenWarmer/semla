@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { List, Network } from "lucide-react";
+import { List, Network, Sparkles } from "lucide-react";
 import {
   WikiConfig,
   WikiLink,
@@ -14,6 +14,8 @@ import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";
 import { WikiGraph } from "./wiki-graph";
 import { cn } from "@/lib/utils";
+import { usePendingPrompt } from "@/components/pending-prompt-provider";
+import { useUserSettings } from "@/hooks/use-user-settings";
 
 type ViewMode = "list" | "graph";
 
@@ -33,6 +35,32 @@ export function WikiBrowser({
   const searchParams = useSearchParams();
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [consolidating, setConsolidating] = useState(false);
+  const { set: setPendingPrompt } = usePendingPrompt();
+  const { data: userSettings } = useUserSettings();
+
+  const handleConsolidate = useCallback(async () => {
+    setConsolidating(true);
+    try {
+      const res = await fetch("/api/sessions", { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.id) return;
+
+      setPendingPrompt(body.id, {
+        goal: null,
+        model: {
+          modelId: userSettings?.default_model_id ?? "claude-sonnet-4-5",
+          provider: userSettings?.default_model_provider ?? "anthropic",
+        },
+        text: "/consolidate",
+        tools: [],
+      });
+
+      router.push(`/sessions/${body.id}`);
+    } finally {
+      setConsolidating(false);
+    }
+  }, [router, setPendingPrompt, userSettings]);
 
   const selectedPath = searchParams.get("page") ?? initialPath;
   const pages = registry?.pages ?? {};
@@ -95,6 +123,14 @@ export function WikiBrowser({
               title="Graph view"
             >
               <Network className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleConsolidate}
+              disabled={consolidating}
+              className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              title="Consolidate wiki"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
