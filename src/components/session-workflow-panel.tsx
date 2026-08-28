@@ -28,6 +28,7 @@ import {
 } from "react-otel-trace-waterfall";
 import type {
   FitButtonProps,
+  FollowButtonProps,
   SpanBarProps,
   SpanNameProps,
   SpanNode,
@@ -744,11 +745,17 @@ export function SessionWorkflowPanel({
   // Both Fit and Follow use liveMode=true; user panning deactivates it.
   const [liveActive, setLiveActive] = useState(true);
 
-  // Capture the library's fit function (resets zoom to 1 + re-enables live mode).
+  // Capture library button functions. useCallback gives stable component identity
+  // so TraceWaterfall doesn't remount the slot on re-render.
   const fitFnRef = useRef<(() => void) | null>(null);
-  // Stable component identity so TraceWaterfall doesn't remount on re-render.
   const FitButtonCapture = useCallback(({ onClick }: FitButtonProps) => {
     fitFnRef.current = onClick;
+    return null;
+  }, []);
+
+  const followFnRef = useRef<(() => void) | null>(null);
+  const FollowButtonCapture = useCallback(({ onClick }: FollowButtonProps) => {
+    followFnRef.current = onClick;
     return null;
   }, []);
 
@@ -759,6 +766,7 @@ export function SessionWorkflowPanel({
   }, [setEffectiveMode]);
 
   const handleFollow = useCallback(() => {
+    followFnRef.current?.();
     setEffectiveMode("follow");
     setLiveActive(true);
   }, [setEffectiveMode]);
@@ -1017,6 +1025,8 @@ export function SessionWorkflowPanel({
                 foldEventsIntoParent
                 timelinePadding={10}
                 FitButtonComponent={FitButtonCapture}
+                FollowButtonComponent={FollowButtonCapture}
+                followMode={effectiveMode === "follow" ? "follow-end" : "fit"}
                 SpanNameComponent={SpanName}
                 SpanBarComponent={SpanBar}
                 TooltipComponent={InlineEventTooltip}
