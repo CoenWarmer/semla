@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   sessionMessagesQueryKey,
@@ -153,50 +153,54 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   const titleUpdatedRef = useRef(false);
   const reconnectAbortRef = useRef<AbortController | null>(null);
 
-  const streamHandlers = (opts?: { onPiError?: (err: Error) => void }): StreamHandlers => ({
-    onDelta: (delta) => setStreamingText((t) => t + delta),
-    onToolStart: (event) => {
-      setActiveTool(event.toolName);
-      setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-    },
-    onToolEnd: (event) => {
-      setActiveTool(undefined);
-      setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-      if (event.toolName === "ask_user") setPendingQuestion(null);
-    },
-    onAskUser: (payload) => setPendingQuestion(payload),
-    onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
-    onWorkflowStarted: (event) =>
-      setWorkflowSnapshot({
-        agentCount: 0,
-        agents: [],
-        doneCount: 0,
-        errorCount: 0,
-        name: "Background workflow",
-        phases: [],
-        runId: event.runId,
-        runningCount: 0,
-        startedAt: event.startedAt,
-      }),
-    onTitleUpdated: () => {
-      titleUpdatedRef.current = true;
-    },
-    onError: (message) => {
-      setStreamError(message);
-      if (opts?.onPiError) opts.onPiError(new Error(message));
-    },
-    onWikiTool: (toolName) => {
-      if (
-        !wikiActiveRef.current &&
-        (toolName === "wiki_bootstrap" ||
-          toolName === "wiki_init" ||
-          toolName === "wiki_capture_source")
-      ) {
-        wikiActiveRef.current = true;
-        setWikiActive(true);
-      }
-    },
-  });
+  // Stable handlers object — state setters are guaranteed stable by React,
+  // so this memo never needs to re-run. A factory function (the previous shape)
+  // created new closure objects on every call, which confused the React Compiler.
+  const handlers = useMemo(
+    (): StreamHandlers => ({
+      onDelta: (delta) => setStreamingText((t) => t + delta),
+      onToolStart: (event) => {
+        setActiveTool(event.toolName);
+        setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+      },
+      onToolEnd: (event) => {
+        setActiveTool(undefined);
+        setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+        if (event.toolName === "ask_user") setPendingQuestion(null);
+      },
+      onAskUser: (payload) => setPendingQuestion(payload),
+      onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
+      onWorkflowStarted: (event) =>
+        setWorkflowSnapshot({
+          agentCount: 0,
+          agents: [],
+          doneCount: 0,
+          errorCount: 0,
+          name: "Background workflow",
+          phases: [],
+          runId: event.runId,
+          runningCount: 0,
+          startedAt: event.startedAt,
+        }),
+      onTitleUpdated: () => {
+        titleUpdatedRef.current = true;
+      },
+      onError: (message) => setStreamError(message),
+      onWikiTool: (toolName) => {
+        if (
+          !wikiActiveRef.current &&
+          (toolName === "wiki_bootstrap" ||
+            toolName === "wiki_init" ||
+            toolName === "wiki_capture_source")
+        ) {
+          wikiActiveRef.current = true;
+          setWikiActive(true);
+        }
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // Reconnect to an in-progress stream when the page is loaded mid-turn.
   useEffect(() => {
@@ -226,7 +230,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         }
 
         await readPiStream(response.body.getReader(), {
-          ...streamHandlers(),
+          ...handlers,
           onUserMessage: (text) => {
             queryClient.setQueryData<SessionMessagesResult>(
               sessionMessagesQueryKey(sessionId),
@@ -298,10 +302,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         throw new Error("Pi could not start this prompt.");
       }
 
-      let piError: Error | undefined;
-      piError = await readPiStream(response.body.getReader(), streamHandlers({
-        onPiError: (err) => { piError = err; },
-      }));
+      const piError = await readPiStream(response.body.getReader(), handlers);
 
       if (piError) {
         trace("mutationFn:throwing", { id, message: piError.message });
