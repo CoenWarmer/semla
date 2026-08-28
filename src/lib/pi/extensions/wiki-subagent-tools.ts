@@ -20,7 +20,11 @@
  * the point of an orient run actually works.
  */
 
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { stampRepoFrontmatter } from "./wiki-frontmatter.js";
+import { withVaultLock } from "./wiki-vault-lock.js";
 
 /** Toolset tag a workflow passes to reach these tools. */
 export const WIKI_SUBAGENT_TOOLSET = "wiki";
@@ -111,39 +115,9 @@ interface ExecutableTool extends NamedTool {
 }
 
 /**
- * Run the vault writers one at a time.
- *
- * Only the write takes its turn — agents still read, reason and summarise
- * concurrently, which is where a fan-out's time actually goes. A rejected call
- * must not poison the queue, so the chain absorbs failures.
- */
-export function serializeVaultWrites<T extends ExecutableTool>(tools: T[]): T[] {
-  let queue: Promise<unknown> = Promise.resolve();
-
-  return tools.map((tool) => {
-    if (!VAULT_WRITING_TOOLS.has(tool.name) || typeof tool.execute !== "function") {
-      return tool;
-    }
-
-    const execute = tool.execute.bind(tool);
-    return {
-      ...tool,
-      execute: (...args: never[]) => {
-        const result = queue.then(() => execute(...args));
-        queue = result.then(
-          () => undefined,
-          () => undefined,
-        );
-        return result;
-      },
-    };
-  });
-}
-
-/**
  * Keep only the tools a subagent is allowed to hold.
  *
- * Separated from the collection above so the policy is testable without the
+ * Separated from the collection below so the policy is testable without the
  * package installed — the filter, not the import, is the part with a decision
  * in it.
  */
@@ -154,6 +128,80 @@ export function selectSubagentTools<T extends NamedTool>(tools: T[]): T[] {
     if (!allowed.has(tool.name) || seen.has(tool.name)) return false;
     seen.add(tool.name);
     return true;
+  });
+}
+
+export interface VaultGuardOptions {
+  wikiHome: string;
+  /** The repo of the session these tools belong to, resolved per call. */
+  repoOf: () => string | null;
+}
+
+const sourcePages = (wikiHome: string): string[] => {
+  try {
+    return readdirSync(join(wikiHome, ".llm-wiki", "wiki", "sources"));
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Attribute the source pages a capture just created.
+ *
+ * Called with the vault lock held, so "which files are new" is a real answer
+ * rather than a guess — no other capture can be part-way through. Attributing
+ * here rather than at turn end is what makes concurrent orients correct: a
+ * source belongs to the session that captured it, not to whichever session's
+ * turn happened to end first.
+ */
+function attributeNewSources(wikiHome: string, before: Set<string>, repo: string): void {
+  const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+  for (const entry of sourcePages(wikiHome)) {
+    if (before.has(entry) || !entry.endsWith(".md")) continue;
+    const path = join(dir, entry);
+    try {
+      const outcome = stampRepoFrontmatter(readFileSync(path, "utf8"), repo);
+      if (outcome.changed) writeFileSync(path, outcome.content, "utf8");
+    } catch {
+      // The turn-end sweep still covers this page, just less precisely.
+    }
+  }
+}
+
+/**
+ * Hold the vault lock across every write, and attribute captures as they land.
+ *
+ * Without a Runtime the package's capture and ensure_page tools rebuild every
+ * derived file inline, and `nextSequentialId` allocates source ids by listing a
+ * directory and adding one. Two sessions doing either at once lose data: the
+ * later rebuild publishes a registry built before the other's pages existed,
+ * and two captures can claim the same id, the second silently overwriting the
+ * first. The lock is filesystem-based because the sessions it separates need
+ * not share a process.
+ */
+export function guardVaultWrites<T extends ExecutableTool>(
+  tools: T[],
+  options: VaultGuardOptions,
+): T[] {
+  return tools.map((tool) => {
+    if (!VAULT_WRITING_TOOLS.has(tool.name) || typeof tool.execute !== "function") {
+      return tool;
+    }
+
+    const execute = tool.execute.bind(tool);
+    const isCapture = tool.name === "wiki_capture_source";
+
+    return {
+      ...tool,
+      execute: (...args: never[]) =>
+        withVaultLock(options.wikiHome, tool.name, async () => {
+          const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
+          const result = await execute(...args);
+          const repo = options.repoOf();
+          if (before && repo) attributeNewSources(options.wikiHome, before, repo);
+          return result;
+        }),
+    };
   });
 }
 
@@ -168,6 +216,7 @@ export function selectSubagentTools<T extends NamedTool>(tools: T[]): T[] {
  */
 export async function collectWikiSubagentTools<T extends ExecutableTool>(
   pi: object,
+  guard: VaultGuardOptions,
 ): Promise<T[]> {
   const registrars = (await import(WIKI_TOOLS_MODULE)) as Record<
     string,
@@ -186,5 +235,5 @@ export async function collectWikiSubagentTools<T extends ExecutableTool>(
     registrars[registrar]?.(collector);
   }
 
-  return serializeVaultWrites(selectSubagentTools(collected));
+  return guardVaultWrites(selectSubagentTools(collected), guard);
 }

@@ -56,7 +56,7 @@ describe("slot keys", () => {
 
   it("are all listed in CONTRACT_SLOT_KEYS", () => {
     expect(new Set(CONTRACT_SLOT_KEYS).size).toBe(CONTRACT_SLOT_KEYS.length);
-    expect(CONTRACT_SLOT_KEYS).toHaveLength(7);
+    expect(CONTRACT_SLOT_KEYS).toHaveLength(8);
   });
 
   it("exposes a contract version", () => {

@@ -38,7 +38,14 @@ import {
   type BridgeRunNotifier,
 } from "@/lib/pi/extension-contract";
 import { recordExtensionLoad } from "@/lib/pi/extension-health";
-import { stampSessionWikiPages } from "@/lib/pi/wiki-repo-stamp";
+import {
+  repoSlugFromProjectPath,
+  stampSessionWikiPages,
+} from "@/lib/pi/wiki-repo-stamp";
+import {
+  clearSessionRepo,
+  setSessionRepo,
+} from "@/lib/pi/wiki-session-repo";
 import {
   createSessionFile,
   ensurePiSession,
@@ -340,6 +347,11 @@ export const runPiPrompt = async ({
 
   const configuredModel = await getConfiguredModel(model);
   const piSession = await ensurePiSession(semlaSessionId, configuredModel);
+  // Publish this session's repo so the wiki bridge can attribute the sources
+  // its subagents capture. Keyed by pi session id because concurrent orients
+  // share this process — a single "current repo" would be whichever session
+  // started last, which is exactly the misattribution being fixed.
+  setSessionRepo(piSession.id, repoSlugFromProjectPath(projectPath));
   const persistedEntries = await fetchPersistedEntries(piSession.id);
 
   log(semlaSessionId, "session restored", { entries: persistedEntries.length });
@@ -614,6 +626,7 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
+    clearSessionRepo(piSession.id);
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);

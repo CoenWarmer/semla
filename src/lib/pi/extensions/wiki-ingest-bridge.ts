@@ -25,6 +25,7 @@ import {
   createCodingTools,
   defineTool,
   type ExtensionAPI,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -34,6 +35,7 @@ import {
   readSlot,
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
+  WIKI_SESSION_REPOS,
   WORKFLOW_EXTRA_TOOLSETS,
   writeSlot,
   type WikiIngestDispatcher,
@@ -382,7 +384,29 @@ function nextRunKey(prefix: string): string {
 function registerSubagentWikiToolset(pi: ExtensionAPI): void {
   let wikiTools: Array<ReturnType<typeof defineTool>> = [];
 
-  void collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi)
+  // Captured at session_start and closed over, rather than read from a shared
+  // slot at call time: a tool's execute context carries only `cwd`, which every
+  // concurrent session shares, so a global "current session" would be whichever
+  // session started last.
+  let sessionId: string | undefined;
+  pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
+    try {
+      sessionId = ctx.sessionManager?.getSessionId();
+    } catch {
+      // No session id means captures fall back to the turn-end sweep.
+    }
+  });
+
+  void collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi, {
+    wikiHome: WIKI_HOME,
+    // Read straight off the shared slot: the server-side half of this pair
+    // (wiki-session-repo.ts) imports through the "@/" alias, which jiti cannot
+    // resolve from here.
+    repoOf: () =>
+      (sessionId
+        ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
+        : null) ?? null,
+  })
     .then((tools) => {
       wikiTools = tools;
     })

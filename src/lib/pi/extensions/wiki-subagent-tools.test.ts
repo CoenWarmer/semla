@@ -2,12 +2,16 @@
  * The allow/withhold split is the whole safety argument for handing wiki tools
  * to subagents, so it is asserted rather than left to the comment above it.
  */
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
   collectWikiSubagentTools,
   selectSubagentTools,
-  serializeVaultWrites,
+  guardVaultWrites,
   WIKI_SUBAGENT_DEEP_IMPORTS,
   WIKI_SUBAGENT_REGISTRARS,
   WIKI_SUBAGENT_TOOL_NAMES,
@@ -75,7 +79,7 @@ describe("collectWikiSubagentTools", () => {
       name: string;
       execute?: (...args: never[]) => unknown;
       parameters?: unknown;
-    }>({});
+    }>({}, { wikiHome: mkdtempSync(join(tmpdir(), "semla-collect-")), repoOf: () => null });
 
     expect(tools.map((t) => t.name).sort()).toEqual([...WIKI_SUBAGENT_TOOL_NAMES].sort());
     for (const tool of tools) {
@@ -90,9 +94,14 @@ describe("collectWikiSubagentTools", () => {
 });
 
 // Without a Runtime the package's capture tool rebuilds every derived file
-// inline, with none of scheduleReindex's coalescing. Parallel capture agents
-// must therefore not be inside that rebuild at the same time.
-describe("serializeVaultWrites", () => {
+// inline, and pi-llm-wiki allocates source ids by listing a directory. Neither
+// is safe with two orient sessions in one vault.
+describe("guardVaultWrites", () => {
+  const guard = () => ({
+    wikiHome: mkdtempSync(join(tmpdir(), "semla-guard-")),
+    repoOf: () => null,
+  });
+
   const deferredTool = (name: string, log: string[]) => ({
     name,
     async execute(id: never) {
@@ -105,57 +114,74 @@ describe("serializeVaultWrites", () => {
 
   it("never lets two vault writes overlap", async () => {
     const log: string[] = [];
-    const [capture] = serializeVaultWrites([deferredTool("wiki_capture_source", log)]);
+    const [write] = guardVaultWrites([deferredTool("wiki_ensure_page", log)], guard());
 
     await Promise.all([
-      capture!.execute!("a" as never),
-      capture!.execute!("b" as never),
-      capture!.execute!("c" as never),
+      write!.execute!("a" as never),
+      write!.execute!("b" as never),
+      write!.execute!("c" as never),
     ]);
 
-    expect(log).toEqual([
-      "start:a", "end:a",
-      "start:b", "end:b",
-      "start:c", "end:c",
-    ]);
+    for (let i = 0; i < log.length; i += 2) {
+      expect(log[i + 1]).toBe(log[i]!.replace("start:", "end:"));
+    }
+    expect(log).toHaveLength(6);
   });
 
-  it("returns each call its own result, in order", async () => {
+  it("returns each call its own result", async () => {
     const log: string[] = [];
-    const [capture] = serializeVaultWrites([deferredTool("wiki_capture_source", log)]);
+    const [write] = guardVaultWrites([deferredTool("wiki_ensure_page", log)], guard());
 
-    const results = await Promise.all([
-      capture!.execute!("first" as never),
-      capture!.execute!("second" as never),
-    ]);
-
-    expect(results).toEqual(["first", "second"]);
+    await expect(
+      Promise.all([write!.execute!("first" as never), write!.execute!("second" as never)]),
+    ).resolves.toEqual(["first", "second"]);
   });
 
-  it("keeps the queue alive after a failed write", async () => {
+  it("releases the lock when a write throws", async () => {
+    const options = guard();
     const failing = {
-      name: "wiki_capture_source",
+      name: "wiki_ensure_page",
       execute: vi
         .fn()
         .mockRejectedValueOnce(new Error("vault locked"))
         .mockResolvedValueOnce("recovered"),
     };
-    const [capture] = serializeVaultWrites([failing]);
+    const [write] = guardVaultWrites([failing], options);
 
-    await expect(capture!.execute!()).rejects.toThrow("vault locked");
-    await expect(capture!.execute!()).resolves.toBe("recovered");
+    await expect(write!.execute!()).rejects.toThrow("vault locked");
+    await expect(write!.execute!()).resolves.toBe("recovered");
   });
 
-  it("leaves read-only tools running concurrently", async () => {
+  it("leaves read-only tools unwrapped", async () => {
     const log: string[] = [];
-    const [search] = serializeVaultWrites([deferredTool("wiki_search", log)]);
+    const [search] = guardVaultWrites([deferredTool("wiki_search", log)], guard());
 
-    await Promise.all([
-      search!.execute!("a" as never),
-      search!.execute!("b" as never),
-    ]);
+    await Promise.all([search!.execute!("a" as never), search!.execute!("b" as never)]);
 
-    // Interleaved, because nothing was wrapped.
     expect(log.slice(0, 2)).toEqual(["start:a", "start:b"]);
+  });
+
+  // The point of doing this at capture rather than at turn end: the source
+  // belongs to the session that captured it, not to whoever sweeps first.
+  it("attributes a source page the capture just created", async () => {
+    const wikiHome = mkdtempSync(join(tmpdir(), "semla-attr-"));
+    const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "SRC-001.md"), "---\ntype: source\nrepo: other\n---\n", "utf8");
+
+    const capture = {
+      name: "wiki_capture_source",
+      execute: async () => {
+        writeFileSync(join(dir, "SRC-002.md"), "---\ntype: source\n---\n", "utf8");
+        return "SRC-002";
+      },
+    };
+
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+    await tool!.execute!();
+
+    expect(readFileSync(join(dir, "SRC-002.md"), "utf8")).toContain("repo: semla");
+    // A source that already existed is not re-attributed.
+    expect(readFileSync(join(dir, "SRC-001.md"), "utf8")).toContain("repo: other");
   });
 });

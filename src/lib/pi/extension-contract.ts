@@ -59,6 +59,16 @@ export const WIKI_REINDEX_DISPATCHER = Symbol.for(
 /** Published per prompt turn by session-service.ts; called by the wiki bridge. */
 export const BRIDGE_RUN_STARTED = Symbol.for("semla.bridge-run-started");
 
+/**
+ * Pi session id → repo slug, published by session-service and read by the wiki
+ * bridge to attribute captured sources.
+ *
+ * Keyed rather than a bare value because concurrent orient sessions share one
+ * process: a single "current repo" slot would be overwritten by whichever
+ * session started last, which is the misattribution this exists to prevent.
+ */
+export const WIKI_SESSION_REPOS = Symbol.for("semla.wiki.session-repos");
+
 /** Run-id → manager registry, shared with workflow-manager-registry.ts. */
 export const WORKFLOW_MANAGER_REGISTRY = Symbol.for("semla.workflow.managers");
 
@@ -134,6 +144,7 @@ export interface ContractSlots {
   [WIKI_INGEST_DISPATCHER]: WikiIngestDispatcher;
   [WIKI_REINDEX_DISPATCHER]: WikiReindexDispatcher;
   [BRIDGE_RUN_STARTED]: BridgeRunNotifier;
+  [WIKI_SESSION_REPOS]: Map<string, string>;
   [WORKFLOW_MANAGER_REGISTRY]: Map<string, WeakRef<WorkflowSnapshotSource>>;
   [EXTENSION_HEALTH]: ExtensionHealthSnapshot;
 }
@@ -182,6 +193,7 @@ export const CONTRACT_SLOT_KEYS = [
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
   BRIDGE_RUN_STARTED,
+  WIKI_SESSION_REPOS,
   WORKFLOW_MANAGER_REGISTRY,
   EXTENSION_HEALTH,
 ] as const satisfies readonly ContractSlotKey[];
