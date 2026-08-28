@@ -222,6 +222,13 @@ export interface WorkflowManagerOptions {
    */
   toolsets?: Record<string, () => ToolDefinition[]>;
   /**
+   * Semla addition: toolset applied to runs that do not name one, so tools every
+   * subagent should hold are available by default rather than depending on the
+   * authoring model remembering to ask for them. An explicit `toolset` on the
+   * run, and explicit `tools` on the execution, both still win.
+   */
+  defaultToolset?: string;
+  /**
    * Extra tool NAMES to deny in every subagent session, on top of the always-on
    * `workflow`/`workflow_control` defaults (see DEFAULT_EXCLUDED_SUBAGENT_TOOLS).
    * Host wiring passes settings.excludeSubagentTools here so users can also block
@@ -254,6 +261,7 @@ export type WorkflowManagerReloadOptions = Pick<
   | "defaultAgentRetries"
   | "defaultTokenBudget"
   | "toolsets"
+  | "defaultToolset"
   | "excludeSubagentTools"
   | "persistAgentSessions"
 >;
@@ -348,6 +356,7 @@ export class WorkflowManager extends EventEmitter {
   private defaultAgentRetries: number;
   private defaultTokenBudget: number | null;
   private toolsets?: Record<string, () => ToolDefinition[]>;
+  private defaultToolset?: string;
   private excludeSubagentTools?: string[];
   private persistAgentSessions: boolean;
 
@@ -364,6 +373,7 @@ export class WorkflowManager extends EventEmitter {
     this.defaultAgentRetries = options.defaultAgentRetries ?? 0;
     this.defaultTokenBudget = options.defaultTokenBudget ?? null;
     this.toolsets = options.toolsets;
+    this.defaultToolset = options.defaultToolset;
     this.excludeSubagentTools = options.excludeSubagentTools;
     this.persistAgentSessions = options.persistAgentSessions ?? false;
     this.maxTerminalRunsInMemory = options.maxTerminalRunsInMemory ?? DEFAULT_MAX_TERMINAL_RUNS_IN_MEMORY;
@@ -448,6 +458,7 @@ export class WorkflowManager extends EventEmitter {
     this.defaultAgentRetries = options.defaultAgentRetries ?? 0;
     this.defaultTokenBudget = options.defaultTokenBudget ?? null;
     this.toolsets = options.toolsets;
+    this.defaultToolset = options.defaultToolset;
     this.excludeSubagentTools = options.excludeSubagentTools;
     this.persistAgentSessions = options.persistAgentSessions ?? false;
   }
@@ -691,7 +702,11 @@ export class WorkflowManager extends EventEmitter {
     // Explicit tools win for this execution; else re-resolve the run's persisted
     // toolset tag (how a resumed /deep-research keeps its web tools); else the
     // agent layer's default coding tools.
-    const resolvedTools = tools ?? (managed.toolset ? this.toolsets?.[managed.toolset]?.() : undefined);
+    // Falls back to the host's default toolset (Semla points this at its wiki
+    // tools) so a run that never named one still gets more than bare coding
+    // tools. Unknown names resolve to undefined and degrade to the defaults.
+    const toolsetName = managed.toolset ?? this.defaultToolset;
+    const resolvedTools = tools ?? (toolsetName ? this.toolsets?.[toolsetName]?.() : undefined);
     // Gated the same way as this.emitLive() below (see isCurrent()) — a stale
     // execution's progress callback would otherwise keep driving live UI
     // (task panel, etc.) for a run that's been superseded or deleted.
