@@ -90,7 +90,25 @@ Ask: **"Approve all, approve by section (A / B / C / stubs), skip, or modify?"**
 
 Do not proceed until the user responds.
 
-### 6. Apply approved changes
+### 6. Draft content for merges and expansions
+
+Before touching any live pages, write proposed content to a staging directory at `$WIKI_HOME/.llm-wiki/.consolidate-staging/`. Create it if it does not exist.
+
+#### Draft a merge
+1. Read both pages.
+2. Compose merged content: combine unique facts, keep the better prose structure, preserve all out-links from both pages.
+3. Write the draft to `$WIKI_HOME/.llm-wiki/.consolidate-staging/{surviving-path}.md`.
+
+#### Draft an expansion
+1. Call `wiki_recall` with the stub's title to surface related content.
+2. Compose expanded content (at least 300 words of factual content drawn from related pages — do not fabricate).
+3. Write the draft to `$WIKI_HOME/.llm-wiki/.consolidate-staging/{stub-path}.md`.
+
+After all drafts are written, tell the user which files are staged and ask: **"Review the drafts in `.llm-wiki/.consolidate-staging/`. Confirm to apply, or specify changes."**
+
+Do not proceed until the user responds.
+
+### 7. Apply approved changes
 
 Work through each approved action in this order: deletions → merges → expansions. Call `wiki_rebuild_meta` **once** after all changes, not after each file.
 
@@ -98,18 +116,16 @@ Work through each approved action in this order: deletions → merges → expans
 1. Delete the `.md` file from `$WIKI_HOME/.llm-wiki/wiki/{path}.md`.
 
 #### Merge
-1. Read both pages.
-2. Write merged content into the surviving page: combine unique facts, keep the better prose structure, preserve all out-links from both pages.
-3. Delete the absorbed page's `.md` file.
-4. Find all pages that link to the absorbed path (`[[absorbed-title]]` or `[text](/absorbed/path.md)`) and update them to point to the survivor.
+1. Copy the staged draft from `.consolidate-staging/{surviving-path}.md` over the live page at `$WIKI_HOME/.llm-wiki/wiki/{surviving-path}.md`.
+2. Delete the absorbed page's `.md` file.
+3. Find all pages that link to the absorbed path (`[[absorbed-title]]` or `[text](/absorbed/path.md)`) and update them to point to the survivor.
 
 #### Expansion
-1. Call `wiki_recall` with the stub's title to surface related content.
-2. Rewrite the stub page with at least 300 words of factual content drawn from related pages. Do not fabricate.
+1. Copy the staged draft from `.consolidate-staging/{stub-path}.md` over the live page at `$WIKI_HOME/.llm-wiki/wiki/{stub-path}.md`.
 
-After all file changes, call `wiki_rebuild_meta` to rebuild the registry and backlinks.
+After all file changes, delete the `.consolidate-staging/` directory and call `wiki_rebuild_meta` to rebuild the registry and backlinks.
 
-### 7. Log and report
+### 8. Log and report
 
 Call `wiki_log_event` with `kind: "consolidate"` and `details` containing:
 - `deleted`: number
