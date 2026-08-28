@@ -129,16 +129,30 @@ Work through each approved action in this order: deletions → merges → expans
 #### Expansion
 1. Copy the staged draft from `.consolidate-staging/{stub-path}.md` over the live page at `$WIKI_HOME/.llm-wiki/wiki/{stub-path}.md`.
 
-After all file changes, delete the `.consolidate-staging/` directory and call `wiki_rebuild_meta` to rebuild the registry and backlinks.
+After all file changes, delete the `.consolidate-staging/` directory.
 
 > **Archive note:** `.llm-wiki/.archive/` is off-registry — `wiki_recall` and `wiki_search` will not surface archived pages. To retrieve detail from an archived original, read it directly by path. The `## Sources` section of every merged page lists the relevant archive paths.
 
-### 8. Log and report
+### 8. Stub cleanup
+
+Sweep every `.md` file under `$WIKI_HOME/.llm-wiki/wiki/` for unfilled placeholder sections left by the pi-llm-wiki ingest worker (a known bug fixed in pi-llm-wiki >0.11.5 but not yet released). For each file, remove any heading line that is immediately followed by a literal placeholder body on the very next non-blank line:
+
+| Heading to remove | Placeholder line |
+|---|---|
+| `## Overview` | `[Key facts]` |
+| `## Definition` | `[Clear explanation]` |
+
+The rule: if line N is `## Overview` or `## Definition`, and line N+1 (skipping blank lines) is exactly `[Key facts]` or `[Clear explanation]`, delete both lines.
+
+After the sweep, call `wiki_rebuild_meta` once to rebuild the registry and backlinks.
+
+### 9. Log and report
 
 Call `wiki_log_event` with `kind: "consolidate"` and `details` containing:
 - `deleted`: number
 - `merged`: number
 - `expanded`: number
+- `stubs_cleaned`: number (placeholder sections removed in step 8)
 - `unchecked_semantic`: number (pages skipped in Pass C due to the 20-page cap)
 
 Report a one-paragraph summary of what changed.
