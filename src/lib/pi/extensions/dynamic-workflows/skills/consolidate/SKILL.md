@@ -97,7 +97,13 @@ Before touching any live pages, write proposed content to a staging directory at
 #### Draft a merge
 1. Read both pages.
 2. Compose merged content: combine unique facts, keep the better prose structure, preserve all out-links from both pages.
-3. Write the draft to `$WIKI_HOME/.llm-wiki/.consolidate-staging/{surviving-path}.md`.
+3. Append a `## Sources` section at the end listing each absorbed page by its archive path and title:
+   ```
+   ## Sources
+   - `.archive/entities/authentication-service.md` — Authentication Service (merged 2025-06-01)
+   ```
+   This section enables two-tier recall: the consolidated page answers most queries; the agent can read an archived file directly by path when it needs the original detail.
+4. Write the draft to `$WIKI_HOME/.llm-wiki/.consolidate-staging/{surviving-path}.md`.
 
 #### Draft an expansion
 1. Call `wiki_recall` with the stub's title to surface related content.
@@ -113,17 +119,19 @@ Do not proceed until the user responds.
 Work through each approved action in this order: deletions → merges → expansions. Call `wiki_rebuild_meta` **once** after all changes, not after each file.
 
 #### Deletion
-1. Delete the `.md` file from `$WIKI_HOME/.llm-wiki/wiki/{path}.md`.
+1. Move the `.md` file to `$WIKI_HOME/.llm-wiki/.archive/{path}.md` (create parent directories as needed). Do not delete it.
 
 #### Merge
 1. Copy the staged draft from `.consolidate-staging/{surviving-path}.md` over the live page at `$WIKI_HOME/.llm-wiki/wiki/{surviving-path}.md`.
-2. Delete the absorbed page's `.md` file.
+2. Move the absorbed page to `$WIKI_HOME/.llm-wiki/.archive/{absorbed-path}.md` (create parent directories as needed).
 3. Find all pages that link to the absorbed path (`[[absorbed-title]]` or `[text](/absorbed/path.md)`) and update them to point to the survivor.
 
 #### Expansion
 1. Copy the staged draft from `.consolidate-staging/{stub-path}.md` over the live page at `$WIKI_HOME/.llm-wiki/wiki/{stub-path}.md`.
 
 After all file changes, delete the `.consolidate-staging/` directory and call `wiki_rebuild_meta` to rebuild the registry and backlinks.
+
+> **Archive note:** `.llm-wiki/.archive/` is off-registry — `wiki_recall` and `wiki_search` will not surface archived pages. To retrieve detail from an archived original, read it directly by path. The `## Sources` section of every merged page lists the relevant archive paths.
 
 ### 8. Log and report
 
