@@ -29,12 +29,21 @@ export const buildMemoryContextBlock = (
     "Always use **path-based wikilinks** when writing wiki page content: `[[entities/slug]]`, `[[concepts/slug]]`, `[[sources/SRC-xxx]]`, etc.",
     "Never use bare title wikilinks (`[[Page Title]]`) — the link resolver treats targets as literal page IDs, so bare titles never resolve.",
     "Do not write `[[...]]` inside inline code spans — the extractor is not code-span-aware and will treat it as a live link.",
+    "",
+    "## Wiki page frontmatter",
+    "",
+    "Every wiki page you create or update **must** include a `repo:` field in its YAML frontmatter:",
+    "- Single repo: `repo: semla`",
+    "- Page that spans multiple repos: `repo: [semla, ecs]` (YAML list)",
+    "Use the repository directory name or npm package name as the slug (lowercase, hyphenated).",
+    "Pages about generic tools or cross-cutting concepts that genuinely belong to no single repo may omit `repo:`.",
   ];
 
   if (projectPath) {
     lines.push(
       "",
       `The active project for this session is \`${projectPath}\`.`,
+      `For pages about this project, use \`repo: ${projectPath}\` in frontmatter.`,
       "",
       "Before starting work: call `wiki_recall` with the project name to check for existing codebase knowledge. If no pages are returned, invoke the `orient` skill to initialise the wiki for this repo.",
     );
