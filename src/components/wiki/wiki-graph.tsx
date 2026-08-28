@@ -1,265 +1,263 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import type { Node as FlowNode, Edge as FlowEdge, NodeProps } from "@xyflow/react";
-import { Handle, MarkerType, Position } from "@xyflow/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MultiGraph } from "graphology";
+import {
+  SigmaContainer,
+  useCamera,
+  useRegisterEvents,
+  useSetSettings,
+} from "@react-sigma/core";
+import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import ELK from "elkjs/lib/elk.bundled.js";
-import { Canvas } from "@/components/ai-elements/canvas";
-import { Controls } from "@/components/ai-elements/controls";
-import { cn } from "@/lib/utils";
+import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { navGroupFor, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
-// ─── Layout constants ────────────────────────────────────────────────────────
+// ─── Colors ──────────────────────────────────────────────────────────────────
 
-const NODE_W = 172;
-const NODE_H = 52;
-const HEADER_H = 32; // repo group label row
-const PAD = 16;
-const GROUP_GAP = 60;
-
-const elk = new ELK();
-
-// ─── Node components ─────────────────────────────────────────────────────────
-
-const TYPE_ACCENT: Record<WikiPageType, string> = {
-  entity: "text-blue-400",
-  concept: "text-violet-400",
-  synthesis: "text-amber-400",
-  analysis: "text-green-400",
-  requirement: "text-rose-400",
-  source: "text-slate-400",
+const TYPE_COLOR: Record<WikiPageType, string> = {
+  entity: "#60a5fa",
+  concept: "#a78bfa",
+  synthesis: "#fbbf24",
+  analysis: "#34d399",
+  requirement: "#f87171",
+  source: "#94a3b8",
 };
 
-interface WikiNodeData extends Record<string, unknown> {
-  label: string;
-  pageType: WikiPageType;
-  navGroup: string;
-  isSelected: boolean;
-  expanded: boolean;
-}
-
-function WikiPageNode({ id, data }: NodeProps<FlowNode<WikiNodeData>>) {
-  const { label, pageType, navGroup, isSelected, expanded } = data;
-
-  const query = useQuery<{ content: string }>({
-    queryKey: ["wiki-page", id],
-    queryFn: async () => {
-      const res = await fetch(`/api/wiki/page?path=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error(`Failed to load page (${res.status})`);
-      return res.json() as Promise<{ content: string }>;
-    },
-    enabled: expanded,
-    staleTime: Infinity,
-  });
-
-  // Strip YAML frontmatter so we don't show raw --- blocks.
-  const content = query.data?.content?.replace(/^---[\s\S]*?---\n*/m, "").trim();
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col rounded-md border bg-card px-3 py-2 transition-colors cursor-pointer",
-        isSelected
-          ? "border-primary ring-1 ring-primary"
-          : "border-border/60 hover:border-border",
-      )}
-      style={{ width: expanded ? NODE_W * 2.5 : NODE_W }}
-    >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!h-2 !w-2 !border-muted-foreground !bg-muted"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!h-2 !w-2 !border-muted-foreground !bg-muted"
-      />
-      <p className="truncate text-xs font-medium leading-tight">{label}</p>
-      <p className={cn("mt-0.5 text-[10px]", TYPE_ACCENT[pageType])}>
-        {navGroup === "observation" ? "observation" : pageType}
-      </p>
-      {expanded && (
-        <div className="mt-2 border-t border-border/40 pt-2">
-          {query.isPending && (
-            <p className="text-[10px] text-muted-foreground">Loading…</p>
-          )}
-          {query.isError && (
-            <p className="text-[10px] text-destructive">Could not load page.</p>
-          )}
-          {content && (
-            <div className="max-h-48 overflow-y-auto">
-              <div className="prose prose-xs prose-invert max-w-none [&_*]:text-[10px] [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-xs">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface RepoGroupData extends Record<string, unknown> {
-  label: string;
-}
-
-function WikiRepoGroup({ data }: NodeProps<FlowNode<RepoGroupData>>) {
-  return (
-    <div className="h-full w-full rounded-lg border border-border/40 bg-secondary/30">
-      <p className="px-3 py-2 font-heading text-xs font-semibold">{data.label}</p>
-    </div>
-  );
-}
-
-const nodeTypes = { wikiPage: WikiPageNode, wikiRepo: WikiRepoGroup };
-
-// ─── Type ordering for consistent isolated-node ordering within groups ───────
-
-const TYPE_ORDER: Partial<Record<WikiPageType, number>> = {
-  entity: 0,
-  concept: 1,
-  synthesis: 2,
-  analysis: 3,
-  requirement: 4,
+const TYPE_SIZE: Record<WikiPageType, number> = {
+  entity: 8,
+  concept: 7,
+  synthesis: 9,
+  analysis: 7,
+  requirement: 7,
   source: 5,
 };
 
-// ─── ELK layout ──────────────────────────────────────────────────────────────
+// ─── Graph builder ───────────────────────────────────────────────────────────
 
-type NodePos = { id: string; x: number; y: number };
-
-async function computeLayout(
+function buildGraph(
   pages: Record<string, WikiPageMeta>,
   links: WikiLink[],
-): Promise<FlowNode[]> {
-  // ── 1. Group paths by repo ──────────────────────────────────────────────
-  const repoGroups = new Map<string, string[]>();
-  for (const [path, meta] of Object.entries(pages)) {
-    const repo = meta.repo ?? "Unknown";
-    if (!repoGroups.has(repo)) repoGroups.set(repo, []);
-    repoGroups.get(repo)!.push(path);
-  }
+): MultiGraph {
+  const graph = new MultiGraph();
+  const entries = Object.entries(pages);
+  const total = entries.length;
 
-  // Sort nodes within each group by type then title so isolated nodes of the
-  // same type land near each other in the stress layout.
-  for (const paths of repoGroups.values()) {
-    paths.sort((a, b) => {
-      const ma = pages[a];
-      const mb = pages[b];
-      const ta = TYPE_ORDER[ma.type] ?? 99;
-      const tb = TYPE_ORDER[mb.type] ?? 99;
-      return ta !== tb ? ta - tb : ma.title.localeCompare(mb.title);
+  entries.forEach(([path, meta], i) => {
+    const angle = (2 * Math.PI * i) / Math.max(total, 1);
+    const r = 200;
+    graph.addNode(path, {
+      label: meta.title,
+      x: r * Math.cos(angle),
+      y: r * Math.sin(angle),
+      size: TYPE_SIZE[meta.type] ?? 6,
+      color: TYPE_COLOR[meta.type] ?? "#94a3b8",
+      type: "circle",
     });
-  }
+  });
 
-  const validLinks = links.filter(({ source, target }) => source in pages && target in pages);
-
-  // ── 2. Run ELK inside each repo group ──────────────────────────────────
-  const groupNodePositions = new Map<string, NodePos[]>();
-  const groupSizes = new Map<string, { w: number; h: number }>();
-
-  for (const [repo, paths] of repoGroups) {
-    const pathSet = new Set(paths);
-    const intraEdges = validLinks
-      .filter(({ source, target }) => pathSet.has(source) && pathSet.has(target))
-      .map(({ source, target }) => ({
-        id: `${source}__${target}`,
-        sources: [source],
-        targets: [target],
-      }));
-
-    const result = await elk.layout({
-      id: `group-${repo}`,
-      layoutOptions: {
-        // Stress: force-directed, clusters connected nodes naturally.
-        "elk.algorithm": "org.eclipse.elk.stress",
-        // Bias toward wider-than-tall within each group.
-        "elk.aspectRatio": "2.0",
-        // Preferred length for edges so connected nodes sit close.
-        "org.eclipse.elk.stress.desiredEdgeLength": "140",
-        // Each connected component is laid out independently, then
-        // components are packed together; isolated nodes each form
-        // a single-node component and are placed side by side.
-        "elk.separateConnectedComponents": "true",
-        "elk.spacing.componentComponent": "30",
-        // Fixed seed → stable layout across re-renders.
-        "org.eclipse.elk.randomSeed": "42",
-      },
-      children: paths.map((path) => ({ id: path, width: NODE_W, height: NODE_H })),
-      edges: intraEdges,
-    });
-
-    const positions: NodePos[] = (result.children ?? []).map((n) => ({
-      id: n.id!,
-      x: n.x ?? 0,
-      y: n.y ?? 0,
-    }));
-    groupNodePositions.set(repo, positions);
-
-    // Derive bounding box from child positions (ELK doesn't expose root w/h in types).
-    const maxX = positions.reduce((m, n) => Math.max(m, n.x + NODE_W), NODE_W);
-    const maxY = positions.reduce((m, n) => Math.max(m, n.y + NODE_H), NODE_H);
-    const w = maxX + PAD * 2;
-    const h = HEADER_H + maxY + PAD * 2;
-    groupSizes.set(repo, { w, h });
-  }
-
-  // ── 3. Lay out groups left-to-right ────────────────────────────────────
-  const flowNodes: FlowNode[] = [];
-  let groupX = 0;
-
-  for (const [repo, paths] of repoGroups) {
-    const size = groupSizes.get(repo)!;
-    const groupId = `repo:${repo}`;
-    const posMap = new Map(
-      (groupNodePositions.get(repo) ?? []).map((n) => [n.id, n]),
-    );
-
-    flowNodes.push({
-      id: groupId,
-      type: "wikiRepo",
-      position: { x: groupX, y: 0 },
-      style: { width: size.w, height: size.h },
-      data: { label: repo },
-      draggable: false,
-      selectable: false,
-    });
-
-    for (const path of paths) {
-      const meta = pages[path];
-      const pos = posMap.get(path) ?? { x: 0, y: 0 };
-      // Child positions are relative to the group; offset by header + padding.
-      flowNodes.push({
-        id: path,
-        type: "wikiPage",
-        parentId: groupId,
-        extent: "parent",
-        position: { x: pos.x + PAD, y: pos.y + HEADER_H + PAD },
-        data: {
-          label: meta.title,
-          pageType: meta.type,
-          navGroup: navGroupFor(meta),
-          isSelected: false,
-          // expanded is merged in at render time.
-          expanded: false,
-        },
-        draggable: false,
-        selectable: false,
-        style: { width: NODE_W },
-      });
+  for (const { source, target } of links) {
+    if (graph.hasNode(source) && graph.hasNode(target) && source !== target) {
+      try {
+        graph.addEdge(source, target, {
+          size: 1,
+          color: "#334155",
+        });
+      } catch {
+        // ignore duplicate edges in MultiGraph
+      }
     }
-
-    groupX += size.w + GROUP_GAP;
   }
 
-  return flowNodes;
+  return graph;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Inner controller (must be inside SigmaContainer) ────────────────────────
+
+interface GraphControllerProps {
+  selectedPath: string | null;
+  expandedPath: string | null;
+  onNodeClick: (path: string) => void;
+}
+
+function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphControllerProps) {
+  const registerEvents = useRegisterEvents();
+  const setSettings = useSetSettings();
+  const { zoomIn, zoomOut, reset } = useCamera({ duration: 200 });
+  const { start, kill } = useWorkerLayoutForceAtlas2({
+    settings: { gravity: 1, scalingRatio: 10, slowDown: 10 },
+  });
+
+  // Run layout on mount, stop after 4 s.
+  useEffect(() => {
+    start();
+    const t = setTimeout(kill, 4000);
+    return () => {
+      clearTimeout(t);
+      kill();
+    };
+  }, [start, kill]);
+
+  // Keep a ref to selected/expanded so the node reducer stays current without
+  // recreating sigma (useSetSettings is stable).
+  const stateRef = useRef({ selectedPath, expandedPath });
+  useEffect(() => {
+    stateRef.current = { selectedPath, expandedPath };
+  }, [selectedPath, expandedPath]);
+
+  // Update nodeReducer whenever highlight state changes.
+  useEffect(() => {
+    setSettings({
+      nodeReducer: (node, data) => {
+        const { selectedPath: sel, expandedPath: exp } = stateRef.current;
+        const isActive = node === sel || node === exp;
+        return {
+          ...data,
+          color: isActive ? "#f8fafc" : data.color,
+          size: isActive ? (data.size as number) + 3 : data.size,
+          zIndex: isActive ? 1 : 0,
+        };
+      },
+      edgeReducer: (_edge, data) => ({ ...data, hidden: false }),
+    });
+  }, [selectedPath, expandedPath, setSettings]);
+
+  // Register click events.
+  useEffect(() => {
+    registerEvents({
+      clickNode: ({ node }) => onNodeClick(node),
+      clickStage: () => onNodeClick(""),
+    });
+  }, [registerEvents, onNodeClick]);
+
+  return (
+    <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-10">
+      <button
+        onClick={() => zoomIn()}
+        className="flex h-7 w-7 items-center justify-center rounded border border-border/60 bg-card text-muted-foreground hover:text-foreground transition-colors"
+        title="Zoom in"
+      >
+        <ZoomIn className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => zoomOut()}
+        className="flex h-7 w-7 items-center justify-center rounded border border-border/60 bg-card text-muted-foreground hover:text-foreground transition-colors"
+        title="Zoom out"
+      >
+        <ZoomOut className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => reset()}
+        className="flex h-7 w-7 items-center justify-center rounded border border-border/60 bg-card text-muted-foreground hover:text-foreground transition-colors"
+        title="Fit view"
+      >
+        <Maximize2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Expanded page panel ──────────────────────────────────────────────────────
+
+interface ExpandedPanelProps {
+  path: string;
+  meta: WikiPageMeta | undefined;
+  onNavigate: (path: string) => void;
+  onClose: () => void;
+}
+
+function ExpandedPanel({ path, meta, onNavigate, onClose }: ExpandedPanelProps) {
+  const query = useQuery<{ content: string }>({
+    queryKey: ["wiki-page", path],
+    queryFn: async () => {
+      const res = await fetch(`/api/wiki/page?path=${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error(`Failed to load page (${res.status})`);
+      return res.json() as Promise<{ content: string }>;
+    },
+    staleTime: Infinity,
+  });
+
+  const content = query.data?.content?.replace(/^---[\s\S]*?---\n*/m, "").trim();
+  const navGroup = meta ? navGroupFor(meta) : null;
+
+  return (
+    <div className="absolute right-3 top-3 z-20 flex w-80 flex-col rounded-lg border border-border bg-card shadow-lg">
+      <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{meta?.title ?? path}</p>
+          {meta && (
+            <p
+              className="mt-0.5 text-[10px]"
+              style={{ color: TYPE_COLOR[meta.type] }}
+            >
+              {navGroup === "observation" ? "observation" : meta.type}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="max-h-72 overflow-y-auto px-4 py-3">
+        {query.isPending && (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        )}
+        {query.isError && (
+          <p className="text-xs text-destructive">Could not load page.</p>
+        )}
+        {content && (
+          <div className="prose prose-xs prose-invert max-w-none [&_*]:text-[11px] [&_h1]:text-xs [&_h2]:text-xs [&_h3]:text-xs">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t px-4 py-2.5">
+        <button
+          onClick={() => onNavigate(path)}
+          className="text-xs text-blue-400 hover:underline underline-offset-2"
+        >
+          Open full page →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Legend ──────────────────────────────────────────────────────────────────
+
+const LEGEND_ENTRIES: Array<{ type: WikiPageType; label: string }> = [
+  { type: "entity", label: "Entity" },
+  { type: "concept", label: "Concept" },
+  { type: "synthesis", label: "Synthesis" },
+  { type: "analysis", label: "Analysis" },
+  { type: "requirement", label: "Requirement" },
+  { type: "source", label: "Source" },
+];
+
+function Legend() {
+  return (
+    <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-lg border border-border/60 bg-card/80 px-3 py-2 backdrop-blur-sm">
+      {LEGEND_ENTRIES.map(({ type, label }) => (
+        <div key={type} className="flex items-center gap-2">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: TYPE_COLOR[type] }}
+          />
+          <span className="text-[10px] text-muted-foreground">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Public component ─────────────────────────────────────────────────────────
 
 interface WikiGraphProps {
   pages: Record<string, WikiPageMeta>;
@@ -269,79 +267,60 @@ interface WikiGraphProps {
 }
 
 export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [baseNodes, setBaseNodes] = useState<FlowNode[]>([]);
-  const [edges, setEdges] = useState<FlowEdge[]>([]);
+  const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
-  const onToggle = useCallback((id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const graph = useMemo(() => buildGraph(pages, links), [pages, links]);
+
+  const handleNodeClick = useCallback((path: string) => {
+    setExpandedPath(path || null);
   }, []);
 
-  // Re-run ELK when the page set or link set changes.
-  useEffect(() => {
-    setExpandedIds(new Set());
-
-    const validLinks = links.filter(({ source, target }) => source in pages && target in pages);
-
-    computeLayout(pages, links).then(setBaseNodes);
-
-    setEdges(
-      validLinks.map(({ source, target }) => ({
-        id: `${source}__${target}`,
-        source,
-        target,
-        type: "default",
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 10,
-          height: 10,
-          color: "var(--muted-foreground)",
-        },
-        style: { stroke: "var(--muted-foreground)", strokeWidth: 1 },
-      })),
-    );
-  }, [pages, links]);
-
-  // Merge per-render state (selection, expansion) into node data without
-  // triggering a full ELK re-run.
-  const nodes = baseNodes.map((node) => {
-    if (node.type !== "wikiPage") return node;
-    const expanded = expandedIds.has(node.id);
-    return {
-      ...node,
-      zIndex: expanded ? 1000 : 1,
-      data: {
-        ...node.data,
-        isSelected: node.id === selectedPath,
-        expanded,
-      },
-    };
-  });
-
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: FlowNode) => {
-      if (node.type === "wikiPage") onToggle(node.id);
+  const handleNavigate = useCallback(
+    (path: string) => {
+      setExpandedPath(null);
+      onNavigate(path);
     },
-    [onToggle],
+    [onNavigate],
   );
 
+  const expandedMeta = expandedPath ? pages[expandedPath] : undefined;
+
   return (
-    <Canvas
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      onNodeClick={onNodeClick}
-      nodesConnectable={false}
-      edgesReconnectable={false}
-      nodesDraggable={false}
-      fitView
-    >
-      <Controls />
-    </Canvas>
+    <div className="relative h-full w-full overflow-hidden bg-background">
+      <SigmaContainer
+        graph={graph}
+        settings={{
+          defaultNodeType: "circle",
+          defaultEdgeType: "arrow",
+          renderEdgeLabels: false,
+          labelFont: "Inter, sans-serif",
+          labelSize: 11,
+          labelWeight: "400",
+          labelColor: { color: "#94a3b8" },
+          defaultEdgeColor: "#334155",
+          minCameraRatio: 0.05,
+          maxCameraRatio: 4,
+        }}
+        className="h-full w-full"
+        style={{ background: "transparent" }}
+      >
+        <GraphController
+          selectedPath={selectedPath}
+          expandedPath={expandedPath}
+          onNodeClick={handleNodeClick}
+        />
+      </SigmaContainer>
+
+      <Legend />
+
+      {expandedPath && (
+        <ExpandedPanel
+          path={expandedPath}
+          meta={expandedMeta}
+          onNavigate={handleNavigate}
+          onClose={() => setExpandedPath(null)}
+        />
+      )}
+    </div>
   );
 }
