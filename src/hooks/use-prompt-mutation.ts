@@ -137,7 +137,8 @@ export const usePromptMutation = (sessionId: string) => {
             setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
             if (
               !wikiActiveRef.current &&
-              (piEvent.toolName === "wiki_init" ||
+              (piEvent.toolName === "wiki_bootstrap" ||
+                piEvent.toolName === "wiki_init" ||
                 piEvent.toolName === "wiki_capture_source")
             ) {
               wikiActiveRef.current = true;
