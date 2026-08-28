@@ -38,6 +38,7 @@ import {
   WorkflowManager,
 } from "./dynamic-workflows/src/index";
 import type { WorkflowStorage } from "./dynamic-workflows/src/workflow-saved";
+import { WIKI_SUBAGENT_TOOLSET } from "./wiki-subagent-tools.js";
 import {
   ACTIVE_WORKFLOW_MANAGER,
   readSlot,
@@ -110,7 +111,7 @@ export function sessionFileCwd(
 }
 
 
-function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
+export function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
   const settings = loadWorkflowSettings({ cwd });
   // Proxy so toolsets registered after manager construction (e.g. wiki-ingest-bridge)
   // are visible without requiring a manager rebuild.
@@ -135,6 +136,13 @@ function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
   return {
     loadSavedWorkflow: (name: string) => storage.load(name)?.script,
     toolsets,
+    // Wiki tools are part of every subagent's default set rather than something
+    // the authoring model has to request. Two orient runs fanned out without
+    // asking for them — the agents could not capture, improvised through bash,
+    // and one burned 3.19M tokens on the workaround. The toolset resolves
+    // through the Proxy above, so it picks up the entry the wiki bridge
+    // registers even though that extension loads after this one.
+    defaultToolset: WIKI_SUBAGENT_TOOLSET,
     excludeSubagentTools: settings.excludeSubagentTools,
     defaultAgentTimeoutMs: settings.defaultAgentTimeoutMs ?? null,
     defaultTokenBudget: settings.defaultTokenBudget ?? null,
