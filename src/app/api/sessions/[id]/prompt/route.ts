@@ -1,5 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { buildMemoryContextBlock, DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
+import { buildMemoryContextBlock } from "@/lib/pi/prompts";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
 import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateSystemPrompt, useUserSettings } from "@/hooks/use-user-settings";
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
 import { useState } from "react";
 
 export function SystemPromptEditor() {

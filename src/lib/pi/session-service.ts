@@ -11,7 +11,7 @@ import {
   retainBackgroundSession,
 } from "@/lib/pi/background-sessions";
 import { registerNotifier, type AskUserPayload } from "@/lib/pi/ask-user-bridge";
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompts";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
 import {
   createSessionDebugWriter,
   type SessionDebugWriter,
