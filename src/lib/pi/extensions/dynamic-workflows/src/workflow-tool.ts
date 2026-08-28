@@ -75,6 +75,17 @@ const workflowToolSchema = Type.Object({
         "Optional JSON value exposed to the workflow script as global `args`.",
     }),
   ),
+  // Semla addition: a host can register named toolsets (WorkflowManagerOptions
+  // .toolsets), but only a built-in invoked by `name` could ever select one —
+  // an inline `script` had no way to ask. That left agent-authored workflows
+  // stuck with the default coding tools even when the host had published
+  // exactly the tools the workflow needed.
+  toolset: Type.Optional(
+    Type.String({
+      description:
+        "Name of a host-registered toolset to give this run's agents instead of the default coding tools. Use `wiki` for workflows that capture sources or write wiki pages — without it, subagents have no wiki tools. Ignored when `name` is given, since a built-in carries its own.",
+    }),
+  ),
   background: Type.Optional(
     Type.Boolean({
       description:
@@ -229,6 +240,9 @@ export function createWorkflowTool(
         if (!params.script)
           throw new Error("workflow requires either `script` or `name`");
         script = normalizeWorkflowScript(params.script);
+        // An unknown tag resolves to the default coding tools (see
+        // WorkflowManagerOptions.toolsets), so a typo degrades rather than throws.
+        invocationToolset = params.toolset;
       }
       const parsed = parseWorkflowScript(script);
 
