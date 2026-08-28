@@ -25,6 +25,12 @@ import {
   WIKI_REINDEX_DISPATCHER,
 } from "../extension-contract.ts";
 import { WIKI_PACKAGE_DEEP_IMPORTS } from "./wiki-ingest-bridge.ts";
+import { WIKI_SUBAGENT_DEEP_IMPORTS } from "./wiki-subagent-tools.ts";
+
+// Both modules reach into the package through computed paths, so both need the
+// same compensating check. A release that renames a tool registrar would
+// otherwise leave workflow subagents silently toolless again.
+const DEEP_IMPORTS = [...WIKI_PACKAGE_DEEP_IMPORTS, ...WIKI_SUBAGENT_DEEP_IMPORTS];
 
 const WIKI_PACKAGE = "@zosmaai/pi-llm-wiki";
 const PI_NPM_DIR = join(process.cwd(), ".pi/npm");
@@ -60,12 +66,12 @@ describe(`${WIKI_PACKAGE} version pin`, () => {
 });
 
 describe(`${WIKI_PACKAGE} deep imports`, () => {
-  it.each(WIKI_PACKAGE_DEEP_IMPORTS)(
-    "$path still exists and exports what the bridge calls",
+  it.each(DEEP_IMPORTS)(
+    "$path still exists and exports what Semla calls",
     ({ path, exports }) => {
       expect(
         existsSync(path),
-        `${path} is gone. wiki-ingest-bridge.ts imports it at runtime; update the path or pin back.`,
+        `${path} is gone. Semla imports it at runtime; update the path or pin back.`,
       ).toBe(true);
 
       const source = readFileSync(path, "utf8");
@@ -80,7 +86,7 @@ describe(`${WIKI_PACKAGE} deep imports`, () => {
         );
         expect(
           declaration.test(source) || reExport.test(source),
-          `${path} no longer exports "${name}", which wiki-ingest-bridge.ts calls.`,
+          `${path} no longer exports "${name}", which Semla calls at runtime.`,
         ).toBe(true);
       }
     },

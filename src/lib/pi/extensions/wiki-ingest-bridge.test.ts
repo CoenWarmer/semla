@@ -67,6 +67,31 @@ describe("wikiIngestBridge factory", () => {
     wikiIngestBridge(makeMockPi());
     expect(typeof (globalThis as G)[REINDEX_DISPATCHER_KEY]).toBe("function");
   });
+
+  // Subagents used to get bash/read/edit/write and nothing else, so a workflow
+  // told to capture sources could not call wiki_capture_source at all.
+  it("publishes a wiki toolset carrying the real capture tool", async () => {
+    wikiIngestBridge(makeMockPi());
+
+    const toolsets = (globalThis as G)[EXTRA_TOOLSETS_KEY] as Record<
+      string,
+      () => Array<{ name: string }>
+    >;
+    expect(typeof toolsets.wiki).toBe("function");
+
+    // Collection is async and memoised; the manager only resolves the tag long
+    // after extension load, so let the cache warm the way it does in a session.
+    await vi.waitFor(() => {
+      expect(toolsets.wiki!().map((t) => t.name)).toContain("wiki_capture_source");
+    });
+
+    const names = toolsets.wiki!().map((t) => t.name);
+    // A named toolset replaces the defaults, so the coding tools must come too.
+    expect(names).toContain("bash");
+    expect(names).toContain("read");
+    // Recursion hazard: a subagent must not be able to start its own wiki run.
+    expect(names).not.toContain("wiki_ingest");
+  });
 });
 
 // ── Ingest dispatcher ─────────────────────────────────────────────────────────

@@ -21,7 +21,11 @@
  */
 
 import { join } from "node:path";
-import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  createCodingTools,
+  defineTool,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
   ACTIVE_WORKFLOW_MANAGER,
@@ -35,6 +39,10 @@ import {
   type WikiIngestDispatcher,
   type WikiReindexDispatcher,
 } from "../extension-contract.js";
+import {
+  collectWikiSubagentTools,
+  WIKI_SUBAGENT_TOOLSET,
+} from "./wiki-subagent-tools.js";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
@@ -361,10 +369,44 @@ function nextRunKey(prefix: string): string {
 
 // ── Extension entry point ──────────────────────────────────────────────────────
 
-// pi is required by the extension contract even though this bridge doesn't
-// register any tools or event handlers on it.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function wikiIngestBridge(_pi: ExtensionAPI) {
+/**
+ * Publish the wiki toolset so workflow subagents can reach the real wiki tools.
+ *
+ * Collection is async (the package is loaded through a computed path) but the
+ * manager resolves a toolset synchronously, so the tools are gathered once at
+ * extension load and the closure serves the cached array. A workflow cannot run
+ * before the extension set finishes loading, so the cache is always warm by the
+ * time anything reads it; if collection failed, the tag resolves to the plain
+ * coding tools — exactly the behaviour before this existed.
+ */
+function registerSubagentWikiToolset(pi: ExtensionAPI): void {
+  let wikiTools: Array<ReturnType<typeof defineTool>> = [];
+
+  void collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi)
+    .then((tools) => {
+      wikiTools = tools;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[wiki-bridge] wiki subagent toolset unavailable: ${message}. ` +
+          "Workflow subagents will fall back to coding tools only.",
+      );
+    });
+
+  const extraToolsets = readOrInitSlot(WORKFLOW_EXTRA_TOOLSETS, () => ({}));
+  // A named toolset replaces the default tool set rather than adding to it, so
+  // the coding tools have to be repeated here — see the "web-research" entry in
+  // workflow.ts, which does the same.
+  extraToolsets[WIKI_SUBAGENT_TOOLSET] = () => [
+    ...createCodingTools(process.cwd()),
+    ...wikiTools,
+  ];
+}
+
+export default function wikiIngestBridge(pi: ExtensionAPI) {
+  registerSubagentWikiToolset(pi);
+
   const dispatcher: WikiIngestDispatcher = (sources) => {
     const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
     if (!manager) return false;
