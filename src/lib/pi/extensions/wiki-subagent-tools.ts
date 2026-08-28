@@ -82,9 +82,62 @@ export const WIKI_SUBAGENT_DEEP_IMPORTS: ReadonlyArray<{
   },
 ];
 
+/**
+ * Tools that write to the vault, and so must not run concurrently.
+ *
+ * The registrars are called without a Runtime — deliberately, since
+ * pi-llm-wiki's Runtime launches its own background tasks, which the workflow
+ * run owning the subagent neither tracks nor outlives. The cost is that
+ * capture and ensure_page take their no-Runtime branch and call
+ * rebuildMetadataLight synchronously: a full rebuild of every derived file,
+ * per call, without scheduleReindex's single-flight coalescing. Six capture
+ * agents in parallel would each rebuild the whole vault from a different
+ * mid-flight snapshot and the last writer would win — the same race
+ * wiki_rebuild_meta is withheld for.
+ */
+const VAULT_WRITING_TOOLS = new Set([
+  "wiki_capture_source",
+  "wiki_ensure_page",
+  "wiki_log_event",
+]);
+
 /** Minimal shape this module needs from a registered tool. */
 interface NamedTool {
   name: string;
+}
+
+interface ExecutableTool extends NamedTool {
+  execute?: (...args: never[]) => unknown;
+}
+
+/**
+ * Run the vault writers one at a time.
+ *
+ * Only the write takes its turn — agents still read, reason and summarise
+ * concurrently, which is where a fan-out's time actually goes. A rejected call
+ * must not poison the queue, so the chain absorbs failures.
+ */
+export function serializeVaultWrites<T extends ExecutableTool>(tools: T[]): T[] {
+  let queue: Promise<unknown> = Promise.resolve();
+
+  return tools.map((tool) => {
+    if (!VAULT_WRITING_TOOLS.has(tool.name) || typeof tool.execute !== "function") {
+      return tool;
+    }
+
+    const execute = tool.execute.bind(tool);
+    return {
+      ...tool,
+      execute: (...args: never[]) => {
+        const result = queue.then(() => execute(...args));
+        queue = result.then(
+          () => undefined,
+          () => undefined,
+        );
+        return result;
+      },
+    };
+  });
 }
 
 /**
@@ -113,7 +166,7 @@ export function selectSubagentTools<T extends NamedTool>(tools: T[]): T[] {
  * touching the host session's tool set. Everything else falls through to the
  * real `pi`, which matters because capture-by-URL reaches back through it.
  */
-export async function collectWikiSubagentTools<T extends NamedTool>(
+export async function collectWikiSubagentTools<T extends ExecutableTool>(
   pi: object,
 ): Promise<T[]> {
   const registrars = (await import(WIKI_TOOLS_MODULE)) as Record<
@@ -133,5 +186,5 @@ export async function collectWikiSubagentTools<T extends NamedTool>(
     registrars[registrar]?.(collector);
   }
 
-  return selectSubagentTools(collected);
+  return serializeVaultWrites(selectSubagentTools(collected));
 }
