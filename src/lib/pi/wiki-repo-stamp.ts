@@ -34,46 +34,6 @@ const PAGE_DIRS = [
   "requirements",
 ] as const;
 
-const METADATA_PATH = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/metadata.ts",
-);
-
-/**
- * Deep import declared for wiki-package-contract.test.ts, which cannot see
- * through the computed path string above. Same reasoning as the bridge's list.
- */
-export const WIKI_STAMP_DEEP_IMPORTS: ReadonlyArray<{
-  path: string;
-  exports: readonly string[];
-}> = [{ path: METADATA_PATH, exports: ["rebuildMetadataLight"] }];
-
-/** Mirrors getVaultPaths in pi-llm-wiki utils.ts, as the ingest bridge does. */
-interface WikiVaultPaths {
-  root: string;
-  raw: string;
-  rawSources: string;
-  rawTrajectories: string;
-  wiki: string;
-  meta: string;
-  dotWiki: string;
-  outputs: string;
-  discoveries: string;
-}
-
-function buildVaultPaths(root: string): WikiVaultPaths {
-  return {
-    root,
-    raw: join(root, ".llm-wiki", "raw"),
-    rawSources: join(root, ".llm-wiki", "raw", "sources"),
-    rawTrajectories: join(root, ".llm-wiki", "raw", "trajectories"),
-    wiki: join(root, ".llm-wiki", "wiki"),
-    meta: join(root, ".llm-wiki", "meta"),
-    dotWiki: join(root, ".llm-wiki"),
-    outputs: join(root, ".llm-wiki", "outputs"),
-    discoveries: join(root, ".llm-wiki", ".discoveries"),
-  };
-}
 
 /**
  * Repo slug for a session's project path.
@@ -138,9 +98,32 @@ function findFence(lines: string[], open: number): number {
   return -1;
 }
 
+/** One page the sweep rewrote, and what it now declares. */
+export interface StampedPage {
+  id: string;
+  repo: string;
+}
+
+/** The parts of meta/registry.json this module touches. */
+interface WikiRegistryFile {
+  pages?: Record<string, { repo?: string | string[] }>;
+}
+
+/** `[a, b]` → ["a","b"], so the registry carries the shape wiki-types expects. */
+function parseRepoValue(value: string): string | string[] {
+  if (!value.startsWith("[")) return value;
+  return value
+    .replace(/^\[|\]$/g, "")
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+}
+
 export interface StampOutcome {
   changed: boolean;
   content: string;
+  /** What the page declares once this call is done, or null if nothing changed. */
+  repo: string | null;
 }
 
 /**
@@ -153,13 +136,13 @@ export interface StampOutcome {
  * it as body prose and the registry never sees it.
  */
 export function stampRepoFrontmatter(markdown: string, slug: string): StampOutcome {
+  const unchanged: StampOutcome = { changed: false, content: markdown, repo: null };
+
   const lines = markdown.split("\n");
-  if (lines.length === 0 || !isFence(lines[0]!)) {
-    return { changed: false, content: markdown };
-  }
+  if (lines.length === 0 || !isFence(lines[0]!)) return unchanged;
 
   const close = findFence(lines, 0);
-  if (close === -1) return { changed: false, content: markdown };
+  if (close === -1) return unchanged;
 
   // An orphan block may follow, separated by blank lines.
   let cursor = close + 1;
@@ -200,7 +183,13 @@ export function stampRepoFrontmatter(markdown: string, slug: string): StampOutco
   }
 
   const content = next.join("\n");
-  return { changed: content !== markdown, content };
+  if (content === markdown) return { changed: false, content: markdown, repo: null };
+
+  // An already-tagged page whose orphan block was removed keeps its own value.
+  const declared =
+    existing === -1 ? value : normalizeRepoValue(front[existing]!.replace(repoKey, ""));
+
+  return { changed: true, content, repo: declared };
 }
 
 /**
@@ -214,9 +203,9 @@ export function stampWikiPages(options: {
   slug: string;
   since: number;
   wikiHome?: string;
-}): string[] {
+}): StampedPage[] {
   const wikiDir = join(options.wikiHome ?? WIKI_HOME, ".llm-wiki", "wiki");
-  const stamped: string[] = [];
+  const stamped: StampedPage[] = [];
 
   for (const dir of PAGE_DIRS) {
     const full = join(wikiDir, dir);
@@ -233,9 +222,9 @@ export function stampWikiPages(options: {
       try {
         if (statSync(path).mtimeMs < options.since) continue;
         const outcome = stampRepoFrontmatter(readFileSync(path, "utf8"), options.slug);
-        if (!outcome.changed) continue;
+        if (!outcome.changed || !outcome.repo) continue;
         writeFileSync(path, outcome.content, "utf8");
-        stamped.push(`${dir}/${entry.replace(/\.md$/, "")}`);
+        stamped.push({ id: `${dir}/${entry.replace(/\.md$/, "")}`, repo: outcome.repo });
       } catch {
         // A page being rewritten underneath us is picked up on the next turn.
       }
@@ -246,28 +235,62 @@ export function stampWikiPages(options: {
 }
 
 /**
- * Stamp the pages a turn produced and refresh the derived metadata.
+ * Mirror the stamped values into `meta/registry.json`.
  *
- * The rebuild matters: the graph reads `meta/registry.json`, not the pages, so
- * a stamp that never makes it into the registry is invisible. Because the
- * field now lives in real frontmatter, every later rebuild carries it forward
- * on its own.
+ * The graph reads the registry, not the pages, so a stamp that stops at the
+ * markdown is invisible. pi-llm-wiki rebuilds this file from frontmatter and
+ * carries unrecognised keys through as extension fields, so this patch only
+ * has to cover the gap until the next rebuild — after which the field comes
+ * back on its own, because it now lives in real frontmatter.
+ *
+ * Deliberately a direct patch rather than a call into the package's own
+ * rebuild: those modules are TypeScript *inside node_modules*, which Node
+ * refuses to type-strip and Turbopack cannot resolve from an App Route.
+ */
+function patchRegistry(wikiHome: string, stamped: StampedPage[]): void {
+  const path = join(wikiHome, ".llm-wiki", "meta", "registry.json");
+
+  let registry: WikiRegistryFile;
+  try {
+    registry = JSON.parse(readFileSync(path, "utf8")) as WikiRegistryFile;
+  } catch {
+    return; // No registry yet — the wiki's own indexing will pick these pages up.
+  }
+  if (!registry.pages) return;
+
+  let touched = false;
+  for (const page of stamped) {
+    const entry = registry.pages[page.id];
+    // A page the wiki has not indexed yet is not ours to add: the next rebuild
+    // reads the frontmatter we just wrote and indexes it with the repo intact.
+    if (!entry) continue;
+    entry.repo = parseRepoValue(page.repo);
+    touched = true;
+  }
+
+  // Matches how pi-llm-wiki serialises the file, so a stamp shows up as a
+  // one-field diff rather than reformatting all 575 entries.
+  if (touched) writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Stamp the pages a turn produced and make the tags visible to the graph.
  */
 export async function stampSessionWikiPages(options: {
   projectPath: string | null;
   since: number;
   wikiHome?: string;
-}): Promise<string[]> {
+}): Promise<StampedPage[]> {
   const slug = repoSlugFromProjectPath(options.projectPath);
   if (!slug) return [];
 
-  const stamped = stampWikiPages({ slug, since: options.since, wikiHome: options.wikiHome });
-  if (stamped.length === 0) return [];
+  // Callers fire this and forget it from a finally block; yield first so the
+  // turn finishes tearing down before we start reading the vault.
+  await new Promise((resolve) => setImmediate(resolve));
 
-  const meta = (await import(METADATA_PATH)) as {
-    rebuildMetadataLight: (paths: WikiVaultPaths) => unknown;
-  };
-  meta.rebuildMetadataLight(buildVaultPaths(options.wikiHome ?? WIKI_HOME));
+  const wikiHome = options.wikiHome ?? WIKI_HOME;
+  const stamped = stampWikiPages({ slug, since: options.since, wikiHome });
+  if (stamped.length > 0) patchRegistry(wikiHome, stamped);
 
   return stamped;
 }

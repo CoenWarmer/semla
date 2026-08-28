@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   repoSlugFromProjectPath,
   stampRepoFrontmatter,
+  stampSessionWikiPages,
   stampWikiPages,
 } from "./wiki-repo-stamp.ts";
 
@@ -185,7 +186,11 @@ describe("stampRepoFrontmatter", () => {
     ["a page with no frontmatter", "# Just a heading\n"],
     ["an unterminated frontmatter block", "---\ntype: concept\n"],
   ])("leaves %s untouched", (_label, input) => {
-    expect(stampRepoFrontmatter(input, "semla")).toEqual({ changed: false, content: input });
+    expect(stampRepoFrontmatter(input, "semla")).toEqual({
+      changed: false,
+      content: input,
+      repo: null,
+    });
   });
 });
 
@@ -212,7 +217,7 @@ describe("stampWikiPages", () => {
 
     const stamped = stampWikiPages({ slug: "semla", since, wikiHome: home });
 
-    expect(stamped).toEqual(["concepts/new"]);
+    expect(stamped).toEqual([{ id: "concepts/new", repo: "semla" }]);
     expect(readFileSync(fresh, "utf8")).toContain("repo: semla");
     // A page from an earlier orient of another repo keeps its own story.
     expect(readFileSync(stale, "utf8")).not.toContain("repo:");
@@ -225,7 +230,7 @@ describe("stampWikiPages", () => {
 
     const stamped = stampWikiPages({ slug: "semla", since: 0, wikiHome: home });
 
-    expect(stamped).toEqual(["entities/thing"]);
+    expect(stamped).toEqual([{ id: "entities/thing", repo: "semla" }]);
   });
 
   it("reports nothing when every page is already tagged", () => {
@@ -233,5 +238,76 @@ describe("stampWikiPages", () => {
     write(home, "concepts/tagged.md", "---\ntype: concept\nrepo: other\n---\n");
 
     expect(stampWikiPages({ slug: "semla", since: 0, wikiHome: home })).toEqual([]);
+  });
+});
+
+// The graph reads meta/registry.json, not the pages, so a stamp that never
+// reaches the registry is invisible no matter how correct the frontmatter is.
+describe("stampSessionWikiPages", () => {
+  const vaultWithRegistry = (pages: Record<string, unknown>) => {
+    const home = mkdtempSync(join(tmpdir(), "semla-wiki-reg-"));
+    mkdirSync(join(home, ".llm-wiki", "wiki", "concepts"), { recursive: true });
+    mkdirSync(join(home, ".llm-wiki", "meta"), { recursive: true });
+    writeFileSync(
+      join(home, ".llm-wiki", "meta", "registry.json"),
+      `${JSON.stringify({ version: "1.0", pages }, null, 2)}\n`,
+      "utf8",
+    );
+    return home;
+  };
+
+  const registryOf = (home: string) =>
+    JSON.parse(
+      readFileSync(join(home, ".llm-wiki", "meta", "registry.json"), "utf8"),
+    ) as { pages: Record<string, { repo?: string | string[]; title?: string }> };
+
+  it("writes the stamped repo into the registry entry", async () => {
+    const home = vaultWithRegistry({
+      "concepts/thing": { type: "concept", title: "Thing" },
+    });
+    writeFileSync(
+      join(home, ".llm-wiki", "wiki", "concepts", "thing.md"),
+      "---\ntype: concept\ntitle: Thing\n---\n",
+      "utf8",
+    );
+
+    const stamped = await stampSessionWikiPages({
+      projectPath: "/Users/coen/Dev/react-otel-trace-waterfall",
+      since: 0,
+      wikiHome: home,
+    });
+
+    expect(stamped).toEqual([
+      { id: "concepts/thing", repo: "react-otel-trace-waterfall" },
+    ]);
+    const entry = registryOf(home).pages["concepts/thing"]!;
+    expect(entry.repo).toBe("react-otel-trace-waterfall");
+    // The patch must not clobber the rest of the entry.
+    expect(entry.title).toBe("Thing");
+  });
+
+  it("records a multi-repo page as a list, matching WikiPageMeta", async () => {
+    const home = vaultWithRegistry({ "concepts/shared": { type: "concept" } });
+    writeFileSync(
+      join(home, ".llm-wiki", "wiki", "concepts", "shared.md"),
+      "---\ntype: concept\n---\n\n---\nrepo: [semla, ecs]\n---\n",
+      "utf8",
+    );
+
+    await stampSessionWikiPages({ projectPath: "/Dev/other", since: 0, wikiHome: home });
+
+    expect(registryOf(home).pages["concepts/shared"]!.repo).toEqual(["semla", "ecs"]);
+  });
+
+  it("does nothing without a project path", async () => {
+    const home = vaultWithRegistry({ "concepts/thing": { type: "concept" } });
+    writeFileSync(
+      join(home, ".llm-wiki", "wiki", "concepts", "thing.md"),
+      "---\ntype: concept\n---\n",
+      "utf8",
+    );
+
+    expect(await stampSessionWikiPages({ projectPath: null, since: 0, wikiHome: home })).toEqual([]);
+    expect(registryOf(home).pages["concepts/thing"]!.repo).toBeUndefined();
   });
 });
