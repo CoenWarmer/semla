@@ -45,7 +45,7 @@ const SHARED_COLOR = "#22d3ee";  // cyan — visually distinct from all palette 
 const UNKNOWN_COLOR = "#475569"; // slate — no repo field at all
 
 /** Derive a stable repo→color mapping from the pages actually present, plus the default. */
-function buildRepoColorMap(
+export function buildRepoColorMap(
   pages: Record<string, WikiPageMeta>,
   defaultRepo: string | null,
 ): Map<string, string> {
@@ -72,7 +72,7 @@ function nodeColor(
 
 // ─── Graph builder ───────────────────────────────────────────────────────────
 
-function buildGraph(
+export function buildGraph(
   pages: Record<string, WikiPageMeta>,
   links: WikiLink[],
   repoColors: Map<string, string>,

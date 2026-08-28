@@ -65,6 +65,10 @@ export const usePromptMutation = (sessionId: string) => {
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
+  // Latches true the first time wiki_init or wiki_capture_source is seen; never
+  // resets to false for the lifetime of the hook (i.e. the session page).
+  const [wikiActive, setWikiActive] = useState(false);
+  const wikiActiveRef = useRef(false);
   // A ref, not state. This is written from inside the SSE reader loop and read
   // by onSettled a couple of milliseconds later, with no render in between — so
   // as state, onSettled always closed over the stale `false` and the refresh
@@ -131,6 +135,14 @@ export const usePromptMutation = (sessionId: string) => {
           } else if (piEvent.type === "tool-start") {
             setActiveTool(piEvent.toolName);
             setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
+            if (
+              !wikiActiveRef.current &&
+              (piEvent.toolName === "wiki_init" ||
+                piEvent.toolName === "wiki_capture_source")
+            ) {
+              wikiActiveRef.current = true;
+              setWikiActive(true);
+            }
           } else if (piEvent.type === "tool-end") {
             setActiveTool(undefined);
             setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
@@ -309,6 +321,7 @@ export const usePromptMutation = (sessionId: string) => {
     pendingQuestion,
     streamError,
     streamingText,
+    wikiActive,
     workflowSnapshot,
   };
 };
