@@ -129,3 +129,15 @@
     @apply font-sans;
   }
 }
+
+/* sigma.js container sizing — the library requires these to measure canvas dimensions */
+.sigma-container {
+  height: 100%;
+  width: 100%;
+}
+div.react-sigma {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  background: transparent;
+}
