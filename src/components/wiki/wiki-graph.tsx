@@ -90,25 +90,33 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
     settings: {
       gravity: 0.1,
-      scalingRatio: 30,
+      scalingRatio: 40,
       slowDown: 8,
       barnesHutOptimize: true,
       barnesHutTheta: 0.5,
     },
   });
+  const killNoverlapRef = useRef<(() => void) | null>(null);
   const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    settings: { margin: 5, expansion: 1.15 },
+    // margin 10 = halfway between "still overlapping" (5) and "ring" (20).
+    // onConverged self-terminates so we don't need to guess the duration.
+    settings: { margin: 10, expansion: 1.2 },
+    onConverged: () => killNoverlapRef.current?.(),
   });
 
-  // Run FA2 for 5 s to establish cluster structure, then noverlap for 5 s
-  // to let it fully converge on dense spots.
+  useEffect(() => {
+    killNoverlapRef.current = killNoverlap;
+  }, [killNoverlap]);
+
+  // FA2 runs for 5 s to establish cluster structure; noverlap then runs
+  // until it converges (or 10 s safety timeout).
   useEffect(() => {
     startFA2();
     const fa2Timer = setTimeout(() => {
       killFA2();
       startNoverlap();
-      const noverlapTimer = setTimeout(killNoverlap, 5000);
-      return () => clearTimeout(noverlapTimer);
+      const safetyTimer = setTimeout(killNoverlap, 10_000);
+      return () => clearTimeout(safetyTimer);
     }, 5000);
     return () => {
       clearTimeout(fa2Timer);
