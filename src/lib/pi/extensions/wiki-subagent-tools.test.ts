@@ -161,6 +161,33 @@ describe("guardVaultWrites", () => {
     expect(log.slice(0, 2)).toEqual(["start:a", "start:b"]);
   });
 
+  // This path once failed completely silently: the session -> repo map was keyed
+  // on a Supabase row id while the bridge looked up a pi runtime session id, so
+  // every lookup missed and capture-time attribution did nothing at all. The
+  // turn-end sweep covered for it, which is precisely why nobody noticed.
+  it("says so when a capture lands with no repo", async () => {
+    const wikiHome = mkdtempSync(join(tmpdir(), "semla-norepo-"));
+    const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+    mkdirSync(dir, { recursive: true });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const capture = {
+      name: "wiki_capture_source",
+      execute: async () => {
+        writeFileSync(join(dir, `SRC-${Date.now()}.md`), "---\ntype: source\n---\n", "utf8");
+        return "ok";
+      },
+    };
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => null });
+
+    await tool!.execute!();
+    await tool!.execute!();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("no repo");
+    warn.mockRestore();
+  });
+
   // The point of doing this at capture rather than at turn end: the source
   // belongs to the session that captured it, not to whoever sweeps first.
   it("attributes a source page the capture just created", async () => {

@@ -183,6 +183,12 @@ export function guardVaultWrites<T extends ExecutableTool>(
   tools: T[],
   options: VaultGuardOptions,
 ): T[] {
+  // A capture that lands with no repo is not fatal — the turn-end sweep still
+  // attributes it — so this failed completely silently once already, when the
+  // session→repo map was keyed on the wrong id and every lookup missed. Said
+  // once per session, because the quiet fallback is exactly what hid it.
+  let warnedNoRepo = false;
+
   return tools.map((tool) => {
     if (!VAULT_WRITING_TOOLS.has(tool.name) || typeof tool.execute !== "function") {
       return tool;
@@ -198,7 +204,16 @@ export function guardVaultWrites<T extends ExecutableTool>(
           const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
           const result = await execute(...args);
           const repo = options.repoOf();
-          if (before && repo) attributeNewSources(options.wikiHome, before, repo);
+          if (before && repo) {
+            attributeNewSources(options.wikiHome, before, repo);
+          } else if (before && !warnedNoRepo) {
+            warnedNoRepo = true;
+            console.warn(
+              "[wiki-bridge] captured a source with no repo for this session. " +
+                "Attribution falls back to the turn-end sweep, which is not safe " +
+                "when two orients share a vault.",
+            );
+          }
           return result;
         }),
     };

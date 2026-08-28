@@ -347,11 +347,6 @@ export const runPiPrompt = async ({
 
   const configuredModel = await getConfiguredModel(model);
   const piSession = await ensurePiSession(semlaSessionId, configuredModel);
-  // Publish this session's repo so the wiki bridge can attribute the sources
-  // its subagents capture. Keyed by pi session id because concurrent orients
-  // share this process — a single "current repo" would be whichever session
-  // started last, which is exactly the misattribution being fixed.
-  setSessionRepo(piSession.id, repoSlugFromProjectPath(projectPath));
   const persistedEntries = await fetchPersistedEntries(piSession.id);
 
   log(semlaSessionId, "session restored", { entries: persistedEntries.length });
@@ -363,6 +358,15 @@ export const runPiPrompt = async ({
     PI_SESSION_DIR,
     PI_WORKSPACE_ROOT,
   );
+
+  // Publish this session's repo so the wiki bridge can attribute the sources its
+  // subagents capture. The key must be the *pi runtime* session id, which is
+  // what the bridge reads from ctx.sessionManager on session_start — not
+  // piSession.id, which is a Supabase pi_sessions row id. Keying it on the row
+  // id made every lookup miss, so entity namespacing and capture-time
+  // attribution silently did nothing while the turn-end sweep covered for them.
+  const piRuntimeSessionId = sessionManager.getSessionId();
+  setSessionRepo(piRuntimeSessionId, repoSlugFromProjectPath(projectPath));
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
@@ -626,7 +630,7 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
-    clearSessionRepo(piSession.id);
+    clearSessionRepo(piRuntimeSessionId);
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);
