@@ -12,11 +12,19 @@ export interface WikiPageMeta {
   created: string;
   description?: string;
   updated?: string;
-  repo?: string;
+  /** One repo slug or a list when the page spans multiple repos. */
+  repo?: string | string[];
   status?: string;
   source_id?: string;
   format?: string;
   captured?: string;
+}
+
+/** Normalise the polymorphic repo field to a sorted, deduplicated array. */
+export function repoList(meta: WikiPageMeta): string[] {
+  if (!meta.repo) return [];
+  const raw = Array.isArray(meta.repo) ? meta.repo : [meta.repo];
+  return [...new Set(raw)].sort();
 }
 
 export interface WikiRegistry {

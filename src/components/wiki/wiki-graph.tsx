@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
-import { navGroupFor, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
+import { navGroupFor, repoList, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -39,16 +39,27 @@ const REPO_PALETTE = [
   "#38bdf8", // sky
   "#4ade80", // green
 ];
-const UNKNOWN_COLOR = "#475569"; // slate — visually muted for cross-repo pages
+// Nodes that belong to exactly one repo get that repo's color.
+// Nodes that belong to multiple repos get this shared color.
+const SHARED_COLOR = "#22d3ee";  // cyan — visually distinct from all palette entries
+const UNKNOWN_COLOR = "#475569"; // slate — no repo field at all
 
 /** Derive a stable repo→color mapping from the pages actually present. */
 function buildRepoColorMap(pages: Record<string, WikiPageMeta>): Map<string, string> {
   const repos = Array.from(
-    new Set(Object.values(pages).map((m) => m.repo).filter(Boolean) as string[]),
+    new Set(Object.values(pages).flatMap((m) => repoList(m))),
   ).sort();
   const map = new Map<string, string>();
   repos.forEach((repo, i) => map.set(repo, REPO_PALETTE[i % REPO_PALETTE.length]!));
   return map;
+}
+
+/** Pick the node color: repo color, shared, or unknown. */
+function nodeColor(meta: WikiPageMeta, repoColors: Map<string, string>): string {
+  const repos = repoList(meta);
+  if (repos.length === 0) return UNKNOWN_COLOR;
+  if (repos.length === 1) return repoColors.get(repos[0]!) ?? UNKNOWN_COLOR;
+  return SHARED_COLOR;
 }
 
 // ─── Graph builder ───────────────────────────────────────────────────────────
@@ -65,7 +76,7 @@ function buildGraph(
   entries.forEach(([path, meta], i) => {
     const angle = (2 * Math.PI * i) / Math.max(total, 1);
     const r = 200;
-    const color = meta.repo ? (repoColors.get(meta.repo) ?? UNKNOWN_COLOR) : UNKNOWN_COLOR;
+    const color = nodeColor(meta, repoColors);
     graph.addNode(path, {
       label: meta.title,
       x: r * Math.cos(angle),
@@ -229,7 +240,9 @@ function ExpandedPanel({ path, meta, repoColors, onNavigate, onClose }: Expanded
 
   const content = query.data?.content?.replace(/^---[\s\S]*?---\n*/m, "").trim();
   const navGroup = meta ? navGroupFor(meta) : null;
-  const nodeColor = meta?.repo ? (repoColors.get(meta.repo) ?? UNKNOWN_COLOR) : UNKNOWN_COLOR;
+  const repos = meta ? repoList(meta) : [];
+  const color = meta ? nodeColor(meta, repoColors) : UNKNOWN_COLOR;
+  const repoLabel = repos.length === 0 ? null : repos.join(", ");
 
   return (
     <div className="absolute right-3 top-3 z-20 flex w-80 flex-col rounded-lg border border-border bg-card shadow-lg">
@@ -237,9 +250,9 @@ function ExpandedPanel({ path, meta, repoColors, onNavigate, onClose }: Expanded
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{meta?.title ?? path}</p>
           {meta && (
-            <p className="mt-0.5 text-[10px]" style={{ color: nodeColor }}>
-              {meta.repo
-                ? `${meta.repo} · ${navGroup === "observation" ? "observation" : meta.type}`
+            <p className="mt-0.5 text-[10px]" style={{ color }}>
+              {repoLabel
+                ? `${repoLabel} · ${navGroup === "observation" ? "observation" : meta.type}`
                 : (navGroup === "observation" ? "observation" : meta.type)}
             </p>
           )}
@@ -282,9 +295,11 @@ function ExpandedPanel({ path, meta, repoColors, onNavigate, onClose }: Expanded
 
 interface LegendProps {
   repoColors: Map<string, string>;
+  hasShared: boolean;
+  hasUnknown: boolean;
 }
 
-function Legend({ repoColors }: LegendProps) {
+function Legend({ repoColors, hasShared, hasUnknown }: LegendProps) {
   const repoEntries = Array.from(repoColors.entries());
   return (
     <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 rounded-lg border border-border/60 bg-card/80 px-3 py-2 backdrop-blur-sm">
@@ -297,10 +312,18 @@ function Legend({ repoColors }: LegendProps) {
           <span className="text-[10px] text-muted-foreground">{repo}</span>
         </div>
       ))}
-      <div className="flex items-center gap-2">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: UNKNOWN_COLOR }} />
-        <span className="text-[10px] text-muted-foreground/60">cross-repo / unknown</span>
-      </div>
+      {hasShared && (
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SHARED_COLOR }} />
+          <span className="text-[10px] text-muted-foreground">shared</span>
+        </div>
+      )}
+      {hasUnknown && (
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: UNKNOWN_COLOR }} />
+          <span className="text-[10px] text-muted-foreground/60">unknown</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -319,6 +342,17 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
 
   const repoColors = useMemo(() => buildRepoColorMap(pages), [pages]);
   const graph = useMemo(() => buildGraph(pages, links, repoColors), [pages, links, repoColors]);
+
+  const { hasShared, hasUnknown } = useMemo(() => {
+    let shared = false, unknown = false;
+    for (const meta of Object.values(pages)) {
+      const repos = repoList(meta);
+      if (repos.length === 0) unknown = true;
+      else if (repos.length > 1) shared = true;
+      if (shared && unknown) break;
+    }
+    return { hasShared: shared, hasUnknown: unknown };
+  }, [pages]);
 
   const handleNodeClick = useCallback((path: string) => {
     setExpandedPath(path || null);
@@ -360,7 +394,7 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
         />
       </SigmaContainer>
 
-      <Legend repoColors={repoColors} />
+      <Legend repoColors={repoColors} hasShared={hasShared} hasUnknown={hasUnknown} />
 
       {expandedPath && (
         <ExpandedPanel
