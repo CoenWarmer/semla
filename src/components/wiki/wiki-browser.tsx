@@ -13,6 +13,7 @@ import {
 import dynamic from "next/dynamic";
 import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";
+import { useQuery } from "@tanstack/react-query";
 
 const WikiGraph = dynamic(
   () => import("./wiki-graph").then((m) => m.WikiGraph),
@@ -24,25 +25,37 @@ import { useUserSettings } from "@/hooks/use-user-settings";
 
 type ViewMode = "list" | "graph";
 
-interface WikiBrowserProps {
-  config: WikiConfig | null;
-  registry: WikiRegistry | null;
-  links: WikiLink[];
-  initialPath: string | null;
+interface WikiData {
+  initialized: boolean;
+  config?: WikiConfig;
+  registry?: WikiRegistry;
+  links?: WikiLink[];
 }
 
-export function WikiBrowser({
-  config,
-  registry,
-  links,
-  initialPath,
-}: WikiBrowserProps) {
+export function WikiBrowser() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [consolidating, setConsolidating] = useState(false);
   const { set: setPendingPrompt } = usePendingPrompt();
   const { data: userSettings } = useUserSettings();
+
+  const { data: wikiData } = useQuery<WikiData>({
+    queryKey: ["wiki"],
+    queryFn: async () => {
+      const res = await fetch("/api/wiki");
+      if (res.status === 404) return { initialized: false };
+      if (!res.ok) throw new Error(`Wiki fetch failed: ${res.status}`);
+      return res.json() as Promise<WikiData>;
+    },
+    refetchInterval: 5_000,
+    staleTime: 0,
+  });
+
+  const config = wikiData?.config ?? null;
+  const registry = wikiData?.registry ?? null;
+  const links = wikiData?.links ?? [];
+  const initialized = wikiData?.initialized ?? true; // optimistic until first fetch
 
   const handleConsolidate = useCallback(async () => {
     setConsolidating(true);
@@ -67,6 +80,7 @@ export function WikiBrowser({
     }
   }, [router, setPendingPrompt, userSettings]);
 
+  const initialPath = registry ? (Object.keys(registry.pages)[0] ?? null) : null;
   const selectedPath = searchParams.get("page") ?? initialPath;
   const pages = registry?.pages ?? {};
   const titleToPath = registry ? buildTitleMap(registry) : {};
@@ -98,6 +112,14 @@ export function WikiBrowser({
 
   const title =
     config?.name && config.name !== "pending" ? config.name : "Wiki";
+
+  if (wikiData && !initialized) {
+    return (
+      <div className="flex h-full items-center justify-center p-10 text-sm text-muted-foreground">
+        No wiki initialized. Run the orient skill in a session to get started.
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden">

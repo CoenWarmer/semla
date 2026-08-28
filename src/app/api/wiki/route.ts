@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  computeWikiLinks,
   getWikiConfig,
   getWikiRegistry,
   isWikiInitialized,
@@ -15,6 +16,7 @@ export async function GET() {
 
   const config = getWikiConfig();
   const registry = getWikiRegistry();
+  const links = registry ? computeWikiLinks(registry) : [];
 
-  return NextResponse.json({ initialized: true, config, registry });
+  return NextResponse.json({ initialized: true, config, registry, links });
 }
