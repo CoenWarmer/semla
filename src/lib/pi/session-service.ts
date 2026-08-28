@@ -38,6 +38,7 @@ import {
   type BridgeRunNotifier,
 } from "@/lib/pi/extension-contract";
 import { recordExtensionLoad } from "@/lib/pi/extension-health";
+import { stampSessionWikiPages } from "@/lib/pi/wiki-repo-stamp";
 import {
   createSessionFile,
   ensurePiSession,
@@ -262,9 +263,35 @@ const generateTitle = (text: string): string => {
 // bash executor and breaks concurrent sessions).
 const bgAbortControllers = new Map<string, AbortController>();
 
+/**
+ * Tag every wiki page this turn wrote with the session's repo.
+ *
+ * Fire-and-forget by design: the wiki is a side product of the turn, so a slow
+ * or failing stamp must not hold the SSE stream open or fail the prompt.
+ */
+const stampWikiRepo = (
+  semlaSessionId: string,
+  projectPath: string | null,
+  since: number,
+) => {
+  void stampSessionWikiPages({ projectPath, since })
+    .then((stamped) => {
+      if (stamped.length > 0) {
+        log(semlaSessionId, "wiki repo stamped", { pages: stamped.length });
+      }
+    })
+    .catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[pi:session:${semlaSessionId.slice(0, 8)}] wiki repo stamp failed: ${msg}`,
+      );
+    });
+};
+
 export const runPiPrompt = async ({
   model,
   onEvent,
+  projectPath = null,
   semlaSessionId,
   systemPrompt,
   text,
@@ -272,12 +299,18 @@ export const runPiPrompt = async ({
 }: {
   model: { modelId: string; provider: string };
   onEvent: (event: PiSessionEvent) => void;
+  /** Repo this session is working in; the source of each wiki page's repo tag. */
+  projectPath?: string | null;
   semlaSessionId: string;
   systemPrompt?: string | null;
   text: string;
   tools: string[];
 }) => {
   assertSandboxedRuntime();
+
+  // Captured before any tool runs so the stamp sweep can tell the pages this
+  // turn wrote from the ones an earlier orient left behind.
+  const turnStartedAt = Date.now();
 
   openSessionStream(semlaSessionId);
   void setSessionRunning(semlaSessionId, true);
@@ -584,6 +617,7 @@ export const runPiPrompt = async ({
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);
+    stampWikiRepo(semlaSessionId, projectPath, turnStartedAt);
     const settledDuringPrompt =
       deliveredDuringPrompt &&
       (!detectedBackgroundRunId ||
@@ -613,6 +647,7 @@ export const runPiPrompt = async ({
         debug,
         detectedBackgroundRunId,
         bgAbort.signal,
+        projectPath,
       );
     } else {
       log(semlaSessionId, "session disposed");
@@ -638,9 +673,14 @@ const runBackgroundContinuation = async (
   debug: SessionDebugWriter,
   runId: string | undefined,
   abortSignal: AbortSignal,
+  projectPath: string | null,
 ) => {
   log(semlaSessionId, "bg continuation started");
   debug.onBgStart();
+
+  // Background wiki ingest commits its pages after the prompt turn's own sweep
+  // has already run, so the continuation needs a sweep of its own.
+  const continuationStartedAt = Date.now();
 
   // Resolves when Pi starts generating the delivery turn (report after background completes).
   let resolveDelivery: (() => void) | undefined;
@@ -793,6 +833,7 @@ const runBackgroundContinuation = async (
     unsubscribeBg();
     bgAbortControllers.delete(semlaSessionId);
     void setSessionRunning(semlaSessionId, false);
+    stampWikiRepo(semlaSessionId, projectPath, continuationStartedAt);
     if (supersededByNewPrompt) {
       // A new prompt took over this session. Do NOT dispose — that would kill the
       // shared bash executor and abort the new session's in-flight tool calls.

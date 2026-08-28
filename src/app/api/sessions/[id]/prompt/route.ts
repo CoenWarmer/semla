@@ -127,6 +127,7 @@ export async function POST(
       void runPiPrompt({
         model: { modelId, provider },
         onEvent: send,
+        projectPath,
         semlaSessionId: id,
         systemPrompt,
         text,
