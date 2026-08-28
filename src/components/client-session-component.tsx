@@ -25,7 +25,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { AskUserDialog } from "./ask-user-dialog";
 import { GoalEditor } from "./goal-editor";
-import { WikiMiniGraph } from "./wiki/wiki-mini-graph";
+import dynamic from "next/dynamic";
+
+const WikiMiniGraph = dynamic(
+  () => import("./wiki/wiki-mini-graph").then((m) => m.WikiMiniGraph),
+  { ssr: false },
+);
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { TokenUsage } from "./token-usage";
