@@ -9,6 +9,7 @@ import {
   useSetSettings,
 } from "@react-sigma/core";
 import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
+import { useWorkerLayoutNoverlap } from "@react-sigma/layout-noverlap";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -27,12 +28,12 @@ const TYPE_COLOR: Record<WikiPageType, string> = {
 };
 
 const TYPE_SIZE: Record<WikiPageType, number> = {
-  entity: 8,
-  concept: 7,
-  synthesis: 9,
-  analysis: 7,
-  requirement: 7,
-  source: 5,
+  entity: 5,
+  concept: 5,
+  synthesis: 6,
+  analysis: 5,
+  requirement: 5,
+  source: 3,
 };
 
 // ─── Graph builder ───────────────────────────────────────────────────────────
@@ -86,19 +87,35 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const registerEvents = useRegisterEvents();
   const setSettings = useSetSettings();
   const { zoomIn, zoomOut, reset } = useCamera({ duration: 200 });
-  const { start, kill } = useWorkerLayoutForceAtlas2({
-    settings: { gravity: 1, scalingRatio: 10, slowDown: 10 },
+  const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
+    settings: {
+      gravity: 0.05,
+      scalingRatio: 80,
+      slowDown: 12,
+      barnesHutOptimize: true,
+      barnesHutTheta: 0.6,
+      outboundAttractionDistribution: true,
+    },
+  });
+  const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
+    settings: { margin: 4, expansion: 1.2 },
   });
 
-  // Run layout on mount, stop after 4 s.
+  // Run FA2 for 6 s, then noverlap for 3 s to push overlapping nodes apart.
   useEffect(() => {
-    start();
-    const t = setTimeout(kill, 4000);
+    startFA2();
+    const fa2Timer = setTimeout(() => {
+      killFA2();
+      startNoverlap();
+      const noverlapTimer = setTimeout(killNoverlap, 3000);
+      return () => clearTimeout(noverlapTimer);
+    }, 6000);
     return () => {
-      clearTimeout(t);
-      kill();
+      clearTimeout(fa2Timer);
+      killFA2();
+      killNoverlap();
     };
-  }, [start, kill]);
+  }, [startFA2, killFA2, startNoverlap, killNoverlap]);
 
   // Keep a ref to selected/expanded so the node reducer stays current without
   // recreating sigma (useSetSettings is stable).
@@ -116,7 +133,7 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
         return {
           ...data,
           color: isActive ? "#f8fafc" : data.color,
-          size: isActive ? (data.size as number) + 3 : data.size,
+          size: isActive ? (data.size as number) + 2 : data.size,
           zIndex: isActive ? 1 : 0,
         };
       },

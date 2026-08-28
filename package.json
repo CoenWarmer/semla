@@ -22,6 +22,7 @@
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@react-sigma/core": "^5.0.6",
     "@react-sigma/layout-forceatlas2": "^5.0.6",
+    "@react-sigma/layout-noverlap": "^5.0.6",
     "@rive-app/react-webgl2": "^4.31.0",
     "@shadcn/react": "^0.3.0",
     "@streamdown/cjk": "^1.0.3",
