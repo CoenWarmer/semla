@@ -97,19 +97,17 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
     },
   });
   const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    // Small margin — just enough to separate touching nodes without
-    // overriding the cluster structure FA2 produced.
-    settings: { margin: 3, expansion: 1.1 },
+    settings: { margin: 5, expansion: 1.15 },
   });
 
-  // Run FA2 for 5 s to establish cluster structure, then noverlap for 2 s
-  // to clean up any remaining pixel-level overlaps.
+  // Run FA2 for 5 s to establish cluster structure, then noverlap for 5 s
+  // to let it fully converge on dense spots.
   useEffect(() => {
     startFA2();
     const fa2Timer = setTimeout(() => {
       killFA2();
       startNoverlap();
-      const noverlapTimer = setTimeout(killNoverlap, 2000);
+      const noverlapTimer = setTimeout(killNoverlap, 5000);
       return () => clearTimeout(noverlapTimer);
     }, 5000);
     return () => {
