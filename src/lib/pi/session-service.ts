@@ -98,6 +98,7 @@ type PiSessionEntry = {
 };
 
 type PiSessionEvent =
+  | { text: string; type: "user-message" }
   | { delta: string; type: "assistant-delta" }
   | {
       at: string;
@@ -294,6 +295,10 @@ export const runPiPrompt = async ({
     publishToSessionStream(semlaSessionId, event);
     onEvent(event);
   };
+
+  // Buffer the user's prompt as the first event so reconnecting clients can
+  // show it optimistically before entries are persisted at end of turn.
+  emit({ text, type: "user-message" });
 
   // If there's a background continuation waiting for a delivery that will now
   // go to this new session (pi-dynamic-workflows re-targets delivery to the

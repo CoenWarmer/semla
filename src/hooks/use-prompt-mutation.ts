@@ -24,6 +24,7 @@ type PromptInput = {
 };
 
 type PiStreamEvent =
+  | { text: string; type: "user-message" }
   | { delta: string; type: "assistant-delta" }
   | { message: string; type: "error" }
   | LiveToolEvent
@@ -47,6 +48,7 @@ const trace = (stage: string, data?: Record<string, unknown>) => {
 };
 
 type StreamHandlers = {
+  onUserMessage?: (text: string) => void;
   onDelta: (delta: string) => void;
   onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
@@ -89,7 +91,9 @@ const readPiStream = async (
         continue;
       }
 
-      if (piEvent.type === "assistant-delta") {
+      if (piEvent.type === "user-message") {
+        handlers.onUserMessage?.(piEvent.text);
+      } else if (piEvent.type === "assistant-delta") {
         handlers.onDelta(piEvent.delta);
       } else if (piEvent.type === "tool-start") {
         handlers.onToolStart(piEvent);
@@ -221,7 +225,27 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           return;
         }
 
-        await readPiStream(response.body.getReader(), streamHandlers());
+        await readPiStream(response.body.getReader(), {
+          ...streamHandlers(),
+          onUserMessage: (text) => {
+            queryClient.setQueryData<SessionMessagesResult>(
+              sessionMessagesQueryKey(sessionId),
+              (prev) => ({
+                contextWindow: prev?.contextWindow ?? null,
+                toolCalls: prev?.toolCalls ?? [],
+                messages: [
+                  ...(prev?.messages ?? []),
+                  {
+                    createdAt: new Date().toISOString(),
+                    id: `optimistic-reconnect-${crypto.randomUUID()}`,
+                    role: "user" as const,
+                    text,
+                  },
+                ],
+              }),
+            );
+          },
+        });
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         // Non-fatal — settle and refetch below.
