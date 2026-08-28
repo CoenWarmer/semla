@@ -89,18 +89,23 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const { zoomIn, zoomOut, reset } = useCamera({ duration: 200 });
   const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
     settings: {
-      gravity: 0.1,
-      scalingRatio: 40,
-      slowDown: 8,
+      // linLogMode weakens attraction inside dense clusters so source nodes
+      // don't pile on top of their hub. Higher gravity (0.3) keeps the overall
+      // graph from flying apart into a ring.
+      linLogMode: true,
+      gravity: 0.3,
+      scalingRatio: 50,
+      slowDown: 10,
       barnesHutOptimize: true,
       barnesHutTheta: 0.5,
     },
   });
   const killNoverlapRef = useRef<(() => void) | null>(null);
   const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    // margin 10 = halfway between "still overlapping" (5) and "ring" (20).
-    // onConverged self-terminates so we don't need to guess the duration.
-    settings: { margin: 10, expansion: 1.2 },
+    // inputReducer inflates the node size so noverlap's collision detection
+    // matches the actual visual footprint in screen pixels.
+    inputReducer: (_key, attr) => ({ ...attr, size: (attr.size ?? 4) * 8 }),
+    settings: { margin: 2, expansion: 1.1 },
     onConverged: () => killNoverlapRef.current?.(),
   });
 
