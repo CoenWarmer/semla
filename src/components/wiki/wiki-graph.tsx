@@ -28,12 +28,12 @@ const TYPE_COLOR: Record<WikiPageType, string> = {
 };
 
 const TYPE_SIZE: Record<WikiPageType, number> = {
-  entity: 5,
-  concept: 5,
-  synthesis: 6,
-  analysis: 5,
-  requirement: 5,
-  source: 3,
+  entity: 4,
+  concept: 4,
+  synthesis: 5,
+  analysis: 4,
+  requirement: 4,
+  source: 2,
 };
 
 // ─── Graph builder ───────────────────────────────────────────────────────────
@@ -90,26 +90,32 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
     settings: {
       gravity: 0.05,
-      scalingRatio: 80,
-      slowDown: 12,
+      scalingRatio: 100,
+      slowDown: 10,
       barnesHutOptimize: true,
-      barnesHutTheta: 0.6,
-      outboundAttractionDistribution: true,
+      barnesHutTheta: 0.5,
+      // linLogMode uses logarithmic attraction so hub nodes don't collapse
+      // their neighbours into a tight ball.
+      linLogMode: true,
+      // adjustSizes makes FA2 repel nodes based on their size during force
+      // computation — essential to avoid overlaps forming in the first place.
+      adjustSizes: true,
     },
   });
   const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    settings: { margin: 4, expansion: 1.2 },
+    settings: { margin: 20, expansion: 1.4 },
   });
 
-  // Run FA2 for 6 s, then noverlap for 3 s to push overlapping nodes apart.
+  // Run FA2 for 8 s (adjustSizes needs longer to settle), then noverlap for
+  // 5 s to sweep up any remaining overlaps.
   useEffect(() => {
     startFA2();
     const fa2Timer = setTimeout(() => {
       killFA2();
       startNoverlap();
-      const noverlapTimer = setTimeout(killNoverlap, 3000);
+      const noverlapTimer = setTimeout(killNoverlap, 5000);
       return () => clearTimeout(noverlapTimer);
-    }, 6000);
+    }, 8000);
     return () => {
       clearTimeout(fa2Timer);
       killFA2();
