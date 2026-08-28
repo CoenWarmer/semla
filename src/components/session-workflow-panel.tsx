@@ -27,6 +27,7 @@ import {
   useTheme,
 } from "react-otel-trace-waterfall";
 import type {
+  FitButtonProps,
   SpanBarProps,
   SpanNameProps,
   SpanNode,
@@ -48,7 +49,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import type { SpanTooltipProps } from "react-otel-trace-waterfall";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Drawer,
   DrawerClose,
@@ -697,12 +698,16 @@ function SpanDetailDrawer({
   );
 }
 
+export type TimelineMode = "fit" | "follow";
+
 export function SessionWorkflowPanel({
   messages,
   onAgentClick,
   sessionId,
   sessionRunning,
   snapshot,
+  timelineMode,
+  onTimelineModeChange,
   toolCalls,
   workflowRuns,
 }: {
@@ -711,6 +716,10 @@ export function SessionWorkflowPanel({
   sessionId?: string;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
+  /** Controlled timeline mode. Omit to let the panel manage it internally. */
+  timelineMode?: TimelineMode;
+  /** Fired when the internal mode changes (only relevant when timelineMode is uncontrolled). */
+  onTimelineModeChange?: (mode: TimelineMode) => void;
   toolCalls?: SessionToolCall[];
   workflowRuns?: WorkflowRun[];
 }) {
@@ -718,6 +727,45 @@ export function SessionWorkflowPanel({
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
   const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null);
   const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  // Timeline mode — controlled if prop is provided, otherwise internal.
+  const [internalTimelineMode, setInternalTimelineMode] =
+    useState<TimelineMode>("fit");
+  const effectiveMode = timelineMode ?? internalTimelineMode;
+  const setEffectiveMode = useCallback(
+    (m: TimelineMode) => {
+      setInternalTimelineMode(m);
+      onTimelineModeChange?.(m);
+    },
+    [onTimelineModeChange],
+  );
+
+  // Whether the waterfall's live-tracking is currently active.
+  // Both Fit and Follow use liveMode=true; user panning deactivates it.
+  const [liveActive, setLiveActive] = useState(true);
+
+  // Capture the library's fit function (resets zoom to 1 + re-enables live mode).
+  const fitFnRef = useRef<(() => void) | null>(null);
+  // Stable component identity so TraceWaterfall doesn't remount on re-render.
+  const FitButtonCapture = useCallback(({ onClick }: FitButtonProps) => {
+    fitFnRef.current = onClick;
+    return null;
+  }, []);
+
+  const handleFit = useCallback(() => {
+    fitFnRef.current?.();
+    setEffectiveMode("fit");
+    setLiveActive(true);
+  }, [setEffectiveMode]);
+
+  const handleFollow = useCallback(() => {
+    setEffectiveMode("follow");
+    setLiveActive(true);
+  }, [setEffectiveMode]);
+
+  const handleLiveModeChange = useCallback((isLive: boolean) => {
+    if (!isLive) setLiveActive(false);
+  }, []);
 
   const hasActiveAgents =
     (snapshot?.runningCount ?? 0) > 0 ||
@@ -893,6 +941,34 @@ export function SessionWorkflowPanel({
                 {snapshot.runningCount} running
               </span>
             )}
+            {viewMode === "timeline" && (
+              <div className="flex items-center gap-1 rounded border border-border/50 p-0.5">
+                <button
+                  aria-label="Fit all spans in view"
+                  aria-pressed={effectiveMode === "fit" && liveActive}
+                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                    effectiveMode === "fit" && liveActive
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={handleFit}
+                >
+                  Fit
+                </button>
+                <button
+                  aria-label="Follow new events at current zoom"
+                  aria-pressed={effectiveMode === "follow" && liveActive}
+                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                    effectiveMode === "follow" && liveActive
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={handleFollow}
+                >
+                  Follow
+                </button>
+              </div>
+            )}
             <button
               aria-label={
                 viewMode === "timeline"
@@ -932,13 +1008,15 @@ export function SessionWorkflowPanel({
                 })}
                 height={240}
                 theme={TIMELINE_THEME}
-                liveMode={snapshot.runningCount > 0}
+                liveMode={liveActive}
+                onLiveModeChange={handleLiveModeChange}
                 initialState="expanded"
                 clampZoomToBounds
                 // Messages and tool calls are EVENT spans under Conversation; fold
                 // them onto that one row as markers instead of a row each.
                 foldEventsIntoParent
                 timelinePadding={10}
+                FitButtonComponent={FitButtonCapture}
                 SpanNameComponent={SpanName}
                 SpanBarComponent={SpanBar}
                 TooltipComponent={InlineEventTooltip}
