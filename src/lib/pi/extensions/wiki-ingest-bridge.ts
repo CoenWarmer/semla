@@ -20,6 +20,7 @@
  *    lookup time so late-registered toolsets are visible without a rebuild.
  */
 
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createCodingTools,
@@ -45,6 +46,8 @@ import {
   collectWikiSubagentTools,
   WIKI_SUBAGENT_TOOLSET,
 } from "./wiki-subagent-tools.js";
+import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.js";
+import { withVaultLock } from "./wiki-vault-lock.js";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
@@ -81,6 +84,9 @@ interface CommitResult {
   sourceId: string;
   entitiesCreated: string[];
   conceptsCreated: string[];
+  /** Slugs whose page already existed, so this synthesis was dropped for them. */
+  entitiesLinked: string[];
+  conceptsLinked: string[];
   contradictions: number;
 }
 
@@ -255,12 +261,53 @@ Model: \${args.model}\`,
 );
 `;
 
+/**
+ * Record this source against the pages the commit kept rather than created.
+ *
+ * `commitSynthesis` reports a slug in entitiesLinked/conceptsLinked when the
+ * page already existed, and otherwise leaves it completely untouched — so the
+ * second source's evidence is dropped. Merging provenance is what makes a
+ * cross-repo concept end up with `repo: [a, b]`, which the schema and the
+ * graph's shared-node colour already model but no ingest path could produce.
+ *
+ * Frontmatter only. Reconciling two definitions is the consolidate skill's job.
+ */
+function mergeLinkedPages(
+  paths: WikiVaultPaths,
+  committed: { entitiesLinked: string[]; conceptsLinked: string[] },
+  sourceId: string,
+  repo: string | null,
+): void {
+  const date = new Date().toISOString().slice(0, 10);
+  const groups: Array<[string, string[]]> = [
+    ["entities", committed.entitiesLinked],
+    ["concepts", committed.conceptsLinked],
+  ];
+
+  for (const [dir, slugs] of groups) {
+    for (const slug of slugs) {
+      const pagePath = join(paths.wiki, dir, `${slug}.md`);
+      try {
+        const outcome = mergeProvenance(readFileSync(pagePath, "utf8"), {
+          sourceId,
+          repo,
+          date,
+        });
+        if (outcome.changed) writeFileSync(pagePath, outcome.content, "utf8");
+      } catch {
+        // A page that cannot be read is left as it is; the commit still stands.
+      }
+    }
+  }
+}
+
 // ── Batch commit-synthesis tool factory ───────────────────────────────────────
 // One shared tool per batch; source_id param routes each call to the right manifest.
 
 function createBatchCommitSynthesisTool(
   manifests: Map<string, Record<string, unknown>>,
   paths: WikiVaultPaths,
+  repoOf: () => string | null,
 ) {
   return defineTool({
     name: "commit_synthesis",
@@ -289,12 +336,37 @@ function createBatchCommitSynthesisTool(
       const worker = (await import(INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
       const meta = (await import(METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
 
-      const outcome = worker.commitSynthesis(
-        paths,
-        source_id,
-        manifest,
-        synthesisData as unknown as CommitSynthesisData,
-      );
+      const repo = repoOf();
+      // Entities are artifacts of one repo, so they are qualified before the
+      // package derives a slug from the title. Concepts are shared on purpose
+      // and keep their plain names.
+      const data = repo
+        ? withNamespacedEntities(
+            synthesisData as unknown as { entities?: Array<{ title: string }> },
+            repo,
+          )
+        : synthesisData;
+
+      // The whole commit — pages, provenance merge and the derived-file rebuild
+      // — is one critical section. A concurrent orient rebuilding halfway
+      // through would publish a registry that omits these pages.
+      const outcome = await withVaultLock(WIKI_HOME, "commit_synthesis", () => {
+        const committed = worker.commitSynthesis(
+          paths,
+          source_id,
+          manifest,
+          data as unknown as CommitSynthesisData,
+        );
+
+        if (committed.ok) {
+          // A slug that was already taken means the package kept the existing
+          // page and dropped this synthesis. Record that this source attests to
+          // it too, rather than losing the second repo's evidence entirely.
+          mergeLinkedPages(paths, committed, source_id, repo);
+          meta.rebuildMetadataLight(paths);
+        }
+        return committed;
+      });
 
       if (!outcome.ok) {
         return {
@@ -305,8 +377,6 @@ function createBatchCommitSynthesisTool(
           isError: true,
         };
       }
-
-      meta.rebuildMetadataLight(paths);
 
       const ack = [
         `Committed: source page`,
@@ -381,31 +451,15 @@ function nextRunKey(prefix: string): string {
  * time anything reads it; if collection failed, the tag resolves to the plain
  * coding tools — exactly the behaviour before this existed.
  */
-function registerSubagentWikiToolset(pi: ExtensionAPI): void {
+function registerSubagentWikiToolset(
+  pi: ExtensionAPI,
+  repoOf: () => string | null,
+): void {
   let wikiTools: Array<ReturnType<typeof defineTool>> = [];
-
-  // Captured at session_start and closed over, rather than read from a shared
-  // slot at call time: a tool's execute context carries only `cwd`, which every
-  // concurrent session shares, so a global "current session" would be whichever
-  // session started last.
-  let sessionId: string | undefined;
-  pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
-    try {
-      sessionId = ctx.sessionManager?.getSessionId();
-    } catch {
-      // No session id means captures fall back to the turn-end sweep.
-    }
-  });
 
   void collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi, {
     wikiHome: WIKI_HOME,
-    // Read straight off the shared slot: the server-side half of this pair
-    // (wiki-session-repo.ts) imports through the "@/" alias, which jiti cannot
-    // resolve from here.
-    repoOf: () =>
-      (sessionId
-        ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
-        : null) ?? null,
+    repoOf,
   })
     .then((tools) => {
       wikiTools = tools;
@@ -429,7 +483,28 @@ function registerSubagentWikiToolset(pi: ExtensionAPI): void {
 }
 
 export default function wikiIngestBridge(pi: ExtensionAPI) {
-  registerSubagentWikiToolset(pi);
+  // Captured at session_start and closed over, rather than read from a shared
+  // slot at call time: a tool's execute context carries only `cwd`, which every
+  // concurrent session shares, so a global "current session" would resolve to
+  // whichever session started last.
+  let sessionId: string | undefined;
+  pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
+    try {
+      sessionId = ctx.sessionManager?.getSessionId();
+    } catch {
+      // No session id means attribution falls back to the turn-end sweep.
+    }
+  });
+
+  // Read straight off the shared slot: the server-side half of this pair
+  // (wiki-session-repo.ts) imports through the "@/" alias, which jiti cannot
+  // resolve from here.
+  const repoOf = (): string | null =>
+    (sessionId
+      ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
+      : null) ?? null;
+
+  registerSubagentWikiToolset(pi, repoOf);
 
   const dispatcher: WikiIngestDispatcher = (sources) => {
     const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
@@ -442,7 +517,7 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
     const toolsetKey = nextRunKey("wiki-synthesis");
 
     // Single shared commit_synthesis tool — source_id param routes each call.
-    extraToolsets[toolsetKey] = () => [createBatchCommitSynthesisTool(manifests, paths)];
+    extraToolsets[toolsetKey] = () => [createBatchCommitSynthesisTool(manifests, paths, repoOf)];
 
     const { runId } = manager.startInBackground(
       WIKI_INGEST_BATCH_SCRIPT,
