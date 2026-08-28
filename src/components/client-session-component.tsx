@@ -46,17 +46,20 @@ export function ClientSessionComponent({
   defaultTools,
   goal: initialGoal,
   initialMessagesData,
+  isRunning,
   sessionId,
   title,
 }: {
   defaultTools: string[];
   goal?: string | null;
   initialMessagesData?: import("@/hooks/use-session-messages").SessionMessagesResult;
+  isRunning?: boolean;
   sessionId: string;
   title: string | null;
 }) {
   const {
     activeTool,
+    isReconnecting,
     liveToolCalls,
     mutation: promptMutation,
     pendingQuestion,
@@ -64,7 +67,7 @@ export function ClientSessionComponent({
     streamingText,
     wikiActive,
     workflowSnapshot,
-  } = usePromptMutation(sessionId);
+  } = usePromptMutation(sessionId, isRunning);
 
   const { consume: consumePendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
@@ -126,8 +129,9 @@ export function ClientSessionComponent({
 
   // Synthetic snapshot for non-workflow sessions: shows the main agent as a
   // single node so the panel always has something to display.
+  const isActive = promptMutation.isPending || isReconnecting;
+
   const sessionAgentSnapshot = useMemo((): WorkflowSnapshot => {
-    const isActive = promptMutation.isPending;
     const hasMessages = messages.length > 0;
     return {
       agentCount: 1,
@@ -144,25 +148,25 @@ export function ClientSessionComponent({
       phases: [],
       runningCount: isActive ? 1 : 0,
     };
-  }, [promptMutation.isPending, messages.length, activeTool]);
+  }, [isActive, messages.length, activeTool]);
 
   // After every 10th user prompt, trigger a background context-quality check.
   const prevPendingRef = useRef(false);
   useEffect(() => {
-    const wasJustPending = prevPendingRef.current && !promptMutation.isPending;
-    prevPendingRef.current = promptMutation.isPending;
+    const wasJustPending = prevPendingRef.current && !isActive;
+    prevPendingRef.current = isActive;
     if (!wasJustPending) return;
     const userMsgCount = messages.filter((m) => m.role === "user").length;
     if (userMsgCount > 0 && userMsgCount % 10 === 0) {
       void contextCheckTrigger.mutate();
     }
-  }, [promptMutation.isPending, messages, contextCheckTrigger]);
+  }, [isActive, messages, contextCheckTrigger]);
 
   // Track elapsed time while a prompt is in-flight.
   const startTimeRef = useRef<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
-    if (promptMutation.isPending) {
+    if (isActive) {
       if (!startTimeRef.current) startTimeRef.current = Date.now();
       const id = setInterval(
         () => setElapsedMs(Date.now() - (startTimeRef.current ?? Date.now())),
@@ -173,7 +177,7 @@ export function ClientSessionComponent({
     startTimeRef.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setElapsedMs(0);
-  }, [promptMutation.isPending]);
+  }, [isActive]);
 
   const elapsedLabel =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : null;
@@ -268,7 +272,7 @@ export function ClientSessionComponent({
         onGoalSave={handleGoalSave}
         messages={messages}
         onAgentClick={handleAgentClick}
-        sessionRunning={promptMutation.isPending}
+        sessionRunning={isActive}
         snapshot={
           // Prefer the persisted snapshot (from DB/live polling) over the SSE
           // shell whenever they reference the same run and the persisted one
@@ -321,7 +325,7 @@ export function ClientSessionComponent({
                 </MessageContent>
               </Message>
             )}
-            {promptMutation.isPending && !streamingText && (
+            {isActive && !streamingText && (
               <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Spinner />
                 <span>

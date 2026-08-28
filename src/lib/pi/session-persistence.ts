@@ -222,6 +222,24 @@ export const finalizeBackgroundRun = async (
   }
 };
 
+export const setSessionRunning = async (
+  semlaSessionId: string,
+  running: boolean,
+): Promise<void> => {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("sessions")
+    .update({ is_running: running })
+    .eq("id", semlaSessionId);
+
+  if (error) {
+    console.error(
+      `[pi:session-persistence] Unable to set is_running=${String(running)} for ${semlaSessionId}:`,
+      error,
+    );
+  }
+};
+
 export const fetchStuckBackgroundRuns = async (
   semlaSessionId: string,
 ): Promise<Array<{ run_id: string }>> => {

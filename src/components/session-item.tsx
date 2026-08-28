@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import {
   DropdownMenu,
@@ -17,12 +18,13 @@ import {
 interface SessionItemProps {
   id: string;
   date: string;
+  isRunning?: boolean;
   title: string | null;
   usage?: { tokens: number; cost: number };
   onDelete: (id: string) => void;
 }
 
-export function SessionItem({ id, date, title, usage, onDelete }: SessionItemProps) {
+export function SessionItem({ id, date, isRunning, title, usage, onDelete }: SessionItemProps) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(title ?? "");
@@ -90,7 +92,12 @@ export function SessionItem({ id, date, title, usage, onDelete }: SessionItemPro
         </ItemDescription>
       </ItemContent>
 
-      {/* Trigger sits above the stretched link */}
+      {/* Running spinner sits above the stretched link and replaces the action menu */}
+      {isRunning ? (
+        <div className="relative z-10 ml-auto shrink-0">
+          <Spinner className="size-4 text-muted-foreground" />
+        </div>
+      ) : (
       <div className="relative z-10 ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -112,6 +119,7 @@ export function SessionItem({ id, date, title, usage, onDelete }: SessionItemPro
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      )}
     </Item>
   );
 }

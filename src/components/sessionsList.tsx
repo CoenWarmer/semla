@@ -64,7 +64,7 @@ export async function SessionsList() {
 
   const { data: sessions, error } = await supabase
     .from("sessions")
-    .select("id, created_at, title")
+    .select("id, created_at, title, is_running")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -86,7 +86,7 @@ export async function SessionsList() {
     sessions.map((s) => s.id),
   );
 
-  const rows = sessions.map(({ id, created_at, title }) => ({
+  const rows = sessions.map(({ id, created_at, title, is_running }) => ({
     id,
     date: new Date(created_at).toLocaleDateString("nl-NL", {
       day: "2-digit",
@@ -96,6 +96,7 @@ export async function SessionsList() {
       minute: "2-digit",
       hour12: false,
     }),
+    isRunning: is_running ?? false,
     title,
     usage: usageBySession.get(id),
   }));

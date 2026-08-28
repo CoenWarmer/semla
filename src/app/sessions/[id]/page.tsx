@@ -14,7 +14,7 @@ export default async function Page({
   const supabase = await createClient();
 
   const [sessionResult, transcript] = await Promise.all([
-    supabase.from("sessions").select("id, title, goal").eq("id", id).maybeSingle(),
+    supabase.from("sessions").select("id, title, goal, is_running").eq("id", id).maybeSingle(),
     getTranscript(supabase, id).catch(() => null),
   ]);
 
@@ -33,6 +33,7 @@ export default async function Page({
         defaultTools={[...getPiRuntimeConfig().tools]}
         goal={sessionResult.data.goal}
         initialMessagesData={transcript ? { contextWindow: null, ...transcript } : undefined}
+        isRunning={sessionResult.data.is_running ?? false}
         sessionId={id}
         title={sessionResult.data.title}
       />

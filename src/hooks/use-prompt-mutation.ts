@@ -46,7 +46,79 @@ const trace = (stage: string, data?: Record<string, unknown>) => {
   console.log(`[prompt-trace ${at}] ${stage}`, data ?? "");
 };
 
-export const usePromptMutation = (sessionId: string) => {
+type StreamHandlers = {
+  onDelta: (delta: string) => void;
+  onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
+  onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
+  onAskUser: (payload: AskUserPayload) => void;
+  onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
+  onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
+  onTitleUpdated: () => void;
+  onError: (message: string) => void;
+  onWikiTool: (toolName: string) => void;
+};
+
+const readPiStream = async (
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  handlers: StreamHandlers,
+): Promise<Error | undefined> => {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let piError: Error | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const event of events) {
+      const data = event
+        .split("\n")
+        .find((line) => line.startsWith("data: "))
+        ?.slice(6);
+
+      if (!data) continue;
+
+      let piEvent: PiStreamEvent;
+      try {
+        piEvent = JSON.parse(data) as PiStreamEvent;
+      } catch (parseError) {
+        console.error("Malformed SSE event from Pi stream:", data, parseError);
+        continue;
+      }
+
+      if (piEvent.type === "assistant-delta") {
+        handlers.onDelta(piEvent.delta);
+      } else if (piEvent.type === "tool-start") {
+        handlers.onToolStart(piEvent);
+        handlers.onWikiTool(piEvent.toolName);
+      } else if (piEvent.type === "tool-end") {
+        handlers.onToolEnd(piEvent);
+      } else if (piEvent.type === "ask-user-question") {
+        handlers.onAskUser(piEvent.payload);
+      } else if (piEvent.type === "workflow-snapshot") {
+        handlers.onWorkflowSnapshot(piEvent.snapshot);
+      } else if (piEvent.type === "workflow-started") {
+        handlers.onWorkflowStarted(piEvent);
+      } else if (piEvent.type === "title-updated") {
+        handlers.onTitleUpdated();
+      } else if (piEvent.type === "complete") {
+        // nothing — loop will end on done
+      } else if (piEvent.type === "error") {
+        piError = new Error(piEvent.message);
+        handlers.onError(piEvent.message);
+      }
+    }
+
+    if (done) break;
+  }
+
+  return piError;
+};
+
+export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean) => {
   const queryClient = useQueryClient();
   const router = useRouter();
   // Non-zero while a submit is in flight; >1 means overlapping submits, which
@@ -65,6 +137,7 @@ export const usePromptMutation = (sessionId: string) => {
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   // Latches true the first time wiki_init or wiki_capture_source is seen; never
   // resets to false for the lifetime of the hook (i.e. the session page).
   const [wikiActive, setWikiActive] = useState(false);
@@ -74,6 +147,107 @@ export const usePromptMutation = (sessionId: string) => {
   // as state, onSettled always closed over the stale `false` and the refresh
   // below never fired. Nothing renders from it, so a ref is the right tool.
   const titleUpdatedRef = useRef(false);
+  const reconnectAbortRef = useRef<AbortController | null>(null);
+
+  const streamHandlers = (opts?: { onPiError?: (err: Error) => void }): StreamHandlers => ({
+    onDelta: (delta) => setStreamingText((t) => t + delta),
+    onToolStart: (event) => {
+      setActiveTool(event.toolName);
+      setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+    },
+    onToolEnd: (event) => {
+      setActiveTool(undefined);
+      setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+      if (event.toolName === "ask_user") setPendingQuestion(null);
+    },
+    onAskUser: (payload) => setPendingQuestion(payload),
+    onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
+    onWorkflowStarted: (event) =>
+      setWorkflowSnapshot({
+        agentCount: 0,
+        agents: [],
+        doneCount: 0,
+        errorCount: 0,
+        name: "Background workflow",
+        phases: [],
+        runId: event.runId,
+        runningCount: 0,
+        startedAt: event.startedAt,
+      }),
+    onTitleUpdated: () => {
+      titleUpdatedRef.current = true;
+    },
+    onError: (message) => {
+      setStreamError(message);
+      if (opts?.onPiError) opts.onPiError(new Error(message));
+    },
+    onWikiTool: (toolName) => {
+      if (
+        !wikiActiveRef.current &&
+        (toolName === "wiki_bootstrap" ||
+          toolName === "wiki_init" ||
+          toolName === "wiki_capture_source")
+      ) {
+        wikiActiveRef.current = true;
+        setWikiActive(true);
+      }
+    },
+  });
+
+  // Reconnect to an in-progress stream when the page is loaded mid-turn.
+  useEffect(() => {
+    if (!initialIsRunning) return;
+
+    const controller = new AbortController();
+    reconnectAbortRef.current = controller;
+
+    const reconnect = async () => {
+      setStreamingText("");
+      setActiveTool(undefined);
+      setLiveToolCalls([]);
+      setWorkflowSnapshot(undefined);
+      setIsReconnecting(true);
+
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/stream`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          // Stream not active — server restarted or turn already finished.
+          await queryClient.invalidateQueries({
+            queryKey: sessionMessagesQueryKey(sessionId),
+          });
+          return;
+        }
+
+        await readPiStream(response.body.getReader(), streamHandlers());
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        // Non-fatal — settle and refetch below.
+      } finally {
+        setIsReconnecting(false);
+        setStreamingText("");
+        setActiveTool(undefined);
+        setPendingQuestion(null);
+        await queryClient.invalidateQueries({
+          queryKey: sessionMessagesQueryKey(sessionId),
+        });
+        if (titleUpdatedRef.current) {
+          titleUpdatedRef.current = false;
+          setTimeout(() => router.refresh(), 0);
+        }
+      }
+    };
+
+    void reconnect();
+
+    return () => {
+      controller.abort();
+      reconnectAbortRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]); // only on mount — initialIsRunning is the mount-time value
 
   const mutation = useMutation<
     void,
@@ -100,89 +274,10 @@ export const usePromptMutation = (sessionId: string) => {
         throw new Error("Pi could not start this prompt.");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       let piError: Error | undefined;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done });
-
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-
-        for (const event of events) {
-          const data = event
-            .split("\n")
-            .find((line) => line.startsWith("data: "))
-            ?.slice(6);
-
-          if (!data) {
-            continue;
-          }
-
-          let piEvent: PiStreamEvent;
-          try {
-            piEvent = JSON.parse(data) as PiStreamEvent;
-          } catch (parseError) {
-            console.error("Malformed SSE event from Pi stream:", data, parseError);
-            continue;
-          }
-
-          if (piEvent.type === "assistant-delta") {
-            setStreamingText((current) => current + piEvent.delta);
-          } else if (piEvent.type === "tool-start") {
-            setActiveTool(piEvent.toolName);
-            setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
-            if (
-              !wikiActiveRef.current &&
-              (piEvent.toolName === "wiki_bootstrap" ||
-                piEvent.toolName === "wiki_init" ||
-                piEvent.toolName === "wiki_capture_source")
-            ) {
-              wikiActiveRef.current = true;
-              setWikiActive(true);
-            }
-          } else if (piEvent.type === "tool-end") {
-            setActiveTool(undefined);
-            setLiveToolCalls((current) => applyLiveToolEvent(current, piEvent));
-            if (piEvent.toolName === "ask_user") {
-              setPendingQuestion(null);
-            }
-          } else if (piEvent.type === "ask-user-question") {
-            setPendingQuestion(piEvent.payload);
-          } else if (piEvent.type === "workflow-snapshot") {
-            setWorkflowSnapshot(piEvent.snapshot);
-          } else if (piEvent.type === "workflow-started") {
-            setWorkflowSnapshot({
-              agentCount: 0,
-              agents: [],
-              doneCount: 0,
-              errorCount: 0,
-              name: "Background workflow",
-              phases: [],
-              runId: piEvent.runId,
-              runningCount: 0,
-              startedAt: piEvent.startedAt,
-            });
-          } else if (piEvent.type === "title-updated") {
-            trace("event:title-updated", { id });
-            titleUpdatedRef.current = true;
-          } else if (piEvent.type === "complete") {
-            trace("event:complete", { id });
-          } else if (piEvent.type === "error") {
-            trace("event:error", { id, message: piEvent.message });
-            piError = new Error(piEvent.message);
-            setStreamError(piEvent.message);
-          }
-        }
-
-        if (done) {
-          trace("mutationFn:stream-done", { id });
-          break;
-        }
-      }
+      piError = await readPiStream(response.body.getReader(), streamHandlers({
+        onPiError: (err) => { piError = err; },
+      }));
 
       if (piError) {
         trace("mutationFn:throwing", { id, message: piError.message });
@@ -208,6 +303,11 @@ export const usePromptMutation = (sessionId: string) => {
       );
     },
     onMutate: async ({ text }) => {
+      // Cancel any in-progress reconnect so it doesn't race with the new prompt.
+      reconnectAbortRef.current?.abort();
+      reconnectAbortRef.current = null;
+      setIsReconnecting(false);
+
       inFlightRef.current += 1;
       trace(
         inFlightRef.current > 1
@@ -317,6 +417,7 @@ export const usePromptMutation = (sessionId: string) => {
 
   return {
     activeTool,
+    isReconnecting,
     liveToolCalls,
     mutation,
     pendingQuestion,

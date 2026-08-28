@@ -138,6 +138,7 @@ export type Database = {
           created_at: string
           goal: string | null
           id: string
+          is_running: boolean
           project_path: string | null
           title: string | null
           user_id: string | null
@@ -146,6 +147,7 @@ export type Database = {
           created_at?: string
           goal?: string | null
           id?: string
+          is_running?: boolean
           project_path?: string | null
           title?: string | null
           user_id?: string | null
@@ -154,6 +156,7 @@ export type Database = {
           created_at?: string
           goal?: string | null
           id?: string
+          is_running?: boolean
           project_path?: string | null
           title?: string | null
           user_id?: string | null

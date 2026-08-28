@@ -35,8 +35,14 @@ import {
   persistBackgroundWorkflowStart,
   persistEntry,
   persistWorkflowSnapshot,
+  setSessionRunning,
   updateSessionTitle,
 } from "@/lib/pi/session-persistence";
+import {
+  closeSessionStream,
+  openSessionStream,
+  publishToSessionStream,
+} from "@/lib/pi/session-stream-store";
 import {
   readWorkflowRun,
   workflowRunPath,
@@ -281,6 +287,14 @@ export const runPiPrompt = async ({
 }) => {
   assertSandboxedRuntime();
 
+  openSessionStream(semlaSessionId);
+  void setSessionRunning(semlaSessionId, true);
+
+  const emit = (event: PiSessionEvent) => {
+    publishToSessionStream(semlaSessionId, event);
+    onEvent(event);
+  };
+
   // If there's a background continuation waiting for a delivery that will now
   // go to this new session (pi-dynamic-workflows re-targets delivery to the
   // latest loaded session), abort it so it exits without disposing.
@@ -310,7 +324,7 @@ export const runPiPrompt = async ({
   );
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
-    onEvent({ payload, type: "ask-user-question" });
+    emit({ payload, type: "ask-user-question" });
   });
 
   const resourceLoader = new DefaultResourceLoader({
@@ -427,7 +441,7 @@ export const runPiPrompt = async ({
     log(semlaSessionId, "bridge background run started", { run: runId });
     const startedAt = new Date().toISOString();
     void persistBackgroundWorkflowStart(semlaSessionId, runId);
-    onEvent({ runId, startedAt, type: "workflow-started" });
+    emit({ runId, startedAt, type: "workflow-started" });
   };
   (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] = bridgeRunNotifier;
 
@@ -446,7 +460,7 @@ export const runPiPrompt = async ({
 
       if (update.type === "text_delta") {
         debug.onAssistantDelta(update.delta);
-        onEvent({ delta: update.delta, type: "assistant-delta" });
+        emit({ delta: update.delta, type: "assistant-delta" });
       }
     }
 
@@ -459,7 +473,7 @@ export const runPiPrompt = async ({
       // live marker labelled identically to the persisted one that replaces it.
       const summary = summarizeArguments(event.args);
       const params = getParams(event.args);
-      onEvent({
+      emit({
         at: new Date().toISOString(),
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -472,7 +486,7 @@ export const runPiPrompt = async ({
     if (event.type === "tool_execution_end") {
       log(semlaSessionId, "tool end", { tool: event.toolName });
       debug.onToolEnd(event.toolName, event.result);
-      onEvent({
+      emit({
         at: new Date().toISOString(),
         isError: Boolean(event.isError),
         toolCallId: event.toolCallId,
@@ -491,7 +505,7 @@ export const runPiPrompt = async ({
           retainBackgroundSession(backgroundRunId, session);
           const backgroundStartedAt = new Date().toISOString();
           void persistBackgroundWorkflowStart(semlaSessionId, backgroundRunId);
-          onEvent({ runId: backgroundRunId, startedAt: backgroundStartedAt, type: "workflow-started" });
+          emit({ runId: backgroundRunId, startedAt: backgroundStartedAt, type: "workflow-started" });
         }
 
         const snapshot = asWorkflowSnapshot(event.result);
@@ -499,7 +513,7 @@ export const runPiPrompt = async ({
           const enriched = liveSnapshot(snapshot, backgroundRunId);
           debug.onWorkflowSnapshot(enriched, "foreground");
           void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
-          onEvent({ snapshot: enriched, type: "workflow-snapshot" });
+          emit({ snapshot: enriched, type: "workflow-snapshot" });
         }
       }
     }
@@ -513,7 +527,7 @@ export const runPiPrompt = async ({
         const enriched = liveSnapshot(snapshot, detectedBackgroundRunId);
         debug.onWorkflowSnapshot(enriched, "foreground");
         void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
-        onEvent({ snapshot: enriched, type: "workflow-snapshot" });
+        emit({ snapshot: enriched, type: "workflow-snapshot" });
       }
     }
   });
@@ -538,10 +552,10 @@ export const runPiPrompt = async ({
       // Fire-and-forget: a slow or failing Supabase write must not block the
       // SSE stream from closing, which would leave the client stuck pending.
       void updateSessionTitle(semlaSessionId, title);
-      onEvent({ title, type: "title-updated" });
+      emit({ title, type: "title-updated" });
     }
     debug.onSseComplete();
-    onEvent({ type: "complete" });
+    emit({ type: "complete" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     debug.onError(msg);
@@ -551,6 +565,7 @@ export const runPiPrompt = async ({
     unregisterNotifier();
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     delete (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY];
+    closeSessionStream(semlaSessionId);
     const settledDuringPrompt =
       deliveredDuringPrompt &&
       (!detectedBackgroundRunId ||
@@ -566,9 +581,11 @@ export const runPiPrompt = async ({
       } else {
         session.dispose();
       }
+      void setSessionRunning(semlaSessionId, false);
     } else if (hasBackgroundWorkflow) {
       // Keep the session alive to receive background workflow progress and the
       // final report turn that pi delivers when the workflow completes.
+      // is_running stays true until runBackgroundContinuation clears it.
       const bgAbort = new AbortController();
       bgAbortControllers.set(semlaSessionId, bgAbort);
       void runBackgroundContinuation(
@@ -582,6 +599,7 @@ export const runPiPrompt = async ({
     } else {
       log(semlaSessionId, "session disposed");
       session.dispose();
+      void setSessionRunning(semlaSessionId, false);
     }
   }
 };
@@ -756,6 +774,7 @@ const runBackgroundContinuation = async (
     if (watchdog) clearInterval(watchdog);
     unsubscribeBg();
     bgAbortControllers.delete(semlaSessionId);
+    void setSessionRunning(semlaSessionId, false);
     if (supersededByNewPrompt) {
       // A new prompt took over this session. Do NOT dispose — that would kill the
       // shared bash executor and abort the new session's in-flight tool calls.
