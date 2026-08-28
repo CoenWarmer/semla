@@ -1,102 +1,43 @@
 /**
- * Stamps `repo:` into the frontmatter of wiki pages a session writes.
+ * Stamps `repo:` into wiki pages a session writes, and makes the tag visible.
  *
- * pi-llm-wiki can derive `repo:` on its own, but only inside commitSynthesis
- * and only from the captured source's `file_path`, by walking up to a `.git`
- * directory. Semla's orient flow captures concatenated blobs written to /tmp,
- * which have no `.git` ancestor, so that derivation returns undefined for
- * every source we hand it. Pages the agent writes by hand — the flow the
- * memory-context prompt asks for on small repos — skip that code path
- * entirely. Both roads end at an untagged page, and an untagged page used to
- * be rendered under the vault's own name, so every repo looked like "semla".
+ * pi-llm-wiki can derive `repo:` itself, but only inside commitSynthesis and
+ * only from a captured source's `file_path`. Semla's orient flow captures
+ * concatenated text, which has no path at all, so that derivation returns
+ * undefined for every source. Pages the agent writes by hand skip the code
+ * path entirely. Both roads end at an untagged page, and an untagged page used
+ * to render under the vault's own name — so every repo looked like "semla".
  *
- * Semla already knows what the package is trying to infer: the session's
- * project_path. Stamping it server-side takes the tag off the agent's
- * critical path — it cannot be forgotten, and it cannot be written into the
- * wrong block.
+ * Attribution comes from a page's source lineage first and the session's
+ * project only as a fallback. The clock is deliberately not the deciding
+ * factor: with two orients sharing one vault, "written during my turn" claimed
+ * 63 of another session's pages.
  *
- * Only pages that lack the field are touched, so a repo the package or the
- * agent tagged correctly is left exactly as it is.
+ * The pure text work lives in extensions/wiki-frontmatter.ts, which the wiki
+ * bridge shares.
  */
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
+import {
+  buildSourceRepoIndex,
+  lineageRepo,
+  PAGE_DIRS,
+  parseRepoValue,
+  repoSlugFromProjectPath,
+  stampRepoFrontmatter,
+} from "@/lib/pi/extensions/wiki-frontmatter";
 import { WIKI_HOME } from "@/lib/pi/runtime-config";
 
-/** Page folders pi-llm-wiki writes under `<vault>/.llm-wiki/wiki`. */
-const PAGE_DIRS = [
-  "entities",
-  "concepts",
-  "sources",
-  "syntheses",
-  "analyses",
-  "requirements",
-] as const;
-
-
-/**
- * Repo slug for a session's project path.
- *
- * Deliberately `basename` with no case folding: it is exactly what
- * pi-llm-wiki's own `repoFromFilePath` produces, so a page the package tags
- * and a page Semla tags land on the same slug instead of splitting into two
- * legend entries.
- */
-export function repoSlugFromProjectPath(
-  projectPath: string | null | undefined,
-): string | null {
-  if (!projectPath) return null;
-  const trimmed = projectPath.replace(/[/\\]+$/, "");
-  if (!trimmed) return null;
-  const slug = basename(trimmed);
-  return slug && slug !== "." && slug !== ".." ? slug : null;
-}
-
-/**
- * Reduce a `repo:` value the agent wrote to the slug form the graph groups by.
- * The memory-context prompt used to interpolate the session's absolute path,
- * so pages in the wild carry `/Users/me/Dev/thing` where `thing` was meant.
- * YAML lists are left alone — a multi-repo page is already deliberate.
- */
-function normalizeRepoValue(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  if (value.startsWith("[")) return value;
-  const unquoted = value.replace(/^["']|["']$/g, "");
-  if (!unquoted) return null;
-  return unquoted.includes("/") ? basename(unquoted.replace(/\/+$/, "")) : unquoted;
-}
-
-const isFence = (line: string) => line.trim() === "---";
-const repoKey = /^repo\s*:/;
-
-/**
- * Keys pi-llm-wiki recognises in frontmatter — its STANDARD_FIELDS plus the
- * extension keys the vault already carries. A trailing block built only from
- * these is duplicated metadata the parser never reads, so dropping it loses
- * nothing; a block with anything else in it is page content and stays put.
- */
-const FRONTMATTER_KEYS = new Set([
-  "type", "title", "description", "resource", "tags", "sources", "generated",
-  "verified", "status", "stale_after", "category", "domain", "aliases",
-  "recall_triggers", "created", "updated", "summary", "raw_path", "source_id",
-  "repo", "format", "captured", "slug", "relevance", "observed_at",
-  "source_context",
-]);
-
-const isFrontmatterKeyLine = (line: string): boolean => {
-  const key = /^([A-Za-z_][\w-]*)\s*:/.exec(line.trim());
-  return key !== null && FRONTMATTER_KEYS.has(key[1]!);
-};
-
-/** Index of the fence closing the frontmatter block that opens at `open`. */
-function findFence(lines: string[], open: number): number {
-  for (let i = open + 1; i < lines.length; i += 1) {
-    if (isFence(lines[i]!)) return i;
-  }
-  return -1;
-}
+export {
+  buildSourceRepoIndex,
+  extractSourceIds,
+  lineageRepo,
+  repoSlugFromProjectPath,
+  stampRepoFrontmatter,
+  type StampOutcome,
+} from "@/lib/pi/extensions/wiki-frontmatter";
 
 /** One page the sweep rewrote, and what it now declares. */
 export interface StampedPage {
@@ -109,96 +50,6 @@ interface WikiRegistryFile {
   pages?: Record<string, { repo?: string | string[] }>;
 }
 
-/** `[a, b]` → ["a","b"], so the registry carries the shape wiki-types expects. */
-function parseRepoValue(value: string): string | string[] {
-  if (!value.startsWith("[")) return value;
-  return value
-    .replace(/^\[|\]$/g, "")
-    .split(",")
-    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
-    .filter(Boolean);
-}
-
-export interface StampOutcome {
-  changed: boolean;
-  content: string;
-  /** What the page declares once this call is done, or null if nothing changed. */
-  repo: string | null;
-}
-
-/**
- * Ensure the page's real frontmatter carries a `repo:` field.
- *
- * Also absorbs the malformed shape the agent produces when told to add the
- * field to a page it has already written: a *second* `---` block holding only
- * `repo:`, sitting after the frontmatter has closed. Every page in the vault
- * that carried the field had it in that orphan block, where the parser reads
- * it as body prose and the registry never sees it.
- */
-export function stampRepoFrontmatter(markdown: string, slug: string): StampOutcome {
-  const unchanged: StampOutcome = { changed: false, content: markdown, repo: null };
-
-  const lines = markdown.split("\n");
-  if (lines.length === 0 || !isFence(lines[0]!)) return unchanged;
-
-  const close = findFence(lines, 0);
-  if (close === -1) return unchanged;
-
-  // An orphan block may follow, separated by blank lines.
-  let cursor = close + 1;
-  while (cursor < lines.length && lines[cursor]!.trim() === "") cursor += 1;
-
-  let orphanRepo: string | null = null;
-  let orphanEnd = -1;
-  if (cursor < lines.length && isFence(lines[cursor]!)) {
-    const orphanClose = findFence(lines, cursor);
-    if (orphanClose !== -1) {
-      const meaningful = lines
-        .slice(cursor + 1, orphanClose)
-        .filter((line) => line.trim() !== "");
-      const declared = meaningful.find((line) => repoKey.test(line.trim()));
-
-      if (declared) {
-        // The page named a repo, just in the block nobody parses. Its own claim
-        // beats the session's — stamping the session slug over a page about
-        // another repo is the mislabelling this whole module exists to stop.
-        orphanRepo = normalizeRepoValue(declared.trim().replace(repoKey, ""));
-        if (meaningful.every(isFrontmatterKeyLine)) orphanEnd = orphanClose;
-      }
-    }
-  }
-
-  const front = lines.slice(1, close);
-  const existing = front.findIndex((line) => repoKey.test(line));
-
-  const value = orphanRepo ?? slug;
-  const next = [...lines];
-
-  // Drop the orphan (and the gap ahead of it) first, so the insert below still
-  // lands on the closing fence's original index.
-  if (orphanEnd !== -1) next.splice(close + 1, orphanEnd - close);
-
-  if (existing === -1) {
-    next.splice(close, 0, `repo: ${value}`);
-  }
-
-  const content = next.join("\n");
-  if (content === markdown) return { changed: false, content: markdown, repo: null };
-
-  // An already-tagged page whose orphan block was removed keeps its own value.
-  const declared =
-    existing === -1 ? value : normalizeRepoValue(front[existing]!.replace(repoKey, ""));
-
-  return { changed: true, content, repo: declared };
-}
-
-/**
- * Stamp every page written since `since` that has no repo of its own.
- *
- * Scoped by modification time rather than rewriting the vault: a page created
- * by an earlier orient of a different repo keeps its own tag, and pages this
- * session never touched are left untagged rather than being claimed.
- */
 export function stampWikiPages(options: {
   slug: string;
   since: number;
@@ -206,6 +57,8 @@ export function stampWikiPages(options: {
 }): StampedPage[] {
   const wikiDir = join(options.wikiHome ?? WIKI_HOME, ".llm-wiki", "wiki");
   const stamped: StampedPage[] = [];
+  // Built once: every page in the sweep asks the same question of it.
+  const sourceRepos = buildSourceRepoIndex(wikiDir);
 
   for (const dir of PAGE_DIRS) {
     const full = join(wikiDir, dir);
@@ -221,7 +74,12 @@ export function stampWikiPages(options: {
       const path = join(full, entry);
       try {
         if (statSync(path).mtimeMs < options.since) continue;
-        const outcome = stampRepoFrontmatter(readFileSync(path, "utf8"), options.slug);
+        const markdown = readFileSync(path, "utf8");
+        // The session's repo is only the fallback. A page synthesised from
+        // another session's source belongs to that source's repo, however
+        // recently this turn happened to touch it.
+        const fallback = lineageRepo(markdown, sourceRepos) ?? options.slug;
+        const outcome = stampRepoFrontmatter(markdown, fallback);
         if (!outcome.changed || !outcome.repo) continue;
         writeFileSync(path, outcome.content, "utf8");
         stamped.push({ id: `${dir}/${entry.replace(/\.md$/, "")}`, repo: outcome.repo });

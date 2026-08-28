@@ -10,6 +10,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSourceRepoIndex,
+  extractSourceIds,
+  lineageRepo,
   repoSlugFromProjectPath,
   stampRepoFrontmatter,
   stampSessionWikiPages,
@@ -309,5 +312,96 @@ describe("stampSessionWikiPages", () => {
 
     expect(await stampSessionWikiPages({ projectPath: null, since: 0, wikiHome: home })).toEqual([]);
     expect(registryOf(home).pages["concepts/thing"]!.repo).toBeUndefined();
+  });
+});
+
+// The bug this exists to kill: two orient sessions sharing one vault, where the
+// sweep stamped 63 semla pages as buildkite-tray purely because that session's
+// turn ended first.
+describe("lineage attribution", () => {
+  const page = (ids: string[]) =>
+    [
+      "---",
+      "type: concept",
+      "title: Thing",
+      ...(ids.length
+        ? ["sources:", ...ids.flatMap((id) => [`  - id: ${id}`, `    resource: /sources/${id}.md`])]
+        : []),
+      "---",
+      "",
+      "# Thing",
+      "",
+      "Mentions SRC-2026-08-28-999 in prose, which is not lineage.",
+      "",
+    ].join("\n");
+
+  it("reads source ids from frontmatter only, not the body", () => {
+    expect(extractSourceIds(page(["SRC-2026-08-28-003"]))).toEqual(["SRC-2026-08-28-003"]);
+  });
+
+  it("has no lineage for a page with no sources", () => {
+    expect(lineageRepo(page([]), new Map())).toBeNull();
+  });
+
+  it("inherits the repo of the source it was synthesised from", () => {
+    const index = new Map([["SRC-2026-08-28-003", "semla"]]);
+    expect(lineageRepo(page(["SRC-2026-08-28-003"]), index)).toBe("semla");
+  });
+
+  it("becomes a list when a page genuinely spans repos", () => {
+    const index = new Map([
+      ["SRC-2026-08-28-003", "semla"],
+      ["SRC-2026-08-28-009", "buildkite-tray"],
+    ]);
+    expect(lineageRepo(page(["SRC-2026-08-28-003", "SRC-2026-08-28-009"]), index)).toBe(
+      "[buildkite-tray, semla]",
+    );
+  });
+
+  it("indexes source pages by their declared repo", () => {
+    const home = mkdtempSync(join(tmpdir(), "semla-lineage-"));
+    mkdirSync(join(home, "sources"), { recursive: true });
+    writeFileSync(
+      join(home, "sources", "SRC-2026-08-28-001.md"),
+      "---\ntype: source\nrepo: semla\n---\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(home, "sources", "SRC-2026-08-28-005.md"),
+      "---\ntype: source\n---\n",
+      "utf8",
+    );
+
+    const index = buildSourceRepoIndex(home);
+    expect(index.get("SRC-2026-08-28-001")).toBe("semla");
+    expect(index.has("SRC-2026-08-28-005")).toBe(false);
+  });
+
+  it("does not claim another session's pages for the session that swept last", () => {
+    const home = mkdtempSync(join(tmpdir(), "semla-concurrent-"));
+    const wiki = join(home, ".llm-wiki", "wiki");
+    mkdirSync(join(wiki, "sources"), { recursive: true });
+    mkdirSync(join(wiki, "concepts"), { recursive: true });
+
+    // A source captured by the semla session, already attributed.
+    writeFileSync(
+      join(wiki, "sources", "SRC-2026-08-28-001.md"),
+      "---\ntype: source\nrepo: semla\n---\n",
+      "utf8",
+    );
+    // Its derived page, written while the buildkite-tray turn was open.
+    writeFileSync(
+      join(wiki, "concepts", "from-semla.md"),
+      page(["SRC-2026-08-28-001"]),
+      "utf8",
+    );
+    // A page with no lineage, which the sweeping session does own.
+    writeFileSync(join(wiki, "concepts", "hand-written.md"), page([]), "utf8");
+
+    const stamped = stampWikiPages({ slug: "buildkite-tray", since: 0, wikiHome: home });
+    const byId = new Map(stamped.map((p) => [p.id, p.repo]));
+
+    expect(byId.get("concepts/from-semla")).toBe("semla");
+    expect(byId.get("concepts/hand-written")).toBe("buildkite-tray");
   });
 });
