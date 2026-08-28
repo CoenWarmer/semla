@@ -37,6 +37,23 @@ export const buildMemoryContextBlock = (
     "- Page that spans multiple repos: `repo: [semla, ecs]` (YAML list)",
     "Use the repository directory name or npm package name as the slug (lowercase, hyphenated).",
     "Pages about generic tools or cross-cutting concepts that genuinely belong to no single repo may omit `repo:`.",
+    "",
+    "## Wiki orientation guidelines",
+    "",
+    "**Ingestion job safety — do not re-call `wiki_ingest` while jobs are in flight.**",
+    "A source is not locked when a background job claims it — re-calling `wiki_ingest` re-queues unfinished sources into new duplicate background jobs.",
+    "Wait for each batch's completion notification, or use `workflow_control` with `action: list` to confirm no `status: running` jobs remain, before issuing the next `wiki_ingest`.",
+    "",
+    "**Capture at module/concern granularity, not per file.**",
+    "Prefer 5–8 coarse sources (e.g. \"main-process modules\" as one concatenated capture) over one source per individual file.",
+    "Each source is synthesised independently with no visibility into other sources, so finer granularity directly multiplies fragment count and orphan risk.",
+    "",
+    "**For repos under ~30 source files, skip the capture pipeline entirely.**",
+    "Read the code directly and hand-write entity/concept pages — reserve `wiki_capture_source`/`wiki_ingest` for genuinely large or unfamiliar codebases where manual synthesis is not feasible.",
+    "",
+    "**Post-ingestion hygiene is mandatory.**",
+    "After any `wiki_ingest` run that processes more than ~5 sources, immediately run `wiki_lint` and check the orphan count.",
+    "If orphans exceed ~20 % of total pages, run the consolidate skill before considering the task done.",
   ];
 
   if (projectPath) {
