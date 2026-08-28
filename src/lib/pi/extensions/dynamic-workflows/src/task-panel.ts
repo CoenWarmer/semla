@@ -295,7 +295,8 @@ export function installResultDelivery(
     const run = manager.getRun(runId);
     // Only background/resumed runs are delivered: a foreground (sync) run already
     // returns its result inline as the tool result, so re-delivering would dup it.
-    if (run?.background) {
+    // suppressDelivery opts out for fire-and-forget runs (e.g. wiki-ingest-bridge).
+    if (run?.background && !run.suppressDelivery) {
       deliver(
         deliverText(run, {
           resultPath: persistedResultPath(manager, runId),
@@ -306,6 +307,7 @@ export function installResultDelivery(
   });
   manager.on("error", ({ runId, error }: { runId: string; error?: { message?: string } }) => {
     if (!manager.getRun(runId)?.background) return;
+    if (manager.getRun(runId)?.suppressDelivery) return;
     deliver(`✗ Background workflow ${runId} failed: ${error?.message ?? "unknown error"}`);
   });
   // A provider usage/quota limit checkpoints the run as paused (not failed): tell the
@@ -327,6 +329,7 @@ export function installResultDelivery(
     }) => {
       if (reason !== "usage_limit") return;
       if (!manager.getRun(runId)?.background) return;
+      if (manager.getRun(runId)?.suppressDelivery) return;
       const when = resetHint ? ` (${resetHint})` : "";
       const cause = error?.message ?? "provider usage limit reached";
       deliver(

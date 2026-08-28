@@ -116,6 +116,12 @@ export interface ManagedRun {
    * tokenBudget.
    */
   agentRetries?: number;
+  /**
+   * When true, the result delivery listener skips this run. Used by
+   * fire-and-forget infrastructure runs (e.g. wiki-ingest-bridge) that
+   * should not inject completion messages into the conversation.
+   */
+  suppressDelivery?: boolean;
 }
 
 /** Per-execution options shared by sync, background, and resume runs. */
@@ -177,6 +183,12 @@ export interface ExecOptions {
     cacheRead: number;
     cacheWrite: number;
   };
+  /**
+   * When true, suppress result delivery back into the conversation when this
+   * run completes. For fire-and-forget infrastructure runs (e.g. wiki-ingest-bridge)
+   * that should not inject completion messages as follow-up turns.
+   */
+  suppressDelivery?: boolean;
 }
 
 export interface WorkflowManagerOptions {
@@ -517,6 +529,7 @@ export class WorkflowManager extends EventEmitter {
       agentRetries: exec.agentRetries !== undefined ? exec.agentRetries : this.defaultAgentRetries,
       agentTimestamps: new Map(),
       agentsById: new Map(),
+      suppressDelivery: exec.suppressDelivery,
     };
 
     this.runs.set(runId, managed);

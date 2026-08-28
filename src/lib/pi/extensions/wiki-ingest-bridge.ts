@@ -356,7 +356,7 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
           title,
           extractedContent: source.extracted.slice(0, 24_000),
         },
-        { toolset: toolsetKey },
+        { toolset: toolsetKey, suppressDelivery: true },
       );
       const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
         | ((runId: string) => void)
@@ -385,7 +385,7 @@ export default function wikiIngestBridge(_pi: ExtensionAPI) {
     const { runId: reindexRunId } = manager.startInBackground(
       WIKI_REINDEX_SCRIPT,
       { model: embedder.model },
-      { toolset: toolsetKey },
+      { toolset: toolsetKey, suppressDelivery: true },
     );
     const notifier = (globalThis as Record<symbol, unknown>)[BRIDGE_RUN_STARTED_KEY] as
       | ((runId: string) => void)
