@@ -10,9 +10,14 @@ import {
   WikiRegistry,
   buildTitleMap,
 } from "@/lib/wiki-types";
+import dynamic from "next/dynamic";
 import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";
-import { WikiGraph } from "./wiki-graph";
+
+const WikiGraph = dynamic(
+  () => import("./wiki-graph").then((m) => m.WikiGraph),
+  { ssr: false, loading: () => <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading graph…</div> },
+);
 import { cn } from "@/lib/utils";
 import { usePendingPrompt } from "@/components/pending-prompt-provider";
 import { useUserSettings } from "@/hooks/use-user-settings";
