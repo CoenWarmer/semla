@@ -34,9 +34,9 @@ This creates the vault structure under `$WIKI_HOME/.llm-wiki/`.
 
 Use the `workflow` tool to spawn parallel subagents, each capturing a different facet.
 
-**Pass `toolset: "wiki"` in the `workflow` call.** Subagents get only bash/read/edit/write by
-default — without this they have no `wiki_capture_source`, and will either fail outright or
-hand-roll a capture that silently loses the source's `file_path`.
+Subagents have the wiki tools by default, so each one can capture its own facet. Do not
+collect text in subagents and capture it yourself afterwards — that serialises the work you
+just parallelised.
 
 | Subagent | Sources to capture |
 |---|---|
@@ -46,12 +46,11 @@ hand-roll a capture that silently loses the source's `file_path`.
 | Conventions | tsconfig.json, eslint config, test setup |
 | History | `git log --oneline -30` |
 
-Each subagent calls `wiki_capture_source` itself to add its content to the wiki vault, and
-reports back only the source ID — never the captured text. A subagent that returns the file
-contents instead of a source ID did not have the tool: check `toolset: "wiki"` was passed.
+Each subagent calls `wiki_capture_source` itself and reports back only the source ID — never
+the captured text.
 
-`wiki_ingest` is deliberately *not* in that toolset. Run it yourself in step 5, once the
-capture workflow has finished.
+`wiki_ingest` is deliberately withheld from subagents, since it starts a background run of
+its own. Run it yourself in step 5, once the capture workflow has finished.
 
 If the `workflow` tool is unavailable, capture the sources sequentially yourself.
 
