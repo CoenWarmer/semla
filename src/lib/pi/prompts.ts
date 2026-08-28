@@ -1,4 +1,5 @@
 import { WIKI_HOME } from "@/lib/pi/runtime-config";
+import { repoSlugFromProjectPath } from "@/lib/pi/wiki-repo-stamp";
 
 // DEFAULT_SYSTEM_PROMPT lives in system-prompt.ts, not here: this module pulls
 // in runtime-config (and through it pi-coding-agent), which must never reach a
@@ -31,7 +32,9 @@ export const buildMemoryContextBlock = (
     "Every wiki page you create or update **must** include a `repo:` field in its YAML frontmatter:",
     "- Single repo: `repo: semla`",
     "- Page that spans multiple repos: `repo: [semla, ecs]` (YAML list)",
-    "Use the repository directory name or npm package name as the slug (lowercase, hyphenated).",
+    "Use the repository directory name as the slug — never an absolute path.",
+    "`repo:` belongs **inside the page's existing `---` frontmatter block**, alongside `type:` and `title:`.",
+    "Never append a second `---` block to add it: only the first block is parsed, so a later one is read as body text and the field is lost.",
     "Pages about generic tools or cross-cutting concepts that genuinely belong to no single repo may omit `repo:`.",
     "",
     "## Wiki orientation guidelines",
@@ -56,7 +59,7 @@ export const buildMemoryContextBlock = (
     lines.push(
       "",
       `The active project for this session is \`${projectPath}\`.`,
-      `For pages about this project, use \`repo: ${projectPath}\` in frontmatter.`,
+      `For pages about this project, use \`repo: ${repoSlugFromProjectPath(projectPath)}\` in frontmatter.`,
       "",
       "Before starting work: call `wiki_recall` with the project name to check for existing codebase knowledge. If no pages are returned, invoke the `orient` skill to initialise the wiki for this repo.",
     );
