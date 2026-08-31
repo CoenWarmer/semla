@@ -49,6 +49,10 @@ import {
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.js";
 import { readRepoField } from "./wiki-frontmatter.js";
 import { withVaultLock } from "./wiki-vault-lock.js";
+import {
+  groundingReport,
+  type GroundingReport,
+} from "./synthesis-grounding.js";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
@@ -316,6 +320,30 @@ function mergeLinkedPages(
 // ── Batch commit-synthesis tool factory ───────────────────────────────────────
 // One shared tool per batch; source_id param routes each call to the right manifest.
 
+/**
+ * Grounding for one source, read from the packet on disk.
+ *
+ * The packet is the page's source of record, so a claim is judged against all
+ * of it — not against the truncated slice the agent was handed, which would
+ * report a faithful reading of a long source as an invention.
+ */
+function reportSynthesisGrounding(
+  paths: WikiVaultPaths,
+  sourceId: string,
+  takeaways: readonly string[],
+): GroundingReport {
+  try {
+    const extracted = readFileSync(
+      join(paths.rawSources, sourceId, "extracted.md"),
+      "utf8",
+    );
+    return groundingReport(takeaways, extracted);
+  } catch {
+    // No packet to check against is not a finding about the synthesis.
+    return { ungrounded: [], lowest: 1 };
+  }
+}
+
 function createBatchCommitSynthesisTool(
   manifests: Map<string, Record<string, unknown>>,
   paths: WikiVaultPaths,
@@ -353,6 +381,20 @@ function createBatchCommitSynthesisTool(
       // so the dispatcher that runs may belong to another concurrent session.
       // The source page already records who captured it, and a batch belongs to
       // the repos of the sources in it whoever dispatched it.
+      // Checked before the commit so the report reflects what was proposed,
+      // and reported rather than refused: the agent stops after one call, so
+      // rejecting here loses the page entirely and leaves the source with no
+      // synthesis at all. Visibility first — a warning is what this run did not
+      // have.
+      const grounding = reportSynthesisGrounding(paths, source_id, params.key_takeaways);
+      if (grounding.ungrounded.length > 0) {
+        console.warn(
+          `[wiki-bridge] ${source_id}: ${grounding.ungrounded.length} of ` +
+            `${params.key_takeaways.length} takeaways are not supported by the source. ` +
+            `Worst: "${grounding.ungrounded[0]!.text.slice(0, 80)}"`,
+        );
+      }
+
       const repo = sourceRepo(paths, source_id) ?? repoOf();
       // Entities are artifacts of one repo, so they are qualified before the
       // package derives a slug from the title. Concepts are shared on purpose
@@ -414,7 +456,13 @@ function createBatchCommitSynthesisTool(
             text: `${ack}. Reply with a one-line confirmation and stop.`,
           },
         ],
-        details: { ...outcome } as Record<string, unknown>,
+        // Carried on the result as well as the console, so the finding lands
+        // in the persisted transcript where an audit can still find it.
+        details: {
+          ...outcome,
+          ungroundedTakeaways: grounding.ungrounded,
+          lowestGrounding: grounding.lowest,
+        } as Record<string, unknown>,
       };
     },
   });
