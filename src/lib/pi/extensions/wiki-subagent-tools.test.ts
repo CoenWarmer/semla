@@ -20,6 +20,10 @@ import {
   WIKI_TOOLS_WITHHELD_FROM_SUBAGENTS,
 } from "./wiki-subagent-tools.ts";
 
+/** Invoke a wrapped tool the way pi does: (toolCallId, params, ...). */
+const callTool = (tool: { execute?: unknown }, params: Record<string, unknown>) =>
+  (tool.execute as (...args: unknown[]) => Promise<unknown>)("call-1", params);
+
 describe("subagent wiki tool policy", () => {
   it("never both grants and withholds the same tool", () => {
     const withheld = Object.keys(WIKI_TOOLS_WITHHELD_FROM_SUBAGENTS);
@@ -190,6 +194,69 @@ describe("guardVaultWrites", () => {
     const noRepo = warn.mock.calls.filter((call) => String(call[0]).includes("no repo"));
     expect(noRepo).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  // captureFile takes no title — tools.ts calls it with the path alone and its
+  // manifest hardcodes title: fileName — so a file capture is always filed
+  // under a basename. Three runs produced "pi-bash-c72532dd1b9fc46a.log",
+  // "semla_history.log" and a 116 KB commit history nobody could find.
+  it("renames a file capture the package titled after the file", async () => {
+    const wikiHome = mkdtempSync(join(tmpdir(), "semla-title-"));
+    const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+    const raw = join(wikiHome, ".llm-wiki", "raw", "sources", "SRC-1");
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(raw, { recursive: true });
+
+    const capture = {
+      name: "wiki_capture_source",
+      execute: async () => {
+        writeFileSync(
+          join(dir, "SRC-1.md"),
+          "---\ntype: source\ntitle: semla_history.log\n---\n\n# semla_history.log\n\nbody\n",
+          "utf8",
+        );
+        writeFileSync(
+          join(raw, "manifest.json"),
+          JSON.stringify({ id: "SRC-1", title: "semla_history.log" }),
+          "utf8",
+        );
+        return "ok";
+      },
+    };
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+
+    await callTool(tool!, { file_path: "/tmp/semla_history.log", title: "semla History (150 commits, bodies)" });
+
+    const page = readFileSync(join(dir, "SRC-1.md"), "utf8");
+    expect(page).toContain("title: semla History (150 commits, bodies)");
+    expect(page).toContain("# semla History (150 commits, bodies)");
+    expect(page).not.toContain("semla_history.log");
+    expect(JSON.parse(readFileSync(join(raw, "manifest.json"), "utf8")).title).toBe(
+      "semla History (150 commits, bodies)",
+    );
+  });
+
+  it("leaves a page the package titled sensibly alone", async () => {
+    const wikiHome = mkdtempSync(join(tmpdir(), "semla-title-keep-"));
+    const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+    mkdirSync(dir, { recursive: true });
+
+    const capture = {
+      name: "wiki_capture_source",
+      execute: async () => {
+        writeFileSync(
+          join(dir, "SRC-1.md"),
+          "---\ntype: source\ntitle: A Real Page Title\n---\n\n# A Real Page Title\n",
+          "utf8",
+        );
+        return "ok";
+      },
+    };
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+
+    await callTool(tool!, { file_path: "/tmp/other.log", title: "Something Else" });
+
+    expect(readFileSync(join(dir, "SRC-1.md"), "utf8")).toContain("title: A Real Page Title");
   });
 
   // The point of doing this at capture rather than at turn end: the source

@@ -311,6 +311,59 @@ const sourcePages = (wikiHome: string): string[] => {
  * source belongs to the session that captured it, not to whichever session's
  * turn happened to end first.
  */
+/**
+ * Apply the title the agent asked for to a page the package named itself.
+ *
+ * `captureFile` takes no title at all — tools.ts calls it with the path and
+ * nothing else, and its manifest hardcodes `title: fileName`. So a file capture
+ * is always filed under a basename: three runs produced
+ * "pi-bash-c72532dd1b9fc46a.log", "semla_history.log" and one 116 KB commit
+ * history nobody could find. Requiring a title from the agent does not help on
+ * its own, because the package throws it away; it has to be put back here.
+ *
+ * Only ever renames a page this capture just created, and only when the current
+ * title is the bare filename — a page the package titled sensibly is left alone.
+ */
+function applyCaptureTitle(
+  wikiHome: string,
+  before: Set<string>,
+  filePath: string,
+  title: string,
+): void {
+  const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
+  const fileName = filePath.split("/").pop() ?? filePath;
+  for (const entry of sourcePages(wikiHome)) {
+    if (before.has(entry) || !entry.endsWith(".md")) continue;
+    const path = join(dir, entry);
+    try {
+      const content = readFileSync(path, "utf8");
+      if (!content.includes(`title: ${fileName}`)) continue;
+      writeFileSync(
+        path,
+        content
+          .replace(`title: ${fileName}`, `title: ${title}`)
+          .replace(`# ${fileName}`, `# ${title}`),
+        "utf8",
+      );
+      patchManifestTitle(wikiHome, entry.replace(/\.md$/, ""), title);
+    } catch {
+      // A page that cannot be renamed is still a correctly captured page.
+    }
+  }
+}
+
+/** Keep the packet's manifest agreeing with the page it produced. */
+function patchManifestTitle(wikiHome: string, sourceId: string, title: string): void {
+  const path = join(wikiHome, ".llm-wiki", "raw", "sources", sourceId, "manifest.json");
+  try {
+    const manifest = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    manifest.title = title;
+    writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  } catch {
+    // The page is what gets read; a stale manifest title is cosmetic.
+  }
+}
+
 function attributeNewSources(wikiHome: string, before: Set<string>, repo: string): void {
   const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
   for (const entry of sourcePages(wikiHome)) {
@@ -365,7 +418,14 @@ export function guardVaultWrites<T extends ExecutableTool>(
           const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
           const result = await execute(...args);
           const repo = options.repoOf();
-          if (before) await rebuildVaultMetadata(options.wikiHome);
+          if (before) {
+            const request = args[1] as { file_path?: unknown; title?: unknown } | null;
+            const wanted = typeof request?.title === "string" ? request.title.trim() : "";
+            if (wanted && typeof request?.file_path === "string" && request.file_path) {
+              applyCaptureTitle(options.wikiHome, before, request.file_path, wanted);
+            }
+            await rebuildVaultMetadata(options.wikiHome);
+          }
           if (before && repo) {
             attributeNewSources(options.wikiHome, before, repo);
           } else if (before && !warnedNoRepo) {
