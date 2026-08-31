@@ -1,8 +1,8 @@
 "use client";
 
-import { startTransition, useOptimistic } from "react";
+import { startTransition, useOptimistic, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/session-item";
 import { formatSessionDate } from "@/lib/session-date";
@@ -43,10 +43,14 @@ const fetchStatus = async (): Promise<SessionStatus[]> => {
 export function mergeDiscoveredSessions(
   rendered: SessionRow[],
   status: SessionStatus[],
+  removed: ReadonlySet<string> = new Set(),
 ): SessionRow[] {
   const known = new Set(rendered.map((session) => session.id));
   const discovered = status
-    .filter((session) => !known.has(session.id))
+    // `removed` is what keeps a deletion from undoing itself: the row leaves the
+    // rendered list immediately, and until the poll catches up the status still
+    // lists it — which would otherwise read as "add it back".
+    .filter((session) => !known.has(session.id) && !removed.has(session.id))
     .map((session) => ({
       id: session.id,
       createdAt: session.createdAt,
@@ -66,6 +70,9 @@ export function mergeDiscoveredSessions(
 export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
+
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set());
 
   const [optimistic, removeOptimistically] = useOptimistic(
     sessions,
@@ -91,12 +98,18 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
   // in `sessions` and did not appear until a server re-render happened to be
   // triggered. Anything the poll knows about and the server render did not is
   // added here, newest first, so it shows up as soon as it exists.
-  const rows = mergeDiscoveredSessions(optimistic, status ?? []);
+  const rows = mergeDiscoveredSessions(optimistic, status ?? [], deleted);
 
   const handleDelete = (id: string) => {
+    // Held for the life of the page: an optimistic removal lasts only as long
+    // as the transition, while the poll keeps returning the session until its
+    // own refetch lands.
+    setDeleted((current) => new Set(current).add(id));
+
     startTransition(async () => {
       removeOptimistically(id);
       await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+      await queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
       router.refresh();
       if (pathname === `/sessions/${id}`) {
         router.push("/");

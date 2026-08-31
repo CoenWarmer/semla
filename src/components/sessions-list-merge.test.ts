@@ -82,3 +82,33 @@ describe("mergeDiscoveredSessions", () => {
     expect(merged.map((s) => s.id)).toEqual(["legacy", "new"]);
   });
 });
+
+/**
+ * Deleting undid itself: the row left the rendered list at once, but the status
+ * poll still listed the session until its own refetch landed, and the merge
+ * read that as "a session the server render is missing" and put it back.
+ */
+describe("deleted sessions", () => {
+  it("does not re-add a session that was just deleted", () => {
+    const merged = mergeDiscoveredSessions(
+      [],
+      [polled("gone", "2026-08-31T10:00:00.000Z")],
+      new Set(["gone"]),
+    );
+
+    expect(merged).toEqual([]);
+  });
+
+  it("still adds the sessions that were not deleted", () => {
+    const merged = mergeDiscoveredSessions(
+      [],
+      [
+        polled("gone", "2026-08-31T10:00:00.000Z"),
+        polled("kept", "2026-08-31T11:00:00.000Z"),
+      ],
+      new Set(["gone"]),
+    );
+
+    expect(merged.map((s) => s.id)).toEqual(["kept"]);
+  });
+});

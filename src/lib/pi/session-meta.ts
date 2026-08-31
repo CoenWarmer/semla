@@ -15,7 +15,7 @@
  * exactly what this is meant to prevent.
  */
 
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
@@ -97,6 +97,27 @@ export function listSessionMeta(dir = PI_SESSION_DIR): SessionMeta[] {
   }
 
   return sessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Remove a session's record and transcript.
+ *
+ * Deleting a session has always removed its entries from Postgres by cascade;
+ * now that the same data is on disk and is the copy that is read, leaving it
+ * behind means the session comes back — the sidebar polls the directory, so a
+ * record nobody deleted is a session nobody can get rid of.
+ *
+ * Irreversible: the transcript is the conversation, and this is what deleting
+ * a session means.
+ */
+export function deleteSessionFiles(id: string, dir = PI_SESSION_DIR): void {
+  for (const suffix of [".json", ".jsonl"]) {
+    try {
+      rmSync(join(dir, `${id}${suffix}`), { force: true });
+    } catch {
+      // Already gone, or never written.
+    }
+  }
 }
 
 /** True when a session has a transcript on disk, whatever Postgres knows. */

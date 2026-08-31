@@ -14,7 +14,7 @@
  * have meant megabytes a second and a throttle to reason about.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { SEMLA_STATE_DIR } from "@/lib/user-settings-store";
@@ -96,6 +96,15 @@ export function upsertWorkflowRun(
   index[runId] = next;
   writeFileSync(indexPath(sessionId, dir), `${JSON.stringify(index, null, 2)}\n`, "utf8");
   return next;
+}
+
+/** Drop a deleted session's index. The run files themselves are pi's to keep. */
+export function deleteWorkflowRuns(sessionId: string, dir = SEMLA_STATE_DIR): void {
+  try {
+    rmSync(indexPath(sessionId, dir), { force: true });
+  } catch {
+    // Never had one.
+  }
 }
 
 /** Runs still marked running, which a new turn has to reconcile. */

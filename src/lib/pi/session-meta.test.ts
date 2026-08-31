@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  deleteSessionFiles,
   hasTranscript,
   listSessionMeta,
   readSessionMeta,
@@ -100,5 +101,41 @@ describe("hasTranscript", () => {
     expect(hasTranscript("full", d)).toBe(true);
     expect(hasTranscript("empty", d)).toBe(false);
     expect(hasTranscript("missing", d)).toBe(false);
+  });
+});
+
+/**
+ * A deleted session used to survive on disk, and since the sidebar polls the
+ * directory that made it a session nobody could get rid of — it reappeared on
+ * the next poll.
+ */
+describe("deleteSessionFiles", () => {
+  it("removes the record and the transcript together", () => {
+    const d = dir();
+    writeSessionMeta("s1", { title: "gone" }, d);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "s1.jsonl"), '{"type":"session"}\n', "utf8");
+
+    deleteSessionFiles("s1", d);
+
+    expect(readSessionMeta("s1", d)).toBeNull();
+    expect(hasTranscript("s1", d)).toBe(false);
+    expect(listSessionMeta(d)).toEqual([]);
+  });
+
+  it("leaves other sessions alone", () => {
+    const d = dir();
+    writeSessionMeta("keep", {}, d);
+    writeSessionMeta("drop", {}, d);
+
+    deleteSessionFiles("drop", d);
+
+    expect(listSessionMeta(d).map((m) => m.id)).toEqual(["keep"]);
+  });
+
+  it("is a no-op for a session that was never written", () => {
+    const d = dir();
+
+    expect(() => deleteSessionFiles("never", d)).not.toThrow();
   });
 });

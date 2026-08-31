@@ -1,5 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { writeSessionMeta } from "@/lib/pi/session-meta";
+import { deleteSessionFiles, writeSessionMeta } from "@/lib/pi/session-meta";
+import { deleteWorkflowRuns } from "@/lib/pi/workflow-run-index";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -69,6 +70,11 @@ export async function DELETE(
   } catch (error) {
     return handleRouteError(error, "Unable to authorize session.");
   }
+
+  // Disk first: it is the copy that is read, so a session left there is one
+  // the sidebar keeps finding no matter what Postgres says.
+  deleteSessionFiles(id);
+  deleteWorkflowRuns(id);
 
   const { error } = await supabase.from("sessions").delete().eq("id", id);
 
