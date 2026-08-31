@@ -46,6 +46,19 @@ just parallelised.
 | Conventions | tsconfig.json, eslint config, test setup |
 | History | `git log -n 40 --format='%h %s%n%b%n---'` — **with bodies**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
+| Review discussion | Merged PR titles and bodies via `gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is unavailable or unauthenticated) |
+
+**Pass what you read as `text`, with a `title`. Never as `url`.** You are
+capturing files from a local checkout. `url` is first in the tool's parameter
+list, so a subagent given no steer reaches for it, and the package then runs its
+*web* extractor over whatever it was handed — one run stored
+"Content could not be extracted" for a repo path, another captured a GitHub 404
+page as a source. `url` is only for a genuine web page; `file_path` captures a
+single file as-is.
+
+**Do not fetch from GitHub for anything that is in the checkout.** The code,
+the README and the git history are all on disk and are the authority. `gh` is
+for the Review discussion facet only, where the content exists nowhere locally.
 
 **Capture commit bodies, not just subjects.** `git log --oneline` throws away the
 message body, which is usually the only written record of *why* a change was
@@ -86,6 +99,10 @@ still load-bearing, create an `analysis` page:
 ```
 wiki_ensure_page(type: "analysis", title: "...", content: "...")
 ```
+
+`content` is the **body only** — start at the first `##` heading. The tool writes
+the frontmatter itself, so including a `---` block of your own leaves the page
+with two of them, and only the first is ever parsed.
 
 Each page should say what was chosen, **what it was chosen over**, and the
 constraint that forced it. A decision with no alternative and no constraint is
