@@ -40,6 +40,11 @@ import {
 } from "@/lib/pi/extension-contract";
 import { recordExtensionLoad } from "@/lib/pi/extension-health";
 import {
+  getLiveSession,
+  releaseLiveSession,
+  retainLiveSession,
+} from "@/lib/pi/live-sessions";
+import {
   repoSlugFromProjectPath,
   stampSessionWikiPages,
 } from "@/lib/pi/wiki-repo-stamp";
@@ -316,6 +321,37 @@ const detach = (sid: string, what: string, work: Promise<unknown>): void => {
   });
 };
 
+/**
+ * Interrupt a session's current turn.
+ *
+ * Aborts the agent loop and any background continuation waiting on it, then
+ * clears the running flag so the UI stops showing a spinner for work that has
+ * ended. Reports whether there was anything to stop, so the caller can tell
+ * "stopped it" from "it had already finished".
+ */
+export const stopPiSession = async (semlaSessionId: string): Promise<boolean> => {
+  const live = getLiveSession(semlaSessionId);
+  const continuation = bgAbortControllers.get(semlaSessionId);
+
+  if (!live && !continuation) return false;
+
+  log(semlaSessionId, "stop requested");
+  continuation?.abort();
+  bgAbortControllers.delete(semlaSessionId);
+
+  try {
+    await live?.abort();
+  } catch (error) {
+    // An abort that fails still leaves the turn no longer wanted; the finally
+    // in runPiPrompt is what actually tears the session down.
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[pi:session:${semlaSessionId.slice(0, 8)}] abort failed: ${message}`);
+  }
+
+  detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+  return true;
+};
+
 export const runPiPrompt = async ({
   model,
   onEvent,
@@ -419,6 +455,9 @@ export const runPiPrompt = async ({
     resourceLoader,
     sessionManager,
   });
+
+  // Registered before the turn starts so a stop request has something to reach.
+  retainLiveSession(semlaSessionId, session);
 
   const loadedExtensions = extensionsResult.extensions.map((e) => e.path);
   log(semlaSessionId, "extensions loaded", {
@@ -656,6 +695,7 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
+    releaseLiveSession(semlaSessionId);
     clearSessionRepo(piRuntimeSessionId);
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);

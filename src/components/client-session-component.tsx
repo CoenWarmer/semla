@@ -72,6 +72,16 @@ export function ClientSessionComponent({
   const { consume: consumePendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
 
+  const handleStop = useCallback(() => {
+    // Fire and forget: the turn ends through the stream closing, and a failed
+    // stop should not leave the button wedged. Errors surface in the log.
+    void fetch(`/api/sessions/${sessionId}/stop`, { method: "POST" }).catch(
+      (error: unknown) => {
+        console.warn("[session] stop failed:", error);
+      },
+    );
+  }, [sessionId]);
+
   const handleGoalSave = useCallback(async (next: string | null) => {
     setGoal(next);
     await fetch(`/api/sessions/${sessionId}`, {
@@ -374,6 +384,8 @@ export function ClientSessionComponent({
             goalEditor={
               <GoalEditor goal={goal} onSave={handleGoalSave} variant="block" />
             }
+            isRunning={isActive}
+            onStop={handleStop}
             onSubmit={handleSubmit}
           />
         </div>

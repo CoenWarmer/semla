@@ -154,11 +154,21 @@ interface PromptEditorProps {
   ) => Promise<void> | void;
   defaultTools: string[];
   goalEditor?: ReactNode;
+  /**
+   * The session has a turn in flight. Driven by the parent rather than the
+   * editor's own submit state, which knows nothing about a turn still running
+   * after a reload or one continuing in the background.
+   */
+  isRunning?: boolean;
+  /** Interrupt that turn. Without it the button stays a submit button. */
+  onStop?: () => void;
 }
 
 export function PromptEditor({
   defaultTools,
   goalEditor,
+  isRunning,
+  onStop,
   onSubmit,
 }: PromptEditorProps) {
   const {
@@ -432,7 +442,10 @@ export function PromptEditor({
                 </ModelSelectorContent>
               </ModelSelector>
             </PromptInputTools>
-            <PromptInputSubmit status={status} />
+            <PromptInputSubmit
+              onStop={onStop}
+              status={isRunning ? "streaming" : status}
+            />
           </PromptInputFooter>
         </PromptInput>
       </PromptInputProvider>
