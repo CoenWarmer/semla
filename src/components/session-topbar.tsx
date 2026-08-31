@@ -11,6 +11,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { BotIcon, ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
+import { GitStatusBadge } from "./git-status-badge";
 import { GoalEditor } from "./goal-editor";
 import { InspectorPanel } from "./inspector-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
@@ -100,6 +101,9 @@ export function SessionTopbar({
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
+          {/* Branch and divergence for this session's project */}
+          <GitStatusBadge sessionId={sessionId} />
+
           {/* Agent count — clicking opens the workflow panel */}
           {showAgentCount && (
             <button

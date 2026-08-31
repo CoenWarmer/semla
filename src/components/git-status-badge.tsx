@@ -72,9 +72,9 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
         render={
           // A real <button>, not a styled span: this opens a menu of actions,
           // so it needs the native semantics keyboard and assistive tech rely
-          // on. `type="button"` is not optional — PromptInput is a <form>, and
-          // a bare button inside it defaults to submit, which would fire the
-          // prompt on click.
+          // on. The explicit type stays whatever chrome hosts this — it sat in
+          // the prompt toolbar's <form> once, where an implicit submit would
+          // have fired the prompt, and nothing stops it being placed there again.
           <button
             className="flex items-center gap-1.5 rounded px-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
             title={label.title}
@@ -98,7 +98,7 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
         )}
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="w-72 p-3" side="top">
+      <PopoverContent align="end" className="w-72 p-3" side="bottom">
         <p className="text-xs leading-relaxed text-muted-foreground">{label.title}</p>
 
         <div className="mt-3 flex flex-col gap-1.5">

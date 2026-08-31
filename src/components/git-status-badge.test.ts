@@ -1,8 +1,11 @@
 /**
- * The prompt toolbar lives inside a <form> whose submit sends the prompt, so
- * every button rendered into it must say `type="button"`. A bare <button>
- * there defaults to submit: clicking "Merge in origin/main" would also fire
- * whatever was in the textarea.
+ * Every button here declares its type, and the popover trigger is a real
+ * <button>.
+ *
+ * The type matters because a bare <button> inside a <form> defaults to submit.
+ * This badge shipped in the prompt toolbar, which is exactly such a form —
+ * clicking "Merge in origin/main" would have sent whatever was in the textarea
+ * — and although it now lives in the top bar, nothing stops it moving back.
  *
  * There is no DOM test setup in this project, and neither tsc nor eslint has
  * an opinion about a missing `type`, so this reads the source — the same

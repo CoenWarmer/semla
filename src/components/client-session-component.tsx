@@ -391,7 +391,6 @@ export function ClientSessionComponent({
             isRunning={isActive}
             onStop={handleStop}
             onSubmit={handleSubmit}
-            sessionId={sessionId}
           />
         </div>
       </div>
