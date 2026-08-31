@@ -1,6 +1,7 @@
 import { SessionsListClient } from "@/components/sessions-list-client";
 import { createClient } from "@/lib/supabase/server";
 import { listSessionMeta } from "@/lib/pi/session-meta";
+import { formatSessionDate } from "@/lib/session-date";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
@@ -104,14 +105,8 @@ export async function SessionsList() {
 
   const rows = sessions.map(({ id, created_at, title, is_running }) => ({
     id,
-    date: new Date(created_at).toLocaleDateString("nl-NL", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
+    createdAt: created_at,
+    date: formatSessionDate(created_at),
     isRunning: is_running ?? false,
     title,
     usage: usageBySession.get(id),

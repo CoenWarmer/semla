@@ -5,7 +5,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Live state for the sidebar: which sessions are running, and which have run.
+ * Live state for the sidebar: which sessions exist, which are running, and
+ * which have run.
+ *
+ * It carries enough to render a row because the sidebar is a server component
+ * in a layout, and App Router layouts persist across client navigation — so a
+ * session created on the way to its own page did not appear until something
+ * forced a server re-render, which in practice was the title arriving after the
+ * agent's first reply.
  *
  * Replaces a Supabase Realtime subscription on `sessions`. is_running lives on
  * disk now, so the sidebar can follow it without a database — the spinner was
@@ -23,6 +30,8 @@ export async function GET() {
       .filter((meta) => meta.userId === null || meta.userId === user.id)
       .map((meta) => ({
         id: meta.id,
+        title: meta.title,
+        createdAt: meta.createdAt,
         isRunning: meta.isRunning,
         // "Ran and finished" rather than "exists": a session that was created
         // and never used has nothing to report as complete.

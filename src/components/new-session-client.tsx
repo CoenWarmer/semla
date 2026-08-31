@@ -1,6 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { SESSION_STATUS_KEY } from "@/components/sessions-list-client";
 import { useCallback, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { GoalEditor } from "@/components/goal-editor";
@@ -12,6 +15,7 @@ import {
 
 export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { set: setPendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(null);
   const [error, setError] = useState<string>();
@@ -43,9 +47,16 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
       // only reaches the request that starts it, so it has to be started there.
       setPendingPrompt(body.id, { goal, model, text, tools });
 
+      // The sidebar polls for sessions; nudge it now so the new one appears as
+      // we navigate rather than whenever the next poll lands. Deliberately not
+      // router.refresh(): that re-renders the route we are about to leave and,
+      // done near a starting stream, can disrupt the SSE reader (see the
+      // deferred refresh in use-prompt-mutation).
+      void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
+
       router.replace(`/sessions/${body.id}`);
     },
-    [goal, router, setPendingPrompt],
+    [goal, queryClient, router, setPendingPrompt],
   );
 
   return (
