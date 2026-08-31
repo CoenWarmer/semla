@@ -12,6 +12,7 @@ import {
   collectWikiSubagentTools,
   selectSubagentTools,
   guardVaultWrites,
+  rejectUnfetchableUrl,
   WIKI_SUBAGENT_DEEP_IMPORTS,
   WIKI_SUBAGENT_REGISTRARS,
   WIKI_SUBAGENT_TOOL_NAMES,
@@ -210,5 +211,57 @@ describe("guardVaultWrites", () => {
     expect(readFileSync(join(dir, "SRC-002.md"), "utf8")).toContain("repo: semla");
     // A source that already existed is not re-attributed.
     expect(readFileSync(join(dir, "SRC-001.md"), "utf8")).toContain("repo: other");
+  });
+});
+
+/**
+ * Both of these were captured for real: a repo path handed to the web
+ * extractor, stored as "Content could not be extracted", and a GitHub 404 page
+ * recorded as a successful source. Neither failed loudly; both were on their
+ * way into entity pages as though they described the codebase.
+ */
+describe("rejectUnfetchableUrl", () => {
+  it.each([
+    ["a repo path", "/Users/coen/Dev/semla/README.md"],
+    ["a relative path", "docs/plans/waterfall.md"],
+    ["a file URL", "file:///Users/coen/Dev/semla/README.md"],
+  ])("refuses %s", (_label, url) => {
+    const refusal = rejectUnfetchableUrl({ url });
+
+    expect(refusal?.isError).toBe(true);
+    // The message has to say what to do instead, or the agent just retries.
+    expect(refusal!.content[0]!.text).toContain("`text`");
+  });
+
+  it.each([
+    ["an https page", "https://example.com/docs"],
+    ["an http page", "http://localhost:3000/x"],
+  ])("allows %s, which is a real capture", (_label, url) => {
+    expect(rejectUnfetchableUrl({ url })).toBeNull();
+  });
+
+  it.each([
+    ["a text capture", { text: "contents", title: "semla package.json" }],
+    ["a file_path capture", { file_path: "/Users/coen/Dev/semla/README.md" }],
+    ["an empty url", { url: "   ", text: "contents" }],
+  ])("does not interfere with %s", (_label, params) => {
+    expect(rejectUnfetchableUrl(params)).toBeNull();
+  });
+
+  it("refuses before the vault lock is taken", async () => {
+    const execute = vi.fn();
+    const [capture] = guardVaultWrites(
+      [{ name: "wiki_capture_source", execute }],
+      { wikiHome: mkdtempSync(join(tmpdir(), "semla-reject-")), repoOf: () => "semla" },
+    );
+
+    const result = (await capture!.execute!(
+      "call-1" as never,
+      { url: "/Users/coen/Dev/semla/README.md" } as never,
+    )) as { isError?: boolean };
+
+    expect(result.isError).toBe(true);
+    // Never reached the package, so no packet and no source id were burned.
+    expect(execute).not.toHaveBeenCalled();
   });
 });

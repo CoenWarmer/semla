@@ -137,6 +137,48 @@ export interface VaultGuardOptions {
   repoOf: () => string | null;
 }
 
+/**
+ * Reject a capture that names something the fetcher cannot fetch.
+ *
+ * `wiki_capture_source` takes url | file_path | text, and `url` is first in
+ * both the schema and the description ("Capture a URL, local file, or pasted
+ * text"). A subagent capturing local code and given no steer picks it, and the
+ * package then runs the *web* extractor over whatever it was handed: an orient
+ * run captured `/Users/coen/Dev/semla/README.md` as a URL and stored
+ * "Content could not be extracted", and another fetched a GitHub 404 page —
+ * both recorded as sources and both on their way into entity pages.
+ *
+ * Only obviously-unfetchable values are refused. A real http(s) URL still
+ * works, because capturing a genuine web page is a legitimate use.
+ */
+export function rejectUnfetchableUrl(
+  params: unknown,
+): { content: Array<{ type: "text"; text: string }>; isError: true } | null {
+  const url = (params as { url?: unknown } | null)?.url;
+  if (typeof url !== "string" || url.trim() === "") return null;
+
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    scheme = "";
+  }
+  if (scheme === "http:" || scheme === "https:") return null;
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text:
+          `wiki_capture_source: "${url}" is not a fetchable URL. ` +
+          "To capture a local file, read it and pass its contents as `text` " +
+          "with a `title`, or pass the path as `file_path` — not as `url`.",
+      },
+    ],
+    isError: true,
+  };
+}
+
 const sourcePages = (wikiHome: string): string[] => {
   try {
     return readdirSync(join(wikiHome, ".llm-wiki", "wiki", "sources"));
@@ -199,8 +241,12 @@ export function guardVaultWrites<T extends ExecutableTool>(
 
     return {
       ...tool,
-      execute: (...args: never[]) =>
-        withVaultLock(options.wikiHome, tool.name, async () => {
+      execute: (...args: never[]) => {
+        // args are (toolCallId, params, signal, onUpdate, ctx).
+        const refusal = isCapture ? rejectUnfetchableUrl(args[1]) : null;
+        if (refusal) return Promise.resolve(refusal);
+
+        return withVaultLock(options.wikiHome, tool.name, async () => {
           const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
           const result = await execute(...args);
           const repo = options.repoOf();
@@ -215,7 +261,8 @@ export function guardVaultWrites<T extends ExecutableTool>(
             );
           }
           return result;
-        }),
+        });
+      },
     };
   });
 }
