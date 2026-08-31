@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tsc": "npx tsc",
-    "generate:db-types": "npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > src/types/database.types.ts",
+    "generate:db-types": "npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > src/types/database.types.ts.tmp && mv src/types/database.types.ts.tmp src/types/database.types.ts || (rm -f src/types/database.types.ts.tmp; echo \"db types unchanged: generation failed\" >&2)",
     "postinstall": "npm install --prefix .pi/packages/semla-otel && npm install --prefix .pi/npm && npm run generate:db-types"
   },
   "dependencies": {
