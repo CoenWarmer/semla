@@ -29,6 +29,7 @@ import {
   stampRepoFrontmatter,
 } from "@/lib/pi/extensions/wiki-frontmatter";
 import { WIKI_HOME } from "@/lib/pi/runtime-config";
+import { sweepIdentityPages } from "@/lib/pi/extensions/identity-page-sweep";
 
 export {
   buildSourceRepoIndex,
@@ -149,6 +150,17 @@ export async function stampSessionWikiPages(options: {
   const wikiHome = options.wikiHome ?? WIKI_HOME;
   const stamped = stampWikiPages({ slug, since: options.since, wikiHome });
   if (stamped.length > 0) patchRegistry(wikiHome, stamped);
+
+  // After the stamp, never before: canonicalising a person's page means
+  // stripping the repo qualifier from its title, and the only safe way to know
+  // which prefix is a qualifier is to read the repo the page itself declares.
+  const fixes = sweepIdentityPages({ wikiHome });
+  if (fixes.length > 0) {
+    console.info(
+      `[wiki] canonicalised ${fixes.length} identity page(s): ` +
+        fixes.map((fix) => `${fix.page} ${fix.action}${fix.into ? ` → ${fix.into}` : ""}`).join(", "),
+    );
+  }
 
   return stamped;
 }
