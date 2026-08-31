@@ -13,6 +13,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { inspectCommand } from "./install-guard.js";
 
+// Read from the environment rather than runtime-config: this file is loaded by
+// jiti, which does not resolve the "@/" alias.
+const WIKI_HOME = process.env.WIKI_HOME ?? join(process.cwd(), ".semla-wiki");
+
 /**
  * Whether an npx target already exists locally.
  *
@@ -36,7 +40,7 @@ export default function installGuard(pi: ExtensionAPI) {
     const command = call.input?.command;
     if (typeof command !== "string") return undefined;
 
-    const verdict = inspectCommand(command, binaryExists);
+    const verdict = inspectCommand(command, binaryExists, WIKI_HOME);
     if (!verdict.blocked) return undefined;
 
     console.warn(`[install-guard] blocked: ${command}`);

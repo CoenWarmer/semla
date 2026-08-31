@@ -30,6 +30,13 @@ Call `wiki_recall` with the repo name (e.g. `kibana`, `semla`). If it returns re
 
 This creates the vault structure under `$WIKI_HOME/.llm-wiki/`.
 
+**Never create wiki files or directories yourself**, and never call the wiki
+package's internals from a shell. The vault must live under `$WIKI_HOME`: a
+`.llm-wiki` inside a repository takes precedence over `$WIKI_HOME` from then on,
+so a hand-built one silently captures the rest of that repo's history into a
+directory nothing reads. If the wiki tools are missing, say so and stop — a
+capture in the wrong place is worse than no capture.
+
 ### 4. Capture sources in parallel
 
 Use the `workflow` tool to spawn parallel subagents, each capturing a different facet.

@@ -32,6 +32,18 @@ const ADD_COMMANDS: ReadonlyArray<{ tool: string; verbs: readonly string[] }> = 
   { tool: "brew", verbs: ["install"] },
 ];
 
+/**
+ * Shell verbs that create or change files. A command mentioning a vault is
+ * only a problem if it is going to write to one; reading is how anyone
+ * inspects the wiki.
+ */
+const WRITE_VERBS = ["mkdir", "touch", "cp", "mv", "rm", "tee", "rsync"] as const;
+
+const WRITE_REDIRECT = />>?\s*\S/;
+
+/** Ways an agent has actually reached the wiki's internals from a shell. */
+const WIKI_INTERNALS = /pi-llm-wiki|captureText|bootstrapVault|ensureVaultStructure/;
+
 export interface GuardVerdict {
   blocked: boolean;
   reason?: string;
@@ -97,11 +109,53 @@ const tokens = (segment: string): string[] =>
  * only that case is safe to wave through, since npx silently downloads
  * anything it cannot resolve.
  */
+/**
+ * Refuse to build a wiki vault by hand.
+ *
+ * A subagent without wiki tools did not stop — it reproduced them, calling the
+ * package's own captureText from a shell and resolving the vault path itself.
+ * That created a `.llm-wiki` inside the repo being oriented, and pi-llm-wiki
+ * prefers a vault in the working directory over WIKI_HOME from then on, so
+ * every later capture went there. Three repos ended up with one, and a whole
+ * run's work landed in a directory nobody was reading.
+ *
+ * Reads are left alone: inspecting a vault is how anyone works out what
+ * happened, including this diagnosis.
+ */
+export function inspectVaultWrite(segment: string, wikiHome: string): GuardVerdict {
+  const touchesVault = segment.includes(".llm-wiki") || WIKI_INTERNALS.test(segment);
+  if (!touchesVault) return ALLOWED;
+
+  // A path under the real vault is the wiki's own business.
+  if (segment.includes(wikiHome)) return ALLOWED;
+
+  const writes =
+    WRITE_REDIRECT.test(segment) ||
+    WRITE_VERBS.some((verb) => new RegExp(`(^|\\s)${verb}\\s`).test(segment));
+  if (!writes) return ALLOWED;
+
+  return {
+    blocked: true,
+    reason:
+      `Blocked: this writes a wiki vault outside ${wikiHome}. A vault inside a ` +
+      "repository takes precedence over WIKI_HOME from then on, so everything " +
+      "captured afterwards goes there instead. Use the wiki tools; if they are " +
+      "missing, say so rather than reproducing them — a hand-built vault in the " +
+      "wrong place is worse than no capture.",
+  };
+}
+
 export function inspectCommand(
   command: string,
   isInstalledBinary: (name: string) => boolean,
+  wikiHome?: string,
 ): GuardVerdict {
   for (const segment of splitCommands(command)) {
+    if (wikiHome) {
+      const vault = inspectVaultWrite(segment, wikiHome);
+      if (vault.blocked) return vault;
+    }
+
     const parts = tokens(segment);
     if (parts.length === 0) continue;
 
