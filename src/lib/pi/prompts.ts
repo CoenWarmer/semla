@@ -42,6 +42,8 @@ export const buildMemoryContextBlock = (
     "**Entity** pages describe artifacts of one repo (a file, class or symbol), so qualify their titles with the repo: `semla README.md`, not `README.md`.",
     "Two repos both have a `README.md`; an unqualified title makes the first one written win the page and the second lose its content entirely.",
     "**Concept** pages describe repo-independent ideas and are deliberately shared — never qualify those, and let a concept both repos have accumulate `repo: [a, b]`.",
+    "**A person or an organisation is never an entity, and its title is never qualified.** They are not artifacts of a repo — they own it, work on it, or review it, and the same one recurs across repos.",
+    "Qualifying them is what put `nightshift-program Coen Warmer` in this vault, and `Elastic` in it twice as `catalog-info Elastic` and `nightshift-program Elastic`. Give them `type: person` or `type: organisation` and a bare title; see the sections below.",
     "",
     "## Person entities",
     "",
