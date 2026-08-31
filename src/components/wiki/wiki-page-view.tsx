@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
 
 const TYPE_COLORS: Record<WikiPageType, string> = {
+  // The three identity types share a family so a page that names someone or
+  // something real reads apart from the repo's own artifacts at a glance.
+  repository: "bg-teal-500/15 text-teal-400 border-teal-500/30",
+  person: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  organisation: "bg-sky-500/15 text-sky-400 border-sky-500/30",
   entity: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   concept: "bg-violet-500/15 text-violet-400 border-violet-500/30",
   synthesis: "bg-amber-500/15 text-amber-400 border-amber-500/30",

@@ -9,6 +9,9 @@ import {
 } from "@/lib/wiki-types";
 
 const GROUP_LABELS: Record<NavGroup, string> = {
+  repository: "Repositories",
+  person: "People",
+  organisation: "Organisations",
   entity: "Entities",
   concept: "Concepts",
   synthesis: "Syntheses",

@@ -20,6 +20,11 @@ import { navGroupFor, repoList, WikiLink, WikiPageMeta, WikiPageType } from "@/l
 
 // Node size still encodes page type so shape information is preserved.
 const TYPE_SIZE: Record<WikiPageType, number> = {
+  // A repository is the hub its repo's pages hang off, so it reads largest;
+  // a person or an organisation sits with the artifacts rather than above them.
+  repository: 7,
+  person: 5,
+  organisation: 5,
   entity: 5,
   concept: 4,
   synthesis: 5,

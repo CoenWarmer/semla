@@ -4,7 +4,14 @@ export type WikiPageType =
   | "source"
   | "synthesis"
   | "analysis"
-  | "requirement";
+  | "requirement"
+  // The package maps no folder for these, so they are filed under concepts/
+  // and identified by this field alone. A closed union that omitted them left
+  // their pages in no nav group at all: a person, three organisations and a
+  // repository page were written, registered, and invisible in the browser.
+  | "person"
+  | "organisation"
+  | "repository";
 
 export interface WikiPageMeta {
   type: WikiPageType;
@@ -45,6 +52,10 @@ export interface WikiConfig {
 export type NavGroup = WikiPageType | "observation";
 
 export const NAV_GROUP_ORDER: NavGroup[] = [
+  // Repository first: it is the hub every other page's `repo:` points at.
+  "repository",
+  "person",
+  "organisation",
   "entity",
   "concept",
   "synthesis",
