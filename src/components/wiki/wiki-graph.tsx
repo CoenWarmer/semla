@@ -8,13 +8,12 @@ import {
   useRegisterEvents,
   useSetSettings,
 } from "@react-sigma/core";
-import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
-import { useWorkerLayoutNoverlap } from "@react-sigma/layout-noverlap";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { navGroupFor, repoList, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
+import { layoutWikiGraph } from "@/lib/wiki-graph-layout";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -116,6 +115,23 @@ export function buildGraph(
   return graph;
 }
 
+/**
+ * Build the graph and lay it out, ready to render.
+ *
+ * The layout runs here, synchronously and for a fixed number of iterations,
+ * rather than animating in a worker after mount. Sigma then draws a finished
+ * picture: the same one on every machine, every time.
+ */
+export function buildLaidOutGraph(
+  pages: Record<string, WikiPageMeta>,
+  links: WikiLink[],
+  repoColors: Map<string, string>,
+): MultiGraph {
+  const graph = buildGraph(pages, links, repoColors);
+  layoutWikiGraph(graph);
+  return graph;
+}
+
 // ─── Inner controller (must be inside SigmaContainer) ────────────────────────
 
 interface GraphControllerProps {
@@ -128,48 +144,8 @@ function GraphController({ selectedPath, expandedPath, onNodeClick }: GraphContr
   const registerEvents = useRegisterEvents();
   const setSettings = useSetSettings();
   const { zoomIn, zoomOut, reset } = useCamera({ duration: 200 });
-  const { start: startFA2, kill: killFA2 } = useWorkerLayoutForceAtlas2({
-    settings: {
-      // linLogMode weakens attraction inside dense clusters so source nodes
-      // don't pile on top of their hub. Higher gravity (0.3) keeps the overall
-      // graph from flying apart into a ring.
-      linLogMode: true,
-      gravity: 0.3,
-      scalingRatio: 50,
-      slowDown: 10,
-      barnesHutOptimize: true,
-      barnesHutTheta: 0.5,
-    },
-  });
-  const killNoverlapRef = useRef<(() => void) | null>(null);
-  const { start: startNoverlap, kill: killNoverlap } = useWorkerLayoutNoverlap({
-    // inputReducer inflates the node size so noverlap's collision detection
-    // matches the actual visual footprint in screen pixels.
-    inputReducer: (_key, attr) => ({ ...attr, size: (attr.size ?? 4) * 8 }),
-    settings: { margin: 2, expansion: 1.1 },
-    onConverged: () => killNoverlapRef.current?.(),
-  });
 
-  useEffect(() => {
-    killNoverlapRef.current = killNoverlap;
-  }, [killNoverlap]);
-
-  // FA2 runs for 5 s to establish cluster structure; noverlap then runs
-  // until it converges (or 10 s safety timeout).
-  useEffect(() => {
-    startFA2();
-    const fa2Timer = setTimeout(() => {
-      killFA2();
-      startNoverlap();
-      const safetyTimer = setTimeout(killNoverlap, 10_000);
-      return () => clearTimeout(safetyTimer);
-    }, 5000);
-    return () => {
-      clearTimeout(fa2Timer);
-      killFA2();
-      killNoverlap();
-    };
-  }, [startFA2, killFA2, startNoverlap, killNoverlap]);
+  // The layout has already run — see buildLaidOutGraph. Nothing animates here.
 
   // Keep a ref to selected/expanded so the node reducer stays current without
   // recreating sigma (useSetSettings is stable).
@@ -355,7 +331,7 @@ export function WikiGraph({ pages, links, selectedPath, onNavigate }: WikiGraphP
 
   const repoColors = useMemo(() => buildRepoColorMap(pages), [pages]);
   const graph = useMemo(
-    () => buildGraph(pages, links, repoColors),
+    () => buildLaidOutGraph(pages, links, repoColors),
     [pages, links, repoColors],
   );
 

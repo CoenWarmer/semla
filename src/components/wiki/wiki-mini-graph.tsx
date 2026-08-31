@@ -1,37 +1,10 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { SigmaContainer } from "@react-sigma/core";
-import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
 import { useQuery } from "@tanstack/react-query";
-import { buildGraph, buildRepoColorMap } from "./wiki-graph";
+import { buildLaidOutGraph, buildRepoColorMap } from "./wiki-graph";
 import type { WikiLink, WikiPageMeta } from "@/lib/wiki-types";
-
-// ─── Inner layout controller (must live inside SigmaContainer) ───────────────
-
-function MiniGraphLayout() {
-  const { start, kill } = useWorkerLayoutForceAtlas2({
-    settings: {
-      linLogMode: true,
-      gravity: 0.3,
-      scalingRatio: 50,
-      slowDown: 10,
-      barnesHutOptimize: true,
-      barnesHutTheta: 0.5,
-    },
-  });
-
-  useEffect(() => {
-    start();
-    const timer = setTimeout(() => kill(), 4000);
-    return () => {
-      clearTimeout(timer);
-      kill();
-    };
-  }, [start, kill]);
-
-  return null;
-}
 
 // ─── API response type ────────────────────────────────────────────────────────
 
@@ -63,7 +36,7 @@ export function WikiMiniGraph() {
   );
   const graph = useMemo(
     () =>
-      buildGraph(
+      buildLaidOutGraph(
         query.data?.registry?.pages ?? {},
         query.data?.links ?? [],
         repoColors,
@@ -93,7 +66,7 @@ export function WikiMiniGraph() {
             </span>
           </div>
         ) : (
-          // Key on nodeCount so Sigma remounts (and layout restarts) when pages are added.
+          // Key on nodeCount so Sigma remounts with the new layout when pages are added.
           <SigmaContainer
             key={nodeCount}
             graph={graph}
@@ -109,9 +82,7 @@ export function WikiMiniGraph() {
             }}
             className="h-full w-full"
             style={{ background: "transparent" }}
-          >
-            <MiniGraphLayout />
-          </SigmaContainer>
+          />
         )}
       </div>
     </div>
