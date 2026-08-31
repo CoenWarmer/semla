@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { access, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 
+import { git } from "./git";
 import { PI_WORKSPACE_ROOT } from "./runtime-config";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * Cap on concurrent `git` subprocesses. The workspace root routinely holds
@@ -68,20 +65,6 @@ async function mapWithConcurrency<T, R>(
 
   return results;
 }
-
-const git = async (cwd: string, args: string[]): Promise<string | null> => {
-  try {
-    const { stdout } = await execFileAsync("git", args, {
-      cwd,
-      encoding: "utf8",
-      timeout: 2000,
-    });
-    return stdout.trim() || null;
-  } catch {
-    // Not a valid git repo, no commits yet, or the call timed out.
-    return null;
-  }
-};
 
 const isRepo = async (path: string): Promise<boolean> => {
   try {
