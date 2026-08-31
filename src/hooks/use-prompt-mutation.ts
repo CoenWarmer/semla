@@ -9,6 +9,7 @@ import {
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
+import { fetchSessionStatus, SESSION_STATUS_KEY } from "@/lib/session-status";
 import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
@@ -295,21 +296,14 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
    * running flag from disk and is reconciled against the process actually
    * working on the session, so it does not report a turn a restart ended.
    */
-  const { data: serverStatus } = useQuery({
-    queryKey: ["session-status"],
-    queryFn: async () => {
-      const response = await fetch("/api/sessions/status");
-      if (!response.ok) throw new Error("Unable to load session status.");
-      return (await response.json()) as {
-        sessions: Array<{ id: string; isRunning: boolean }>;
-      };
-    },
+  const { data: sessionStatuses } = useQuery({
+    queryKey: SESSION_STATUS_KEY,
+    queryFn: fetchSessionStatus,
     refetchInterval: 5_000,
   });
 
   const serverIsRunning =
-    serverStatus?.sessions.find((session) => session.id === sessionId)?.isRunning ??
-    false;
+    sessionStatuses?.find((session) => session.id === sessionId)?.isRunning ?? false;
 
 
   const mutation = useMutation<

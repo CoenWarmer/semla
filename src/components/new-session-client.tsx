@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { SESSION_STATUS_KEY } from "@/components/sessions-list-client";
+import { SESSION_STATUS_KEY } from "@/lib/session-status";
 import { useCallback, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { GoalEditor } from "@/components/goal-editor";

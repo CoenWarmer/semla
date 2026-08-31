@@ -6,6 +6,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/session-item";
 import { formatSessionDate } from "@/lib/session-date";
+import {
+  fetchSessionStatus,
+  SESSION_STATUS_KEY,
+  type SessionStatus,
+} from "@/lib/session-status";
 
 export type SessionRow = {
   id: string;
@@ -17,29 +22,6 @@ export type SessionRow = {
   usage?: { tokens: number; cost: number };
 };
 
-export const SESSION_STATUS_KEY = ["session-status"] as const;
-
-type SessionStatus = {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  isRunning: boolean;
-  hasRun: boolean;
-};
-
-const fetchStatus = async (): Promise<SessionStatus[]> => {
-  const response = await fetch("/api/sessions/status");
-  if (!response.ok) throw new Error("Unable to load session status.");
-  return ((await response.json()) as { sessions: SessionStatus[] }).sessions;
-};
-
-/**
- * Add sessions the poll knows about and the server render did not.
- *
- * Ordered by timestamp rather than simply prepended: a newly created session is
- * usually the newest, but one that appeared in another tab need not be, and a
- * list that is nearly sorted is worse than one that is.
- */
 export function mergeDiscoveredSessions(
   rendered: SessionRow[],
   status: SessionStatus[],
@@ -89,7 +71,7 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
   // session record now, so the sidebar follows it without a database.
   const { data: status } = useQuery({
     queryKey: SESSION_STATUS_KEY,
-    queryFn: fetchStatus,
+    queryFn: fetchSessionStatus,
     // Quick while something is running, because that is when it changes;
     // otherwise slow enough to be free. Paused automatically in a background
     // tab, where nobody is watching a spinner.
