@@ -169,34 +169,57 @@ export interface VaultGuardOptions {
 export function rejectUnfetchableUrl(
   params: unknown,
 ): { content: Array<{ type: "text"; text: string }>; isError: true } | null {
-  const fields = params as { url?: unknown; text?: unknown; file_path?: unknown } | null;
-  const url = fields?.url;
-  if (typeof url !== "string" || url.trim() === "") return null;
+  const fields = params as {
+    url?: unknown;
+    text?: unknown;
+    file_path?: unknown;
+    title?: unknown;
+  } | null;
+  const url = typeof fields?.url === "string" && fields.url.trim() !== "" ? fields.url : null;
+  const titled = typeof fields?.title === "string" && fields.title.trim() !== "";
+  const payload =
+    typeof fields?.text === "string" && fields.text.trim() !== ""
+      ? "text"
+      : typeof fields?.file_path === "string" && fields.file_path.trim() !== ""
+        ? "file_path"
+        : null;
 
-  // The package tries url first and ignores the rest, so a url passed *beside*
-  // real content silently throws that content away. One agent supplied
-  // "https://example.com/placeholder-and-will-be-ignored" expecting exactly the
+  const refusal = (text: string) => ({
+    content: [{ type: "text" as const, text }],
+    isError: true as const,
+  });
+
+  // First, because it is the one that loses work. The package tries url before
+  // anything else and ignores the rest, so a url passed *beside* real content
+  // throws that content away. One agent supplied
+  // "https://example.com/placeholder-and-will-be-ignored" expecting the
   // opposite, and its facet was stored as the 167-byte example.com page.
-  const payload = typeof fields?.text === "string" && fields.text.trim() !== ""
-    ? "text"
-    : typeof fields?.file_path === "string" && fields.file_path.trim() !== ""
-      ? "file_path"
-      : null;
-  if (payload) {
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text:
-            `wiki_capture_source: \`url\` was passed alongside \`${payload}\`. ` +
-            "The URL is fetched and the rest is discarded, so this would store " +
-            `the page at "${url}" instead of your ${payload}. Omit \`url\` entirely ` +
-            "— there is no placeholder value that gets ignored.",
-        },
-      ],
-      isError: true,
-    };
+  if (url && payload) {
+    return refusal(
+      `wiki_capture_source: \`url\` was passed alongside \`${payload}\`. ` +
+        "The URL is fetched and the rest is discarded, so this would store " +
+        `the page at "${url}" instead of your ${payload}. Omit \`url\` entirely ` +
+        "— there is no placeholder value that gets ignored.",
+    );
   }
+
+  // An untitled local capture is filed under whatever the package can infer —
+  // a temp filename, or "Pasted text — <date>". Three runs produced
+  // "pi-bash-c72532dd1b9fc46a.log", "Pasted text — 2026-08-31" and
+  // "semla_history.log", each holding exactly the right content under a name
+  // nobody would ever search for. Telling the skill to pass a title did not
+  // stop it, so the tool asks for one instead. A url capture is exempt: the
+  // page carries a real title of its own.
+  if (payload && !titled) {
+    return refusal(
+      `wiki_capture_source: a \`${payload}\` capture needs a \`title\`. ` +
+        "Without one the page is filed under the temp filename or " +
+        '"Pasted text", which makes it unfindable. Name it for what it ' +
+        'holds — e.g. "semla History (150 commits, bodies)".',
+    );
+  }
+
+  if (!url) return null;
 
   let scheme: string;
   try {
@@ -206,18 +229,11 @@ export function rejectUnfetchableUrl(
   }
   if (scheme === "http:" || scheme === "https:") return null;
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text:
-          `wiki_capture_source: "${url}" is not a fetchable URL. ` +
-          "To capture a local file, read it and pass its contents as `text` " +
-          "with a `title`, or pass the path as `file_path` — not as `url`.",
-      },
-    ],
-    isError: true,
-  };
+  return refusal(
+    `wiki_capture_source: "${url}" is not a fetchable URL. ` +
+      "To capture a local file, read it and pass its contents as `text` " +
+      "with a `title`, or pass the path as `file_path` — not as `url`.",
+  );
 }
 
 const METADATA_MODULE = join(

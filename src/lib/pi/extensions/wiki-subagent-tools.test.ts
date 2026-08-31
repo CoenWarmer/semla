@@ -245,10 +245,28 @@ describe("rejectUnfetchableUrl", () => {
 
   it.each([
     ["a text capture", { text: "contents", title: "semla package.json" }],
-    ["a file_path capture", { file_path: "/Users/coen/Dev/semla/README.md" }],
-    ["an empty url", { url: "   ", text: "contents" }],
+    ["a file_path capture", { file_path: "/Users/coen/Dev/semla/README.md", title: "semla README" }],
+    ["an empty url", { url: "   ", text: "contents", title: "semla package.json" }],
   ])("does not interfere with %s", (_label, params) => {
     expect(rejectUnfetchableUrl(params)).toBeNull();
+  });
+
+  // Told to pass a title, three runs still filed a facet under a name nobody
+  // would search for: "pi-bash-c72532dd1b9fc46a.log", "Pasted text —
+  // 2026-08-31", "semla_history.log". Each held exactly the right content.
+  it.each([
+    ["text", { text: "the whole git log" }],
+    ["file_path", { file_path: "/tmp/semla_history.log" }],
+    ["a blank title", { file_path: "/tmp/semla_history.log", title: "  " }],
+  ])("refuses an untitled %s capture", (_label, params) => {
+    const refusal = rejectUnfetchableUrl(params);
+
+    expect(refusal?.isError).toBe(true);
+    expect(refusal?.content[0]!.text).toContain("title");
+  });
+
+  it("still lets a web capture take its title from the page", () => {
+    expect(rejectUnfetchableUrl({ url: "https://example.com/docs" })).toBeNull();
   });
 
   // The package reads url first and ignores everything else, so a url beside
