@@ -357,6 +357,7 @@ export class WorkflowManager extends EventEmitter {
   private defaultTokenBudget: number | null;
   private toolsets?: Record<string, () => ToolDefinition[]>;
   private defaultToolset?: string;
+  private readonly warnedToolsets = new Set<string>();
   private excludeSubagentTools?: string[];
   private persistAgentSessions: boolean;
 
@@ -707,6 +708,17 @@ export class WorkflowManager extends EventEmitter {
     // tools. Unknown names resolve to undefined and degrade to the defaults.
     const toolsetName = managed.toolset ?? this.defaultToolset;
     const resolvedTools = tools ?? (toolsetName ? this.toolsets?.[toolsetName]?.() : undefined);
+    // Named but unresolvable is a host wiring fault, not a preference: the
+    // agent still runs, just without the tools its task assumed it had, and
+    // the only visible symptom is a subagent improvising around a missing
+    // tool. Said once per name so a fan-out does not repeat it per agent.
+    if (!tools && toolsetName && !resolvedTools && !this.warnedToolsets.has(toolsetName)) {
+      this.warnedToolsets.add(toolsetName);
+      console.warn(
+        `[workflow] toolset "${toolsetName}" is not registered; subagents fall ` +
+          "back to coding tools only.",
+      );
+    }
     // Gated the same way as this.emitLive() below (see isCurrent()) — a stale
     // execution's progress callback would otherwise keep driving live UI
     // (task panel, etc.) for a run that's been superseded or deleted.
