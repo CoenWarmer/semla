@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ownerForRepo } from "./identity-evidence.js";
-import { widenRepos } from "./identity-page-canonical.js";
+import { ownerForRepo } from "./identity-evidence";
+import { widenRepos } from "./identity-page-canonical";
 
 /**
  * The hub page for a repository.

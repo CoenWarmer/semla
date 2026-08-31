@@ -5,13 +5,13 @@ import {
   canonicaliseIdentityPage,
   declaredRepos,
   widenRepos,
-} from "./identity-page-canonical.js";
+} from "./identity-page-canonical";
 import {
   collectIdentityEvidence,
   retypePage,
   typeFromEvidence,
-} from "./identity-evidence.js";
-import { PAGE_DIRS } from "./wiki-frontmatter.js";
+} from "./identity-evidence";
+import { PAGE_DIRS } from "./wiki-frontmatter";
 
 export interface IdentityFix {
   /** Page that was acted on, as `dir/file.md`. */

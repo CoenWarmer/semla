@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { canonicalTitle, declaredRepos, readField } from "./identity-page-canonical.js";
+import { canonicalTitle, declaredRepos, readField } from "./identity-page-canonical";
 
 /**
  * Decide whether a page names a person or an organisation by looking it up,
