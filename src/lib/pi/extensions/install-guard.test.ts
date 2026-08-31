@@ -1,0 +1,91 @@
+/**
+ * `npx some-package` downloads and runs it when it is not present, so one tool
+ * call can pull arbitrary code onto the machine — and the transcript looks the
+ * same as running a local binary.
+ *
+ * The bar is "would this fetch something new". Blocking anything that mentions
+ * npm would make the guard the problem: npx tsc, npx vitest and npx eslint run
+ * on nearly every turn here.
+ */
+import { describe, expect, it } from "vitest";
+
+import { inspectCommand, splitCommands } from "./install-guard.ts";
+
+const installed = new Set(["tsc", "vitest", "eslint", "next", "supabase"]);
+const isInstalled = (name: string) => installed.has(name);
+const check = (command: string) => inspectCommand(command, isInstalled);
+
+describe("commands that fetch something", () => {
+  it.each([
+    "npx cowsay hello",
+    "npx --yes cowsay hello",
+    "npx -y create-react-app my-app",
+    "npm install left-pad",
+    "npm i -D some-linter",
+    "npm add another-thing",
+    "pnpm add a-package",
+    "yarn add a-package",
+    "bun add a-package",
+    "pip install requests",
+    "cargo install ripgrep",
+    "go get github.com/some/module",
+    "brew install jq",
+  ])("blocks %s", (command) => {
+    expect(check(command).blocked).toBe(true);
+  });
+
+  it("says what to do instead, or the agent just tries again", () => {
+    const verdict = check("npx cowsay hello");
+
+    expect(verdict.reason).toContain("ask_user");
+    expect(verdict.reason).toContain("cowsay");
+  });
+
+  it("catches an install hidden later in a chain", () => {
+    expect(check("cd /tmp && ls && npm install left-pad").blocked).toBe(true);
+  });
+
+  it("is not fooled by leading environment assignments", () => {
+    expect(check("CI=1 FORCE_COLOR=0 npx cowsay hi").blocked).toBe(true);
+  });
+});
+
+describe("commands that do not", () => {
+  it.each([
+    "npx tsc --noEmit",
+    "npx vitest run",
+    "npx eslint src",
+    "npx next build",
+  ])("allows %s, which runs an installed binary", (command) => {
+    expect(check(command).blocked).toBe(false);
+  });
+
+  // Restores what package.json already declares; the agent is not choosing to
+  // add anything, and this is how the repo's own postinstall works.
+  it.each(["npm install", "npm ci", "npm install --prefix .pi/npm"])(
+    "allows %s",
+    (command) => {
+      expect(check(command).blocked).toBe(false);
+    },
+  );
+
+  it.each([
+    "git log --oneline -40",
+    "ls -la node_modules",
+    "grep -rn 'npm install' README.md",
+    "echo 'npx cowsay'",
+    "cat package.json",
+  ])("allows %s", (command) => {
+    expect(check(command).blocked).toBe(false);
+  });
+
+  it("allows the whole chain when every part is fine", () => {
+    expect(check("cd /Dev/semla && npx tsc && npx vitest run").blocked).toBe(false);
+  });
+});
+
+describe("splitCommands", () => {
+  it("splits on every separator that starts a new command", () => {
+    expect(splitCommands("a && b || c ; d | e")).toEqual(["a", "b", "c", "d", "e"]);
+  });
+});

@@ -29,6 +29,7 @@ import {
 } from "@/lib/pi/extension-contract";
 import {
   ASK_USER_EXTENSION_PATH,
+  INSTALL_GUARD_EXTENSION_PATH,
   PI_TOOLS,
   WIKI_EXTENSION_PATH,
   WIKI_INGEST_BRIDGE_PATH,
@@ -38,6 +39,7 @@ import {
 export type ExtensionId =
   | "workflow"
   | "ask-user"
+  | "install-guard"
   | "wiki"
   | "wiki-ingest-bridge";
 
@@ -121,6 +123,18 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/ask-user.ts.",
+  },
+  {
+    id: "install-guard",
+    path: INSTALL_GUARD_EXTENSION_PATH,
+    // Blocks tool calls rather than contributing any, so it depends on nothing
+    // and nothing depends on it.
+    requires: [],
+    providesTools: [],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/install-guard-extension.ts.",
   },
   {
     id: "wiki",

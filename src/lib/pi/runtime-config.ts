@@ -36,6 +36,13 @@ export const ASK_USER_EXTENSION_PATH = join(
   "src/lib/pi/extensions/ask-user.ts",
 );
 
+// Refuses bash commands that would install a package. Loaded like the others
+// rather than bundled into one, so the manifest shows what can block a call.
+export const INSTALL_GUARD_EXTENSION_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/install-guard-extension.ts",
+);
+
 // The workflow skills ship inside the dynamic-workflows package but are only
 // contributed when it is loaded as a package. Sessions load the extension file
 // directly, so the skills are pointed at explicitly rather than inherited from
