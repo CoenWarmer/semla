@@ -7,7 +7,7 @@ const assistant = (content: unknown): PiMessage =>
 
 describe("getThinkingText", () => {
   it("reads the reasoning pi records alongside the text and tool calls", () => {
-    // The exact shape found in /tmp/semla-pi-sessions/*.jsonl.
+    // The exact shape found in .semla-sessions/*.jsonl.
     const message = assistant([
       {
         thinking: "This looks like a straightforward task.",

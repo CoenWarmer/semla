@@ -78,7 +78,16 @@ export const REFRESH_EXTENSIONS_PER_SESSION =
 
 export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
   ?? (hostDevelopmentEnabled ? process.cwd() : "/workspace");
-export const PI_SESSION_DIR = "/tmp/semla-pi-sessions";
+/**
+ * Pi session transcripts, one .jsonl per Semla session.
+ *
+ * Kept inside the Semla directory rather than /tmp, which is wiped on reboot:
+ * these files are the on-disk record of every conversation, and Semla is a
+ * single-machine tool, so containment beats a system temp dir. Gitignored —
+ * they hold whatever was discussed.
+ */
+export const PI_SESSION_DIR =
+  process.env.PI_SESSION_DIR ?? join(process.cwd(), ".semla-sessions");
 
 // Resource discovery dir for Semla's Pi sessions, deliberately NOT the
 // developer's ~/.pi/agent. Sharing it made every session inherit whatever

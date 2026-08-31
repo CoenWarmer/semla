@@ -77,6 +77,7 @@ PI_ALLOW_HOST_DEV=true
 | `PI_WORKSPACE_ROOT` | No | Path the agent uses as its working directory. Defaults to `process.cwd()` when `PI_ALLOW_HOST_DEV=true`, or `/workspace` in sandboxed mode. Set this explicitly when developing — `process.cwd()` will be the Semla directory itself, not your projects root. |
 | `PI_ALLOW_HOST_DEV` | No | When `true`, the agent runs directly on the host filesystem instead of inside a sandbox. Intended for local development only. |
 | `PI_SANDBOXED` | No | When `true`, enforces sandboxed execution. Mutually exclusive with `PI_ALLOW_HOST_DEV`. |
+| `PI_SESSION_DIR` | No | Where pi session transcripts are written. Defaults to `.semla-sessions/` inside the repo (gitignored) rather than a temp dir, so they survive a reboot. |
 | `SEMLA_DISABLE_AUTH` | No | Development only. Skips the auth gate in `proxy.ts` so filesystem-backed pages such as `/wiki` stay reachable while Supabase is unavailable. Ignored when `NODE_ENV=production`. Anything that reads Supabase still fails. |
 | `PI_CODING_AGENT_DIR` | No | Where pi keeps credentials and the model catalog. Defaults to `~/.semla/agent`, isolated from the `~/.pi/agent` the `pi` CLI uses. Seeded once from the host on first run so the model picker is not empty; after that the two are independent. |
 
