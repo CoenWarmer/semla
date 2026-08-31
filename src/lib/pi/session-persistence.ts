@@ -7,6 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "./runtime-config";
 import { writeSessionMeta } from "./session-meta";
+import { listRunningWorkflowRuns, upsertWorkflowRun } from "./workflow-run-index";
 
 type PiSessionEntry = {
   id: string;
@@ -61,13 +62,18 @@ export const persistWorkflowSnapshot = async (
 ) => {
   if (!snapshot.runId) return;
 
-  const admin = createAdminClient();
   const status =
     snapshot.runningCount > 0
       ? "running"
       : snapshot.errorCount > 0
         ? "failed"
         : "completed";
+
+  // Index only: the snapshot itself is already on disk in the run file, which
+  // the workflows route prefers anyway.
+  upsertWorkflowRun(semlaSessionId, snapshot.runId, { mode, status });
+
+  const admin = createAdminClient();
 
   const { error } = await admin.from("workflow_runs").upsert(
     {
@@ -90,6 +96,8 @@ export const persistBackgroundWorkflowStart = async (
   semlaSessionId: string,
   runId: string,
 ) => {
+  upsertWorkflowRun(semlaSessionId, runId, { mode: "background", status: "running" });
+
   const admin = createAdminClient();
   const { error } = await admin.from("workflow_runs").upsert(
     {
@@ -240,9 +248,12 @@ export const fetchPersistedEntries = async (piSessionId: string) => {
 };
 
 export const finalizeBackgroundRun = async (
+  semlaSessionId: string,
   runId: string,
   status: "completed" | "failed" = "completed",
 ) => {
+  upsertWorkflowRun(semlaSessionId, runId, { status });
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("workflow_runs")
@@ -281,6 +292,11 @@ export const setSessionRunning = async (
 export const fetchStuckBackgroundRuns = async (
   semlaSessionId: string,
 ): Promise<Array<{ run_id: string }>> => {
+  // The index knows this without a query, and knows it when the database does
+  // not answer at all.
+  const onDisk = listRunningWorkflowRuns(semlaSessionId);
+  if (onDisk.length > 0) return onDisk.map((run) => ({ run_id: run.run_id }));
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("workflow_runs")

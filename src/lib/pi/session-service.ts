@@ -499,7 +499,7 @@ export const runPiPrompt = async ({
         },
         { triggerTurn: false },
       );
-      detach(semlaSessionId, "finalize run", finalizeBackgroundRun(run_id));
+      detach(semlaSessionId, "finalize run", finalizeBackgroundRun(semlaSessionId, run_id));
       log(semlaSessionId, "recovered stuck bg run", { run: run_id });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -671,7 +671,7 @@ export const runPiPrompt = async ({
       // and persisted above, so there is no continuation to wait for.
       log(semlaSessionId, "background workflow settled during prompt turn");
       if (detectedBackgroundRunId) {
-        detach(semlaSessionId, "finalize run", finalizeBackgroundRun(detectedBackgroundRunId));
+        detach(semlaSessionId, "finalize run", finalizeBackgroundRun(semlaSessionId, detectedBackgroundRunId));
         releaseBackgroundSession(detectedBackgroundRunId);
       } else {
         session.dispose();
@@ -887,7 +887,7 @@ const runBackgroundContinuation = async (
         // Disposes the session and drops it from the retained map, which would
         // otherwise keep a dead session (and its bash executor) referenced.
         releaseBackgroundSession(runId);
-        await finalizeBackgroundRun(runId);
+        await finalizeBackgroundRun(semlaSessionId, runId);
       } else {
         session.dispose();
       }

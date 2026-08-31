@@ -1,5 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { finalizeBackgroundRun } from "@/lib/pi/session-persistence";
+import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
 import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
 import { createServerTiming } from "@/lib/server-timing";
 import { createClient } from "@/lib/supabase/server";
@@ -47,13 +48,21 @@ export async function GET(
       );
     }
 
-    const { data, error } = await timing.phase("db-runs", () =>
-      supabase
-        .from("workflow_runs")
-        .select(RUN_COLUMNS)
-        .eq("semla_session_id", id)
-        .order("updated_at", { ascending: false }),
+    // Which runs a session has is on disk; the snapshots they point at already
+    // were. Postgres answers only for sessions whose runs predate the index.
+    const localRuns = await timing.phase("disk-index", () =>
+      Promise.resolve(listWorkflowRuns(id)),
     );
+
+    const { data, error } = localRuns.length
+      ? { data: null, error: null }
+      : await timing.phase("db-runs", () =>
+          supabase
+            .from("workflow_runs")
+            .select(RUN_COLUMNS)
+            .eq("semla_session_id", id)
+            .order("updated_at", { ascending: false }),
+        );
 
     if (error) {
       console.error(
@@ -66,7 +75,7 @@ export async function GET(
       );
     }
 
-    const rows = data ?? [];
+    const rows = localRuns.length ? localRuns : (data ?? []);
 
     // Prefer live data from the run file so agent progress is always current
     // (the DB snapshot is only updated for foreground runs).
@@ -115,7 +124,7 @@ export async function GET(
         snapshot.completedAt
       ) {
         const finalStatus = snapshot.errorCount > 0 ? "failed" : "completed";
-        void finalizeBackgroundRun(run.run_id, finalStatus);
+        void finalizeBackgroundRun(id, run.run_id, finalStatus);
         return { ...run, snapshot, status: finalStatus };
       }
       return { ...run, snapshot: snapshot ?? stored.get(run.run_id) ?? null };
