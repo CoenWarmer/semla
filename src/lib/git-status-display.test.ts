@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  branchNameFromBase,
   describeGitStatus,
   formatFetchAge,
   type GitStatus,
@@ -104,5 +105,22 @@ describe("formatFetchAge", () => {
     expect(describeGitStatus(undefined)).toBeNull();
     expect(describeGitStatus(null)).toBeNull();
     expect(describeGitStatus(status({ head: null }))).toBeNull();
+  });
+});
+
+describe("branchNameFromBase", () => {
+  it("drops the remote to leave the branch", () => {
+    expect(branchNameFromBase("upstream/main")).toBe("main");
+    expect(branchNameFromBase("origin/main")).toBe("main");
+  });
+
+  it("keeps slashes inside a branch name", () => {
+    // Splitting on every slash would turn this into "release".
+    expect(branchNameFromBase("origin/release/2.x")).toBe("release/2.x");
+  });
+
+  it("returns null when there is no base", () => {
+    expect(branchNameFromBase(null)).toBeNull();
+    expect(branchNameFromBase("origin/")).toBeNull();
   });
 });

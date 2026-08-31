@@ -34,6 +34,18 @@ export const EMPTY_GIT_STATUS: GitStatus = {
   fetching: false,
 };
 
+/**
+ * The local branch a remote base corresponds to: "upstream/main" → "main".
+ *
+ * Only the first segment is dropped. A base of "origin/release/2.x" names the
+ * branch "release/2.x", so splitting on every slash would be wrong.
+ */
+export function branchNameFromBase(base: string | null): string | null {
+  if (!base) return null;
+  const slash = base.indexOf("/");
+  return slash === -1 ? base : base.slice(slash + 1) || null;
+}
+
 /** Compact age for the tooltip: "just now", "4m ago", "2h ago". */
 export function formatFetchAge(
   fetchedAt: number | null,

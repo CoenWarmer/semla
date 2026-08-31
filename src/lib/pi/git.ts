@@ -51,3 +51,39 @@ export async function git(
     return null;
   }
 }
+
+export interface GitResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Run a git command and keep the outcome, including why it failed.
+ *
+ * `git` above collapses every failure to null, which is right for reads that
+ * decorate a UI. An action the user pressed a button for is different: when a
+ * merge refuses because the tree is dirty, the reason *is* the useful part.
+ */
+export async function gitResult(
+  cwd: string,
+  args: string[],
+  { timeout = 10_000, network = false }: GitOptions = {},
+): Promise<GitResult> {
+  try {
+    const { stdout, stderr } = await execFileAsync("git", args, {
+      cwd,
+      encoding: "utf8",
+      timeout,
+      env: network ? { ...process.env, ...NON_INTERACTIVE_ENV } : process.env,
+    });
+    return { ok: true, stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch (error) {
+    const shell = error as { stdout?: string; stderr?: string; message?: string };
+    return {
+      ok: false,
+      stdout: (shell.stdout ?? "").trim(),
+      stderr: (shell.stderr ?? shell.message ?? "git failed").trim(),
+    };
+  }
+}
