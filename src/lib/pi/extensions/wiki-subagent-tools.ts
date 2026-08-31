@@ -389,6 +389,25 @@ function attributeNewSources(wikiHome: string, before: Set<string>, repo: string
  * first. The lock is filesystem-based because the sessions it separates need
  * not share a process.
  */
+/**
+ * Replace a slash in a page title before the package turns it into a slug.
+ *
+ * `slugify` drops `/` rather than treating it as a separator, so a title
+ * naming an owner and a repo fuses into one token: `elastic/kibana` became
+ * `elastickibana` and `elastic/catalog-info` became `elasticcatalog-info`.
+ * Normalising here rather than after the write is the only way to affect the
+ * slug at all — the package derives it internally and never exposes it.
+ */
+export function normaliseTitleArgs<T>(args: readonly T[]): T[] {
+  const params = args[1] as { title?: unknown } | null | undefined;
+  const title = params && typeof params.title === "string" ? params.title : null;
+  if (!title || !/[/\\]/.test(title)) return [...args];
+
+  const next = [...args];
+  next[1] = { ...params, title: title.replace(/[/\\]+/g, "-") } as unknown as T;
+  return next;
+}
+
 export function guardVaultWrites<T extends ExecutableTool>(
   tools: T[],
   options: VaultGuardOptions,
@@ -409,8 +428,9 @@ export function guardVaultWrites<T extends ExecutableTool>(
 
     return {
       ...tool,
-      execute: (...args: never[]) => {
+      execute: (...rawArgs: never[]) => {
         // args are (toolCallId, params, signal, onUpdate, ctx).
+        const args = normaliseTitleArgs(rawArgs) as never[];
         const refusal = isCapture ? rejectUnfetchableUrl(args[1]) : null;
         if (refusal) return Promise.resolve(refusal);
 

@@ -12,6 +12,7 @@ import {
   collectWikiSubagentTools,
   selectSubagentTools,
   guardVaultWrites,
+  normaliseTitleArgs,
   rejectUnfetchableUrl,
   WIKI_SUBAGENT_DEEP_IMPORTS,
   WIKI_SUBAGENT_REGISTRARS,
@@ -290,6 +291,42 @@ describe("guardVaultWrites", () => {
  * recorded as a successful source. Neither failed loudly; both were on their
  * way into entity pages as though they described the codebase.
  */
+describe("normaliseTitleArgs", () => {
+  // slugify drops "/" instead of separating on it, so an owner and a repo fuse:
+  // elastic/kibana became `elastickibana`, elastic/catalog-info became
+  // `elasticcatalog-info`. The slug is derived inside the package and never
+  // exposed, so the title is the only place this can be fixed.
+  it("separates an owner from a repo", () => {
+    const [, params] = normaliseTitleArgs(["call-1", { title: "elastic/kibana", text: "x" }]);
+
+    expect(params).toEqual({ title: "elastic-kibana", text: "x" });
+  });
+
+  it("collapses a run of slashes into one dash", () => {
+    const [, params] = normaliseTitleArgs(["call-1", { title: "a//b" }]);
+
+    expect((params as { title: string }).title).toBe("a-b");
+  });
+
+  it("leaves a title with no slash untouched", () => {
+    const args = ["call-1", { title: "semla History (150 commits, bodies)" }];
+
+    expect(normaliseTitleArgs(args)[1]).toBe(args[1]);
+  });
+
+  it("leaves the other arguments in place", () => {
+    const signal = Symbol("signal");
+    const args = ["call-1", { title: "a/b" }, signal, undefined, { cwd: "/repo" }];
+
+    expect(normaliseTitleArgs(args)).toHaveLength(5);
+    expect(normaliseTitleArgs(args)[2]).toBe(signal);
+  });
+
+  it("does not mind a call with no params at all", () => {
+    expect(() => normaliseTitleArgs(["call-1"])).not.toThrow();
+  });
+});
+
 describe("rejectUnfetchableUrl", () => {
   it.each([
     ["a repo path", "/Users/coen/Dev/semla/README.md"],
