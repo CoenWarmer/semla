@@ -46,12 +46,12 @@ describe("describeGitStatus", () => {
     expect(label?.title).toContain("Detached at 94ed760");
   });
 
-  it("drops the counters when the branch tracks nothing", () => {
+  it("drops the counters when there is no canonical branch", () => {
     const label = describeGitStatus(status({ base: null, ahead: 9, behind: 9 }));
     expect(label?.ref).toBe("main");
     expect(label?.ahead).toBeNull();
     expect(label?.behind).toBeNull();
-    expect(label?.title).toContain("tracks no remote branch");
+    expect(label?.title).toContain("no canonical branch to compare against");
   });
 
   it("says the counts are only as fresh as the last fetch", () => {

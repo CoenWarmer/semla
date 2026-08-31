@@ -28,8 +28,7 @@ export function parseAheadBehind(
 }
 
 /**
- * Turn `git symbolic-ref refs/remotes/origin/HEAD` into a comparable ref.
- * Used only when the branch tracks nothing of its own.
+ * Turn `git symbolic-ref refs/remotes/<remote>/HEAD` into a comparable ref.
  */
 export function parseRemoteHead(output: string | null): string | null {
   if (!output) return null;
@@ -38,12 +37,59 @@ export function parseRemoteHead(output: string | null): string | null {
 }
 
 /**
+ * Choose the remote that represents the canonical repository.
+ *
+ * Under the usual fork workflow `origin` is your own fork and `upstream` is
+ * the repository it was forked from, so `upstream` wins where it exists. This
+ * is the difference between a useful number and a meaningless one: a fork
+ * whose default branch is simply never pushed to reported 922 commits ahead of
+ * `origin/main` while being exactly level with the canonical `upstream/main`.
+ *
+ * Note the collision in git's own vocabulary — this is a *remote* named
+ * "upstream", not a branch's `@{upstream}` tracking ref. They are unrelated,
+ * and on a fork they point at different repositories.
+ */
+export function pickCanonicalRemote(remotes: string[]): string | null {
+  if (remotes.includes("upstream")) return "upstream";
+  if (remotes.includes("origin")) return "origin";
+  return remotes[0] ?? null;
+}
+
+/**
+ * The ref to measure against on a given remote: its recorded default branch,
+ * falling back to the conventional names.
+ *
+ * `git clone` records HEAD for `origin`, but a remote added by hand — which is
+ * how an `upstream` normally arrives — has none until someone runs
+ * `git remote set-head`, so the fallbacks are the common case, not the edge.
+ */
+async function remoteDefaultRef(
+  path: string,
+  remote: string,
+): Promise<string | null> {
+  const recorded = parseRemoteHead(
+    await git(path, ["symbolic-ref", `refs/remotes/${remote}/HEAD`]),
+  );
+  if (recorded) return recorded;
+
+  for (const candidate of [`${remote}/main`, `${remote}/master`]) {
+    if (await git(path, ["rev-parse", "--verify", "--quiet", candidate])) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
  * Read branch and divergence for a working copy.
  *
- * The comparison base is the branch's own upstream when it has one. An
- * unpublished branch has no upstream, so it falls back to the remote's default
- * branch — otherwise a new branch would show nothing at all, when "how far off
- * mainline am I" is exactly what you want to know there.
+ * Divergence is measured against the canonical repository's default branch —
+ * `upstream/main` on a fork, `origin/main` otherwise — because that is the
+ * mainline the work will eventually land on. It is deliberately not the
+ * branch's own `@{upstream}`: on a fork that is your own copy, and how far you
+ * have drifted from your own fork answers nothing anybody asked. The tracking
+ * branch is kept only as a last resort, for a repository whose remotes cannot
+ * be read at all.
  */
 export async function readGitStatus(path: string): Promise<GitStatus> {
   const [branch, head] = await Promise.all([
@@ -53,16 +99,17 @@ export async function readGitStatus(path: string): Promise<GitStatus> {
 
   if (!head) return EMPTY_GIT_STATUS;
 
+  const remotes = (await git(path, ["remote"]))?.split("\n").map((r) => r.trim()) ?? [];
+  const canonical = pickCanonicalRemote(remotes.filter(Boolean));
+
   const base =
+    (canonical ? await remoteDefaultRef(path, canonical) : null) ??
     (await git(path, [
       "rev-parse",
       "--abbrev-ref",
       "--symbolic-full-name",
       "@{upstream}",
-    ])) ??
-    parseRemoteHead(
-      await git(path, ["symbolic-ref", "refs/remotes/origin/HEAD"]),
-    );
+    ]));
 
   if (!base) return { branch, head, base: null, ahead: null, behind: null };
 

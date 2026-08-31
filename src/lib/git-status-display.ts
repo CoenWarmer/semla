@@ -11,7 +11,10 @@ export interface GitStatus {
   branch: string | null;
   /** Short HEAD sha. The only identity a detached HEAD has. */
   head: string | null;
-  /** What ahead/behind compare against, e.g. "origin/main". */
+  /**
+   * What ahead/behind compare against: the canonical repository's default
+   * branch, so "upstream/main" on a fork and "origin/main" otherwise.
+   */
   base: string | null;
   ahead: number | null;
   behind: number | null;
@@ -57,7 +60,7 @@ export function describeGitStatus(
       behind: null,
       title: detached
         ? `Detached at ${status.head}`
-        : `On ${ref}, which tracks no remote branch`,
+        : `On ${ref}, with no canonical branch to compare against`,
     };
   }
 

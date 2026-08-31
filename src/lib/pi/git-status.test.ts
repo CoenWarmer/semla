@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAheadBehind, parseRemoteHead } from "./git-status";
+import {
+  parseAheadBehind,
+  parseRemoteHead,
+  pickCanonicalRemote,
+} from "./git-status";
 
 describe("parseAheadBehind", () => {
   it("reads the base count first, as --left-right prints it", () => {
@@ -31,5 +35,24 @@ describe("parseRemoteHead", () => {
     expect(parseRemoteHead(null)).toBeNull();
     expect(parseRemoteHead("")).toBeNull();
     expect(parseRemoteHead("refs/heads/main")).toBeNull();
+  });
+});
+
+describe("pickCanonicalRemote", () => {
+  it("prefers the fork's upstream over the fork itself", () => {
+    // origin is your fork, upstream is what it was forked from.
+    expect(pickCanonicalRemote(["origin", "upstream"])).toBe("upstream");
+  });
+
+  it("uses origin when there is no fork", () => {
+    expect(pickCanonicalRemote(["origin"])).toBe("origin");
+  });
+
+  it("falls back to whatever single remote exists", () => {
+    expect(pickCanonicalRemote(["fork"])).toBe("fork");
+  });
+
+  it("returns null for a repository with no remotes", () => {
+    expect(pickCanonicalRemote([])).toBeNull();
   });
 });
