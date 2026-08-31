@@ -51,7 +51,7 @@ just parallelised.
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
 | Structure | Directory tree (`git -C "$REPO" ls-files \| awk -F/ '{print (NF>3)? $1"/"$2"/"$3 : $0}' \| sort -u`), main config files |
 | Conventions | tsconfig.json, eslint config, test setup |
-| History | `git -C "$REPO" log -n 150 --format='%h %s%n%b%n---'` — the checked-out branch, **with bodies**, see below |
+| History | `git -C "$REPO" log -n 150 --format='%h %an <%ae> %s%n%b%n---'` — the checked-out branch, **with bodies and authors**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
 | Review discussion | `cd "$REPO" && gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is missing, unauthenticated, or the list is empty) |
 
@@ -91,6 +91,11 @@ made. A subject line yields "added a vault lock"; the body yields "two captures
 that both list the directory before either writes get the same id, and the
 second silently overwrites the first". The first is a fact you could have read
 off the code, the second is a decision you could not.
+
+**Capture the author (`%an`), not just hash, subject and body.** A commit's
+author is a fact synthesis can turn into an *authored by* edge on the entity or
+concept that commit touches. Omitting it is why past orients produced zero
+authorship edges even for repos with one obvious primary author.
 
 **The commit log usually matters more than the pull requests.** Where work lands
 directly on the default branch, the commits *are* the review record and the PR
