@@ -63,6 +63,7 @@ export function ClientSessionComponent({
     liveToolCalls,
     mutation: promptMutation,
     pendingQuestion,
+    serverIsRunning,
     streamError,
     streamingText,
     wikiActive,
@@ -92,7 +93,10 @@ export function ClientSessionComponent({
   }, [sessionId]);
 
   const queryClient = useQueryClient();
-  const isActive = promptMutation.isPending || isReconnecting;
+  // The server's view counts too: a turn continues in the background after the
+  // stream closes, and a dropped stream leaves this page with no local sign of
+  // work that is still going.
+  const isActive = promptMutation.isPending || isReconnecting || serverIsRunning;
   // Paused mid-turn: the server has no rows for a turn until it ends, so an
   // unbidden refetch would replace the optimistic prompt with a list without it.
   const messagesQuery = useSessionMessages(

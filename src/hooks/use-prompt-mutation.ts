@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   sessionMessagesQueryKey,
@@ -198,9 +198,17 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     [],
   );
 
-  // Reconnect to an in-progress stream when the page is loaded mid-turn.
-  useEffect(() => {
-    if (!initialIsRunning) return;
+  /**
+   * Attach to a turn that is already running on the server.
+   *
+   * Called on mount for a page loaded mid-turn, and again whenever the server
+   * says a session is running while nothing is arriving here. A dropped stream
+   * and a finished turn look identical from the client — the stream is the only
+   * signal — so without this the page went quiet while the server carried on,
+   * which is exactly what a capture run looked like for twenty minutes.
+   */
+  const reconnectToStream = useCallback(() => {
+    reconnectAbortRef.current?.abort();
 
     const controller = new AbortController();
     reconnectAbortRef.current = controller;
@@ -265,13 +273,44 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     };
 
     void reconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!initialIsRunning) return;
+    reconnectToStream();
 
     return () => {
-      controller.abort();
+      reconnectAbortRef.current?.abort();
       reconnectAbortRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]); // only on mount — initialIsRunning is the mount-time value
+  }, [initialIsRunning, reconnectToStream]);
+
+  /**
+   * What the server says about this session, which is the only way to notice a
+   * stream that has gone away.
+   *
+   * The client cannot tell a dropped stream from a finished turn — both are
+   * simply an absence of events — so this is the second opinion. It reads the
+   * running flag from disk and is reconciled against the process actually
+   * working on the session, so it does not report a turn a restart ended.
+   */
+  const { data: serverStatus } = useQuery({
+    queryKey: ["session-status"],
+    queryFn: async () => {
+      const response = await fetch("/api/sessions/status");
+      if (!response.ok) throw new Error("Unable to load session status.");
+      return (await response.json()) as {
+        sessions: Array<{ id: string; isRunning: boolean }>;
+      };
+    },
+    refetchInterval: 5_000,
+  });
+
+  const serverIsRunning =
+    serverStatus?.sessions.find((session) => session.id === sessionId)?.isRunning ??
+    false;
+
 
   const mutation = useMutation<
     void,
@@ -436,9 +475,20 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     });
   }, [inst, mutation.status, mutation.isPending, streamingText.length]);
 
+  useEffect(() => {
+    // Only when the server is working and nothing is arriving here. Reattaching
+    // while a stream is live would tear down the one that is working.
+    if (!serverIsRunning) return;
+    if (mutation.isPending || isReconnecting) return;
+
+    trace("stream-recovery:reattach");
+    reconnectToStream();
+  }, [serverIsRunning, isReconnecting, mutation.isPending, reconnectToStream]);
+
   return {
     activeTool,
     isReconnecting,
+    serverIsRunning,
     liveToolCalls,
     mutation,
     pendingQuestion,
