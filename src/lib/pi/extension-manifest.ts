@@ -29,6 +29,7 @@ import {
 } from "@/lib/pi/extension-contract";
 import {
   ASK_USER_EXTENSION_PATH,
+  CODE_MAP_EXTENSION_PATH,
   INSTALL_GUARD_EXTENSION_PATH,
   PI_TOOLS,
   WIKI_EXTENSION_PATH,
@@ -39,6 +40,7 @@ import {
 export type ExtensionId =
   | "workflow"
   | "ask-user"
+  | "code-map"
   | "install-guard"
   | "wiki"
   | "wiki-ingest-bridge";
@@ -123,6 +125,18 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/ask-user.ts.",
+  },
+  {
+    id: "code-map",
+    path: CODE_MAP_EXTENSION_PATH,
+    // Reads the project with the TypeScript checker and returns a structured
+    // map; depends on nothing else in the session.
+    requires: [],
+    providesTools: ["code_map"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/code-map.ts.",
   },
   {
     id: "install-guard",

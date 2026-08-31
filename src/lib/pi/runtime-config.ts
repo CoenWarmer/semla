@@ -36,6 +36,14 @@ export const ASK_USER_EXTENSION_PATH = join(
   "src/lib/pi/extensions/ask-user.ts",
 );
 
+// Resolves a call graph with the TypeScript checker and draws it in the session
+// panel. Registered here rather than taken from a package because owning the
+// tool is what keeps the structured map intact through the tool result.
+export const CODE_MAP_EXTENSION_PATH = join(
+  process.cwd(),
+  "src/lib/pi/extensions/code-map.ts",
+);
+
 // Refuses bash commands that would install a package. Loaded like the others
 // rather than bundled into one, so the manifest shows what can block a call.
 export const INSTALL_GUARD_EXTENSION_PATH = join(
