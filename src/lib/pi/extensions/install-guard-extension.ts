@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { inspectCommand } from "./install-guard.js";
+import { inspectBootstrap, inspectCommand } from "./install-guard.js";
 
 // Read from the environment rather than runtime-config: this file is loaded by
 // jiti, which does not resolve the "@/" alias.
@@ -34,7 +34,18 @@ const binaryExists = (name: string): boolean => {
 
 export default function installGuard(pi: ExtensionAPI) {
   pi.on("tool_call", (event: unknown) => {
-    const call = event as { toolName?: string; input?: { command?: unknown } };
+    const call = event as {
+      toolName?: string;
+      input?: { command?: unknown; root?: unknown };
+    };
+
+    if (call.toolName === "wiki_bootstrap") {
+      const verdict = inspectBootstrap(call.input?.root, WIKI_HOME);
+      if (!verdict.blocked) return undefined;
+      console.warn(`[install-guard] blocked wiki_bootstrap (root=${String(call.input?.root)})`);
+      return { block: true, reason: verdict.reason };
+    }
+
     if (call.toolName !== "bash") return undefined;
 
     const command = call.input?.command;

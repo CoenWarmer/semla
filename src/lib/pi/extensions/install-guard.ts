@@ -198,3 +198,44 @@ export function inspectCommand(
 
   return ALLOWED;
 }
+
+/**
+ * Refuse a bootstrap that would build the vault somewhere other than WIKI_HOME.
+ *
+ * `wiki_bootstrap` resolves its target as `params.root ?? ctx.cwd ??
+ * process.cwd()` and never consults WIKI_HOME. A subagent's cwd is the
+ * workspace root — the directory that *contains* the repos — so bootstrapping
+ * an empty wiki created a vault at `/Users/coen/Dev/.llm-wiki`, and a vault
+ * found at cwd wins over WIKI_HOME from then on. One run split in two:
+ * fourteen packets in the new vault, synthesis still reading the old one, and
+ * the agent reporting the wrong path as WIKI_HOME in its own transcript.
+ *
+ * The vault is created for it at extension load, so a bootstrap is never
+ * needed. This refuses the one that would undo that, and says where to look
+ * instead — a blocked call that leaves the agent guessing gets worked around.
+ */
+export function inspectBootstrap(root: unknown, wikiHome: string): GuardVerdict {
+  if (typeof root === "string" && root.trim() !== "") {
+    const target = root.trim().replace(/\/+$/, "");
+    if (target === wikiHome.replace(/\/+$/, "")) return ALLOWED;
+    return {
+      blocked: true,
+      reason:
+        `Blocked: this would build a wiki vault at ${target}, not ${wikiHome}. ` +
+        "A vault found in the working directory takes precedence over WIKI_HOME " +
+        `from then on, so every later capture would go there. The vault at ${wikiHome} ` +
+        "already exists — use it.",
+    };
+  }
+
+  // No root given is the dangerous form: it silently means cwd, which is the
+  // workspace root rather than any repo.
+  return {
+    blocked: true,
+    reason:
+      `Blocked: wiki_bootstrap with no \`root\` builds the vault in the working ` +
+      `directory, which is the workspace root, not ${wikiHome}. The vault at ` +
+      `${wikiHome} already exists and is the one Semla reads — check it with ` +
+      "wiki_status rather than creating another.",
+  };
+}

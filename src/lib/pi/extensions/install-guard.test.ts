@@ -9,7 +9,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { inspectCommand, splitCommands } from "./install-guard.ts";
+import {
+  inspectBootstrap,
+  inspectCommand,
+  splitCommands,
+} from "./install-guard.ts";
 
 const installed = new Set(["tsc", "vitest", "eslint", "next", "supabase"]);
 const isInstalled = (name: string) => installed.has(name);
@@ -138,5 +142,49 @@ describe("hand-built wiki vaults", () => {
     expect(inspectCommand("mkdir -p /Dev/other/.llm-wiki", isInstalled).blocked).toBe(
       false,
     );
+  });
+});
+
+/**
+ * wiki_bootstrap resolves `params.root ?? ctx.cwd ?? process.cwd()` and never
+ * consults WIKI_HOME. A subagent's cwd is the workspace root, so bootstrapping
+ * an empty wiki built a vault at /Users/coen/Dev/.llm-wiki — and a vault at cwd
+ * wins over WIKI_HOME from then on. That run put fourteen packets in the new
+ * vault while synthesis kept reading the old one.
+ */
+describe("inspectBootstrap", () => {
+  const home = "/Users/coen/Dev/semla/.semla-wiki";
+
+  it("refuses a bootstrap with no root, which silently means cwd", () => {
+    const verdict = inspectBootstrap(undefined, home);
+
+    expect(verdict.blocked).toBe(true);
+    expect(verdict.reason).toContain("workspace root");
+  });
+
+  it("refuses a bootstrap aimed anywhere else", () => {
+    const verdict = inspectBootstrap("/Users/coen/Dev", home);
+
+    expect(verdict.blocked).toBe(true);
+    expect(verdict.reason).toContain("/Users/coen/Dev");
+  });
+
+  it("allows one aimed at the Semla vault", () => {
+    expect(inspectBootstrap(home, home).blocked).toBe(false);
+  });
+
+  it("ignores a trailing slash rather than treating it as a different path", () => {
+    expect(inspectBootstrap(`${home}/`, home).blocked).toBe(false);
+  });
+
+  it("treats an empty root as the no-root case", () => {
+    expect(inspectBootstrap("   ", home).blocked).toBe(true);
+  });
+
+  // The refusal has to say where the vault is: a blocked call that leaves the
+  // agent guessing gets worked around, which is how this vault acquired a
+  // hand-written capture script.
+  it("names the vault to use instead", () => {
+    expect(inspectBootstrap(undefined, home).reason).toContain(home);
   });
 });
