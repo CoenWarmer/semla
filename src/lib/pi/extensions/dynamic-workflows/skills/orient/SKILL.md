@@ -95,6 +95,20 @@ Keep History and Design notes as their own facets rather than folding them into
 Overview: bodies for 40 commits are a large blob, and mixing them into another
 source dilutes both.
 
+**`title` is not optional. Pass one on every capture.**
+The tool has a default for it and the default is always wrong. Omit it on a
+`text` capture and the page is filed as "Pasted text — 2026-08-31"; capture a
+file and it takes the filename. One run produced both in the same fan-out: the
+whole 116 KB commit history, bodies and all, landed as
+"pi-bash-c72532dd1b9fc46a.log", and the directory tree landed as "Pasted text".
+Both had perfect content and neither could be found again.
+
+The filename case is easy to walk into. A large command — the commit log is the
+usual one — does not fit in a tool result, so bash writes the full output to a
+temp file and hands you its path. Capturing that path with `file_path` is the
+right move; letting it name the page is not. Title it for what it holds:
+"semla History (150 commits, bodies)", "semla Structure (directory tree)".
+
 Each subagent calls `wiki_capture_source` itself and reports back only the source ID — never
 the captured text.
 
