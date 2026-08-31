@@ -49,11 +49,19 @@ just parallelised.
 |---|---|
 | Overview | README.md, AGENTS.md, CLAUDE.md — any top-level `.md` files |
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
-| Structure | Directory tree (`find "$REPO" -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
+| Structure | Directory tree (`git -C "$REPO" ls-files \| awk -F/ '{print (NF>3)? $1"/"$2"/"$3 : $0}' \| sort -u`), main config files |
 | Conventions | tsconfig.json, eslint config, test setup |
 | History | `git -C "$REPO" log -n 150 --format='%h %s%n%b%n---'` — the checked-out branch, **with bodies**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
 | Review discussion | `cd "$REPO" && gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is missing, unauthenticated, or the list is empty) |
+
+**List the tree with `git ls-files`, not `find`.** `find` with a couple of
+`-not -path` exclusions catches `node_modules` and misses everything else a
+repo generates. Run against this one it returned 300 KB dominated by
+`.semla-sessions` UUID files and the wiki's own vault, and the Structure page
+that came out described the agent's byproducts — minting entities for
+`.env.local` and `.cursor/settings.json` — instead of the codebase. `ls-files`
+lists tracked files only, so .gitignore does the excluding for you, in any repo.
 
 **Every command must name the repository.** Your working directory is the
 workspace root — the directory that *contains* the repos — not the repo itself.
