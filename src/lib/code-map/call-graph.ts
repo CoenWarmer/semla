@@ -170,6 +170,19 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
   const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
   const includeExternal = options.includeExternal ?? false;
 
+  // Checked before the tsconfig lookup, because the failure that actually
+  // happens is a path missing its repository prefix — the workspace root holds
+  // several repos, and "x-pack/.../plugin.ts" resolves to a directory that does
+  // not exist. Reporting that as "no tsconfig found" sends the reader looking
+  // for the wrong problem.
+  if (!ts.sys.fileExists(filePath)) {
+    throw new Error(
+      `${options.file} does not exist. Paths are resolved relative to ${cwd}, ` +
+        "so a file inside a repository there needs the repository name too " +
+        "(for example `kibana/x-pack/…` rather than `x-pack/…`).",
+    );
+  }
+
   const { checker, program, projectRoot } = getProjectProgram(
     dirname(filePath),
   );
@@ -183,7 +196,11 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
   }
 
   const entry = findEntry(source, options.symbol);
-  const rootNode = toCodeMapNode(entry, projectRoot);
+
+  // Workspace first, tsconfig directory second — see displayPath. In a monorepo
+  // the nearest tsconfig is a package, and paths relative to it are ambiguous.
+  const displayRoots = [cwd, projectRoot];
+  const rootNode = toCodeMapNode(entry, displayRoots);
 
   const nodes = new Map<string, CodeMapNode>([[rootNode.id, rootNode]]);
   const edges = new Map<string, CodeMapEdge>();
@@ -254,7 +271,7 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
           continue;
         }
 
-        const targetNode = toCodeMapNode(target, projectRoot);
+        const targetNode = toCodeMapNode(target, displayRoots);
 
         if (!nodes.has(targetNode.id)) {
           if (nodes.size >= maxNodes) {

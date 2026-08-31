@@ -108,21 +108,22 @@ export default function codeMapExtension(pi: ExtensionAPI) {
           details: { map, type: "code-map" },
         };
       } catch (error) {
-        // A missing symbol is the common case and is recoverable: the error
-        // carries the names that do exist, so the model can retry rather than
-        // give up or invent one.
-        const message =
-          error instanceof SymbolNotFoundError
+        // Thrown rather than returned with isError: true. Pi derives a tool
+        // call's error state from how execution ended, not from that field —
+        // a returned error renders in the session as a successful call, which
+        // is exactly the kind of quietly-wrong record this app exists to avoid.
+        // supi's own tools throw here for the same reason.
+        //
+        // The message carries the recovery. A missing symbol names the
+        // declarations that do exist, and a missing tsconfig names the path it
+        // resolved, so the model can correct itself instead of guessing —
+        // which is what it did when it had addressed a file relative to the
+        // wrong root.
+        throw new Error(
+          error instanceof SymbolNotFoundError || error instanceof Error
             ? error.message
-            : error instanceof Error
-              ? error.message
-              : String(error);
-
-        return {
-          content: [{ text: message, type: "text" }],
-          details: null,
-          isError: true,
-        };
+            : String(error),
+        );
       }
     },
   });

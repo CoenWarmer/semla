@@ -89,24 +89,21 @@ describe("code_map extension under jiti", () => {
     expect(map?.nodes.map((node) => node.name)).toContain("normalise");
   });
 
-  it("returns a usable error for a symbol that is not there", async () => {
+  it("throws for a symbol that is not there, naming the ones that are", async () => {
     const [tool] = (await loadExtension()).tools as Array<
       RegisteredTool & {
-        execute: (id: string, params: unknown) => Promise<{
-          content: Array<{ text: string }>;
-          isError?: boolean;
-        }>;
+        execute: (id: string, params: unknown) => Promise<unknown>;
       }
     >;
 
-    const result = await tool.execute("call-2", {
-      file: "src/lib/code-map/call-graph-fixture.ts",
-      symbol: "nosuchthing",
-    });
-
-    // Names the declarations that do exist, so the model can retry instead of
-    // inventing one.
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("normaliseAll");
+    // Thrown, not returned with isError: true — Pi derives a call's error state
+    // from how execution ended, so a returned error renders as a successful
+    // call in the session record.
+    await expect(
+      tool.execute("call-2", {
+        file: "src/lib/code-map/call-graph-fixture.ts",
+        symbol: "nosuchthing",
+      }),
+    ).rejects.toThrow(/normaliseAll/);
   });
 });

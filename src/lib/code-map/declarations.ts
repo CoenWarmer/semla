@@ -13,7 +13,7 @@
  * a callee means unwrapping the initializer first.
  */
 
-import { relative } from "node:path";
+import { isAbsolute, relative } from "node:path";
 
 import ts from "typescript";
 
@@ -136,19 +136,39 @@ export function lineOf(node: ts.Node): number {
   return source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
 }
 
-/** Project-relative path, so ids do not embed the checkout location. */
-export function displayPath(fileName: string, projectRoot: string): string {
-  const rel = relative(projectRoot, fileName);
-  return rel.startsWith("..") ? fileName : rel;
+/**
+ * Shortest meaningful path for a file, tried against each root in order.
+ *
+ * The roots are the session's workspace first, the tsconfig's directory second.
+ * That order matters in a monorepo: Kibana has a tsconfig.json inside every
+ * plugin, so resolving against the tsconfig alone produced `server/plugin.ts`
+ * for a file the caller had addressed as
+ * `kibana/x-pack/platform/plugins/shared/significant_events/server/plugin.ts`.
+ * Ambiguous across a hundred plugins, not clickable from the workspace, and not
+ * the path the caller used — output should be addressable the same way input is.
+ *
+ * Falls back to the absolute path rather than an unreadable pile of `../`.
+ */
+export function displayPath(
+  fileName: string,
+  roots: readonly string[],
+): string {
+  for (const root of roots) {
+    if (!root) continue;
+    const rel = relative(root, fileName);
+    if (rel && !rel.startsWith("..") && !isAbsolute(rel)) return rel;
+  }
+
+  return fileName;
 }
 
 /** Build the code map node for a declaration. */
 export function toCodeMapNode(
   node: ts.Node,
-  projectRoot: string,
+  roots: readonly string[],
 ): CodeMapNode {
   const fileName = node.getSourceFile().fileName;
-  const file = displayPath(fileName, projectRoot);
+  const file = displayPath(fileName, roots);
   const name = declarationName(node);
   const line = lineOf(node);
   const external = isExternalFile(fileName);

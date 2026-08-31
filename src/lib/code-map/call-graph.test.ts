@@ -169,4 +169,19 @@ describe("buildCodeMap", () => {
       buildCodeMap({ file: join(process.cwd(), "next.config.ts"), symbol: "x" }),
     ).toThrow();
   });
+
+  it("names the root a relative path was resolved against", () => {
+    // The failure seen in a real session: the workspace root holds several
+    // repositories, and the caller passed a path missing the repository name.
+    // "no tsconfig found" pointed at the wrong problem.
+    const build = () =>
+      buildCodeMap({
+        cwd: "/Users/coen/Dev",
+        file: "x-pack/platform/plugins/shared/significant_events/server/plugin.ts",
+        symbol: "start",
+      });
+
+    expect(build).toThrow("does not exist");
+    expect(build).toThrow("resolved relative to /Users/coen/Dev");
+  });
 });
