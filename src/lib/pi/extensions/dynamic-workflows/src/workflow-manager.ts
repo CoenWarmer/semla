@@ -5,7 +5,12 @@
 import { EventEmitter } from "node:events";
 import type { ModelRegistry, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { WorkflowAgent } from "./agent.ts";
-import { preview, type WorkflowAgentSnapshot, type WorkflowSnapshot } from "./display.ts";
+import {
+  preview,
+  recomputeWorkflowSnapshot,
+  type WorkflowAgentSnapshot,
+  type WorkflowSnapshot,
+} from "./display.ts";
 import { isProviderUsageLimit, WorkflowError, WorkflowErrorCode } from "./errors.ts";
 import {
   createRunPersistence,
@@ -1456,8 +1461,17 @@ export class WorkflowManager extends EventEmitter {
   /**
    * Get snapshot of a run.
    */
+  /**
+   * The live snapshot for `runId`, with its counts derived from its agents.
+   *
+   * The stored snapshot keeps agentCount/doneCount/runningCount/errorCount at
+   * the zeros it was built with; the tool-result path recomputes them on the
+   * way out, so anything reading a snapshot directly saw "0/0 done" beside a
+   * list of running agents. Three wiki-ingest runs recorded exactly that.
+   */
   getSnapshot(runId: string): WorkflowSnapshot | null {
-    return this.runs.get(runId)?.snapshot ?? null;
+    const snapshot = this.runs.get(runId)?.snapshot;
+    return snapshot ? recomputeWorkflowSnapshot(snapshot) : null;
   }
 
   /**
