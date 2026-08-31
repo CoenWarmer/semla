@@ -1,10 +1,6 @@
 import type { GitStatus } from "@/lib/git-status-display";
 
-import { refreshRemote } from "./git-fetch";
-import { branchNameFromBase } from "@/lib/git-status-display";
-
-import { pickCanonicalRemote, readGitStatus } from "./git-status";
-import { git } from "./git";
+import { fetchCanonical, readGitStatus } from "./git-status";
 import { getWorkspaceProjects } from "./workspace";
 
 /**
@@ -91,16 +87,11 @@ export async function isWorkspaceProject(path: string): Promise<boolean> {
   return projects.some((project) => project.path === path);
 }
 
-/** Fetch one project's canonical remote, for a card whose popover just opened. */
-export async function refreshProject(path: string): Promise<boolean> {
-  const status = await readGitStatus(path, { fetch: false });
-  const remotes =
-    (await git(path, ["remote"]))?.split("\n").map((r) => r.trim()) ?? [];
-  const canonical = pickCanonicalRemote(remotes.filter(Boolean));
-  const branch = branchNameFromBase(status.base);
-  if (!canonical || !branch) return false;
-
-  // A fresh read next time round needs the cache out of the way.
+/**
+ * Fetch one project's canonical branch and wait, for a card whose popover just
+ * opened. Clears the workspace cache so the next read sees the new refs.
+ */
+export async function refreshProject(path: string): Promise<void> {
+  await fetchCanonical(path);
   cache = null;
-  return refreshRemote(path, canonical, branch);
 }

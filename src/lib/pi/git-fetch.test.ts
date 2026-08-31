@@ -10,7 +10,8 @@ vi.mock("./runtime-config", () => ({
   },
 }));
 
-const { refreshRemote, resetFetchStateForTests } = await import("./git-fetch");
+const { fetchNow, refreshRemote, resetFetchStateForTests } =
+  await import("./git-fetch");
 
 /**
  * Let the fetch's promise chain settle. `refreshRemote` clears its in-flight
@@ -107,5 +108,61 @@ describe("refreshRemote", () => {
     interval = 0;
     expect(refreshRemote("/repo", "origin", "main")).toBe(false);
     expect(gitMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("fetchNow", () => {
+  beforeEach(() => {
+    interval = 60_000;
+    gitMock.mockReset();
+    gitMock.mockResolvedValue(null);
+    resetFetchStateForTests();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("waits for the fetch rather than starting one", async () => {
+    let done = false;
+    gitMock.mockImplementation(async () => {
+      done = true;
+      return null;
+    });
+    await fetchNow("/repo", "upstream", "main");
+    // The popover shows these numbers immediately after; returning early would
+    // show exactly the stale ones it was opened to escape.
+    expect(done).toBe(true);
+  });
+
+  it("ignores the throttle, because the user asked", async () => {
+    refreshRemote("/repo", "upstream", "main");
+    await settle();
+    vi.advanceTimersByTime(1_000);
+    expect(refreshRemote("/repo", "upstream", "main")).toBe(false); // throttled
+    await fetchNow("/repo", "upstream", "main");
+    expect(gitMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("joins a background fetch already running instead of racing it", async () => {
+    const release = pendingFetch();
+    refreshRemote("/repo", "upstream", "main");
+    const joined = fetchNow("/repo", "upstream", "main");
+    expect(gitMock).toHaveBeenCalledTimes(1);
+    release();
+    await joined;
+  });
+
+  it("resolves even when the fetch fails", async () => {
+    gitMock.mockRejectedValue(new Error("offline"));
+    await expect(fetchNow("/repo", "upstream", "main")).resolves.toBeUndefined();
+  });
+
+  it("still fetches one branch only", async () => {
+    await fetchNow("/repo", "upstream", "main");
+    expect(gitMock).toHaveBeenCalledWith(
+      "/repo",
+      ["fetch", "upstream", "main", "--quiet", "--no-tags"],
+      expect.objectContaining({ network: true }),
+    );
   });
 });

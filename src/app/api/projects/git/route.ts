@@ -42,8 +42,8 @@ export async function POST(request: Request) {
   }
 
   if (action === "refresh") {
-    const fetching = await refreshProject(path);
-    return NextResponse.json({ ok: true, message: "", fetching });
+    await refreshProject(path);
+    return NextResponse.json({ ok: true, message: "" });
   }
 
   const status = await readGitStatus(path, { fetch: false });

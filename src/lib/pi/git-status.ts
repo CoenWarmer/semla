@@ -4,7 +4,7 @@ import {
   type GitStatus,
 } from "@/lib/git-status-display";
 
-import { lastFetchedAt, refreshRemote } from "./git-fetch";
+import { fetchNow, lastFetchedAt, refreshRemote } from "./git-fetch";
 import { git } from "./git";
 
 /**
@@ -160,4 +160,23 @@ export async function readGitStatus(
     fetchedAt,
     fetching,
   };
+}
+
+/**
+ * Resolve this repository's canonical branch and fetch it, waiting for it.
+ *
+ * The deliberate refresh, as opposed to the poll's background one: used when
+ * somebody opens the branch popover, where the point is that the numbers they
+ * then read are current.
+ */
+export async function fetchCanonical(path: string): Promise<void> {
+  const remotes =
+    (await git(path, ["remote"]))?.split("\n").map((r) => r.trim()) ?? [];
+  const canonical = pickCanonicalRemote(remotes.filter(Boolean));
+  if (!canonical) return;
+
+  const branch = branchNameFromBase(await remoteDefaultRef(path, canonical));
+  if (!branch) return;
+
+  await fetchNow(path, canonical, branch);
 }

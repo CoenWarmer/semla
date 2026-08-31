@@ -65,14 +65,18 @@ export function GitStatusBadge({
   });
 
   /**
-   * Workspace reads never fetch — dozens of cards must not mean dozens of
-   * network connections — so opening a card's popover is what brings that one
-   * repository up to date.
+   * Opening the popover fetches, and waits.
+   *
+   * This is the moment somebody asks what the branch is actually doing, right
+   * before acting on the answer, so it ignores the poll's once-a-minute
+   * throttle. It matters most for cards, whose workspace read never fetches at
+   * all — dozens of cards must not mean dozens of network connections — but a
+   * session's last background fetch can be nearly a minute old too.
    */
-  const refreshOnOpen = () => {
-    if (target?.kind !== "project") return;
-    void post("refresh").then(invalidate).catch(() => {});
-  };
+  const refresh = useMutation({
+    mutationFn: () => post("refresh"),
+    onSettled: invalidate,
+  });
 
   if (!label) return null;
 
@@ -88,7 +92,7 @@ export function GitStatusBadge({
   return (
     <Popover
       onOpenChange={(open) => {
-        if (open) refreshOnOpen();
+        if (open) refresh.mutate();
         else setOutcome(null);
       }}
     >
@@ -142,7 +146,7 @@ export function GitStatusBadge({
         <div className="mt-3 flex flex-col gap-1.5">
           <Button
             className="justify-start"
-            disabled={!canMerge || run.isPending}
+            disabled={!canMerge || run.isPending || refresh.isPending}
             onClick={() => run.mutate("merge")}
             size="sm"
             type="button"
@@ -153,7 +157,7 @@ export function GitStatusBadge({
           </Button>
           <Button
             className="justify-start"
-            disabled={!canCheckout || run.isPending}
+            disabled={!canCheckout || run.isPending || refresh.isPending}
             onClick={() => run.mutate("checkout")}
             size="sm"
             type="button"
@@ -164,9 +168,15 @@ export function GitStatusBadge({
           </Button>
         </div>
 
-        {!canMerge && behind === 0 && base && (
+        {!canMerge && behind === 0 && base && !refresh.isPending && (
           <p className="mt-2 text-[11px] text-muted-foreground/70">
             Nothing to merge — no commits on {base} that you lack.
+          </p>
+        )}
+
+        {refresh.isPending && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Fetching {base ?? "remote"}…
           </p>
         )}
 

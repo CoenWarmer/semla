@@ -1,10 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
+const gitMock = vi.hoisted(() => vi.fn());
+const fetchNowMock = vi.hoisted(() => vi.fn());
+
+vi.mock("./git", () => ({ git: gitMock }));
+vi.mock("./git-fetch", () => ({
+  fetchNow: fetchNowMock,
+  refreshRemote: vi.fn(),
+  lastFetchedAt: vi.fn().mockResolvedValue(null),
+}));
+
+const {
+  fetchCanonical,
   parseAheadBehind,
   parseRemoteHead,
   pickCanonicalRemote,
-} from "./git-status";
+} = await import("./git-status");
 
 describe("parseAheadBehind", () => {
   it("reads the base count first, as --left-right prints it", () => {
@@ -54,5 +65,52 @@ describe("pickCanonicalRemote", () => {
 
   it("returns null for a repository with no remotes", () => {
     expect(pickCanonicalRemote([])).toBeNull();
+  });
+});
+
+describe("fetchCanonical", () => {
+  beforeEach(() => {
+    gitMock.mockReset();
+    fetchNowMock.mockReset();
+    fetchNowMock.mockResolvedValue(undefined);
+  });
+
+  /** Answer `git remote`, then the default-branch lookup. */
+  const repoWith = (remotes: string, head: string | null) =>
+    gitMock.mockImplementation((_p: string, args: string[]) => {
+      if (args[0] === "remote") return Promise.resolve(remotes);
+      if (args[0] === "symbolic-ref") return Promise.resolve(head);
+      return Promise.resolve(null);
+    });
+
+  it("fetches the fork's upstream branch, not the fork", async () => {
+    repoWith("origin\nupstream", "refs/remotes/upstream/main");
+    await fetchCanonical("/repo");
+    expect(fetchNowMock).toHaveBeenCalledWith("/repo", "upstream", "main");
+  });
+
+  it("falls back to origin when there is no fork", async () => {
+    repoWith("origin", "refs/remotes/origin/main");
+    await fetchCanonical("/repo");
+    expect(fetchNowMock).toHaveBeenCalledWith("/repo", "origin", "main");
+  });
+
+  it("keeps slashes in a branch name", async () => {
+    repoWith("origin", "refs/remotes/origin/release/2.x");
+    await fetchCanonical("/repo");
+    expect(fetchNowMock).toHaveBeenCalledWith("/repo", "origin", "release/2.x");
+  });
+
+  it("does nothing without a remote", async () => {
+    repoWith("", null);
+    await fetchCanonical("/repo");
+    expect(fetchNowMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no default branch can be found", async () => {
+    // No recorded HEAD and neither main nor master resolves.
+    repoWith("origin", null);
+    await fetchCanonical("/repo");
+    expect(fetchNowMock).not.toHaveBeenCalled();
   });
 });

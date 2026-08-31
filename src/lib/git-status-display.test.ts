@@ -65,9 +65,13 @@ describe("describeGitStatus", () => {
     expect(describeGitStatus(status({ ahead: 1 }))?.title).toContain(
       "Fetched just now",
     );
+    // Not "Fetched never fetched."
     expect(
       describeGitStatus(status({ ahead: 1, fetchedAt: null }))?.title,
-    ).toContain("never fetched");
+    ).toContain("Never fetched.");
+    expect(
+      describeGitStatus(status({ ahead: 1, fetchedAt: null }))?.title,
+    ).not.toContain("Fetched never");
   });
 
   it("says so while a fetch is running", () => {

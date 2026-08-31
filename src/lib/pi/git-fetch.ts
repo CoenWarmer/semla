@@ -98,6 +98,42 @@ export function refreshRemote(
   return true;
 }
 
+/**
+ * Fetch now and wait for it, ignoring the throttle.
+ *
+ * For the moment somebody opens the popover: they have asked, explicitly, what
+ * the state of this branch is, and are about to act on the answer. The poll's
+ * once-a-minute ceiling is the wrong rule for a deliberate request, and
+ * returning before the fetch lands would show them the very numbers they
+ * opened it to escape.
+ *
+ * Still deduplicated — a background fetch already running is awaited rather
+ * than raced with a second one.
+ */
+export async function fetchNow(
+  path: string,
+  remote: string,
+  branch: string,
+): Promise<void> {
+  const running = inFlight.get(path);
+  if (running) return running;
+
+  lastAttempt.set(path, Date.now());
+
+  const run = git(path, fetchArgs(remote, branch), {
+    timeout: FETCH_TIMEOUT_MS,
+    network: true,
+  })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      inFlight.delete(path);
+    });
+
+  inFlight.set(path, run);
+  return run;
+}
+
 /** Test seam: forget throttle and in-flight state. */
 export function resetFetchStateForTests(): void {
   inFlight.clear();

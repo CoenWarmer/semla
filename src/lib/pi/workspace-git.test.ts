@@ -2,17 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const projectsMock = vi.hoisted(() => vi.fn());
 const readGitStatusMock = vi.hoisted(() => vi.fn());
-const gitMock = vi.hoisted(() => vi.fn());
-const refreshRemoteMock = vi.hoisted(() => vi.fn());
+const fetchCanonicalMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./workspace", () => ({ getWorkspaceProjects: projectsMock }));
 vi.mock("./git-status", () => ({
   readGitStatus: readGitStatusMock,
-  pickCanonicalRemote: (remotes: string[]) =>
-    remotes.includes("upstream") ? "upstream" : (remotes[0] ?? null),
+  fetchCanonical: fetchCanonicalMock,
 }));
-vi.mock("./git", () => ({ git: gitMock }));
-vi.mock("./git-fetch", () => ({ refreshRemote: refreshRemoteMock }));
 
 const { getWorkspaceGitStatus, isWorkspaceProject, refreshProject } =
   await import("./workspace-git");
@@ -86,35 +82,30 @@ describe("isWorkspaceProject", () => {
 
 describe("refreshProject", () => {
   beforeEach(() => {
-    gitMock.mockReset();
-    refreshRemoteMock.mockReset();
+    vi.useFakeTimers();
+    fetchCanonicalMock.mockReset();
+    fetchCanonicalMock.mockResolvedValue(undefined);
+    projectsMock.mockReset();
     readGitStatusMock.mockReset();
-    readGitStatusMock.mockResolvedValue({ ...status("main"), base: "upstream/main" });
+    projectsMock.mockResolvedValue([{ name: "one", path: "/ws/one" }]);
+    readGitStatusMock.mockResolvedValue(status("main"));
+    vi.advanceTimersByTime(10_000);
   });
 
-  it("fetches the canonical remote's branch, not the whole remote", async () => {
-    gitMock.mockResolvedValue("origin\nupstream");
-    refreshRemoteMock.mockReturnValue(true);
-    await expect(refreshProject("/ws/one")).resolves.toBe(true);
-    expect(refreshRemoteMock).toHaveBeenCalledWith("/ws/one", "upstream", "main");
-  });
-
-  it("reads without fetching while working out what to fetch", async () => {
-    gitMock.mockResolvedValue("upstream");
+  it("waits for the fetch", async () => {
     await refreshProject("/ws/one");
-    expect(readGitStatusMock).toHaveBeenCalledWith("/ws/one", { fetch: false });
+    expect(fetchCanonicalMock).toHaveBeenCalledWith("/ws/one");
   });
 
-  it("does nothing for a repository with no remotes", async () => {
-    gitMock.mockResolvedValue(null);
-    await expect(refreshProject("/ws/one")).resolves.toBe(false);
-    expect(refreshRemoteMock).not.toHaveBeenCalled();
-  });
+  it("drops the cache so the next read sees the new refs", async () => {
+    await getWorkspaceGitStatus();
+    readGitStatusMock.mockClear();
 
-  it("does nothing when there is no branch to compare against", async () => {
-    gitMock.mockResolvedValue("upstream");
-    readGitStatusMock.mockResolvedValue({ ...status("main"), base: null });
-    await expect(refreshProject("/ws/one")).resolves.toBe(false);
-    expect(refreshRemoteMock).not.toHaveBeenCalled();
+    await getWorkspaceGitStatus(); // cached — no re-read
+    expect(readGitStatusMock).not.toHaveBeenCalled();
+
+    await refreshProject("/ws/one");
+    await getWorkspaceGitStatus();
+    expect(readGitStatusMock).toHaveBeenCalled();
   });
 });

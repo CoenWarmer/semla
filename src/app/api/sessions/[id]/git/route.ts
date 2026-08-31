@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { branchNameFromBase } from "@/lib/git-status-display";
 import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git-actions";
-import { readGitStatus, EMPTY_GIT_STATUS } from "@/lib/pi/git-status";
+import {
+  EMPTY_GIT_STATUS,
+  fetchCanonical,
+  readGitStatus,
+} from "@/lib/pi/git-status";
 import { readSessionMeta } from "@/lib/pi/session-meta";
 import { createClient } from "@/lib/supabase/server";
 
@@ -66,7 +70,7 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const action = body?.action;
 
-  if (action !== "merge" && action !== "checkout") {
+  if (action !== "merge" && action !== "checkout" && action !== "refresh") {
     return NextResponse.json({ ok: false, message: "Unknown action." }, { status: 400 });
   }
 
@@ -78,7 +82,12 @@ export async function POST(
     );
   }
 
-  const status = await readGitStatus(projectPath);
+  if (action === "refresh") {
+    await fetchCanonical(projectPath);
+    return NextResponse.json({ ok: true, message: "" });
+  }
+
+  const status = await readGitStatus(projectPath, { fetch: false });
   if (!status.base) {
     return NextResponse.json(
       { ok: false, message: "No canonical branch to compare against." },

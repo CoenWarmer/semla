@@ -121,6 +121,8 @@ export function describeGitStatus(
       `${divergence}. ` +
       (status.fetching
         ? "Fetching now…"
-        : `Fetched ${formatFetchAge(status.fetchedAt)}.`),
+        : status.fetchedAt === null
+          ? "Never fetched."
+          : `Fetched ${formatFetchAge(status.fetchedAt)}.`),
   };
 }
