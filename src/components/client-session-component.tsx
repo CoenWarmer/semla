@@ -82,7 +82,14 @@ export function ClientSessionComponent({
   }, [sessionId]);
 
   const queryClient = useQueryClient();
-  const messagesQuery = useSessionMessages(sessionId, initialMessagesData);
+  const isActive = promptMutation.isPending || isReconnecting;
+  // Paused mid-turn: the server has no rows for a turn until it ends, so an
+  // unbidden refetch would replace the optimistic prompt with a list without it.
+  const messagesQuery = useSessionMessages(
+    sessionId,
+    initialMessagesData,
+    isActive,
+  );
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   const messages = messagesQuery.data?.messages ?? [];
   // Persisted rows arrive only when the turn's entries are written, so fold in
@@ -129,8 +136,6 @@ export function ClientSessionComponent({
 
   // Synthetic snapshot for non-workflow sessions: shows the main agent as a
   // single node so the panel always has something to display.
-  const isActive = promptMutation.isPending || isReconnecting;
-
   const sessionAgentSnapshot = useMemo((): WorkflowSnapshot => {
     const hasMessages = messages.length > 0;
     return {
