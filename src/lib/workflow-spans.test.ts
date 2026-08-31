@@ -14,6 +14,8 @@ const messages = [
   { createdAt: new Date(T0).toISOString(), text: "audit this" },
 ] as unknown as SessionMessage[];
 
+const iso = (ms: number) => new Date(ms).toISOString();
+
 function snapshot(
   agents: Array<Partial<WorkflowSnapshot["agents"][number]>>,
   extra: Partial<WorkflowSnapshot> = {},
@@ -417,4 +419,95 @@ test("a stamped live snapshot renders agent bars from their real start", () => {
   assert.ok(span);
   assert.equal(span.startTimeMs, T0 + 2_000, "starts when first seen");
   assert.equal(span.endTimeMs, NOW, "still running, so it grows to now");
+});
+
+// The shape every real orient produces: the generated script names a phase on
+// each agent but declares none in meta. Grouping by the declared list alone
+// matched nothing, so all nine agents of orient_buildkite_tray_capture vanished
+// and the run drew as a lone 67s bar.
+test("agents appear when they name phases the workflow never declared", () => {
+  const snapshot = {
+    agentCount: 3,
+    agents: [
+      { id: 1, label: "agent 1", phase: "Overview", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 8_800) },
+      { id: 2, label: "agent 2", phase: "Renderer (main window)", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 67_200) },
+      { id: 3, label: "agent 3", phase: "Overview", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 12_100) },
+    ],
+    doneCount: 3,
+    errorCount: 0,
+    name: "orient_buildkite_tray_capture",
+    phases: [],
+    runId: "run-undeclared",
+    runningCount: 0,
+  } as unknown as WorkflowSnapshot;
+
+  const spans = workflowSnapshotToSpans(snapshot, messages, { now: NOW });
+
+  for (const label of ["agent 1", "agent 2", "agent 3"]) {
+    assert.ok(spans.find((s) => s.name === label), `no span named ${label}`);
+  }
+
+  // Grouped under the phases the agents named, not a synthetic bucket.
+  const overview = spans.find((s) => s.name === "Overview");
+  assert.ok(overview, "no Overview phase span");
+  const renderer = spans.find((s) => s.name === "Renderer (main window)");
+  assert.ok(renderer, "no Renderer phase span");
+  assert.equal(spans.find((s) => s.name === "Agents"), undefined);
+
+  // The phase spans the agents it contains, not the whole run.
+  assert.equal(overview.endTimeMs - overview.startTimeMs, 12_100);
+});
+
+test("agents with no phase keep their own bucket alongside phased ones", () => {
+  const snapshot = {
+    agentCount: 2,
+    agents: [
+      { id: 1, label: "phased", phase: "Overview", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 1_000) },
+      { id: 2, label: "unphased", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 2_000) },
+    ],
+    doneCount: 2,
+    errorCount: 0,
+    name: "mixed",
+    phases: [],
+    runId: "run-mixed",
+    runningCount: 0,
+  } as unknown as WorkflowSnapshot;
+
+  const spans = workflowSnapshotToSpans(snapshot, messages, { now: NOW });
+  const parentOf = (name: string) =>
+    spans.find((s) => s.spanId === spans.find((x) => x.name === name)?.parentSpanId)?.name;
+
+  // An unphased agent must not be swept into the first real phase.
+  assert.equal(parentOf("phased"), "Overview");
+  assert.equal(parentOf("unphased"), "Agents");
+});
+
+test("declared phases still lead, with undeclared ones appended", () => {
+  const snapshot = {
+    agentCount: 2,
+    agents: [
+      { id: 1, label: "declared agent", phase: "Review", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 1_000) },
+      { id: 2, label: "stray agent", phase: "Cleanup", status: "done",
+        startedAt: iso(T0), endedAt: iso(T0 + 1_000) },
+    ],
+    doneCount: 2,
+    errorCount: 0,
+    name: "ordered",
+    phases: ["Review"],
+    runId: "run-ordered",
+    runningCount: 0,
+  } as unknown as WorkflowSnapshot;
+
+  const spans = workflowSnapshotToSpans(snapshot, messages, { now: NOW });
+  const phaseNames = spans
+    .filter((s) => ["Review", "Cleanup"].includes(s.name))
+    .map((s) => s.name);
+
+  assert.deepEqual(phaseNames, ["Review", "Cleanup"]);
 });

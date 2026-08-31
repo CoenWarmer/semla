@@ -28,6 +28,9 @@ const TRACE_ID = makeTraceId("semla-session");
  *       └── <phase>
  *           └── <agent>
  */
+/** Bucket for agents a workflow never assigned a phase to. */
+const UNPHASED = "Agents";
+
 export function workflowSnapshotToSpans(
   snapshot: WorkflowSnapshot,
   messages: SessionMessage[],
@@ -230,13 +233,25 @@ export function workflowSnapshotToSpans(
       kind: "INTERNAL",
     });
 
-    const phases =
-      wfSnapshot.phases.length > 0 ? wfSnapshot.phases : ["Agents"];
+    // A generated script can set `phase` on an agent without declaring it in
+    // meta.phases — the workflow tool asks for both, but nothing enforces it,
+    // and the model routinely does exactly this. Grouping agents by the
+    // declared list alone then matches none of them and every group is skipped,
+    // so the run draws as a bare workflow bar with all its agents missing.
+    //
+    // Take the phases the agents actually use as well, declared ones first so
+    // an intentional sequence still reads in order. Agents with no phase share
+    // the synthetic bucket, which is what an unphased workflow has always used.
+    const phaseOf = (agent: (typeof wfSnapshot.agents)[number]) =>
+      agent.phase ?? UNPHASED;
+    const used = [...new Set(wfSnapshot.agents.map(phaseOf))];
+    const phases = [
+      ...wfSnapshot.phases,
+      ...used.filter((phase) => !wfSnapshot.phases.includes(phase)),
+    ];
 
     for (const phase of phases) {
-      const phaseAgents = wfSnapshot.agents.filter(
-        (a) => (a.phase ?? phases[0]) === phase,
-      );
+      const phaseAgents = wfSnapshot.agents.filter((a) => phaseOf(a) === phase);
       if (!phaseAgents.length) continue;
 
       const phaseTimes = phaseAgents
