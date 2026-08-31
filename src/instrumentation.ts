@@ -20,4 +20,14 @@ export async function register() {
         "Semla no longer follows changes made with the pi CLI.",
     );
   }
+
+  // The seeded catalog is a snapshot; refresh it once now so new provider
+  // models show up, rather than on every ModelRuntime.create.
+  const { refreshModelCatalog } = await import("@/lib/pi/model-catalog");
+  const catalog = await refreshModelCatalog();
+  console.log(
+    catalog.refreshed
+      ? `[pi] model catalog refreshed: ${catalog.models} models`
+      : `[pi] model catalog refresh failed (${catalog.error}); using the catalog on disk`,
+  );
 }

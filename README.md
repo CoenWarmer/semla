@@ -126,6 +126,11 @@ after that, changes made with the `pi` CLI no longer affect Semla. Delete it to
 re-seed. In a container with no host install, credentials come from
 `PI_MODEL_API_KEY`.
 
+The model catalog is refreshed from the network once per server start, so a
+seeded snapshot does not go stale as providers add models. It is best-effort —
+if the fetch fails the catalog already on disk is used — and skipped entirely
+when `PI_OFFLINE` is set.
+
 The agent loop lives in `session-service.ts`. Each prompt streams events (assistant deltas, tool calls, workflow snapshots) over SSE to the client. Workflow progress is also polled from Supabase so background runs stay up to date after a page reload.
 
 ---
