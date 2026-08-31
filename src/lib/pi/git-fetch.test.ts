@@ -42,49 +42,52 @@ describe("refreshRemote", () => {
     vi.useRealTimers();
   });
 
-  it("fetches only the canonical remote, without tags", () => {
-    expect(refreshRemote("/repo", "upstream")).toBe(true);
+  it("fetches one branch, not the whole remote", () => {
+    // The bug this pins: fetching every branch of elastic/kibana took 524
+    // seconds against 2 for a single branch, so the 30s timeout killed it
+    // every time and the tracking ref never moved.
+    expect(refreshRemote("/repo", "upstream", "main")).toBe(true);
     expect(gitMock).toHaveBeenCalledWith(
       "/repo",
-      ["fetch", "upstream", "--quiet", "--no-tags"],
+      ["fetch", "upstream", "main", "--quiet", "--no-tags"],
       expect.objectContaining({ network: true }),
     );
   });
 
   it("refuses prompts, so a missing credential cannot hang the fetch", () => {
-    refreshRemote("/repo", "origin");
+    refreshRemote("/repo", "origin", "main");
     expect(gitMock.mock.calls[0][2]).toMatchObject({ network: true });
     // A fetch is far slower than a ref read; it needs its own budget.
     expect(gitMock.mock.calls[0][2].timeout).toBeGreaterThan(10_000);
   });
 
   it("throttles repeat reads of the same repo", async () => {
-    expect(refreshRemote("/repo", "origin")).toBe(true);
-    expect(refreshRemote("/repo", "origin")).toBe(true); // still in flight
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true); // still in flight
     await settle();
     vi.advanceTimersByTime(30_000);
-    expect(refreshRemote("/repo", "origin")).toBe(false);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(false);
     expect(gitMock).toHaveBeenCalledTimes(1);
   });
 
   it("fetches again once the interval has passed", async () => {
-    refreshRemote("/repo", "origin");
+    refreshRemote("/repo", "origin", "main");
     await settle();
     vi.advanceTimersByTime(61_000);
-    expect(refreshRemote("/repo", "origin")).toBe(true);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true);
     expect(gitMock).toHaveBeenCalledTimes(2);
   });
 
   it("throttles each repository independently", () => {
-    refreshRemote("/one", "origin");
-    refreshRemote("/two", "origin");
+    refreshRemote("/one", "origin", "main");
+    refreshRemote("/two", "origin", "main");
     expect(gitMock).toHaveBeenCalledTimes(2);
   });
 
   it("collapses concurrent readers onto a single fetch", async () => {
     const release = pendingFetch();
-    expect(refreshRemote("/repo", "origin")).toBe(true);
-    expect(refreshRemote("/repo", "origin")).toBe(true);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true);
     expect(gitMock).toHaveBeenCalledTimes(1);
     release();
   });
@@ -93,16 +96,16 @@ describe("refreshRemote", () => {
     // The throttle keys off the attempt, not the outcome: an unreachable
     // remote must not mean a fetch attempt on every single read.
     gitMock.mockRejectedValue(new Error("offline"));
-    expect(refreshRemote("/repo", "origin")).toBe(true);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(true);
     await settle();
     vi.advanceTimersByTime(10_000);
-    expect(refreshRemote("/repo", "origin")).toBe(false);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(false);
     expect(gitMock).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing at all when fetching is switched off", () => {
     interval = 0;
-    expect(refreshRemote("/repo", "origin")).toBe(false);
+    expect(refreshRemote("/repo", "origin", "main")).toBe(false);
     expect(gitMock).not.toHaveBeenCalled();
   });
 });

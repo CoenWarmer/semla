@@ -16,7 +16,10 @@ import { git } from "./git";
  * interval, and the next poll sees the newer refs.
  */
 
-/** A fetch can be slow on a large repo — catalog-info takes over five seconds. */
+/**
+ * Generous for a one-branch fetch, which is a couple of seconds even on a
+ * large repository.
+ */
 const FETCH_TIMEOUT_MS = 30_000;
 
 /** In-flight fetches, keyed by repo, so concurrent readers share one. */
@@ -42,13 +45,31 @@ export async function lastFetchedAt(path: string): Promise<number | null> {
 }
 
 /**
- * Fetch `remote` in the background unless one ran recently.
+ * The one thing worth fetching: the branch being compared against.
+ *
+ * Fetching a whole remote is not a slightly slower version of this, it is a
+ * different order of magnitude. On elastic/kibana, `git fetch upstream main`
+ * takes two seconds and `git fetch upstream --no-tags` takes five hundred and
+ * twenty-four — every branch the project has ever pushed. The full fetch was
+ * killed by the timeout on every attempt, so the tracking ref never moved and
+ * the counts stayed wrong forever while looking authoritative.
+ */
+export function fetchArgs(remote: string, branch: string): string[] {
+  return ["fetch", remote, branch, "--quiet", "--no-tags"];
+}
+
+/**
+ * Fetch one branch of `remote` in the background unless one ran recently.
  *
  * Resolves as soon as the decision is made, not when the fetch finishes: the
  * caller is answering a request and must not wait on the network. Returns
  * whether a fetch is now running, so the client can poll faster until it lands.
  */
-export function refreshRemote(path: string, remote: string): boolean {
+export function refreshRemote(
+  path: string,
+  remote: string,
+  branch: string,
+): boolean {
   if (GIT_FETCH_INTERVAL_MS <= 0) return false;
   if (inFlight.has(path)) return true;
 
@@ -60,9 +81,7 @@ export function refreshRemote(path: string, remote: string): boolean {
   lastAttempt.set(path, Date.now());
 
   const run = (async () => {
-    // --no-tags keeps a busy remote's tag history out of a poll-driven fetch;
-    // the comparison only needs branch refs.
-    await git(path, ["fetch", remote, "--quiet", "--no-tags"], {
+    await git(path, fetchArgs(remote, branch), {
       timeout: FETCH_TIMEOUT_MS,
       network: true,
     });

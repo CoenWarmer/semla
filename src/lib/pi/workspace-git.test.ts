@@ -88,17 +88,32 @@ describe("refreshProject", () => {
   beforeEach(() => {
     gitMock.mockReset();
     refreshRemoteMock.mockReset();
+    readGitStatusMock.mockReset();
+    readGitStatusMock.mockResolvedValue({ ...status("main"), base: "upstream/main" });
   });
 
-  it("fetches the canonical remote", async () => {
+  it("fetches the canonical remote's branch, not the whole remote", async () => {
     gitMock.mockResolvedValue("origin\nupstream");
     refreshRemoteMock.mockReturnValue(true);
     await expect(refreshProject("/ws/one")).resolves.toBe(true);
-    expect(refreshRemoteMock).toHaveBeenCalledWith("/ws/one", "upstream");
+    expect(refreshRemoteMock).toHaveBeenCalledWith("/ws/one", "upstream", "main");
+  });
+
+  it("reads without fetching while working out what to fetch", async () => {
+    gitMock.mockResolvedValue("upstream");
+    await refreshProject("/ws/one");
+    expect(readGitStatusMock).toHaveBeenCalledWith("/ws/one", { fetch: false });
   });
 
   it("does nothing for a repository with no remotes", async () => {
     gitMock.mockResolvedValue(null);
+    await expect(refreshProject("/ws/one")).resolves.toBe(false);
+    expect(refreshRemoteMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when there is no branch to compare against", async () => {
+    gitMock.mockResolvedValue("upstream");
+    readGitStatusMock.mockResolvedValue({ ...status("main"), base: null });
     await expect(refreshProject("/ws/one")).resolves.toBe(false);
     expect(refreshRemoteMock).not.toHaveBeenCalled();
   });
