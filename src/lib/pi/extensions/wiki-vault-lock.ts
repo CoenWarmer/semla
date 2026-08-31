@@ -17,7 +17,7 @@
  * the race it is meant to close.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -42,6 +42,24 @@ export interface LockHolder {
 
 const lockDir = (wikiHome: string) => join(wikiHome, ".llm-wiki", "meta", ".lock");
 
+/**
+ * When the lock was taken, by whatever evidence exists.
+ *
+ * The directory's own mtime is the fallback, and it is the important half: a
+ * lock is created by mkdir and described by a file written immediately after,
+ * so there is a window where it exists with no holder.json. Treating that as
+ * abandoned let a second caller delete a live lock and take it — two holders,
+ * which is how two captures were handed the same source id.
+ */
+function heldSince(dir: string, holder: LockHolder | null): number | null {
+  if (holder) return holder.acquiredAt;
+  try {
+    return statSync(dir).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 function readHolder(dir: string): LockHolder | null {
   try {
     return JSON.parse(readFileSync(join(dir, "holder.json"), "utf8")) as LockHolder;
@@ -57,9 +75,18 @@ function readHolder(dir: string): LockHolder | null {
  * holder elsewhere falls through to the age check, which is why the age check
  * has to stand on its own rather than being a backstop.
  */
-export function isStale(holder: LockHolder | null, now: number): boolean {
-  if (!holder) return true;
-  if (now - holder.acquiredAt > STALE_AFTER_MS) return true;
+export function isStale(
+  holder: LockHolder | null,
+  now: number,
+  acquiredAt: number | null,
+): boolean {
+  // Nothing on disk at all: whoever held it is gone.
+  if (acquiredAt === null) return true;
+  if (now - acquiredAt > STALE_AFTER_MS) return true;
+
+  // A lock too young to have been described yet is held, not abandoned.
+  if (!holder) return false;
+
   try {
     process.kill(holder.pid, 0);
     return false;
@@ -99,7 +126,8 @@ export async function withVaultLock<T>(
     }
 
     const now = Date.now();
-    if (isStale(readHolder(dir), now) || now > deadline) {
+    const holder = readHolder(dir);
+    if (isStale(holder, now, heldSince(dir, holder)) || now > deadline) {
       // Break rather than fail: a capture lost to a crashed holder is worse
       // than one that proceeds a little late.
       try {

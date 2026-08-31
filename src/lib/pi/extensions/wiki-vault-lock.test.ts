@@ -97,27 +97,38 @@ describe("withVaultLock", () => {
 });
 
 describe("isStale", () => {
+  const now = Date.now();
   const holder = (over: Partial<LockHolder> = {}): LockHolder => ({
     pid: process.pid,
     label: "test",
-    acquiredAt: Date.now(),
+    acquiredAt: now,
     ...over,
   });
 
-  it("treats a missing holder as stale", () => {
-    expect(isStale(null, Date.now())).toBe(true);
+  it("treats nothing on disk as stale", () => {
+    expect(isStale(null, now, null)).toBe(true);
   });
 
   it("treats a live, recent holder as held", () => {
-    expect(isStale(holder(), Date.now())).toBe(false);
+    expect(isStale(holder(), now, now)).toBe(false);
   });
 
   it("treats an old holder as stale even when the pid is alive", () => {
-    expect(isStale(holder({ acquiredAt: 0 }), Date.now())).toBe(true);
+    expect(isStale(holder({ acquiredAt: 0 }), now, 0)).toBe(true);
   });
 
   it("treats a vanished pid as stale", () => {
-    // Unused high pid; if it happens to exist the age check still applies.
-    expect(isStale(holder({ pid: 999_999 }), Date.now())).toBe(true);
+    expect(isStale(holder({ pid: 999_999 }), now, now)).toBe(true);
+  });
+
+  // The race that handed two captures the same source id: a lock is created by
+  // mkdir and described a moment later, so between the two it exists with no
+  // holder.json. Calling that abandoned let a second caller delete a live lock.
+  it("treats a lock with no holder file yet as held, not abandoned", () => {
+    expect(isStale(null, now, now)).toBe(false);
+  });
+
+  it("still reclaims one whose holder file never arrived and is old", () => {
+    expect(isStale(null, now, now - 120_000)).toBe(true);
   });
 });
