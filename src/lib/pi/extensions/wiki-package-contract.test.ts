@@ -113,3 +113,30 @@ describe(`${WIKI_PACKAGE} dispatcher hooks`, () => {
     ).toBe(true);
   });
 });
+
+/**
+ * The orient skill's "record the decisions" step writes analysis pages, because
+ * commitSynthesis only ever produces entities and concepts — the reasoning
+ * behind the code gets no page of its own otherwise. That step is only possible
+ * while wiki_ensure_page accepts the type and files it somewhere the nav reads.
+ */
+describe(`${WIKI_PACKAGE} page types`, () => {
+  const toolsSource = readFileSync(
+    join(INSTALLED_DIR, "extensions/llm-wiki/lib/tools.ts"),
+    "utf8",
+  );
+
+  it("still lets wiki_ensure_page create an analysis page", () => {
+    expect(
+      /analysis:\s*"analyses"/.test(toolsSource),
+      "wiki_ensure_page no longer maps the analysis type to the analyses folder. " +
+        "The orient skill's decision pages would silently land in concepts/.",
+    ).toBe(true);
+  });
+
+  it("keeps the folder the wiki nav groups analyses under", () => {
+    // NAV_GROUP_ORDER in wiki-types.ts renders an "analysis" group; a page
+    // filed elsewhere would exist but never appear in the browser.
+    expect(toolsSource).toContain('analysis: "analyses"');
+  });
+});

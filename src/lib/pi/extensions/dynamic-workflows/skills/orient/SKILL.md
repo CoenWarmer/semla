@@ -44,7 +44,19 @@ just parallelised.
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
 | Structure | Directory tree (`find . -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
 | Conventions | tsconfig.json, eslint config, test setup |
-| History | `git log --oneline -30` |
+| History | `git log -n 40 --format='%h %s%n%b%n---'` — **with bodies**, see below |
+| Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
+
+**Capture commit bodies, not just subjects.** `git log --oneline` throws away the
+message body, which is usually the only written record of *why* a change was
+made. A subject line yields "added a vault lock"; the body yields "two captures
+that both list the directory before either writes get the same id, and the
+second silently overwrites the first". The first is a fact you could have read
+off the code, the second is a decision you could not.
+
+Keep History and Design notes as their own facets rather than folding them into
+Overview: bodies for 40 commits are a large blob, and mixing them into another
+source dilutes both.
 
 Each subagent calls `wiki_capture_source` itself and reports back only the source ID — never
 the captured text.
@@ -60,8 +72,29 @@ If the `workflow` tool is unavailable, capture the sources sequentially yourself
 /wiki-ingest
 ```
 
-This synthesises the captured sources into structured wiki pages (entities, concepts, analyses) with cross-links.
+This synthesises the captured sources into structured wiki pages (entities, concepts) with cross-links.
 
-### 6. Report
+### 6. Record the decisions
+
+Ingest produces `entity` and `concept` pages only — one-line answers to *what a
+thing is*. The reasoning behind the code has no page of its own unless you write
+one.
+
+Re-read the History and Design notes sources and, for each decision that is
+still load-bearing, create an `analysis` page:
+
+```
+wiki_ensure_page(type: "analysis", title: "...", content: "...")
+```
+
+Each page should say what was chosen, **what it was chosen over**, and the
+constraint that forced it. A decision with no alternative and no constraint is
+just a description — leave it to the concept pages.
+
+Aim for the handful that would change how someone edits the code. Skip anything
+that is merely a description of current behaviour, and skip decisions that have
+since been reversed unless the reversal is itself instructive.
+
+### 7. Report
 
 Call `wiki_recall` once more with the repo name and report a one-paragraph summary of the key pages now available.
