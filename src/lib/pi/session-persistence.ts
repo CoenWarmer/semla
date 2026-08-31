@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { toAsciiJson, toJson } from "./json-sanitize";
 import type { Json } from "@/types/database.types";
 import type { WorkflowSnapshot } from "@/types/workflow";
+import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "./runtime-config";
@@ -111,6 +112,19 @@ export const createSessionFile = async (
   await mkdir(PI_SESSION_DIR, { recursive: true });
 
   const sessionFile = join(PI_SESSION_DIR, `${semlaSessionId}.jsonl`);
+
+  // The file is the record, not a cache of the database. Rebuilding it from
+  // Postgres on every start made the transcript only as good as the last
+  // successful query: with Supabase unreachable, fetchPersistedEntries returns
+  // nothing and this wrote a bare header over the whole conversation. Entries
+  // are still mirrored to Postgres, and a session that predates the file — or
+  // whose file was lost — is seeded from there below.
+  try {
+    if (statSync(sessionFile).size > 0) return sessionFile;
+  } catch {
+    // No file yet: seed it.
+  }
+
   const sessionHeader = {
     cwd: PI_WORKSPACE_ROOT,
     id: semlaSessionId,
