@@ -296,6 +296,26 @@ const stampWikiRepo = (
     });
 };
 
+/**
+ * Start a persistence write we do not wait on, and absorb its failure.
+ *
+ * Every one of these is fire-and-forget, and none of them had a catch: a
+ * transient Supabase outage — a Cloudflare 522, say — therefore surfaced as an
+ * unhandled rejection, which Node terminates the process for by default. A
+ * database blip could take the server down mid-turn.
+ *
+ * Dropping the write is the right outcome for all of them. Snapshots are
+ * re-emitted continuously and the workflow panel polls Supabase besides, and a
+ * missed title or running-flag update is corrected by the next turn. What is
+ * not acceptable is losing it silently, so it is logged.
+ */
+const detach = (sid: string, what: string, work: Promise<unknown>): void => {
+  void work.catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[pi:session:${sid.slice(0, 8)}] ${what} failed: ${message}`);
+  });
+};
+
 export const runPiPrompt = async ({
   model,
   onEvent,
@@ -321,7 +341,7 @@ export const runPiPrompt = async ({
   const turnStartedAt = Date.now();
 
   openSessionStream(semlaSessionId);
-  void setSessionRunning(semlaSessionId, true);
+  detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
 
   const emit = (event: PiSessionEvent) => {
     publishToSessionStream(semlaSessionId, event);
@@ -479,7 +499,7 @@ export const runPiPrompt = async ({
         },
         { triggerTurn: false },
       );
-      void finalizeBackgroundRun(run_id);
+      detach(semlaSessionId, "finalize run", finalizeBackgroundRun(run_id));
       log(semlaSessionId, "recovered stuck bg run", { run: run_id });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -506,7 +526,7 @@ export const runPiPrompt = async ({
   const bridgeRunNotifier: BridgeRunNotifier = (runId, opts = {}) => {
     log(semlaSessionId, "bridge background run started", { run: runId });
     const startedAt = new Date().toISOString();
-    void persistBackgroundWorkflowStart(semlaSessionId, runId);
+    detach(semlaSessionId, "persist run start", persistBackgroundWorkflowStart(semlaSessionId, runId));
     emit({ runId, startedAt, type: "workflow-started" });
 
     if (opts.primary && !hasBackgroundWorkflow) {
@@ -577,7 +597,7 @@ export const runPiPrompt = async ({
           });
           retainBackgroundSession(backgroundRunId, session);
           const backgroundStartedAt = new Date().toISOString();
-          void persistBackgroundWorkflowStart(semlaSessionId, backgroundRunId);
+          detach(semlaSessionId, "persist run start", persistBackgroundWorkflowStart(semlaSessionId, backgroundRunId));
           emit({ runId: backgroundRunId, startedAt: backgroundStartedAt, type: "workflow-started" });
         }
 
@@ -585,7 +605,7 @@ export const runPiPrompt = async ({
         if (snapshot) {
           const enriched = liveSnapshot(snapshot, backgroundRunId);
           debug.onWorkflowSnapshot(enriched, "foreground");
-          void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
+          detach(semlaSessionId, "persist snapshot", persistWorkflowSnapshot(semlaSessionId, enriched, "foreground"));
           emit({ snapshot: enriched, type: "workflow-snapshot" });
         }
       }
@@ -599,7 +619,7 @@ export const runPiPrompt = async ({
       if (snapshot) {
         const enriched = liveSnapshot(snapshot, detectedBackgroundRunId);
         debug.onWorkflowSnapshot(enriched, "foreground");
-        void persistWorkflowSnapshot(semlaSessionId, enriched, "foreground");
+        detach(semlaSessionId, "persist snapshot", persistWorkflowSnapshot(semlaSessionId, enriched, "foreground"));
         emit({ snapshot: enriched, type: "workflow-snapshot" });
       }
     }
@@ -624,7 +644,7 @@ export const runPiPrompt = async ({
       const title = generateTitle(text);
       // Fire-and-forget: a slow or failing Supabase write must not block the
       // SSE stream from closing, which would leave the client stuck pending.
-      void updateSessionTitle(semlaSessionId, title);
+      detach(semlaSessionId, "update title", updateSessionTitle(semlaSessionId, title));
       emit({ title, type: "title-updated" });
     }
     debug.onSseComplete();
@@ -651,12 +671,12 @@ export const runPiPrompt = async ({
       // and persisted above, so there is no continuation to wait for.
       log(semlaSessionId, "background workflow settled during prompt turn");
       if (detectedBackgroundRunId) {
-        void finalizeBackgroundRun(detectedBackgroundRunId);
+        detach(semlaSessionId, "finalize run", finalizeBackgroundRun(detectedBackgroundRunId));
         releaseBackgroundSession(detectedBackgroundRunId);
       } else {
         session.dispose();
       }
-      void setSessionRunning(semlaSessionId, false);
+      detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
     } else if (hasBackgroundWorkflow) {
       // Keep the session alive to receive background workflow progress and the
       // final report turn that pi delivers when the workflow completes.
@@ -675,7 +695,7 @@ export const runPiPrompt = async ({
     } else {
       log(semlaSessionId, "session disposed");
       session.dispose();
-      void setSessionRunning(semlaSessionId, false);
+      detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
     }
   }
 };
@@ -726,7 +746,7 @@ const runBackgroundContinuation = async (
       if (snapshot) {
         const enriched = liveSnapshot(snapshot, runId);
         debug.onWorkflowSnapshot(enriched, "background");
-        void persistWorkflowSnapshot(semlaSessionId, enriched, "background");
+        detach(semlaSessionId, "persist snapshot", persistWorkflowSnapshot(semlaSessionId, enriched, "background"));
       }
     }
 
@@ -735,7 +755,7 @@ const runBackgroundContinuation = async (
       if (snapshot) {
         const enriched = liveSnapshot(snapshot, runId);
         debug.onWorkflowSnapshot(enriched, "background");
-        void persistWorkflowSnapshot(semlaSessionId, enriched, "background");
+        detach(semlaSessionId, "persist snapshot", persistWorkflowSnapshot(semlaSessionId, enriched, "background"));
       }
     }
 
@@ -855,7 +875,7 @@ const runBackgroundContinuation = async (
     if (watchdog) clearInterval(watchdog);
     unsubscribeBg();
     bgAbortControllers.delete(semlaSessionId);
-    void setSessionRunning(semlaSessionId, false);
+    detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
     stampWikiRepo(semlaSessionId, projectPath, continuationStartedAt);
     if (supersededByNewPrompt) {
       // A new prompt took over this session. Do NOT dispose — that would kill the

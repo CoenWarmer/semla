@@ -31,6 +31,25 @@ export const updateSessionTitle = async (
   }
 };
 
+/**
+ * A short, loggable description of a Supabase failure.
+ *
+ * When the origin is unreachable, PostgREST hands back a Cloudflare error page,
+ * so `error.message` is several kilobytes of HTML. Interpolated straight into an
+ * Error it buries the one useful fact — that the database was unreachable — in
+ * markup, and floods the log with it on every retry of a snapshot that is
+ * written many times a second.
+ */
+export const describeDbError = (message: string): string => {
+  const trimmed = message.trim();
+  if (!/^<!DOCTYPE|^<html/i.test(trimmed)) {
+    return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
+  }
+
+  const title = /<title>([^<]+)<\/title>/i.exec(trimmed)?.[1]?.trim();
+  return title ? `upstream returned an error page: ${title}` : "upstream returned an error page";
+};
+
 export const persistWorkflowSnapshot = async (
   semlaSessionId: string,
   snapshot: WorkflowSnapshot,
@@ -59,7 +78,7 @@ export const persistWorkflowSnapshot = async (
   );
 
   if (error) {
-    throw new Error(`Unable to persist workflow run: ${error.message}`);
+    throw new Error(`Unable to persist workflow run: ${describeDbError(error.message)}`);
   }
 };
 
@@ -81,7 +100,7 @@ export const persistBackgroundWorkflowStart = async (
   );
 
   if (error) {
-    throw new Error(`Unable to persist workflow run: ${error.message}`);
+    throw new Error(`Unable to persist workflow run: ${describeDbError(error.message)}`);
   }
 };
 
