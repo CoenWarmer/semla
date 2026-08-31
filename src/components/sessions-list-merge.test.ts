@@ -89,6 +89,30 @@ describe("mergeDiscoveredSessions", () => {
  * read that as "a session the server render is missing" and put it back.
  */
 describe("deleted sessions", () => {
+  // The reported bug: delete from the sidebar menu, navigate home, and the row
+  // was still there until a full page load. The optimistic removal expires with
+  // its transition, and the list behind it lives in a layout that persists
+  // across navigation, so the deleted session came back from a stale render.
+  it("drops a deleted session that the server render still lists", () => {
+    const merged = mergeDiscoveredSessions(
+      [rendered("gone", "2026-08-31T10:00:00.000Z"), rendered("kept", "2026-08-30T10:00:00.000Z")],
+      [],
+      new Set(["gone"]),
+    );
+
+    expect(merged.map((s) => s.id)).toEqual(["kept"]);
+  });
+
+  it("drops it whether or not the poll also still lists it", () => {
+    const merged = mergeDiscoveredSessions(
+      [rendered("gone", "2026-08-31T10:00:00.000Z")],
+      [polled("gone", "2026-08-31T10:00:00.000Z")],
+      new Set(["gone"]),
+    );
+
+    expect(merged).toEqual([]);
+  });
+
   it("does not re-add a session that was just deleted", () => {
     const merged = mergeDiscoveredSessions(
       [],

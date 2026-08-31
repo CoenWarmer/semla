@@ -45,11 +45,17 @@ export function mergeDiscoveredSessions(
   status: SessionStatus[],
   removed: ReadonlySet<string> = new Set(),
 ): SessionRow[] {
-  const known = new Set(rendered.map((session) => session.id));
+  // `removed` has to apply to both lists. An optimistic removal lasts only as
+  // long as its transition, and the server-rendered list behind it belongs to a
+  // layout that persists across navigation — so once the transition ends the
+  // deleted row comes back from a list that has not been re-rendered, and the
+  // poll would re-add it besides. Only a full page load cleared it.
+  const kept = removed.size === 0
+    ? rendered
+    : rendered.filter((session) => !removed.has(session.id));
+
+  const known = new Set(kept.map((session) => session.id));
   const discovered = status
-    // `removed` is what keeps a deletion from undoing itself: the row leaves the
-    // rendered list immediately, and until the poll catches up the status still
-    // lists it — which would otherwise read as "add it back".
     .filter((session) => !known.has(session.id) && !removed.has(session.id))
     .map((session) => ({
       id: session.id,
@@ -59,12 +65,12 @@ export function mergeDiscoveredSessions(
       title: session.title,
     }));
 
-  if (discovered.length === 0) return rendered;
+  if (discovered.length === 0) return kept;
 
   // Rows without a timestamp keep the server's ordering by sorting as newest,
   // which is the order they arrived in.
   const at = (session: SessionRow) => session.createdAt ?? "9999";
-  return [...discovered, ...rendered].sort((a, b) => at(b).localeCompare(at(a)));
+  return [...discovered, ...kept].sort((a, b) => at(b).localeCompare(at(a)));
 }
 
 export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
