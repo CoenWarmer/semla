@@ -42,11 +42,21 @@ just parallelised.
 |---|---|
 | Overview | README.md, AGENTS.md, CLAUDE.md — any top-level `.md` files |
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
-| Structure | Directory tree (`find . -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
+| Structure | Directory tree (`find "$REPO" -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
 | Conventions | tsconfig.json, eslint config, test setup |
-| History | `git log -n 40 --format='%h %s%n%b%n---'` — **with bodies**, see below |
+| History | `git -C "$REPO" log -n 40 --format='%h %s%n%b%n---'` — **with bodies**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
-| Review discussion | Merged PR titles and bodies via `gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is unavailable or unauthenticated) |
+| Review discussion | `cd "$REPO" && gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is missing, unauthenticated, or the list is empty) |
+
+**Every command must name the repository.** Your working directory is the
+workspace root — the directory that *contains* the repos — not the repo itself.
+A bare `git log` or `find .` reads the wrong tree, and `gh` infers the repo from
+the git remote of the current directory, so from the workspace root it fails
+with `fatal: not a git repository`. Use `git -C "$REPO"`, `find "$REPO"`, or
+`cd "$REPO" && …`, where `$REPO` is the path given in your task prompt.
+
+A repo with no merged PRs is normal — plenty of work goes straight to main.
+Report the facet as skipped rather than capturing an empty list.
 
 **Pass what you read as `text`, with a `title`. Never as `url`.** You are
 capturing files from a local checkout. `url` is first in the tool's parameter
