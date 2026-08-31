@@ -184,8 +184,11 @@ describe("guardVaultWrites", () => {
     await tool!.execute!();
     await tool!.execute!();
 
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toContain("no repo");
+    // Filtered rather than counted: the same wrapper also rebuilds the vault
+    // metadata after a capture, and this vault is a bare temp dir, so that
+    // rebuild has its own opinion. The claim under test is the repo warning.
+    const noRepo = warn.mock.calls.filter((call) => String(call[0]).includes("no repo"));
+    expect(noRepo).toHaveLength(1);
     warn.mockRestore();
   });
 

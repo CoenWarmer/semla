@@ -20,7 +20,7 @@
  * the point of an orient run actually works.
  */
 
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { stampRepoFrontmatter } from "./wiki-frontmatter.js";
@@ -194,6 +194,64 @@ export function rejectUnfetchableUrl(
   };
 }
 
+const METADATA_MODULE = join(
+  process.cwd(),
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/metadata.ts",
+);
+
+/** Mirrors getVaultPaths in pi-llm-wiki utils.ts. */
+const vaultPaths = (wikiHome: string) => ({
+  root: wikiHome,
+  raw: join(wikiHome, ".llm-wiki", "raw"),
+  rawSources: join(wikiHome, ".llm-wiki", "raw", "sources"),
+  rawTrajectories: join(wikiHome, ".llm-wiki", "raw", "trajectories"),
+  wiki: join(wikiHome, ".llm-wiki", "wiki"),
+  meta: join(wikiHome, ".llm-wiki", "meta"),
+  dotWiki: join(wikiHome, ".llm-wiki"),
+  outputs: join(wikiHome, ".llm-wiki", "outputs"),
+  discoveries: join(wikiHome, ".llm-wiki", ".discoveries"),
+});
+
+/**
+ * Rebuild the derived metadata after a capture.
+ *
+ * The capture tool is supposed to do this itself, but it only does so on one of
+ * its two branches: with a Runtime it defers to a background reindex, and
+ * without one it rebuilds inline. A run finished four captures with `meta/`
+ * holding nothing but the event log — the pages were on disk and the registry
+ * the browser reads did not exist, so the wiki reported itself uninitialised
+ * while it was filling up. A later capture in the same run did write one, so
+ * the skip is intermittent rather than a property of the vault: invoked
+ * directly against that same vault the rebuild returns ok with no diagnostics.
+ *
+ * So this is not a workaround for a rebuild that fails, it is a guarantee that
+ * one happens. Doing it here, under the lock the wrapper already holds, makes
+ * the vault browsable as it fills rather than only after the first ingest.
+ *
+ * Captures that do not come through these wrapped copies — a main agent using
+ * the extension's own tools — still depend on the background reindex.
+ */
+async function rebuildVaultMetadata(wikiHome: string): Promise<void> {
+  // No package means no capture tool to wrap either, so this is not a fault
+  // worth reporting — it is a vault being exercised without the wiki installed.
+  if (!existsSync(METADATA_MODULE)) return;
+  try {
+    const meta = (await import(METADATA_MODULE)) as {
+      rebuildMetadataLight: (paths: ReturnType<typeof vaultPaths>) => { ok?: boolean };
+    };
+    const result = meta.rebuildMetadataLight(vaultPaths(wikiHome));
+    if (result && result.ok === false) {
+      console.warn(
+        "[wiki-bridge] metadata rebuild refused after capture; the vault will " +
+          "look uninitialised until it succeeds.",
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[wiki-bridge] metadata rebuild failed after capture: ${message}`);
+  }
+}
+
 const sourcePages = (wikiHome: string): string[] => {
   try {
     return readdirSync(join(wikiHome, ".llm-wiki", "wiki", "sources"));
@@ -265,6 +323,7 @@ export function guardVaultWrites<T extends ExecutableTool>(
           const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
           const result = await execute(...args);
           const repo = options.repoOf();
+          if (before) await rebuildVaultMetadata(options.wikiHome);
           if (before && repo) {
             attributeNewSources(options.wikiHome, before, repo);
           } else if (before && !warnedNoRepo) {
