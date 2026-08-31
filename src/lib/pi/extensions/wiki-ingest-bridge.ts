@@ -449,15 +449,25 @@ function createBatchCommitSynthesisTool(
         .filter(Boolean)
         .join(" ");
 
+      // In the text, not only in `details`: the transcript records a tool
+      // result's text and drops everything else, so a finding filed under
+      // details is gone the moment the run ends — which is the audit this was
+      // added to make possible.
+      const note =
+        grounding.ungrounded.length > 0
+          ? ` Not supported by the source (${grounding.ungrounded.length} of ` +
+            `${params.key_takeaways.length}): ` +
+            grounding.ungrounded.map((item) => `"${item.text}"`).join("; ") +
+            "."
+          : "";
+
       return {
         content: [
           {
             type: "text" as const,
-            text: `${ack}. Reply with a one-line confirmation and stop.`,
+            text: `${ack}.${note} Reply with a one-line confirmation and stop.`,
           },
         ],
-        // Carried on the result as well as the console, so the finding lands
-        // in the persisted transcript where an audit can still find it.
         details: {
           ...outcome,
           ungroundedTakeaways: grounding.ungrounded,
