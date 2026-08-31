@@ -1,5 +1,6 @@
 import { SessionsListClient } from "@/components/sessions-list-client";
 import { createClient } from "@/lib/supabase/server";
+import { listSessionMeta } from "@/lib/pi/session-meta";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
@@ -62,13 +63,28 @@ export async function SessionsList() {
     return null;
   }
 
-  const { data: sessions, error } = await supabase
+  const { data: dbRows, error } = await supabase
     .from("sessions")
     .select("id, created_at, title, is_running")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (error) {
+  // Disk records answer first, so the list survives a database outage. Rows
+  // that only Postgres knows about — sessions created before the records
+  // existed — are folded in behind them.
+  const onDisk = listSessionMeta().filter((meta) => meta.userId === user.id);
+  const seen = new Set(onDisk.map((meta) => meta.id));
+  const sessions = [
+    ...onDisk.map((meta) => ({
+      created_at: meta.createdAt,
+      id: meta.id,
+      is_running: meta.isRunning,
+      title: meta.title,
+    })),
+    ...(dbRows ?? []).filter((row) => !seen.has(row.id)),
+  ].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+
+  if (error && sessions.length === 0) {
     console.error("[sessionsList] Failed to load sessions:", error);
     return (
       <p className="text-destructive text-sm">

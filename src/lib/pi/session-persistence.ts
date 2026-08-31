@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "./runtime-config";
+import { writeSessionMeta } from "./session-meta";
 
 type PiSessionEntry = {
   id: string;
@@ -18,6 +19,8 @@ export const updateSessionTitle = async (
   semlaSessionId: string,
   title: string,
 ) => {
+  writeSessionMeta(semlaSessionId, { title });
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("sessions")
@@ -259,6 +262,8 @@ export const setSessionRunning = async (
   semlaSessionId: string,
   running: boolean,
 ): Promise<void> => {
+  writeSessionMeta(semlaSessionId, { isRunning: running });
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("sessions")

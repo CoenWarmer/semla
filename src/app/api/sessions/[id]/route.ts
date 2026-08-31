@@ -1,4 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
+import { writeSessionMeta } from "@/lib/pi/session-meta";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -37,6 +38,11 @@ export async function PATCH(
   const patch: { title?: string; goal?: string | null } = {};
   if (title !== undefined) patch.title = title;
   if (goal !== undefined) patch.goal = goal;
+
+  writeSessionMeta(id, {
+    ...(title !== undefined ? { title } : {}),
+    ...(goal !== undefined ? { goal } : {}),
+  });
 
   const { error } = await supabase
     .from("sessions")
