@@ -130,12 +130,16 @@ type PiSessionEvent =
   | { title: string; type: "title-updated" }
   | { type: "complete" };
 
-const asWorkflowSnapshot = (value: unknown): WorkflowSnapshot | undefined => {
+export const asWorkflowSnapshot = (value: unknown): WorkflowSnapshot | undefined => {
   if (!value || typeof value !== "object") {
     return undefined;
   }
 
-  const details = "details" in value ? value.details : undefined;
+  // Two shapes reach here. A tool result wraps the snapshot in `details`; a
+  // snapshot read straight off the manager — which is how a bridge-dispatched
+  // ingest reports progress — is already the thing itself. Requiring the
+  // wrapper silently dropped every event from those runs.
+  const details = "details" in value ? value.details : value;
   if (!details || typeof details !== "object" || !("agents" in details)) {
     return undefined;
   }
