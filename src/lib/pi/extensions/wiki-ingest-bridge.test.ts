@@ -40,9 +40,11 @@ function makeSessionPi(sessionId: string) {
 
   return {
     pi,
-    start: () => {
+    // Awaited, as pi awaits its session_start handlers: the bridge gathers the
+    // wiki tools there so a run cannot start before they exist.
+    start: async () => {
       for (const handler of handlers) {
-        handler(undefined, { sessionManager: { getSessionId: () => sessionId } });
+        await handler(undefined, { sessionManager: { getSessionId: () => sessionId } });
       }
     },
   };
@@ -343,32 +345,50 @@ describe("concurrent sessions", () => {
   const toolsets = () =>
     ((globalThis as G)[EXTRA_TOOLSETS_KEY] ?? {}) as Record<string, () => unknown[]>;
 
-  it("gives each session its own toolset entry", () => {
+  it("gives each session its own toolset entry", async () => {
     const first = makeSessionPi("session-a");
     const second = makeSessionPi("session-b");
 
     wikiIngestBridge(first.pi);
-    first.start();
+    await first.start();
     wikiIngestBridge(second.pi);
-    second.start();
+    await second.start();
 
     expect(Object.keys(toolsets()).sort()).toEqual(
       expect.arrayContaining(["wiki", "wiki:session-a", "wiki:session-b"]),
     );
   });
 
-  it("does not let a later session replace an earlier one's entry", () => {
+  it("does not let a later session replace an earlier one's entry", async () => {
     const first = makeSessionPi("session-a");
     wikiIngestBridge(first.pi);
-    first.start();
+    await first.start();
     const earlier = toolsets()["wiki:session-a"];
 
     const second = makeSessionPi("session-b");
     wikiIngestBridge(second.pi);
-    second.start();
+    await second.start();
 
     expect(toolsets()["wiki:session-a"]).toBe(earlier);
     expect(toolsets()["wiki:session-b"]).not.toBe(earlier);
+  });
+
+  /**
+   * An orient starting immediately used to get a toolset that was still being
+   * gathered: some subagents of the same run received the wiki tools and
+   * others only coding tools, and the ones without reported wiki_capture_source
+   * missing. session_start awaits the gathering, and pi awaits session_start.
+   */
+  it("has the wiki tools ready by the time session_start resolves", async () => {
+    const session = makeSessionPi("session-a");
+    wikiIngestBridge(session.pi);
+
+    await session.start();
+
+    const names = toolsets()["wiki:session-a"]!().map(
+      (tool) => (tool as { name: string }).name,
+    );
+    expect(names).toContain("wiki_capture_source");
   });
 
   // A run started before session_start, or a process running one session, still

@@ -461,12 +461,16 @@ function nextRunKey(prefix: string): string {
 /**
  * Publish the wiki toolset so workflow subagents can reach the real wiki tools.
  *
- * Collection is async (the package is loaded through a computed path) but the
- * manager resolves a toolset synchronously, so the tools are gathered once at
- * extension load and the closure serves the cached array. A workflow cannot run
- * before the extension set finishes loading, so the cache is always warm by the
- * time anything reads it; if collection failed, the tag resolves to the plain
- * coding tools — exactly the behaviour before this existed.
+ * Collection is async — the package is loaded through a computed path — while
+ * the manager resolves a toolset synchronously, so the tools are gathered once
+ * and the closure serves the cached array.
+ *
+ * The gathering is awaited in session_start, which pi awaits before the session
+ * runs anything. Without that, an orient starting immediately got a toolset
+ * that was still empty: some subagents received the wiki tools and some
+ * received only coding tools, in the same run, depending on whether the import
+ * had resolved yet. If collection fails the tag resolves to the plain coding
+ * tools, which is the behaviour before any of this existed.
  */
 function registerSubagentWikiToolset(
   pi: ExtensionAPI,
@@ -475,7 +479,7 @@ function registerSubagentWikiToolset(
 ): void {
   let wikiTools: Array<ReturnType<typeof defineTool>> = [];
 
-  void collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi, {
+  const gathering = collectWikiSubagentTools<ReturnType<typeof defineTool>>(pi, {
     wikiHome: WIKI_HOME,
     repoOf,
   })
@@ -501,7 +505,11 @@ function registerSubagentWikiToolset(
   // over one session's repo. The bare tag keeps a single-session process and
   // any run started before session_start working.
   extraToolsets[wikiToolsetKey()] = toolset;
-  pi.on("session_start", () => {
+
+  pi.on("session_start", async () => {
+    // Awaited: a run started before this resolves would hand some of its
+    // subagents wiki tools and others none.
+    await gathering;
     const id = sessionIdOf();
     if (id) extraToolsets[wikiToolsetKey(id)] = toolset;
   });
