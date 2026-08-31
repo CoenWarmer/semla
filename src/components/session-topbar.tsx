@@ -102,7 +102,7 @@ export function SessionTopbar({
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
           {/* Branch and divergence for this session's project */}
-          <GitStatusBadge sessionId={sessionId} />
+          <GitStatusBadge target={{ kind: "session", sessionId }} />
 
           {/* Agent count — clicking opens the workflow panel */}
           {showAgentCount && (

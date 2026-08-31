@@ -1,11 +1,11 @@
 "use client";
 
-import { GitBranchIcon, SearchIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { GitStatusBadge } from "@/components/git-status-badge";
 import type { WorkspaceProject } from "@/lib/pi/workspace";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardDescription,
@@ -122,12 +122,13 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
                   </CardDescription>
                 </CardHeader>
                 <div className="flex items-center gap-2 px-6 pb-6">
-                  {project.branch && (
-                    <Badge variant="outline" className="gap-1 font-mono">
-                      <GitBranchIcon className="size-3" />
-                      {project.branch}
-                    </Badge>
-                  )}
+                  {/* Supersedes the branch name this card used to print: same
+                      branch, plus how far it has drifted, and the two actions
+                      that follow from that. */}
+                  <GitStatusBadge
+                    className="-mx-1"
+                    target={{ kind: "project", path: project.path }}
+                  />
                   <span className="text-xs text-muted-foreground">
                     {project.stalenessText}
                   </span>

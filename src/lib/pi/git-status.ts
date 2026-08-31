@@ -92,7 +92,22 @@ async function remoteDefaultRef(
  * branch is kept only as a last resort, for a repository whose remotes cannot
  * be read at all.
  */
-export async function readGitStatus(path: string): Promise<GitStatus> {
+export interface ReadGitStatusOptions {
+  /**
+   * Whether a read may start a background fetch.
+   *
+   * On for a single repository the user is looking at. Off when reading the
+   * whole workspace: forty-two repositories would mean forty-two network
+   * fetches every time the home page polled, which is not a thing to do to
+   * somebody's connection for a set of numbers on a card.
+   */
+  fetch?: boolean;
+}
+
+export async function readGitStatus(
+  path: string,
+  { fetch = true }: ReadGitStatusOptions = {},
+): Promise<GitStatus> {
   const [branch, head] = await Promise.all([
     git(path, ["branch", "--show-current"]),
     git(path, ["rev-parse", "--short", "HEAD"]),
@@ -106,7 +121,7 @@ export async function readGitStatus(path: string): Promise<GitStatus> {
   // Kick off a fetch for next time. This returns immediately — the counts
   // below still come from the refs already on disk, and the caller polls again
   // once `fetching` clears.
-  const fetching = canonical ? refreshRemote(path, canonical) : false;
+  const fetching = fetch && canonical ? refreshRemote(path, canonical) : false;
 
   const base =
     (canonical ? await remoteDefaultRef(path, canonical) : null) ??

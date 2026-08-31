@@ -6,8 +6,9 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useGitStatus } from "@/hooks/use-git-status";
+import { gitStatusQueryKey, useGitStatus, type GitTarget } from "@/hooks/use-git-status";
 import { branchNameFromBase, describeGitStatus } from "@/lib/git-status-display";
+import { cn } from "@/lib/utils";
 
 type GitAction = "merge" | "checkout";
 
@@ -24,29 +25,54 @@ interface ActionOutcome {
  * attached, or a directory that is not a repository. An empty slot reads
  * better here than a placeholder next to the model picker.
  */
-export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
-  const { data } = useGitStatus(sessionId);
+export function GitStatusBadge({
+  className,
+  target,
+}: {
+  className?: string;
+  target?: GitTarget;
+}) {
+  const { data } = useGitStatus(target);
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
 
   const label = describeGitStatus(data);
 
+  const post = async (action: GitAction | "refresh") => {
+    const [url, payload] =
+      target?.kind === "project"
+        ? [`/api/projects/git`, { action, path: target.path }]
+        : [`/api/sessions/${target?.sessionId}/git`, { action }];
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as ActionOutcome;
+  };
+
+  const invalidate = () =>
+    void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey(target) });
+
   const run = useMutation<ActionOutcome, Error, GitAction>({
-    mutationFn: async (action) => {
-      const res = await fetch(`/api/sessions/${sessionId}/git`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      return (await res.json()) as ActionOutcome;
-    },
+    mutationFn: post,
     onSuccess: (result) => {
       setOutcome(result);
       // The branch or the counts just moved; re-read rather than guess.
-      void queryClient.invalidateQueries({ queryKey: ["git-status", sessionId] });
+      invalidate();
     },
     onError: (error) => setOutcome({ ok: false, message: error.message }),
   });
+
+  /**
+   * Workspace reads never fetch — dozens of cards must not mean dozens of
+   * network connections — so opening a card's popover is what brings that one
+   * repository up to date.
+   */
+  const refreshOnOpen = () => {
+    if (target?.kind !== "project") return;
+    void post("refresh").then(invalidate).catch(() => {});
+  };
 
   if (!label) return null;
 
@@ -62,7 +88,8 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
   return (
     <Popover
       onOpenChange={(open) => {
-        if (!open) setOutcome(null);
+        if (open) refreshOnOpen();
+        else setOutcome(null);
       }}
     >
       <PopoverTrigger
@@ -76,7 +103,13 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
           // the prompt toolbar's <form> once, where an implicit submit would
           // have fired the prompt, and nothing stops it being placed there again.
           <button
-            className="flex items-center gap-1.5 rounded px-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className={cn(
+              "flex items-center gap-1.5 rounded px-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
+              className,
+            )}
+            // A project card is itself a button that opens a session. Without
+            // this, using the indicator would also navigate away from it.
+            onClick={(event) => event.stopPropagation()}
             title={label.title}
             type="button"
           />
@@ -98,7 +131,12 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
         )}
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-72 p-3" side="bottom">
+      <PopoverContent
+        align="end"
+        className="w-72 p-3"
+        onClick={(event) => event.stopPropagation()}
+        side="bottom"
+      >
         <p className="text-xs leading-relaxed text-muted-foreground">{label.title}</p>
 
         <div className="mt-3 flex flex-col gap-1.5">
