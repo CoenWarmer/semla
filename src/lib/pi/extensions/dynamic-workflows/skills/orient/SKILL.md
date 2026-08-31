@@ -51,7 +51,7 @@ just parallelised.
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
 | Structure | Directory tree (`find "$REPO" -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*'`), main config files |
 | Conventions | tsconfig.json, eslint config, test setup |
-| History | `git -C "$REPO" log -n 40 --format='%h %s%n%b%n---'` — **with bodies**, see below |
+| History | `git -C "$REPO" log -n 150 --format='%h %s%n%b%n---'` — the checked-out branch, **with bodies**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
 | Review discussion | `cd "$REPO" && gh pr list --state merged --limit 30 --json number,title,body` (skip if `gh` is missing, unauthenticated, or the list is empty) |
 
@@ -84,6 +84,13 @@ that both list the directory before either writes get the same id, and the
 second silently overwrites the first". The first is a fact you could have read
 off the code, the second is a decision you could not.
 
+**The commit log usually matters more than the pull requests.** Where work lands
+directly on the default branch, the commits *are* the review record and the PR
+list is sparse or empty — this repo has 280 commits on main against 9 merged
+PRs. Bodies are also cheap to capture: the full history here is about 165 KB,
+the same order as any other facet. Take a wide window, and take the whole
+history if the repo is small enough that 150 covers it.
+
 Keep History and Design notes as their own facets rather than folding them into
 Overview: bodies for 40 commits are a large blob, and mixing them into another
 source dilutes both.
@@ -110,8 +117,8 @@ Ingest produces `entity` and `concept` pages only — one-line answers to *what 
 thing is*. The reasoning behind the code has no page of its own unless you write
 one.
 
-Re-read the History and Design notes sources and, for each decision that is
-still load-bearing, create an `analysis` page:
+Re-read the History, Design notes and Review discussion sources and, for each
+decision that is still load-bearing, create an `analysis` page:
 
 ```
 wiki_ensure_page(type: "analysis", title: "...", content: "...")
