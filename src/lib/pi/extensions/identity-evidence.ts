@@ -137,3 +137,46 @@ export function typeFromEvidence(
 export function retypePage(markdown: string, type: string): string {
   return markdown.replace(/^type:\s*entity\s*$/m, `type: ${type}`);
 }
+
+/**
+ * The owner handle for one repo, from that repo's own packets.
+ *
+ * Deliberately not the global owner set: with three repos in a shared vault,
+ * asking "who owns something around here" would answer for the wrong one. A
+ * source page declares the repo it was captured for, and its packet is where
+ * the remote is, so the two together scope the answer.
+ */
+export function ownerForRepo(wikiHome: string, repo: string): string | null {
+  const dotWiki = join(wikiHome, ".llm-wiki");
+  const sourcesDir = join(dotWiki, "wiki", "sources");
+
+  let pages: string[];
+  try {
+    pages = readdirSync(sourcesDir);
+  } catch {
+    return null;
+  }
+
+  for (const page of pages) {
+    if (!page.endsWith(".md") || page === "index.md") continue;
+    let markdown: string;
+    try {
+      markdown = readFileSync(join(sourcesDir, page), "utf8");
+    } catch {
+      continue;
+    }
+    if (!declaredRepos(markdown).includes(repo)) continue;
+
+    const id = readField(markdown, "source_id") ?? page.replace(/\.md$/, "");
+    let packet: string;
+    try {
+      packet = readFileSync(join(dotWiki, "raw", "sources", id, "extracted.md"), "utf8");
+    } catch {
+      continue;
+    }
+    const owners = extractOwners(packet);
+    if (owners[0]) return owners[0];
+  }
+
+  return null;
+}

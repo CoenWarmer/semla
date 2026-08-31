@@ -30,6 +30,7 @@ import {
 } from "@/lib/pi/extensions/wiki-frontmatter";
 import { WIKI_HOME } from "@/lib/pi/runtime-config";
 import { sweepIdentityPages } from "@/lib/pi/extensions/identity-page-sweep";
+import { ensureRepositoryPage } from "@/lib/pi/extensions/repository-page";
 
 export {
   buildSourceRepoIndex,
@@ -150,6 +151,11 @@ export async function stampSessionWikiPages(options: {
   const wikiHome = options.wikiHome ?? WIKI_HOME;
   const stamped = stampWikiPages({ slug, since: options.since, wikiHome });
   if (stamped.length > 0) patchRegistry(wikiHome, stamped);
+
+  // The hub every `repo:` field points at. Created before the sweep so a
+  // person or organisation promoted below has a repo page to sit beside.
+  const repoPage = ensureRepositoryPage({ wikiHome, repo: slug });
+  if (repoPage.created) console.info(`[wiki] created the repository page for ${slug}`);
 
   // After the stamp, never before: canonicalising a person's page means
   // stripping the repo qualifier from its title, and the only safe way to know
