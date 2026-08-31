@@ -92,6 +92,15 @@ export interface WorkflowManagerLike {
     args?: unknown,
     exec?: { toolset?: string; suppressDelivery?: boolean },
   ): { runId: string };
+  /**
+   * Progress events for runs the host did not start through the `workflow`
+   * tool. The session only sees tool-execution updates, so a run dispatched
+   * straight into the manager — every wiki ingest — reported no progress at
+   * all. Optional because the contract is satisfied by dispatching alone.
+   */
+  on?(event: string, listener: (payload: unknown) => void): void;
+  off?(event: string, listener: (payload: unknown) => void): void;
+  getSnapshot?(runId: string): unknown;
 }
 
 /** The slice of WorkflowManager the /workflows API route actually calls. */

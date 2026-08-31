@@ -33,11 +33,14 @@ import {
   extensionPathsInLoadOrder,
 } from "@/lib/pi/extension-manifest";
 import {
+  ACTIVE_WORKFLOW_MANAGER,
   BRIDGE_RUN_STARTED,
   clearSlot,
+  readSlot,
   writeSlot,
   type BridgeRunNotifier,
 } from "@/lib/pi/extension-contract";
+import { followBridgeRunProgress } from "@/lib/pi/bridge-run-progress";
 import { recordExtensionLoad } from "@/lib/pi/extension-health";
 import {
   getLiveSession,
@@ -583,6 +586,18 @@ export const runPiPrompt = async ({
     const startedAt = new Date().toISOString();
     detach(semlaSessionId, "persist run start", persistBackgroundWorkflowStart(semlaSessionId, runId));
     emit({ runId, startedAt, type: "workflow-started" });
+
+    followBridgeRunProgress(readSlot(ACTIVE_WORKFLOW_MANAGER), runId, (snapshot) => {
+      const parsed = asWorkflowSnapshot(snapshot);
+      if (!parsed) return;
+      const enriched = liveSnapshot(parsed, runId);
+      debug.onWorkflowSnapshot(enriched, "background");
+      detach(
+        semlaSessionId,
+        "persist bridge snapshot",
+        persistWorkflowSnapshot(semlaSessionId, enriched, "background"),
+      );
+    });
 
     if (opts.primary && !hasBackgroundWorkflow) {
       hasBackgroundWorkflow = true;
