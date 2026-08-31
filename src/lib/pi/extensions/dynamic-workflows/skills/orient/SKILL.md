@@ -49,7 +49,7 @@ just parallelised.
 |---|---|
 | Overview | README.md, AGENTS.md, CLAUDE.md — any top-level `.md` files |
 | Dependencies | package.json / requirements.txt / go.mod / Cargo.toml / pyproject.toml |
-| Structure | Directory tree (`git -C "$REPO" ls-files \| awk -F/ '{print (NF>3)? $1"/"$2"/"$3 : $0}' \| sort -u`), main config files |
+| Structure | Directory tree (`git -C "$REPO" ls-files \| awk -F/ '{print (NF>3)? $1"/"$2"/"$3 : $0}' \| sort -u`), main config files, and the remote (`git -C "$REPO" remote get-url origin`) |
 | Conventions | tsconfig.json, eslint config, test setup |
 | History | `git -C "$REPO" log -n 150 --format='%h %an <%ae> %s%n%b%n---'` — the checked-out branch, **with bodies and authors**, see below |
 | Design notes | `docs/`, `adr/`, `rfcs/`, `*.md` design or plan files outside the top level |
@@ -62,6 +62,13 @@ repo generates. Run against this one it returned 300 KB dominated by
 that came out described the agent's byproducts — minting entities for
 `.env.local` and `.cursor/settings.json` — instead of the codebase. `ls-files`
 lists tracked files only, so .gitignore does the excluding for you, in any repo.
+
+**Include the remote in the Structure capture.** `git -C "$REPO" remote
+get-url origin` names who owns the repo — `github.com:elastic/kibana` yields the
+owner `elastic`. Without it in a packet, synthesis has no source for the owner
+and cannot raise a person or organisation page for it, which is why no orient
+has produced one. Capture the URL as it comes out; deciding whether the owner is
+an organisation or a personal account is synthesis's job, not yours.
 
 **Every command must name the repository.** Your working directory is the
 workspace root — the directory that *contains* the repos — not the repo itself.
