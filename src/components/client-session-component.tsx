@@ -59,6 +59,7 @@ export function ClientSessionComponent({
 }) {
   const {
     activeTool,
+    codeMap,
     isReconnecting,
     liveToolCalls,
     mutation: promptMutation,
@@ -286,6 +287,7 @@ export function ClientSessionComponent({
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
         title={title}
+        codeMap={codeMap}
         sessionId={sessionId}
         goal={goal}
         onGoalSave={handleGoalSave}

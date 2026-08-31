@@ -9,11 +9,13 @@ import type {
   SessionToolCall,
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
+import type { CodeMap } from "@/lib/code-map/types";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
-import { BotIcon, ScanSearchIcon } from "lucide-react";
+import { BotIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
 import { GitStatusBadge } from "./git-status-badge";
 import { GoalEditor } from "./goal-editor";
+import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 import { TokenUsage } from "./token-usage";
@@ -21,6 +23,8 @@ import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
   title: string | null;
+  /** Latest map the code_map tool drew in this session, if any. */
+  codeMap?: CodeMap;
   sessionId: string;
   goal?: string | null;
   onGoalSave?: (goal: string | null) => Promise<void>;
@@ -32,7 +36,7 @@ interface SessionTopbarProps {
   workflowRuns?: WorkflowRun[];
 }
 
-type PanelMode = "agents" | "inspector" | null;
+type PanelMode = "agents" | "codemap" | "inspector" | null;
 
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
   const { data: inspections } = useContextInspections(sessionId);
@@ -55,6 +59,7 @@ function ContextQualityDot({ sessionId }: { sessionId: string }) {
 
 export function SessionTopbar({
   title,
+  codeMap,
   sessionId,
   goal,
   onGoalSave,
@@ -122,6 +127,19 @@ export function SessionTopbar({
             </button>
           )}
 
+          {/* Code map — only offered once there is one to show */}
+          {codeMap && (
+            <Button
+              size="sm"
+              variant={panelMode === "codemap" ? "secondary" : "ghost"}
+              onClick={() => togglePanel("codemap")}
+              title="Show the call graph Semla resolved"
+            >
+              <NetworkIcon />
+              Map
+            </Button>
+          )}
+
           {/* Inspect — opens context inspector panel */}
           <Button
             size="sm"
@@ -155,6 +173,15 @@ export function SessionTopbar({
             toolCalls={toolCalls}
             workflowRuns={workflowRuns}
           />
+        </div>
+      )}
+
+      {panelMode === "codemap" && (
+        <div
+          className="shrink-0 border-b border-border/40 overflow-hidden p-3"
+          style={{ height: 348 }}
+        >
+          <CodeMapPanel map={codeMap} />
         </div>
       )}
 
