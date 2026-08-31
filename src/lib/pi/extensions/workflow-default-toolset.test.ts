@@ -6,6 +6,8 @@
  * falls back to a host default, so this pins the wiring that makes that true:
  * Semla names a default, and the name resolves to tools that include capture.
  */
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import wikiIngestBridge from "./wiki-ingest-bridge.ts";
@@ -54,5 +56,46 @@ describe("default subagent toolset", () => {
     expect(names()).toEqual(expect.arrayContaining(["bash", "read"]));
     // Still no recursive background starter.
     expect(names()).not.toContain("wiki_ingest");
+  });
+});
+
+/**
+ * The default toolset above only helps if the manager still has a toolset map
+ * to resolve it against.
+ *
+ * `reconfigureAfterReload` replaces every option rather than merging them, and
+ * session_start called it with only the session-scoped tag — so `toolsets`
+ * became undefined at the exact moment the tag was pointed at. Every subagent
+ * in the session then fell back to bare coding tools, silently: a whole orient
+ * run reverse-engineered the wiki package from bash and hand-wrote vault files
+ * because nothing had `wiki_capture_source`.
+ */
+describe("session_start does not clobber the toolset map", () => {
+  const source = readFileSync(
+    new URL("./workflow.ts", import.meta.url),
+    "utf8",
+  );
+
+  it("passes the full options to every reconfigureAfterReload call", () => {
+    const calls = [...source.matchAll(/reconfigureAfterReload\(([\s\S]*?)\)\s*;/g)].map(
+      (match) => match[1]!.trim(),
+    );
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const argument of calls) {
+      expect(
+        argument === "managerOptions" || argument.includes("...managerOptions"),
+        `reconfigureAfterReload(${argument.replace(/\s+/g, " ").slice(0, 60)}) drops every ` +
+          "option it does not name, including toolsets",
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the toolset resolvable when only the tag changes", () => {
+    const options = buildManagerOptions(process.cwd(), storageStub);
+    const reconfigured = { ...options, defaultToolset: `${WIKI_SUBAGENT_TOOLSET}:s1` };
+
+    expect(reconfigured.toolsets).toBe(options.toolsets);
+    expect(reconfigured.defaultToolset).toBe(`${WIKI_SUBAGENT_TOOLSET}:s1`);
   });
 });

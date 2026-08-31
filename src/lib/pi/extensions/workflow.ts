@@ -377,8 +377,17 @@ export default function extension(pi: ExtensionAPI) {
     // Point subagents at *this* session's copy of the wiki tools. The toolset
     // map is process-wide and each session's tools close over its own repo, so
     // a shared tag hands concurrent orients each other's attribution.
+    // Spread, because reconfigureAfterReload *replaces* every option rather
+    // than merging: passing the tag on its own set `toolsets` to undefined, so
+    // the tag it had just been pointed at resolved to nothing and every
+    // subagent in the session silently fell back to bare coding tools. A whole
+    // orient run then improvised — agents reverse-engineered the wiki package
+    // and hand-wrote vault files because they had no wiki_capture_source.
     if (sessionId) {
-      manager.reconfigureAfterReload({ defaultToolset: wikiToolsetKey(sessionId) });
+      manager.reconfigureAfterReload({
+        ...managerOptions,
+        defaultToolset: wikiToolsetKey(sessionId),
+      });
     }
     // Expose active manager for cross-extension access (e.g. wiki-ingest-bridge).
     writeSlot(ACTIVE_WORKFLOW_MANAGER, manager);
