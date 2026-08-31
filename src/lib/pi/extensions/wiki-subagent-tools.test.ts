@@ -251,6 +251,21 @@ describe("rejectUnfetchableUrl", () => {
     expect(rejectUnfetchableUrl(params)).toBeNull();
   });
 
+  // The package reads url first and ignores everything else, so a url beside
+  // real content is silent data loss rather than redundancy. An agent passed
+  // "https://example.com/placeholder-and-will-be-ignored" believing the
+  // opposite, and its facet was stored as the example.com landing page.
+  it.each([
+    ["text", { url: "https://example.com/ignored", text: "the real content" }],
+    ["file_path", { url: "https://example.com/ignored", file_path: "/tmp/semla_history.log" }],
+  ])("refuses a url passed alongside %s", (payload, params) => {
+    const refusal = rejectUnfetchableUrl(params);
+
+    expect(refusal?.isError).toBe(true);
+    expect(refusal?.content[0]!.text).toContain("discarded");
+    expect(refusal?.content[0]!.text).toContain(payload);
+  });
+
   it("refuses before the vault lock is taken", async () => {
     const execute = vi.fn();
     const [capture] = guardVaultWrites(

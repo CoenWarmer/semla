@@ -169,8 +169,34 @@ export interface VaultGuardOptions {
 export function rejectUnfetchableUrl(
   params: unknown,
 ): { content: Array<{ type: "text"; text: string }>; isError: true } | null {
-  const url = (params as { url?: unknown } | null)?.url;
+  const fields = params as { url?: unknown; text?: unknown; file_path?: unknown } | null;
+  const url = fields?.url;
   if (typeof url !== "string" || url.trim() === "") return null;
+
+  // The package tries url first and ignores the rest, so a url passed *beside*
+  // real content silently throws that content away. One agent supplied
+  // "https://example.com/placeholder-and-will-be-ignored" expecting exactly the
+  // opposite, and its facet was stored as the 167-byte example.com page.
+  const payload = typeof fields?.text === "string" && fields.text.trim() !== ""
+    ? "text"
+    : typeof fields?.file_path === "string" && fields.file_path.trim() !== ""
+      ? "file_path"
+      : null;
+  if (payload) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `wiki_capture_source: \`url\` was passed alongside \`${payload}\`. ` +
+            "The URL is fetched and the rest is discarded, so this would store " +
+            `the page at "${url}" instead of your ${payload}. Omit \`url\` entirely ` +
+            "— there is no placeholder value that gets ignored.",
+        },
+      ],
+      isError: true,
+    };
+  }
 
   let scheme: string;
   try {
