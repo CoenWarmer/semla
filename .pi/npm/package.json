@@ -2,6 +2,7 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
+    "@mrclrchtr/supi-code-intelligence": "6.1.0",
     "@zosmaai/pi-llm-wiki": "0.11.5"
   }
 }
