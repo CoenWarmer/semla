@@ -12,6 +12,7 @@ import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import { fetchSessionStatus, SESSION_STATUS_KEY } from "@/lib/session-status";
 import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
+import type { CodeMap } from "@/lib/code-map/types";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 
 export type PromptModel = {
@@ -32,6 +33,7 @@ type PiStreamEvent =
   | LiveToolEvent
   | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  | { map: CodeMap; type: "code-map" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
   | { type: "complete" };
@@ -56,6 +58,7 @@ type StreamHandlers = {
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
   onAskUser: (payload: AskUserPayload) => void;
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
+  onCodeMap: (map: CodeMap) => void;
   onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
   onTitleUpdated: () => void;
   onError: (message: string) => void;
@@ -106,6 +109,8 @@ const readPiStream = async (
         handlers.onAskUser(piEvent.payload);
       } else if (piEvent.type === "workflow-snapshot") {
         handlers.onWorkflowSnapshot(piEvent.snapshot);
+      } else if (piEvent.type === "code-map") {
+        handlers.onCodeMap(piEvent.map);
       } else if (piEvent.type === "workflow-started") {
         handlers.onWorkflowStarted(piEvent);
       } else if (piEvent.type === "title-updated") {
@@ -142,6 +147,9 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   const [liveToolCalls, setLiveToolCalls] = useState<SessionToolCall[]>([]);
   const [streamError, setStreamError] = useState<string>();
   const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
+  // Latest map this session drew. Kept per session rather than per turn: the
+  // user asks about one thing, then talks about it for several turns.
+  const [codeMap, setCodeMap] = useState<CodeMap>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   // Latches true the first time wiki_init or wiki_capture_source is seen; never
@@ -172,6 +180,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       },
       onAskUser: (payload) => setPendingQuestion(payload),
       onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
+      onCodeMap: (map) => setCodeMap(map),
       onWorkflowStarted: (event) =>
         setWorkflowSnapshot({
           agentCount: 0,
@@ -481,6 +490,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
 
   return {
     activeTool,
+    codeMap,
     isReconnecting,
     serverIsRunning,
     liveToolCalls,

@@ -12,6 +12,8 @@ import {
 } from "@/lib/pi/background-sessions";
 import { registerNotifier, type AskUserPayload } from "@/lib/pi/ask-user-bridge";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
+import { readCodeMapResult } from "@/lib/code-map/tool-result";
+import type { CodeMap } from "@/lib/code-map/types";
 import {
   createSessionDebugWriter,
   type SessionDebugWriter,
@@ -123,6 +125,7 @@ type PiSessionEvent =
       toolName: string;
       type: "tool-end";
     }
+  | { map: CodeMap; type: "code-map" }
   | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -660,6 +663,14 @@ export const runPiPrompt = async ({
         toolName: event.toolName,
         type: "tool-end",
       });
+
+      // code_map is Semla's own tool, so its structured map survives in the
+      // result rather than having been flattened to text. Forwarded verbatim:
+      // the panel draws the object the type checker produced.
+      if (event.toolName === "code_map") {
+        const map = readCodeMapResult(event.result);
+        if (map) emit({ map, type: "code-map" });
+      }
 
       if (event.toolName === "workflow") {
         const backgroundRunId = getBackgroundWorkflowRunId(event.result);
