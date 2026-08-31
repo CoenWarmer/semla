@@ -6,6 +6,9 @@ vi.mock("./git", () => ({ gitResult: gitResultMock }));
 const { checkoutBranch, explainGitFailure, mergeIntoCurrent } =
   await import("./git-actions");
 
+/** Merge now fetches first, so the merge itself is the second call. */
+const MERGE_CALL = 2;
+
 const ok = (stdout = "") => ({ ok: true, stdout, stderr: "" });
 const fail = (stderr: string) => ({ ok: false, stdout: "", stderr });
 
@@ -16,12 +19,31 @@ describe("mergeIntoCurrent", () => {
     gitResultMock.mockResolvedValue(ok("Fast-forward"));
     const result = await mergeIntoCurrent("/repo", "upstream/main");
 
-    expect(gitResultMock).toHaveBeenCalledWith(
+    // Fetch the branch, then merge it. Merging a stale tracking ref is the
+    // whole failure this ordering exists to prevent.
+    expect(gitResultMock).toHaveBeenNthCalledWith(
+      1,
+      "/repo",
+      ["fetch", "upstream", "main", "--quiet", "--no-tags"],
+      expect.objectContaining({ network: true }),
+    );
+    expect(gitResultMock).toHaveBeenNthCalledWith(
+      MERGE_CALL,
       "/repo",
       ["merge", "--no-edit", "upstream/main"],
       expect.anything(),
     );
     expect(result).toEqual({ ok: true, message: "Merged upstream/main." });
+  });
+
+  it("says so when the remote could not be reached", async () => {
+    // Offline still merges what is on disk, but must not imply it is current.
+    gitResultMock
+      .mockResolvedValueOnce(fail("ssh: Could not resolve hostname"))
+      .mockResolvedValueOnce(ok("Fast-forward"));
+    const result = await mergeIntoCurrent("/repo", "upstream/main");
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("Could not reach upstream");
   });
 
   it("distinguishes a no-op from a real merge", async () => {
@@ -32,12 +54,13 @@ describe("mergeIntoCurrent", () => {
 
   it("rolls a conflict back instead of leaving the repo mid-merge", async () => {
     gitResultMock
+      .mockResolvedValueOnce(ok()) // fetch
       .mockResolvedValueOnce(fail("CONFLICT (content): Merge conflict in a.txt"))
       .mockResolvedValueOnce(ok());
 
     const result = await mergeIntoCurrent("/repo", "upstream/main");
 
-    expect(gitResultMock).toHaveBeenNthCalledWith(2, "/repo", ["merge", "--abort"]);
+    expect(gitResultMock).toHaveBeenNthCalledWith(3, "/repo", ["merge", "--abort"]);
     expect(result.ok).toBe(false);
     expect(result.message).toContain("CONFLICT");
     expect(result.message).toContain("Merge rolled back.");
@@ -45,6 +68,7 @@ describe("mergeIntoCurrent", () => {
 
   it("reports a refusal to overwrite local changes", async () => {
     gitResultMock
+      .mockResolvedValueOnce(ok()) // fetch
       .mockResolvedValueOnce(
         fail("error: Your local changes would be overwritten by merge."),
       )
@@ -60,6 +84,7 @@ describe("mergeIntoCurrent", () => {
 
   it("skips git's hint lines when picking the reason", async () => {
     gitResultMock
+      .mockResolvedValueOnce(ok()) // fetch
       .mockResolvedValueOnce(fail("hint: use --no-ff\nerror: the real problem"))
       .mockResolvedValueOnce(ok());
     const result = await mergeIntoCurrent("/repo", "origin/main");

@@ -1,3 +1,6 @@
+import { branchNameFromBase } from "@/lib/git-status-display";
+
+import { fetchArgs } from "./git-fetch";
 import { gitResult } from "./git";
 
 /**
@@ -36,8 +39,17 @@ export function explainGitFailure(text: string): string {
   );
 }
 
+/** A fetch of one branch is seconds, but a cold or large one deserves room. */
+const FETCH_TIMEOUT_MS = 120_000;
+
 /**
- * Merge the canonical base into the current branch.
+ * Merge the canonical base into the current branch, fetching it first.
+ *
+ * The fetch is not optional and it is not in the background. `upstream/main`
+ * is a local ref, and merging it without refreshing merges whatever this
+ * machine last saw — which on kibana was a thousand commits behind while the
+ * button cheerfully reported "Merged upstream/main." Waiting is the point:
+ * this is `git fetch upstream main && git merge upstream/main`, in that order.
  *
  * A conflict is rolled back rather than left in the tree. A hover popup is too
  * casual an affordance to leave a repository mid-merge from — you would find
@@ -48,6 +60,21 @@ export async function mergeIntoCurrent(
   path: string,
   base: string,
 ): Promise<GitActionResult> {
+  const slash = base.indexOf("/");
+  const remote = slash === -1 ? null : base.slice(0, slash);
+  const branch = branchNameFromBase(base);
+
+  // Offline is not a reason to refuse: the merge still does something useful
+  // with the refs on disk. It is a reason to say the numbers may be old.
+  let stale = "";
+  if (remote && branch) {
+    const fetched = await gitResult(path, fetchArgs(remote, branch), {
+      timeout: FETCH_TIMEOUT_MS,
+      network: true,
+    });
+    if (!fetched.ok) stale = ` Could not reach ${remote}, so this used the refs already on disk.`;
+  }
+
   const merge = await gitResult(path, ["merge", "--no-edit", base], {
     timeout: 30_000,
   });
@@ -56,7 +83,9 @@ export async function mergeIntoCurrent(
     const alreadyCurrent = /already up to date/i.test(merge.stdout);
     return {
       ok: true,
-      message: alreadyCurrent ? `Already up to date with ${base}.` : `Merged ${base}.`,
+      message:
+        (alreadyCurrent ? `Already up to date with ${base}.` : `Merged ${base}.`) +
+        stale,
     };
   }
 
