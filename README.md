@@ -78,7 +78,8 @@ PI_ALLOW_HOST_DEV=true
 | `PI_ALLOW_HOST_DEV` | No | When `true`, the agent runs directly on the host filesystem instead of inside a sandbox. Intended for local development only. |
 | `PI_SANDBOXED` | No | When `true`, enforces sandboxed execution. Mutually exclusive with `PI_ALLOW_HOST_DEV`. |
 | `PI_SESSION_DIR` | No | Where pi session transcripts are written. Defaults to `.semla-sessions/` inside the repo (gitignored) rather than a temp dir, so they survive a reboot. |
-| `SEMLA_DISABLE_AUTH` | No | Development only. Skips the auth gate in `proxy.ts` so filesystem-backed pages such as `/wiki` stay reachable while Supabase is unavailable. Ignored when `NODE_ENV=production`. Anything that reads Supabase still fails. |
+| `SEMLA_BIND_HOST` | No | Address the server binds to, and with it the auth policy. Defaults to `127.0.0.1`: reachable only from this machine, so no sign-in is required. Set it to expose Semla (e.g. `0.0.0.0`) and Supabase authentication is required. |
+| `SEMLA_LOCAL_USER_ID` | No | User id sessions are attributed to in local mode. Inferred from existing session records when they agree on one owner. |
 | `PI_CODING_AGENT_DIR` | No | Where pi keeps credentials and the model catalog. Defaults to `~/.semla/agent`, isolated from the `~/.pi/agent` the `pi` CLI uses. Seeded once from the host on first run so the model picker is not empty; after that the two are independent. |
 
 ### Run the development server
@@ -117,6 +118,17 @@ src/
       runtime-config          Central source for PI_* environment variables
     workflow-spans            Converts WorkflowSnapshot → OTel spans for the waterfall
 ```
+
+### Authentication
+
+Semla is single-user. Bound to loopback — the default — nothing off this machine
+can reach it, so no sign-in is required and the app keeps working when Supabase
+is unavailable. Binding anywhere else requires Supabase authentication.
+
+The policy comes from the bind address, not the request: a per-request
+"is this localhost?" test could only read the `Host` header, which the client
+sets. `SEMLA_BIND_HOST` drives the socket and the policy together, so exposing
+Semla turns authentication on in the same move.
 
 ### Isolation from the host
 

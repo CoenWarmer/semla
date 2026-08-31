@@ -1,36 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
+
+import { AUTH_REQUIRED, BIND_HOST } from "@/lib/auth-mode";
 import { type NextRequest, NextResponse } from "next/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 /**
- * Skip the auth gate entirely, for working through a Supabase outage.
- *
- * The proxy matches every route, and it cannot tell "this token is invalid"
- * from "the auth service is unreachable" — `getClaims()` simply yields no
- * subject either way, so an outage redirects every page to /login, which then
- * cannot authenticate either. That takes down parts of the app that do not need
- * a database at all: the wiki is read from the filesystem and neither of its
- * routes calls Supabase.
- *
- * Refuses to engage outside development, because an env var that disables
- * authentication is worth exactly one accident.
+ * Semla bound to loopback authenticates nobody: nothing off this machine can
+ * reach it, and requiring an auth round trip there made a Supabase outage take
+ * down pages that need no database at all. See lib/auth-mode.ts for why the
+ * decision comes from the bind address rather than the request.
  */
-const AUTH_DISABLED =
-  process.env.NODE_ENV !== "production" &&
-  process.env.SEMLA_DISABLE_AUTH === "true";
-
 let warned = false;
 
 export const updateSession = async (request: NextRequest) => {
-  if (AUTH_DISABLED) {
+  if (!AUTH_REQUIRED) {
     if (!warned) {
       warned = true;
-      console.warn(
-        "[auth] SEMLA_DISABLE_AUTH is set — every request is unauthenticated. " +
-          "Filesystem-backed pages such as /wiki work; anything reading Supabase " +
-          "still fails, because the database is what is unavailable.",
+      console.log(
+        `[auth] bound to ${BIND_HOST} — local access, no sign-in required. ` +
+          "Set SEMLA_BIND_HOST to expose Semla, which turns authentication on.",
       );
     }
     return NextResponse.next({ request: { headers: request.headers } });

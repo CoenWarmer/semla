@@ -1,24 +1,24 @@
 /**
- * The proxy matches every route and cannot distinguish an invalid token from an
- * unreachable auth service — `getClaims()` yields no subject either way — so a
- * Supabase outage redirects the whole app to /login, including pages that never
- * touch the database. The escape hatch has to work, and must not exist in
- * production.
+ * The proxy matches every route, and getClaims() cannot distinguish an invalid
+ * token from an unreachable auth service — it yields no subject either way — so
+ * with Supabase down it redirected the whole app to /login, including pages
+ * that never touch the database.
+ *
+ * Bound to loopback there is nobody to authenticate and the gate is skipped
+ * entirely. The policy comes from the bind address rather than the request,
+ * because a Host header is set by the client.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const loadProxy = async (env: Record<string, string | undefined>) => {
+const loadProxy = async (env: Record<string, string>) => {
   vi.resetModules();
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined) vi.stubEnv(key, "");
-    else vi.stubEnv(key, value);
-  }
+  for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
   return (await import("./middleware.ts")).updateSession;
 };
 
-const request = (pathname: string) =>
+const request = (pathname: string, host = "localhost:3000") =>
   ({
-    headers: new Headers(),
+    headers: new Headers({ host }),
     cookies: { getAll: () => [], set: () => {} },
     nextUrl: {
       pathname,
@@ -34,12 +34,9 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("SEMLA_DISABLE_AUTH", () => {
+describe("local access", () => {
   it("lets a request through without contacting Supabase", async () => {
-    const updateSession = await loadProxy({
-      NODE_ENV: "development",
-      SEMLA_DISABLE_AUTH: "true",
-    });
+    const updateSession = await loadProxy({ SEMLA_BIND_HOST: "127.0.0.1" });
 
     const response = await updateSession(request("/wiki"));
 
@@ -48,26 +45,25 @@ describe("SEMLA_DISABLE_AUTH", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("is inert in production, whatever the variable says", async () => {
-    const updateSession = await loadProxy({
-      NODE_ENV: "production",
-      SEMLA_DISABLE_AUTH: "true",
-      NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid",
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "anon",
-    });
+  it("applies to every route, not just the wiki", async () => {
+    const updateSession = await loadProxy({ SEMLA_BIND_HOST: "localhost" });
 
-    // Reaching Supabase at all is the point: it must not short-circuit.
-    await expect(updateSession(request("/wiki"))).rejects.toBeDefined();
+    expect((await updateSession(request("/sessions/abc"))).status).toBe(200);
   });
+});
 
-  it("is off unless explicitly set to true", async () => {
+describe("exposed access", () => {
+  // The header says localhost; the bind says otherwise, and the bind wins.
+  // Otherwise anyone on the network could ask to be treated as local.
+  it("still authenticates when bound to a public address", async () => {
     const updateSession = await loadProxy({
-      NODE_ENV: "development",
-      SEMLA_DISABLE_AUTH: "1",
+      SEMLA_BIND_HOST: "0.0.0.0",
       NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid",
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "anon",
     });
 
-    await expect(updateSession(request("/wiki"))).rejects.toBeDefined();
+    await expect(
+      updateSession(request("/wiki", "localhost:3000")),
+    ).rejects.toBeDefined();
   });
 });

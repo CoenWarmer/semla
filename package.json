@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H \"${SEMLA_BIND_HOST:-127.0.0.1}\"",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H \"${SEMLA_BIND_HOST:-127.0.0.1}\"",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
