@@ -36,6 +36,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
+import { GitStatusBadge } from "@/components/git-status-badge";
 import { useModels, type PiModel } from "@/hooks/use-models";
 import { useTools } from "@/hooks/use-tools";
 import {
@@ -162,6 +163,8 @@ interface PromptEditorProps {
   isRunning?: boolean;
   /** Interrupt that turn. Without it the button stays a submit button. */
   onStop?: () => void;
+  /** Session whose project the branch indicator reports on. */
+  sessionId?: string;
 }
 
 export function PromptEditor({
@@ -170,6 +173,7 @@ export function PromptEditor({
   isRunning,
   onStop,
   onSubmit,
+  sessionId,
 }: PromptEditorProps) {
   const {
     data: models = [],
@@ -441,6 +445,7 @@ export function PromptEditor({
                   </ModelSelectorList>
                 </ModelSelectorContent>
               </ModelSelector>
+              <GitStatusBadge sessionId={sessionId} />
             </PromptInputTools>
             <PromptInputSubmit
               onStop={onStop}
