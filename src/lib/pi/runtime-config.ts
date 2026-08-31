@@ -85,13 +85,16 @@ export const PI_SESSION_DIR = "/tmp/semla-pi-sessions";
 // packages that machine happened to have installed: the workflow extension was
 // listed there as a user package, so it loaded twice per prompt (once from this
 // repo's pinned node_modules, once from ~/.pi/agent/npm) and the second copy
-// failed with a tool-name conflict. An empty, Semla-owned dir keeps the
-// extension set reproducible and identical to the container. Project-scope
-// packages still load: those come from <workspace>/.pi/settings.json, keyed to
-// cwd rather than to this dir. Model credentials and the model catalog are
-// unaffected — ModelRuntime resolves those from ~/.pi/agent independently.
-// Set PI_AGENT_DIR to restore the previous shared-dir behaviour.
-export const PI_AGENT_DIR = process.env.PI_AGENT_DIR ?? "/tmp/semla-pi-agent";
+// failed with a tool-name conflict. A Semla-owned dir keeps the extension set
+// reproducible and identical to the container. Project-scope packages still
+// load: those come from <workspace>/.pi/settings.json, keyed to cwd rather than
+// to this dir.
+//
+// Same directory agent-dir.ts points PI_CODING_AGENT_DIR at, so discovery and
+// credentials agree rather than reading from two different places. It holds
+// only auth.json and models-store.json — never settings.json or npm/, which is
+// what would bring the host's packages back.
+export { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
 export const PI_TOOLS = [
   "read",
   "bash",

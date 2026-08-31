@@ -77,6 +77,7 @@ PI_ALLOW_HOST_DEV=true
 | `PI_WORKSPACE_ROOT` | No | Path the agent uses as its working directory. Defaults to `process.cwd()` when `PI_ALLOW_HOST_DEV=true`, or `/workspace` in sandboxed mode. Set this explicitly when developing — `process.cwd()` will be the Semla directory itself, not your projects root. |
 | `PI_ALLOW_HOST_DEV` | No | When `true`, the agent runs directly on the host filesystem instead of inside a sandbox. Intended for local development only. |
 | `PI_SANDBOXED` | No | When `true`, enforces sandboxed execution. Mutually exclusive with `PI_ALLOW_HOST_DEV`. |
+| `PI_CODING_AGENT_DIR` | No | Where pi keeps credentials and the model catalog. Defaults to `~/.semla/agent`, isolated from the `~/.pi/agent` the `pi` CLI uses. Seeded once from the host on first run so the model picker is not empty; after that the two are independent. |
 
 ### Run the development server
 
@@ -114,6 +115,16 @@ src/
       runtime-config          Central source for PI_* environment variables
     workflow-spans            Converts WorkflowSnapshot → OTel spans for the waterfall
 ```
+
+### Isolation from the host
+
+Semla runs pi in-process as a pinned library, not the `pi` binary on your PATH.
+Extensions, skills and packages come from this repository, and credentials and
+the model catalog live in `~/.semla/agent` rather than `~/.pi/agent`. That
+directory is seeded once from the host so an existing pi install keeps working;
+after that, changes made with the `pi` CLI no longer affect Semla. Delete it to
+re-seed. In a container with no host install, credentials come from
+`PI_MODEL_API_KEY`.
 
 The agent loop lives in `session-service.ts`. Each prompt streams events (assistant deltas, tool calls, workflow snapshots) over SSE to the client. Workflow progress is also polled from Supabase so background runs stay up to date after a page reload.
 
