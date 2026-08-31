@@ -1,10 +1,15 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
+import {
+  computeComposition,
+  contextWindowUsage,
+  latestInputTokens,
+} from "@/lib/pi/context-composition";
 import { getTranscript } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase/server";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { SessionTranscriptEntry, SessionToolCall } from "@/lib/pi/transcript";
+import type { SessionTranscriptEntry } from "@/lib/pi/transcript";
 
 export const runtime = "nodejs";
 
@@ -66,35 +71,6 @@ function computeCorrectionRate(messages: SessionTranscriptEntry[]) {
       ? "No correction signals detected."
       : `${correctionCount} correction${correctionCount === 1 ? "" : "s"} in ${userMessages.length} user turns (${Math.round(rate * 100)}%).`;
   return { correctionCount, level, rate, summary, userTurns: userMessages.length };
-}
-
-function computeComposition(
-  messages: SessionTranscriptEntry[],
-  toolCalls: SessionToolCall[],
-  systemPromptChars: number,
-) {
-  const userChars = messages
-    .filter((m) => m.role === "user")
-    .reduce((sum, m) => sum + m.text.length, 0);
-  const assistantChars = messages
-    .filter((m) => m.role === "assistant")
-    .reduce((sum, m) => sum + m.text.length, 0);
-  const toolResultChars = toolCalls.reduce(
-    (sum, t) => sum + (t.resultText?.length ?? 0),
-    0,
-  );
-  const total = systemPromptChars + userChars + assistantChars + toolResultChars || 1;
-  const systemPromptFraction = systemPromptChars / total;
-  const userFraction = userChars / total;
-  const assistantFraction = assistantChars / total;
-  const toolResultFraction = toolResultChars / total;
-  const summary = [
-    systemPromptChars > 0 ? `System ${Math.round(systemPromptFraction * 100)}%` : null,
-    `User ${Math.round(userFraction * 100)}%`,
-    `Assistant ${Math.round(assistantFraction * 100)}%`,
-    `Tool results ${Math.round(toolResultFraction * 100)}%`,
-  ].filter(Boolean).join(" · ");
-  return { assistantFraction, summary, systemPromptFraction, toolResultFraction, userFraction };
 }
 
 // ---- Compact transcript for the inspector LLM --------------------------
@@ -258,12 +234,11 @@ export async function POST(
       const model = modelRuntime.getModel(piSession.model_provider, piSession.model_id);
 
       if (model) {
-        const latestInputTokens = [...messages]
-          .reverse()
-          .find((m) => m.role === "assistant" && m.inputTokens != null)?.inputTokens ?? null;
-        if (latestInputTokens != null && model.contextWindow) {
-          contextWindowFraction = Math.min(1, latestInputTokens / model.contextWindow);
-        }
+        contextWindowFraction = contextWindowUsage(
+          latestInputTokens(messages),
+          compositionMetrics.totalChars,
+          model.contextWindow,
+        ).contextWindowFraction;
 
         const compactTranscript = buildCompactTranscript(messages);
         llmOutput = await runInspectorLlm(modelRuntime, model, {

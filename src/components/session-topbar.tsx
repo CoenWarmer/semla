@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextInspections } from "@/hooks/use-context-check";
+import { useSessionComposition } from "@/hooks/use-session-composition";
 import type {
   SessionMessage,
   SessionToolCall,
@@ -66,8 +67,12 @@ export function SessionTopbar({
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
-  const { data: inspections } = useContextInspections(sessionId);
-  const result = inspections?.[0]?.result ?? null;
+  // Keyed on the conversation's length so it re-reads as turns land, rather
+  // than polling for numbers that only move when a message does.
+  const { data: composition } = useSessionComposition(
+    sessionId,
+    messages.length + (toolCalls?.length ?? 0),
+  );
 
   const agentCount = snapshot?.agentCount ?? 0;
   const runningCount = snapshot?.runningCount ?? 0;
@@ -133,7 +138,7 @@ export function SessionTopbar({
           </div>
         </div>
       </div>
-      <SessionContextWindowBar result={result} />
+      <SessionContextWindowBar composition={composition} />
 
       {/* Panel area */}
       {panelMode === "agents" && (

@@ -1,26 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import type { ContextCheckResult } from "@/app/api/sessions/[id]/context-check/route";
+import type { CompositionBreakdown } from "@/lib/pi/context-composition";
 
 type CompositionMode = "absolute" | "relative";
 
+/**
+ * What the context window holds, as a strip under the title bar.
+ *
+ * Fed by the composition endpoint rather than a context inspection, so it is
+ * there from the moment a session opens instead of appearing once somebody
+ * presses Inspect.
+ */
 export function SessionContextWindowBar({
-  result,
+  composition,
 }: {
-  result: ContextCheckResult | null;
+  composition: CompositionBreakdown | null | undefined;
 }) {
   const [mode, setMode] = useState<CompositionMode>("absolute");
 
-  if (!result) return null;
+  if (!composition) return null;
 
   const {
     assistantFraction,
+    contextWindowEstimated,
     contextWindowFraction,
     systemPromptFraction,
     toolResultFraction,
     userFraction,
-  } = result.dimensions.composition;
+  } = composition;
+
+  // Nothing measured yet — an empty strip beats four zero-width segments.
+  if (
+    systemPromptFraction + userFraction + assistantFraction + toolResultFraction ===
+    0
+  ) {
+    return <div className="h-2 w-full shrink-0 border-b border-border/40 bg-muted" />;
+  }
 
   const scale =
     mode === "absolute" && contextWindowFraction != null
@@ -40,7 +56,7 @@ export function SessionContextWindowBar({
 
   return (
     <div className="group relative shrink-0">
-      {/* Collapsed — always in-flow, defines the 4px height */}
+      {/* Collapsed — always in-flow, defines the strip's height */}
       <div className="flex h-2 w-full overflow-hidden border-b border-border/40 bg-muted">
         {seg.system > 0.001 && (
           <div
@@ -114,7 +130,9 @@ export function SessionContextWindowBar({
           </span>
           {mode === "absolute" && contextWindowFraction != null && (
             <span className="ml-auto text-muted-foreground/60">
+              {contextWindowEstimated ? "≈" : ""}
               {pct(contextWindowFraction)} of context window
+              {contextWindowEstimated ? " (estimated)" : ""}
             </span>
           )}
         </div>
