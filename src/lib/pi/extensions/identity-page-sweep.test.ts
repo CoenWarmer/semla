@@ -20,6 +20,12 @@ const write = (name: string, fields: string) =>
     "utf8",
   );
 
+const packet = (id: string, text: string) => {
+  const dir = join(wikiHome, ".llm-wiki", "raw", "sources", id);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "extracted.md"), text, "utf8");
+};
+
 beforeEach(() => {
   wikiHome = mkdtempSync(join(tmpdir(), "semla-identity-"));
   entities = join(wikiHome, ".llm-wiki", "wiki", "entities");
@@ -83,6 +89,39 @@ describe("sweepIdentityPages", () => {
     write("coen-warmer.md", "type: person\ntitle: Coen Warmer\nrepo: semla");
 
     expect(sweepIdentityPages({ wikiHome })).toEqual([]);
+  });
+
+  // Every person and organisation in the real vault is typed `entity`, so
+  // without promotion the sweep would leave all of them exactly as they are.
+  it("promotes an entity the commit log says is a person, then canonicalises it", () => {
+    packet("SRC-1", "f85eb62 Coen Warmer <coen.warmer@gmail.com> [Wiki]: a commit\n");
+    write("nightshift-program-coen-warmer.md", "type: person\ntitle: nightshift-program Coen Warmer\nrepo: nightshift-program".replace("person", "entity"));
+
+    const fixes = sweepIdentityPages({ wikiHome });
+
+    expect(fixes.map((fix) => fix.action)).toEqual(["promoted", "renamed"]);
+    const moved = readFileSync(join(entities, "coen-warmer.md"), "utf8");
+    expect(moved).toContain("type: person");
+    expect(moved).toContain("title: Coen Warmer");
+  });
+
+  it("promotes an entity matching the repo owner to an organisation", () => {
+    packet("SRC-1", "https://github.com/elastic/kibana\n");
+    write("catalog-info-elastic.md", "type: entity\ntitle: catalog-info Elastic\nrepo: catalog-info");
+
+    sweepIdentityPages({ wikiHome });
+
+    const moved = readFileSync(join(entities, "elastic.md"), "utf8");
+    expect(moved).toContain("type: organisation");
+    expect(moved).toContain("title: Elastic");
+  });
+
+  it("leaves an entity the packets say nothing about", () => {
+    packet("SRC-1", "f85eb62 Coen Warmer <coen.warmer@gmail.com> [Wiki]: a commit\n");
+    write("catalog-info-elastic-agent.md", "type: entity\ntitle: catalog-info Elastic Agent\nrepo: catalog-info");
+
+    expect(sweepIdentityPages({ wikiHome })).toEqual([]);
+    expect(existsSync(join(entities, "catalog-info-elastic-agent.md"))).toBe(true);
   });
 
   it("survives a vault with no pages at all", () => {

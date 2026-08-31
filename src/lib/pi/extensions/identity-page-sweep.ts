@@ -6,12 +6,17 @@ import {
   declaredRepos,
   widenRepos,
 } from "./identity-page-canonical.js";
+import {
+  collectIdentityEvidence,
+  retypePage,
+  typeFromEvidence,
+} from "./identity-evidence.js";
 import { PAGE_DIRS } from "./wiki-frontmatter.js";
 
 export interface IdentityFix {
   /** Page that was acted on, as `dir/file.md`. */
   page: string;
-  action: "renamed" | "merged" | "retitled";
+  action: "renamed" | "merged" | "retitled" | "promoted";
   /** Where it ended up, for a rename or a merge. */
   into?: string;
 }
@@ -40,6 +45,8 @@ export function sweepIdentityPages(options: { wikiHome: string }): IdentityFix[]
   const dotWiki = join(options.wikiHome, ".llm-wiki");
   const wikiDir = join(dotWiki, "wiki");
   const fixes: IdentityFix[] = [];
+  // Built once per sweep: every page asks it the same two questions.
+  const evidence = collectIdentityEvidence(options.wikiHome);
 
   for (const dir of PAGE_DIRS) {
     const folder = join(wikiDir, dir);
@@ -59,6 +66,18 @@ export function sweepIdentityPages(options: { wikiHome: string }): IdentityFix[]
         markdown = readFileSync(path, "utf8");
       } catch {
         continue;
+      }
+
+      // An entity the packets say is a person or an organisation is promoted
+      // first, so the canonicalisation below sees the type it needs. Without
+      // this the sweep only ever helps a page the agent had already typed
+      // correctly — and every person and organisation in this vault is an
+      // entity.
+      const promoted = typeFromEvidence(markdown, evidence);
+      if (promoted) {
+        markdown = retypePage(markdown, promoted);
+        writeFileSync(path, markdown, "utf8");
+        fixes.push({ page: `${dir}/${entry}`, action: "promoted", into: promoted });
       }
 
       const outcome = canonicaliseIdentityPage(markdown);
