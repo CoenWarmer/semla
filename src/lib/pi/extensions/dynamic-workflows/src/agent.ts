@@ -564,6 +564,21 @@ export function subagentExcludedTools(
   ];
 }
 
+/**
+ * Coding tools rebuilt for another directory, keeping everything else.
+ *
+ * Coding tools capture their cwd when constructed, so a per-call cwd needs its
+ * own. Anything the host contributed — a named toolset's tools, for instance —
+ * has no such tie and must survive the swap.
+ */
+export function mergeRelocatedCodingTools(
+  baseTools: ToolDefinition[],
+  relocated: ToolDefinition[],
+): ToolDefinition[] {
+  const relocatedNames = new Set(relocated.map((tool) => tool.name));
+  return [...relocated, ...baseTools.filter((tool) => !relocatedNames.has(tool.name))];
+}
+
 export class WorkflowAgent {
   private readonly cwd: string;
   private readonly baseTools: ToolDefinition[];
@@ -760,9 +775,14 @@ export class WorkflowAgent {
     };
     // Per-call cwd (e.g. a worktree) needs coding tools bound to that directory,
     // since tools capture their cwd at construction and can't be relocated.
+    // Only the coding tools are rebuilt: replacing the whole set discarded
+    // everything a host toolset had contributed, so an agent that named its own
+    // cwd silently lost them. A capture agent that ran git in the repository it
+    // was orienting therefore had no wiki tools, while its siblings did.
     const runCwd = options.cwd ?? this.cwd;
-    const baseTools =
-      runCwd === this.cwd ? this.baseTools : createCodingTools(runCwd);
+    const baseTools = runCwd === this.cwd
+      ? this.baseTools
+      : mergeRelocatedCodingTools(this.baseTools, createCodingTools(runCwd));
     // Apply the agentType tool policy BEFORE adding structured_output, so a
     // restrictive allowlist never strips the schema tool.
     const customTools: ToolDefinition[] = applyToolPolicy(
