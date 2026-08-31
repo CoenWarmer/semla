@@ -70,9 +70,15 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
         delay={250}
         openOnHover
         render={
-          <span
-            className="flex cursor-default items-center gap-1.5 rounded px-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          // A real <button>, not a styled span: this opens a menu of actions,
+          // so it needs the native semantics keyboard and assistive tech rely
+          // on. `type="button"` is not optional — PromptInput is a <form>, and
+          // a bare button inside it defaults to submit, which would fire the
+          // prompt on click.
+          <button
+            className="flex items-center gap-1.5 rounded px-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
             title={label.title}
+            type="button"
           />
         }
       >
@@ -101,6 +107,7 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
             disabled={!canMerge || run.isPending}
             onClick={() => run.mutate("merge")}
             size="sm"
+            type="button"
             variant="outline"
           >
             <GitMerge className="size-3.5" />
@@ -111,6 +118,7 @@ export function GitStatusBadge({ sessionId }: { sessionId?: string }) {
             disabled={!canCheckout || run.isPending}
             onClick={() => run.mutate("checkout")}
             size="sm"
+            type="button"
             variant="outline"
           >
             <GitBranch className="size-3.5" />
