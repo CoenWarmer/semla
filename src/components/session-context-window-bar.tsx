@@ -38,26 +38,30 @@ export function SessionContextWindowBar({
     return <div className="h-2 w-full shrink-0 border-b border-border/40 bg-muted" />;
   }
 
-  const scale =
-    mode === "absolute" && contextWindowFraction != null
-      ? contextWindowFraction
-      : 1;
+  // Unknown is not full. Without a window size there is nothing to be a
+  // fraction of, so the bar shows proportions and says so — scaling to 1
+  // drew a brand-new session, whose only content is its system prompt, as a
+  // context window at capacity.
+  const windowKnown = contextWindowFraction != null;
+  const absolute = mode === "absolute" && windowKnown;
+  const scale = absolute ? contextWindowFraction : 1;
   const seg = {
     system: systemPromptFraction * scale,
     user: userFraction * scale,
     assistant: assistantFraction * scale,
     toolResult: toolResultFraction * scale,
   };
-  const remainder =
-    mode === "absolute" && contextWindowFraction != null
-      ? Math.max(0, 1 - contextWindowFraction)
-      : 0;
+  const remainder = absolute ? Math.max(0, 1 - contextWindowFraction) : 0;
   const pct = (f: number) => `${Math.round(f * 100)}%`;
 
   return (
     <div className="group relative shrink-0">
       {/* Collapsed — always in-flow, defines the strip's height */}
-      <div className="flex h-2 w-full overflow-hidden border-b border-border/40 bg-muted">
+      <div
+        className={`flex h-2 w-full overflow-hidden border-b border-border/40 bg-muted${
+          windowKnown ? "" : " opacity-40"
+        }`}
+      >
         {seg.system > 0.001 && (
           <div
             className="bg-emerald-500"
@@ -91,7 +95,7 @@ export function SessionContextWindowBar({
           <span className="text-xs font-medium text-foreground">
             Composition
           </span>
-          {contextWindowFraction != null && (
+          {windowKnown && (
             <button
               className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
               onClick={() =>
@@ -128,11 +132,16 @@ export function SessionContextWindowBar({
             <span className="mr-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle" />
             Tool results {pct(seg.toolResult)}
           </span>
-          {mode === "absolute" && contextWindowFraction != null && (
+          {absolute && (
             <span className="ml-auto text-muted-foreground/60">
               {contextWindowEstimated ? "≈" : ""}
               {pct(contextWindowFraction)} of context window
               {contextWindowEstimated ? " (estimated)" : ""}
+            </span>
+          )}
+          {!windowKnown && (
+            <span className="ml-auto text-muted-foreground/60">
+              proportions only — context window size unknown
             </span>
           )}
         </div>

@@ -8,6 +8,11 @@ export interface SessionPromptContext {
   projectPath: string | null;
   /** Exactly the system prompt a turn would be sent with. */
   systemPrompt: string;
+  /**
+   * The model a turn would use, before a session has recorded one of its own.
+   * Null when the user has never chosen a default.
+   */
+  defaultModel: { provider: string; modelId: string } | null;
 }
 
 /**
@@ -35,7 +40,7 @@ export async function resolveSessionPromptContext(
       ? Promise.resolve({ data: null })
       : supabase
           .from("user_settings")
-          .select("system_prompt")
+          .select("system_prompt, default_model_id, default_model_provider")
           .eq("user_id", userId)
           .maybeSingle(),
     localMeta
@@ -53,8 +58,13 @@ export async function resolveSessionPromptContext(
     settingsData?.system_prompt ??
     DEFAULT_SYSTEM_PROMPT;
 
+  const provider =
+    localSettings?.defaultModelProvider ?? settingsData?.default_model_provider;
+  const modelId = localSettings?.defaultModelId ?? settingsData?.default_model_id;
+
   return {
     projectPath,
     systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath)}`,
+    defaultModel: provider && modelId ? { provider, modelId } : null,
   };
 }

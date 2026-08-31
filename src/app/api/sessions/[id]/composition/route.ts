@@ -37,7 +37,7 @@ export async function GET(
 
     // The same string a turn would actually be sent with, not just whatever
     // override the user has saved — most sessions have none.
-    const [{ messages, toolCalls }, { systemPrompt }] = await Promise.all([
+    const [{ messages, toolCalls }, { defaultModel, systemPrompt }] = await Promise.all([
       getTranscript(supabase, id),
       resolveSessionPromptContext(supabase, id, user.id),
     ]);
@@ -52,6 +52,10 @@ export async function GET(
 
     const metrics = computeComposition(messages, toolCalls, systemPromptChars);
 
+    // A pi_sessions row is written by the first turn, so a session nobody has
+    // prompted yet has no model recorded against it. Fall back to the model it
+    // would use — otherwise the window size is unknown for exactly the new
+    // session this bar was asked to draw.
     const admin = createAdminClient();
     const { data: piSession } = await admin
       .from("pi_sessions")
@@ -62,8 +66,8 @@ export async function GET(
       .maybeSingle();
 
     const contextWindow = await modelContextWindow(
-      piSession?.model_provider,
-      piSession?.model_id,
+      piSession?.model_provider ?? defaultModel?.provider,
+      piSession?.model_id ?? defaultModel?.modelId,
     );
 
     return Response.json({
