@@ -21,6 +21,7 @@ import {
   PI_SESSION_DIR,
   PI_TOOLS,
   PI_WORKSPACE_ROOT,
+  REFRESH_EXTENSIONS_PER_SESSION,
   WORKFLOW_SKILLS_PATH,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
@@ -386,6 +387,11 @@ export const runPiPrompt = async ({
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
   });
   await resourceLoader.reload();
+  // Second pass drops the loader's cached extension factories, so an edit to
+  // one of Semla's own pi extensions is picked up by the next session instead
+  // of needing the server restarted. See REFRESH_EXTENSIONS_PER_SESSION.
+  if (REFRESH_EXTENSIONS_PER_SESSION) await resourceLoader.reload();
+
   const { extensionsResult, session } = await createAgentSession({
     cwd: PI_WORKSPACE_ROOT,
     model: configuredModel.model,
