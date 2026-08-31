@@ -2,6 +2,8 @@ import { handleRouteError } from "@/lib/api-helpers";
 import { buildMemoryContextBlock } from "@/lib/pi/prompts";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
 import { runPiPrompt } from "@/lib/pi/session-service";
+import { readSessionMeta } from "@/lib/pi/session-meta";
+import { readUserSettings } from "@/lib/user-settings-store";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { PI_TOOLS } from "@/lib/pi/runtime-config";
@@ -65,22 +67,33 @@ export async function POST(
     return handleRouteError(error, "Unable to authorize session.");
   }
 
+  // Both of these decide how the turn runs, so both read from disk first: a
+  // database that cannot answer would otherwise silently downgrade the session
+  // to the default prompt with no project attached.
+  const localSettings = readUserSettings(userId);
+  const localMeta = readSessionMeta(id);
+
   const supabase = await createClient();
   const [{ data: settingsData }, { data: sessionData }] = await Promise.all([
-    supabase
-      .from("user_settings")
-      .select("system_prompt")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("sessions")
-      .select("project_path")
-      .eq("id", id)
-      .maybeSingle(),
+    localSettings
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from("user_settings")
+          .select("system_prompt")
+          .eq("user_id", userId)
+          .maybeSingle(),
+    localMeta
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from("sessions")
+          .select("project_path")
+          .eq("id", id)
+          .maybeSingle(),
   ]);
 
-  const projectPath = sessionData?.project_path ?? null;
-  const basePrompt = settingsData?.system_prompt ?? DEFAULT_SYSTEM_PROMPT;
+  const projectPath = localMeta?.projectPath ?? sessionData?.project_path ?? null;
+  const basePrompt =
+    localSettings?.systemPrompt ?? settingsData?.system_prompt ?? DEFAULT_SYSTEM_PROMPT;
   const systemPrompt = `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath)}`;
 
   const stream = new ReadableStream({
