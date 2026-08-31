@@ -1,5 +1,6 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { hasTranscript, listSessionMeta } from "@/lib/pi/session-meta";
+import { isSessionActive } from "@/lib/pi/session-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,12 @@ export async function GET() {
         id: meta.id,
         title: meta.title,
         createdAt: meta.createdAt,
-        isRunning: meta.isRunning,
+        // A record can claim to be running after the process that was running
+        // it has gone: the turn clears the flag in a `finally`, which a killed
+        // server never reaches, leaving a spinner with nothing behind it.
+        // The loop only ever existed in memory, so this process not working on
+        // the session settles it.
+        isRunning: meta.isRunning && isSessionActive(meta.id),
         // "Ran and finished" rather than "exists": a session that was created
         // and never used has nothing to report as complete.
         hasRun: hasTranscript(meta.id),

@@ -329,6 +329,22 @@ const detach = (sid: string, what: string, work: Promise<unknown>): void => {
  * ended. Reports whether there was anything to stop, so the caller can tell
  * "stopped it" from "it had already finished".
  */
+/**
+ * Whether this process is actually working on a session.
+ *
+ * Both halves matter: a prompt turn holds a live session, and a background
+ * continuation outlives that turn — it is armed in the same `finally` that
+ * releases the live session, so checking only the registry would call every
+ * background run finished.
+ *
+ * Used to spot a running flag left behind by a process that is no longer here.
+ * A record claiming to run with neither of these is stale by definition,
+ * because the loop it described lived in memory.
+ */
+export const isSessionActive = (semlaSessionId: string): boolean =>
+  getLiveSession(semlaSessionId) !== undefined ||
+  bgAbortControllers.has(semlaSessionId);
+
 export const stopPiSession = async (semlaSessionId: string): Promise<boolean> => {
   const live = getLiveSession(semlaSessionId);
   const continuation = bgAbortControllers.get(semlaSessionId);
