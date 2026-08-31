@@ -1,5 +1,6 @@
 import { EMPTY_GIT_STATUS, type GitStatus } from "@/lib/git-status-display";
 
+import { lastFetchedAt, refreshRemote } from "./git-fetch";
 import { git } from "./git";
 
 /**
@@ -102,6 +103,11 @@ export async function readGitStatus(path: string): Promise<GitStatus> {
   const remotes = (await git(path, ["remote"]))?.split("\n").map((r) => r.trim()) ?? [];
   const canonical = pickCanonicalRemote(remotes.filter(Boolean));
 
+  // Kick off a fetch for next time. This returns immediately — the counts
+  // below still come from the refs already on disk, and the caller polls again
+  // once `fetching` clears.
+  const fetching = canonical ? refreshRemote(path, canonical) : false;
+
   const base =
     (canonical ? await remoteDefaultRef(path, canonical) : null) ??
     (await git(path, [
@@ -111,7 +117,11 @@ export async function readGitStatus(path: string): Promise<GitStatus> {
       "@{upstream}",
     ]));
 
-  if (!base) return { branch, head, base: null, ahead: null, behind: null };
+  const fetchedAt = await lastFetchedAt(path);
+
+  if (!base) {
+    return { branch, head, base: null, ahead: null, behind: null, fetchedAt, fetching };
+  }
 
   const counts = parseAheadBehind(
     await git(path, ["rev-list", "--left-right", "--count", `${base}...HEAD`]),
@@ -123,5 +133,7 @@ export async function readGitStatus(path: string): Promise<GitStatus> {
     base,
     ahead: counts?.ahead ?? null,
     behind: counts?.behind ?? null,
+    fetchedAt,
+    fetching,
   };
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { describeGitStatus, type GitStatus } from "./git-status-display";
+import {
+  describeGitStatus,
+  formatFetchAge,
+  type GitStatus,
+} from "./git-status-display";
 
 const status = (over: Partial<GitStatus> = {}): GitStatus => ({
   branch: "main",
@@ -8,6 +12,8 @@ const status = (over: Partial<GitStatus> = {}): GitStatus => ({
   base: "origin/main",
   ahead: 0,
   behind: 0,
+  fetchedAt: Date.now(),
+  fetching: false,
   ...over,
 });
 
@@ -54,11 +60,44 @@ describe("describeGitStatus", () => {
     expect(label?.title).toContain("no canonical branch to compare against");
   });
 
-  it("says the counts are only as fresh as the last fetch", () => {
-    // No fetch is run off a UI poll, so the tooltip must not imply otherwise.
+  it("dates the counts, so freshness is never assumed", () => {
     expect(describeGitStatus(status({ ahead: 1 }))?.title).toContain(
-      "last fetch",
+      "Fetched just now",
     );
+    expect(
+      describeGitStatus(status({ ahead: 1, fetchedAt: null }))?.title,
+    ).toContain("never fetched");
+  });
+
+  it("says so while a fetch is running", () => {
+    expect(
+      describeGitStatus(status({ ahead: 1, fetching: true }))?.title,
+    ).toContain("Fetching now");
+  });
+});
+
+describe("formatFetchAge", () => {
+  const now = Date.parse("2026-08-31T22:00:00Z");
+  const ago = (ms: number) => formatFetchAge(now - ms, now);
+
+  it("reads a recent fetch as just now", () => {
+    expect(ago(0)).toBe("just now");
+    expect(ago(44_000)).toBe("just now");
+  });
+
+  it("counts minutes, hours and days", () => {
+    expect(ago(5 * 60_000)).toBe("5m ago");
+    expect(ago(3 * 3_600_000)).toBe("3h ago");
+    expect(ago(2 * 86_400_000)).toBe("2d ago");
+  });
+
+  it("never rounds a real gap down to zero minutes", () => {
+    // 50s is past "just now" but floors to 0 minutes; "0m ago" reads as fresh.
+    expect(ago(50_000)).toBe("1m ago");
+  });
+
+  it("says never when nothing has ever been fetched", () => {
+    expect(formatFetchAge(null, now)).toBe("never fetched");
   });
 
   it("renders nothing without a project or a repository", () => {

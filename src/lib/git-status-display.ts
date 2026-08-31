@@ -18,6 +18,10 @@ export interface GitStatus {
   base: string | null;
   ahead: number | null;
   behind: number | null;
+  /** When the remote refs were last fetched, epoch ms, or null if never. */
+  fetchedAt: number | null;
+  /** A fetch is running now, so these counts are about to be replaced. */
+  fetching: boolean;
 }
 
 export const EMPTY_GIT_STATUS: GitStatus = {
@@ -26,7 +30,24 @@ export const EMPTY_GIT_STATUS: GitStatus = {
   base: null,
   ahead: null,
   behind: null,
+  fetchedAt: null,
+  fetching: false,
 };
+
+/** Compact age for the tooltip: "just now", "4m ago", "2h ago". */
+export function formatFetchAge(
+  fetchedAt: number | null,
+  now: number = Date.now(),
+): string {
+  if (fetchedAt === null) return "never fetched";
+  const seconds = Math.max(0, Math.floor((now - fetchedAt) / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${Math.max(1, minutes)}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export interface GitStatusLabel {
   /** Branch name, or a short sha when HEAD is detached. */
@@ -67,8 +88,8 @@ export function describeGitStatus(
   const ahead = status.ahead ?? 0;
   const behind = status.behind ?? 0;
 
-  // "behind" is measured against the last fetch, not against the remote as it
-  // is right now — say so, rather than implying a freshness we do not have.
+  // Name when these refs were last true. The caveat used to be a vague "as of
+  // the last fetch"; now that Semla fetches, the honest thing is the actual age.
   const divergence =
     ahead === 0 && behind === 0
       ? `up to date with ${status.base}`
@@ -85,6 +106,9 @@ export function describeGitStatus(
     behind: behind > 0 ? behind : null,
     title:
       `${detached ? `Detached at ${status.head}` : `On ${ref}`}, ` +
-      `${divergence}. Counts reflect the last fetch.`,
+      `${divergence}. ` +
+      (status.fetching
+        ? "Fetching now…"
+        : `Fetched ${formatFetchAge(status.fetchedAt)}.`),
   };
 }

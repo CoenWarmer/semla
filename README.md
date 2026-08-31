@@ -80,6 +80,7 @@ PI_ALLOW_HOST_DEV=true
 | `PI_SESSION_DIR` | No | Where pi session transcripts are written. Defaults to `.semla-sessions/` inside the repo (gitignored) rather than a temp dir, so they survive a reboot. |
 | `SEMLA_BIND_HOST` | No | Address the server binds to, and with it the auth policy. Defaults to `127.0.0.1`: reachable only from this machine, so no sign-in is required. Set it to expose Semla (e.g. `0.0.0.0`) and Supabase authentication is required. |
 | `SEMLA_LOCAL_USER_ID` | No | User id sessions are attributed to in local mode. Inferred from existing session records when they agree on one owner. |
+| `SEMLA_GIT_FETCH_INTERVAL_MS` | No | How often Semla may `git fetch` a project to keep the prompt bar's ahead/behind counts honest. Defaults to `60000`. The fetch is throttled per repository, never blocks a request, and refuses every credential prompt so it cannot hang. Set to `0` to disable it and compare against whatever was last fetched by hand. |
 | `PI_CODING_AGENT_DIR` | No | Where pi keeps credentials and the model catalog. Defaults to `~/.semla/agent`, isolated from the `~/.pi/agent` the `pi` CLI uses. Seeded once from the host on first run so the model picker is not empty; after that the two are independent. |
 
 ### Run the development server

@@ -93,6 +93,19 @@ export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
  * single-machine tool, so containment beats a system temp dir. Gitignored —
  * they hold whatever was discussed.
  */
+/**
+ * How often Semla may `git fetch` a project to keep divergence counts honest.
+ *
+ * Reading refs alone reports where you stood at the last fetch, which drifts
+ * quietly: a branch showed "up to date" while 432 commits behind. Fetching is
+ * a network call with side effects, though, so it is throttled per repository
+ * and never blocks a request. Set to 0 to switch it off entirely — useful on a
+ * metered connection, or where a remote needs credentials this process lacks.
+ */
+export const GIT_FETCH_INTERVAL_MS = Number(
+  process.env.SEMLA_GIT_FETCH_INTERVAL_MS ?? 60_000,
+);
+
 export const PI_SESSION_DIR =
   process.env.PI_SESSION_DIR ?? join(process.cwd(), ".semla-sessions");
 

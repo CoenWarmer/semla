@@ -8,8 +8,14 @@ export type SessionGitStatus = GitStatus & { projectPath: string | null };
  * Branch and divergence for the session's project.
  *
  * Polled rather than pushed: the numbers move when the agent commits, when you
- * commit in a terminal, or when you fetch — none of which the app hears about.
- * Thirty seconds keeps it honest without spawning git subprocesses constantly.
+ * commit in a terminal, or when the remote moves — none of which the app hears
+ * about. Thirty seconds keeps it honest without spawning git subprocesses
+ * constantly.
+ *
+ * A read may start a background fetch, and the counts it returned came from
+ * the refs that fetch is replacing. While one is running the poll tightens to
+ * three seconds so the corrected numbers land promptly rather than up to half
+ * a minute later.
  */
 export function useGitStatus(sessionId: string | undefined) {
   return useQuery<SessionGitStatus>({
@@ -20,7 +26,7 @@ export function useGitStatus(sessionId: string | undefined) {
       if (!res.ok) throw new Error(`git status ${res.status}`);
       return res.json() as Promise<SessionGitStatus>;
     },
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    refetchInterval: (query) => (query.state.data?.fetching ? 3_000 : 30_000),
+    staleTime: 0,
   });
 }
