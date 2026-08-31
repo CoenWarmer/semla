@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
+import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session-file";
 
 type PiUsage = {
   cacheRead?: number;
@@ -178,7 +179,24 @@ const isDisplayMessage = (
 ): message is PiMessage & { role: "assistant" | "user" } =>
   message.role === "assistant" || message.role === "user";
 
+/**
+ * Load a session's transcript, from disk when there is one.
+ *
+ * Pi writes every entry to the session file as it happens, so it is complete
+ * and available without a database. Postgres is the mirror, read only for
+ * sessions recorded before the file became authoritative or whose file is gone.
+ */
 export const getTranscript = async (
+  supabase: SupabaseClient<Database>,
+  semlaSessionId: string
+): Promise<SessionTranscript> => {
+  const fromDisk = readSessionEntries(semlaSessionId);
+  if (fromDisk) return buildTranscript(fromDisk);
+
+  return getTranscriptFromDatabase(supabase, semlaSessionId);
+};
+
+const getTranscriptFromDatabase = async (
   supabase: SupabaseClient<Database>,
   semlaSessionId: string
 ): Promise<SessionTranscript> => {
@@ -206,6 +224,12 @@ export const getTranscript = async (
   if (entriesError) {
     throw new Error(`Unable to load Pi transcript: ${entriesError.message}`);
   }
+
+  return buildTranscript(entries as unknown as TranscriptRow[]);
+};
+
+/** The shared transform: both sources reduce to the same row shape. */
+export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => {
 
   // First pass: build a map of tool call ID → result info so tool calls can be
   // annotated with success/failure without a separate query.
