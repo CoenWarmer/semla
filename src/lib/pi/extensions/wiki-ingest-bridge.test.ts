@@ -28,6 +28,26 @@ function makeMockPi() {
   >[0];
 }
 
+/** A pi whose session_start handlers can be fired with a chosen session id. */
+function makeSessionPi(sessionId: string) {
+  const handlers: Array<(event: unknown, ctx: unknown) => void> = [];
+  const pi = {
+    registerTool: vi.fn(),
+    on: vi.fn((event: string, handler: (e: unknown, c: unknown) => void) => {
+      if (event === "session_start") handlers.push(handler);
+    }),
+  } as unknown as Parameters<typeof wikiIngestBridge>[0];
+
+  return {
+    pi,
+    start: () => {
+      for (const handler of handlers) {
+        handler(undefined, { sessionManager: { getSessionId: () => sessionId } });
+      }
+    },
+  };
+}
+
 function makeMockManager() {
   return { startInBackground: vi.fn().mockReturnValue({ runId: "wf_test" }) };
 }
@@ -307,5 +327,56 @@ describe("reindex dispatcher", () => {
     const key1 = (manager.startInBackground.mock.calls[0][2] as { toolset: string }).toolset;
     const key2 = (manager.startInBackground.mock.calls[1][2] as { toolset: string }).toolset;
     expect(key1).not.toBe(key2);
+  });
+});
+
+/**
+ * Three concurrent orients attributed all 168 of their pages to one repo,
+ * because the toolset map is process-wide and a fixed "wiki" key meant the last
+ * session to load overwrote every earlier one — every subagent then held the
+ * tools, and the repo, of whichever session happened to be last.
+ *
+ * Every check before this one ran a single session, which is exactly why the
+ * bug survived two rounds of fixes.
+ */
+describe("concurrent sessions", () => {
+  const toolsets = () =>
+    ((globalThis as G)[EXTRA_TOOLSETS_KEY] ?? {}) as Record<string, () => unknown[]>;
+
+  it("gives each session its own toolset entry", () => {
+    const first = makeSessionPi("session-a");
+    const second = makeSessionPi("session-b");
+
+    wikiIngestBridge(first.pi);
+    first.start();
+    wikiIngestBridge(second.pi);
+    second.start();
+
+    expect(Object.keys(toolsets()).sort()).toEqual(
+      expect.arrayContaining(["wiki", "wiki:session-a", "wiki:session-b"]),
+    );
+  });
+
+  it("does not let a later session replace an earlier one's entry", () => {
+    const first = makeSessionPi("session-a");
+    wikiIngestBridge(first.pi);
+    first.start();
+    const earlier = toolsets()["wiki:session-a"];
+
+    const second = makeSessionPi("session-b");
+    wikiIngestBridge(second.pi);
+    second.start();
+
+    expect(toolsets()["wiki:session-a"]).toBe(earlier);
+    expect(toolsets()["wiki:session-b"]).not.toBe(earlier);
+  });
+
+  // A run started before session_start, or a process running one session, still
+  // resolves the bare tag.
+  it("keeps the unsuffixed tag available", () => {
+    const only = makeSessionPi("session-a");
+    wikiIngestBridge(only.pi);
+
+    expect(typeof toolsets().wiki).toBe("function");
   });
 });

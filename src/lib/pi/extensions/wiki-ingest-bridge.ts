@@ -44,9 +44,10 @@ import {
 } from "../extension-contract.js";
 import {
   collectWikiSubagentTools,
-  WIKI_SUBAGENT_TOOLSET,
+  wikiToolsetKey,
 } from "./wiki-subagent-tools.js";
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.js";
+import { readRepoField } from "./wiki-frontmatter.js";
 import { withVaultLock } from "./wiki-vault-lock.js";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
@@ -272,6 +273,17 @@ Model: \${args.model}\`,
  *
  * Frontmatter only. Reconciling two definitions is the consolidate skill's job.
  */
+/** Repo recorded on a source page when it was captured. */
+function sourceRepo(paths: WikiVaultPaths, sourceId: string): string | null {
+  try {
+    return readRepoField(
+      readFileSync(join(paths.wiki, "sources", `${sourceId}.md`), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+}
+
 function mergeLinkedPages(
   paths: WikiVaultPaths,
   committed: { entitiesLinked: string[]; conceptsLinked: string[] },
@@ -336,7 +348,12 @@ function createBatchCommitSynthesisTool(
       const worker = (await import(INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
       const meta = (await import(METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
 
-      const repo = repoOf();
+      // Deliberately the *source's* repo, not the session's. pi-llm-wiki reads
+      // one literal symbol for the dispatcher and calls it with sources only,
+      // so the dispatcher that runs may belong to another concurrent session.
+      // The source page already records who captured it, and a batch belongs to
+      // the repos of the sources in it whoever dispatched it.
+      const repo = sourceRepo(paths, source_id) ?? repoOf();
       // Entities are artifacts of one repo, so they are qualified before the
       // package derives a slug from the title. Concepts are shared on purpose
       // and keep their plain names.
@@ -454,6 +471,7 @@ function nextRunKey(prefix: string): string {
 function registerSubagentWikiToolset(
   pi: ExtensionAPI,
   repoOf: () => string | null,
+  sessionIdOf: () => string | undefined,
 ): void {
   let wikiTools: Array<ReturnType<typeof defineTool>> = [];
 
@@ -476,10 +494,17 @@ function registerSubagentWikiToolset(
   // A named toolset replaces the default tool set rather than adding to it, so
   // the coding tools have to be repeated here — see the "web-research" entry in
   // workflow.ts, which does the same.
-  extraToolsets[WIKI_SUBAGENT_TOOLSET] = () => [
-    ...createCodingTools(process.cwd()),
-    ...wikiTools,
-  ];
+  const toolset = () => [...createCodingTools(process.cwd()), ...wikiTools];
+
+  // Registered under both the bare tag and this session's own, because the
+  // toolset map is shared by every session in the process and these tools close
+  // over one session's repo. The bare tag keeps a single-session process and
+  // any run started before session_start working.
+  extraToolsets[wikiToolsetKey()] = toolset;
+  pi.on("session_start", () => {
+    const id = sessionIdOf();
+    if (id) extraToolsets[wikiToolsetKey(id)] = toolset;
+  });
 }
 
 export default function wikiIngestBridge(pi: ExtensionAPI) {
@@ -504,7 +529,7 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
       ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
       : null) ?? null;
 
-  registerSubagentWikiToolset(pi, repoOf);
+  registerSubagentWikiToolset(pi, repoOf, () => sessionId);
 
   const dispatcher: WikiIngestDispatcher = (sources) => {
     const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);

@@ -184,6 +184,16 @@ export function extractSourceIds(markdown: string): string[] {
  * matter which session's turn happens to end first, or how many orients are
  * running at once.
  */
+/** The `repo:` a page declares, read from its frontmatter block only. */
+export function readRepoField(markdown: string): string | null {
+  const lines = markdown.split("\n");
+  if (!isFence(lines[0] ?? "")) return null;
+  const close = findFence(lines, 0);
+  if (close === -1) return null;
+  const declared = lines.slice(1, close).find((line) => repoKey.test(line));
+  return declared ? normalizeRepoValue(declared.replace(repoKey, "")) : null;
+}
+
 export function buildSourceRepoIndex(wikiDir: string): Map<string, string> {
   const index = new Map<string, string>();
   let entries: string[];

@@ -30,6 +30,21 @@ import { withVaultLock } from "./wiki-vault-lock.js";
 export const WIKI_SUBAGENT_TOOLSET = "wiki";
 
 /**
+ * Toolset tag for one session's copy of the wiki tools.
+ *
+ * The tag has to be per session because the toolset map is process-wide and the
+ * tools close over the repo of the session that built them. With a fixed "wiki"
+ * key, the last session to load simply overwrote every earlier one, and three
+ * concurrent orients attributed all 168 of their pages to a single repo.
+ *
+ * Falls back to the bare tag when no session id is available, which is what a
+ * single-session process gets anyway.
+ */
+export function wikiToolsetKey(sessionId?: string): string {
+  return sessionId ? `${WIKI_SUBAGENT_TOOLSET}:${sessionId}` : WIKI_SUBAGENT_TOOLSET;
+}
+
+/**
  * Wiki tools a subagent may hold, mapped to the package function that registers
  * each one. Read/append operations scoped to a single source or page: exactly
  * what a fan-out agent needs to do its share of the work.

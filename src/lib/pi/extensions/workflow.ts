@@ -38,7 +38,7 @@ import {
   WorkflowManager,
 } from "./dynamic-workflows/src/index";
 import type { WorkflowStorage } from "./dynamic-workflows/src/workflow-saved";
-import { WIKI_SUBAGENT_TOOLSET } from "./wiki-subagent-tools.js";
+import { wikiToolsetKey } from "./wiki-subagent-tools.js";
 import {
   ACTIVE_WORKFLOW_MANAGER,
   readSlot,
@@ -142,7 +142,7 @@ export function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
     // and one burned 3.19M tokens on the workaround. The toolset resolves
     // through the Proxy above, so it picks up the entry the wiki bridge
     // registers even though that extension loads after this one.
-    defaultToolset: WIKI_SUBAGENT_TOOLSET,
+    defaultToolset: wikiToolsetKey(),
     excludeSubagentTools: settings.excludeSubagentTools,
     defaultAgentTimeoutMs: settings.defaultAgentTimeoutMs ?? null,
     defaultTokenBudget: settings.defaultTokenBudget ?? null,
@@ -374,6 +374,12 @@ export default function extension(pi: ExtensionAPI) {
     }
     manager.setSessionId(sessionId);
     manager.adoptLiveRunsToSession(sessionId);
+    // Point subagents at *this* session's copy of the wiki tools. The toolset
+    // map is process-wide and each session's tools close over its own repo, so
+    // a shared tag hands concurrent orients each other's attribution.
+    if (sessionId) {
+      manager.reconfigureAfterReload({ defaultToolset: wikiToolsetKey(sessionId) });
+    }
     // Expose active manager for cross-extension access (e.g. wiki-ingest-bridge).
     writeSlot(ACTIVE_WORKFLOW_MANAGER, manager);
 
