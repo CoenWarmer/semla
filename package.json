@@ -76,6 +76,7 @@
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "typescript-language-server": "^6.0.0",
     "vitest": "^4.1.11"
   }
 }

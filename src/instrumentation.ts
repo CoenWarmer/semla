@@ -21,6 +21,17 @@ export async function register() {
     );
   }
 
+  // Code intelligence resolves language servers by name on PATH, and degrades
+  // quietly to structural evidence when one is missing. Do it before any session
+  // starts, and say what it found, so a thin code answer is traceable to here.
+  const { describeLanguageServers, ensureLanguageServersOnPath } = await import(
+    "@/lib/pi/language-servers"
+  );
+  const languageServers = ensureLanguageServersOnPath();
+  const languageServerLine = describeLanguageServers(languageServers);
+  if (languageServers.missing.length > 0) console.warn(languageServerLine);
+  else console.log(languageServerLine);
+
   // A vault inside the workspace outranks WIKI_HOME, so orient would quietly
   // write somewhere else. Reported at boot rather than discovered later from
   // pages that went missing.
