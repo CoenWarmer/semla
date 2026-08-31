@@ -1,10 +1,10 @@
 "use client";
 
-import { startTransition, useEffect, useOptimistic, useState } from "react";
+import { startTransition, useOptimistic } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/session-item";
-import { createClient } from "@/lib/supabase/client";
 
 export type SessionRow = {
   id: string;
@@ -12,6 +12,14 @@ export type SessionRow = {
   isRunning: boolean;
   title: string | null;
   usage?: { tokens: number; cost: number };
+};
+
+type SessionStatus = { id: string; isRunning: boolean; hasRun: boolean };
+
+const fetchStatus = async (): Promise<SessionStatus[]> => {
+  const response = await fetch("/api/sessions/status");
+  if (!response.ok) throw new Error("Unable to load session status.");
+  return ((await response.json()) as { sessions: SessionStatus[] }).sessions;
 };
 
 export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
@@ -23,29 +31,19 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
     (current, deletedId: string) => current.filter((s) => s.id !== deletedId),
   );
 
-  // Realtime overrides keyed by session id — updated when Supabase pushes an UPDATE.
-  const [runningMap, setRunningMap] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(sessions.map((s) => [s.id, s.isRunning])),
-  );
+  // Polled from disk rather than pushed over Realtime: is_running lives in the
+  // session record now, so the sidebar follows it without a database.
+  const { data: status } = useQuery({
+    queryKey: ["session-status"],
+    queryFn: fetchStatus,
+    // Quick while something is running, because that is when it changes;
+    // otherwise slow enough to be free. Paused automatically in a background
+    // tab, where nobody is watching a spinner.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((s) => s.isRunning) ? 2_000 : 15_000,
+  });
 
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel("sessions-running")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "sessions" },
-        (payload) => {
-          const updated = payload.new as { id: string; is_running: boolean };
-          setRunningMap((prev) => ({ ...prev, [updated.id]: updated.is_running }));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, []);
+  const statusById = new Map((status ?? []).map((s) => [s.id, s]));
 
   const handleDelete = (id: string) => {
     startTransition(async () => {
@@ -64,7 +62,8 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
         <SessionItem
           key={s.id}
           {...s}
-          isRunning={runningMap[s.id] ?? s.isRunning}
+          hasRun={statusById.get(s.id)?.hasRun ?? false}
+          isRunning={statusById.get(s.id)?.isRunning ?? s.isRunning}
           onDelete={handleDelete}
         />
       ))}

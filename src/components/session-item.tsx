@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { CircleCheckIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
@@ -18,13 +18,15 @@ import {
 interface SessionItemProps {
   id: string;
   date: string;
+  /** The session has produced a transcript, so it has actually run. */
+  hasRun?: boolean;
   isRunning?: boolean;
   title: string | null;
   usage?: { tokens: number; cost: number };
   onDelete: (id: string) => void;
 }
 
-export function SessionItem({ id, date, isRunning, title, usage, onDelete }: SessionItemProps) {
+export function SessionItem({ id, date, hasRun, isRunning, title, usage, onDelete }: SessionItemProps) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(title ?? "");
@@ -92,12 +94,25 @@ export function SessionItem({ id, date, isRunning, title, usage, onDelete }: Ses
         </ItemDescription>
       </ItemContent>
 
-      {/* Running spinner sits above the stretched link and replaces the action menu */}
+      {/* Status sits above the stretched link and replaces the action menu.
+          A finished session yields to the menu on hover, since its icon is a
+          note about the past rather than something to wait on; a running one
+          does not, because that is the thing being watched. */}
       {isRunning ? (
         <div className="relative z-10 ml-auto shrink-0">
           <Spinner className="size-4 text-muted-foreground" />
         </div>
       ) : (
+      <>
+        {hasRun && (
+          <div
+            aria-label="Completed"
+            className="pointer-events-none absolute right-3 z-10 shrink-0 opacity-100 transition-opacity group-hover:opacity-0"
+            title="Completed"
+          >
+            <CircleCheckIcon className="size-4 text-muted-foreground/70" />
+          </div>
+        )}
       <div className="relative z-10 ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -119,6 +134,7 @@ export function SessionItem({ id, date, isRunning, title, usage, onDelete }: Ses
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      </>
       )}
     </Item>
   );
