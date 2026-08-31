@@ -20,7 +20,7 @@
  *    lookup time so late-registered toolsets are visible without a rebuild.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createCodingTools,
@@ -514,6 +514,53 @@ function nextRunKey(prefix: string): string {
   return `${prefix}:${++runCounter}`;
 }
 
+/**
+ * Make sure the Semla vault exists before any wiki tool can decide where one
+ * should go.
+ *
+ * `wiki_bootstrap` takes `params.root ?? ctx.cwd ?? process.cwd()` and never
+ * consults WIKI_HOME. A subagent's cwd is the workspace root — the directory
+ * that *contains* the repos — so bootstrapping an empty wiki built a vault at
+ * `/Users/coen/Dev/.llm-wiki`, and `resolveProjectVaultRoot` returns a vault
+ * found at cwd before it looks at WIKI_HOME. Every capture then went there
+ * while synthesis kept writing to WIKI_HOME: one run split across two vaults,
+ * fourteen packets in the one nobody was reading.
+ *
+ * Clearing the wiki is what triggers it, because an empty WIKI_HOME is what
+ * makes an agent reach for bootstrap in the first place. So the vault is
+ * created here at load, and there is nothing to bootstrap.
+ *
+ * The directory list mirrors `ensureVaultStructure` in the package's utils.
+ * Copied rather than imported: every deep import into this package is pinned
+ * by a contract test, and `mkdir -p` of a fixed list cannot drift in a way
+ * that matters — the package's own writers all create their directories
+ * recursively before writing.
+ */
+function ensureSemlaVaultExists(): void {
+  const paths = buildVaultPaths();
+  const dirs = [
+    paths.dotWiki,
+    paths.meta,
+    paths.outputs,
+    paths.discoveries,
+    paths.rawSources,
+    join(paths.raw, "assets"),
+    join(paths.wiki, "sources"),
+    join(paths.wiki, "entities"),
+    join(paths.wiki, "concepts"),
+    join(paths.wiki, "syntheses"),
+    join(paths.wiki, "analyses"),
+    join(paths.wiki, "requirements"),
+    join(paths.dotWiki, "templates", "pages"),
+  ];
+  try {
+    for (const dir of dirs) mkdirSync(dir, { recursive: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[wiki-bridge] could not create the vault at ${WIKI_HOME}: ${message}`);
+  }
+}
+
 // ── Extension entry point ──────────────────────────────────────────────────────
 
 /**
@@ -574,6 +621,9 @@ function registerSubagentWikiToolset(
 }
 
 export default function wikiIngestBridge(pi: ExtensionAPI) {
+  // Before anything can ask where the vault should be.
+  ensureSemlaVaultExists();
+
   // Captured at session_start and closed over, rather than read from a shared
   // slot at call time: a tool's execute context carries only `cwd`, which every
   // concurrent session shares, so a global "current session" would resolve to
