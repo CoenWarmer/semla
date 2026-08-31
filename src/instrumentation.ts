@@ -21,6 +21,18 @@ export async function register() {
     );
   }
 
+  // A vault inside the workspace outranks WIKI_HOME, so orient would quietly
+  // write somewhere else. Reported at boot rather than discovered later from
+  // pages that went missing.
+  const { PI_WORKSPACE_ROOT, WIKI_HOME } = await import("@/lib/pi/runtime-config");
+  const { describeShadowingVaults, findShadowingVaults } = await import(
+    "@/lib/pi/wiki-vault-location"
+  );
+  const shadowing = findShadowingVaults(PI_WORKSPACE_ROOT, WIKI_HOME);
+  if (shadowing.length > 0) {
+    console.warn(describeShadowingVaults(shadowing, WIKI_HOME));
+  }
+
   // The seeded catalog is a snapshot; refresh it once now so new provider
   // models show up, rather than on every ModelRuntime.create.
   const { refreshModelCatalog } = await import("@/lib/pi/model-catalog");
