@@ -53,9 +53,7 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
       });
       const body = await res.json().catch(() => null);
       if (res.ok && body?.id) {
-        router.push(
-          `/sessions/${body.id}?project=${encodeURIComponent(project.name)}`,
-        );
+        router.push(`/sessions/${body.id}`);
       }
     } finally {
       setNavigating(null);
