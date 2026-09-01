@@ -59,9 +59,15 @@ export function HeaderActions() {
 
       {sessionId && (
         <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
+          {/*
+            Left, alongside the sidebar: files are navigation, and the same
+            side as every other way of getting somewhere in the app. Opening
+            over the conversation on the right also covered the thing you were
+            reading the file in aid of.
+          */}
           <SheetContent
             className="flex flex-col gap-0 p-0 sm:max-w-2xl"
-            side="right"
+            side="left"
           >
             <SheetHeader className="shrink-0 border-b px-6 py-4">
               <SheetTitle>Files</SheetTitle>
