@@ -101,46 +101,36 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
 
   return (
     <>
-      <div className="flex items-center gap-1.5 py-1">
-        <div className="flex items-center gap-1">
-          {items.map((item) => {
-            const failed = item.kind === "tool" && item.call.isError;
-            const label =
-              item.kind === "thinking"
-                ? "Thinking"
-                : `${item.call.name}${item.call.summary ? ` — ${item.call.summary}` : ""}`;
+      <div className="flex items-center gap-1 py-1">
+        {items.map((item) => {
+          const failed = item.kind === "tool" && item.call.isError;
+          const label =
+            item.kind === "thinking"
+              ? "Thinking"
+              : `${item.call.name}${item.call.summary ? ` — ${item.call.summary}` : ""}`;
 
-            return (
-              <button
-                aria-label={label}
-                className={cn(
-                  "flex size-5 items-center justify-center rounded-full border transition-colors",
-                  failed
-                    ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                    : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-                key={item.id}
-                onClick={() => setOpenAt(item.id)}
-                title={label}
-                type="button"
-              >
-                {item.kind === "thinking" ? (
-                  <BrainIcon className="size-3" />
-                ) : (
-                  <WrenchIcon className="size-3" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          className="text-muted-foreground text-xs hover:text-foreground transition-colors"
-          onClick={() => setOpenAt(items[0].id)}
-          type="button"
-        >
-          {summariseSteps(items)}
-        </button>
+          return (
+            <button
+              aria-label={label}
+              className={cn(
+                "flex size-5 items-center justify-center rounded-full border transition-colors",
+                failed
+                  ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+              key={item.id}
+              onClick={() => setOpenAt(item.id)}
+              title={label}
+              type="button"
+            >
+              {item.kind === "thinking" ? (
+                <BrainIcon className="size-3" />
+              ) : (
+                <WrenchIcon className="size-3" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <Drawer
