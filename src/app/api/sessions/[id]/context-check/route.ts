@@ -4,7 +4,7 @@ import {
   computeComposition,
   contextWindowUsage,
   latestInputTokens,
-} from "@/lib/pi/context-composition";
+} from "@/lib/context-composition";
 import { getTranscript } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase/server";

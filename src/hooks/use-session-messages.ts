@@ -33,6 +33,12 @@ export type SessionToolCall = {
 export type SessionMessagesResult = {
   contextWindow: number | null;
   messages: SessionMessage[];
+  /**
+   * Size of the system prompt this session's turns are sent with. Travels with
+   * the transcript so the context-window bar can be computed here rather than
+   * asking a second route to re-read the same transcript.
+   */
+  systemPromptChars?: number;
   toolCalls: SessionToolCall[];
 };
 

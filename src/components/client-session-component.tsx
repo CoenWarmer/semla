@@ -336,6 +336,8 @@ export function ClientSessionComponent({
       <SessionTopbar
         title={title}
         codeMap={codeMap}
+        contextWindow={messagesQuery.data?.contextWindow ?? null}
+        systemPromptChars={messagesQuery.data?.systemPromptChars}
         sessionId={sessionId}
         goal={goal}
         onGoalSave={handleGoalSave}

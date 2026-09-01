@@ -3,16 +3,16 @@
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextInspections } from "@/hooks/use-context-check";
-import { useSessionComposition } from "@/hooks/use-session-composition";
 import type {
   SessionMessage,
   SessionToolCall,
 } from "@/hooks/use-session-messages";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
+import { sessionComposition } from "@/lib/context-composition";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { BotIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
@@ -28,6 +28,10 @@ interface SessionTopbarProps {
   goal?: string | null;
   onGoalSave?: (goal: string | null) => Promise<void>;
   messages: SessionMessage[];
+  /** Model context window, from the transcript response. */
+  contextWindow: number | null;
+  /** Size of this session's system prompt, from the transcript response. */
+  systemPromptChars?: number;
   onAgentClick: (agentId: number, runId: string) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
@@ -59,6 +63,8 @@ function ContextQualityDot({ sessionId }: { sessionId: string }) {
 export function SessionTopbar({
   title,
   codeMap,
+  contextWindow,
+  systemPromptChars,
   sessionId,
   goal,
   onGoalSave,
@@ -71,9 +77,20 @@ export function SessionTopbar({
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
-  // Re-read when a turn lands, via invalidation from the prompt mutation —
-  // not on every render that changes a message or tool-call count.
-  const { data: composition } = useSessionComposition(sessionId);
+  // Computed here rather than fetched. It is arithmetic over the transcript
+  // this component already has; asking a route for it meant the server
+  // re-reading and re-parsing the whole session to return numbers the browser
+  // was holding all along.
+  const composition = useMemo(
+    () =>
+      sessionComposition({
+        contextWindow,
+        messages,
+        systemPromptChars: systemPromptChars ?? 0,
+        toolCalls: toolCalls ?? [],
+      }),
+    [contextWindow, messages, systemPromptChars, toolCalls],
+  );
 
   const agentCount = snapshot?.agentCount ?? 0;
   const runningCount = snapshot?.runningCount ?? 0;

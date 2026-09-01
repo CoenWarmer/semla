@@ -1,5 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
+import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
 import { getTranscript } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase/server";
@@ -14,9 +15,17 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await requireSessionOwner(id);
+    const { user } = await requireSessionOwner(id);
     const supabase = await createClient();
-    const { messages, toolCalls } = await getTranscript(supabase, id);
+
+    // The system prompt's size travels with the transcript because the two are
+    // always wanted together: the context-window bar is arithmetic over both,
+    // and fetching them separately meant a second route re-reading this same
+    // transcript to answer a question the browser could already answer.
+    const [{ messages, toolCalls }, { systemPrompt }] = await Promise.all([
+      getTranscript(supabase, id),
+      resolveSessionPromptContext(supabase, id, user.id),
+    ]);
 
     // Look up the model context window for the most recent pi session
     let contextWindow: number | null = null;
@@ -39,7 +48,12 @@ export async function GET(
       // Non-fatal — contextWindow stays null
     }
 
-    return Response.json({ contextWindow, messages, toolCalls });
+    return Response.json({
+      contextWindow,
+      messages,
+      systemPromptChars: systemPrompt.length,
+      toolCalls,
+    });
   } catch (error) {
     return handleRouteError(error, "Unable to load session.");
   }

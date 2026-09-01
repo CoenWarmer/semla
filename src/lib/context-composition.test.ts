@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   computeComposition,
   contextWindowUsage,
+  EMPTY_COMPOSITION,
   latestInputTokens,
+  sessionComposition,
 } from "./context-composition";
-import type { SessionToolCall, SessionTranscriptEntry } from "./transcript";
+import type {
+  SessionToolCall,
+  SessionTranscriptEntry,
+} from "@/lib/pi/transcript";
 
 const message = (
   role: "user" | "assistant",
@@ -97,5 +102,74 @@ describe("latestInputTokens", () => {
   it("returns null before the first reply", () => {
     expect(latestInputTokens([message("user", "hello")])).toBeNull();
     expect(latestInputTokens([])).toBeNull();
+  });
+});
+
+/**
+ * The branch the composition route used to own. It moved to the client along
+ * with the arithmetic, so it needs covering here rather than by a request.
+ */
+describe("sessionComposition", () => {
+  it("reports nothing for a session with no messages and no system prompt", () => {
+    expect(
+      sessionComposition({
+        contextWindow: null,
+        messages: [],
+        systemPromptChars: 0,
+        toolCalls: [],
+      }),
+    ).toEqual(EMPTY_COMPOSITION);
+  });
+
+  it("still draws a brand-new session that has only a system prompt", () => {
+    // The floor every conversation starts from — the reason the bar can render
+    // before anybody has said anything.
+    const result = sessionComposition({
+      contextWindow: null,
+      messages: [],
+      systemPromptChars: 400,
+      toolCalls: [],
+    });
+
+    expect(result).not.toEqual(EMPTY_COMPOSITION);
+    expect(result.systemPromptFraction).toBe(1);
+  });
+
+  it("splits a conversation across its parts", () => {
+    const result = sessionComposition({
+      contextWindow: null,
+      messages: [message("user", "a".repeat(25)), message("assistant", "b".repeat(25))],
+      systemPromptChars: 25,
+      toolCalls: [tool("c".repeat(25))],
+    });
+
+    expect(result.systemPromptFraction).toBeCloseTo(0.25);
+    expect(result.userFraction).toBeCloseTo(0.25);
+    expect(result.assistantFraction).toBeCloseTo(0.25);
+    expect(result.toolResultFraction).toBeCloseTo(0.25);
+  });
+
+  it("prefers a reported token count over estimating from characters", () => {
+    const result = sessionComposition({
+      contextWindow: 1_000,
+      messages: [message("assistant", "x".repeat(4_000), 250)],
+      systemPromptChars: 0,
+      toolCalls: [],
+    });
+
+    expect(result.contextWindowFraction).toBeCloseTo(0.25);
+    expect(result.contextWindowEstimated).toBe(false);
+  });
+
+  it("estimates, and says so, before the first reported count", () => {
+    const result = sessionComposition({
+      contextWindow: 1_000,
+      messages: [message("user", "x".repeat(2_000))],
+      systemPromptChars: 0,
+      toolCalls: [],
+    });
+
+    expect(result.contextWindowEstimated).toBe(true);
+    expect(result.contextWindowFraction).toBeCloseTo(0.5);
   });
 });

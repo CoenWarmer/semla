@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CompositionBreakdown } from "@/lib/pi/context-composition";
+import type { CompositionBreakdown } from "@/lib/context-composition";
 
 type CompositionMode = "absolute" | "relative";
 
