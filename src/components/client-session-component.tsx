@@ -25,7 +25,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { AskUserDialog } from "./ask-user-dialog";
 import { EditableUserMessage } from "./message-edit";
+import { SessionStepsStrip } from "./session-steps-strip";
 import { GoalEditor } from "./goal-editor";
+import { groupConversation } from "@/lib/session-steps";
 import dynamic from "next/dynamic";
 
 const WikiMiniGraph = dynamic(
@@ -107,7 +109,13 @@ export function ClientSessionComponent({
     isActive,
   );
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
-  const messages = messagesQuery.data?.messages ?? [];
+  // Memoised, not just defaulted: `?? []` hands out a fresh array on every
+  // render while the query is empty, which defeats every memo and effect
+  // downstream that depends on it.
+  const messages = useMemo(
+    () => messagesQuery.data?.messages ?? [],
+    [messagesQuery.data?.messages],
+  );
   // Persisted rows arrive only when the turn's entries are written, so fold in
   // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
   // row becomes the persisted row rather than a second marker.
@@ -116,6 +124,13 @@ export function ClientSessionComponent({
     () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
     [persistedToolCalls, liveToolCalls],
   );
+  // Turns that only called tools carry no text and used to render as empty
+  // bubbles. Folded into strips of steps instead — see session-steps.ts.
+  const conversation = useMemo(
+    () => groupConversation(messages, toolCalls),
+    [messages, toolCalls],
+  );
+
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
 
   // Trigger an immediate re-fetch of workflow runs when a background workflow
@@ -365,21 +380,29 @@ export function ClientSessionComponent({
                 title="Start a conversation"
               />
             ) : (
-              messages.map((message) => (
-                <Message from={message.role} id={message.id} key={message.id}>
-                  <MessageContent>
-                    {message.role === "user" ? (
-                      <EditableUserMessage
-                        disabled={isActive}
-                        message={message}
-                        onSubmit={handleEditPrompt}
-                      />
-                    ) : (
-                      <MessageResponse>{message.text}</MessageResponse>
-                    )}
-                  </MessageContent>
-                </Message>
-              ))
+              conversation.map((item) =>
+                item.kind === "steps" ? (
+                  <SessionStepsStrip items={item.items} key={item.id} />
+                ) : (
+                  <Message
+                    from={item.message.role}
+                    id={item.message.id}
+                    key={item.message.id}
+                  >
+                    <MessageContent>
+                      {item.message.role === "user" ? (
+                        <EditableUserMessage
+                          disabled={isActive}
+                          message={item.message}
+                          onSubmit={handleEditPrompt}
+                        />
+                      ) : (
+                        <MessageResponse>{item.message.text}</MessageResponse>
+                      )}
+                    </MessageContent>
+                  </Message>
+                ),
+              )
             )}
             {streamingText && (
               <Message from="assistant">
