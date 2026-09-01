@@ -70,10 +70,12 @@ export function GitStatusBadge({
   const label = describeGitStatus(data);
 
   const post = async (action: GitAction | "refresh") => {
+    // Both routes take the project to act on; they differ only in how they
+    // validate it — the workspace listing, or this session's own links.
     const [url, payload] =
       target?.kind === "project"
         ? [`/api/projects/git`, { action, path: target.path }]
-        : [`/api/sessions/${target?.sessionId}/git`, { action }];
+        : [`/api/sessions/${target?.sessionId}/git`, { action, path: target?.path }];
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

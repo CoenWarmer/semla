@@ -1,5 +1,7 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -8,12 +10,48 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useGlobalCost } from "@/hooks/use-global-cost";
+import { fetchSessionStatus, SESSION_STATUS_KEY } from "@/lib/session-status";
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { GitStatusBadge } from "./git-status-badge";
 import { SessionFilesPanel } from "./session-files-panel";
 import { TokenUsage } from "./token-usage";
+
+/**
+ * One badge per project the session relates to, each named and showing what its
+ * branch is doing.
+ *
+ * The links come from the session-status poll the sidebar already runs, so this
+ * costs no request of its own — and the badges themselves share a single query
+ * keyed on the session, so a session in four repositories still makes one call.
+ *
+ * Every project is shown, with no cap. A session gains projects one write at a
+ * time and in practice holds a handful; hiding one behind a "+N" would defeat
+ * the point of showing them at all.
+ */
+function SessionProjectBadges({ sessionId }: { sessionId: string }) {
+  const { data } = useQuery({
+    queryKey: SESSION_STATUS_KEY,
+    queryFn: fetchSessionStatus,
+  });
+
+  const projects = data?.find((s) => s.id === sessionId)?.projects ?? [];
+
+  return (
+    <>
+      {projects.map((project) => (
+        <GitStatusBadge
+          key={project.path}
+          showProjectName
+          // The session variant, not the workspace one: this is the indicator
+          // being looked at, and it is where a stale ref actually misleads.
+          target={{ kind: "session", path: project.path, sessionId }}
+        />
+      ))}
+    </>
+  );
+}
 
 function GlobalCostBadge() {
   const { data } = useGlobalCost();
@@ -51,9 +89,7 @@ export function HeaderActions() {
         page, so the group collapses to the cost on its own.
       */}
       <div className="ml-auto flex items-center gap-3 px-4">
-        {sessionId && (
-          <GitStatusBadge target={{ kind: "session", sessionId }} />
-        )}
+        {sessionId && <SessionProjectBadges sessionId={sessionId} />}
         <GlobalCostBadge />
       </div>
 

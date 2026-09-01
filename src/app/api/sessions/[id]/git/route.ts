@@ -4,11 +4,7 @@ import { branchNameFromBase } from "@/lib/git-status-display";
 import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git-actions";
 import type { GitStatus } from "@/lib/git-status-display";
 import { fetchCanonical, readGitStatus } from "@/lib/pi/git-status";
-import {
-  projectAbsolutePath,
-  sessionProjectPath,
-  sessionProjects,
-} from "@/lib/pi/session-project";
+import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session-project";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,12 +50,23 @@ export async function GET(
 }
 
 /**
- * Act on the session's working copy: merge the canonical base in, or switch to
- * its branch.
+ * Act on one of the session's working copies: merge the canonical base in, or
+ * switch to its branch.
  *
- * The request names an action and nothing else. Refs are re-resolved here from
- * the same read the badge renders, so a caller cannot aim either operation at
- * a repository or a ref of its choosing.
+ * The request names an action and, now that a session can have several
+ * projects, which of them to act on. That second part removed the property this
+ * route used to hold for free — it took no path at all, so a caller could not
+ * aim either operation at a repository of its choosing.
+ *
+ * It is restored the way `/api/projects/git` already restores it: the supplied
+ * path is checked against an allowlist before anything runs. There the
+ * allowlist is the workspace listing; here it is the projects *this* session is
+ * linked to. The absolute path is then derived from the matched link rather
+ * than taken from the request, and refs are still re-resolved here, so neither
+ * the repository nor the ref is ever the caller's to choose.
+ *
+ * Omitting `path` acts on the anchor, which is what a single-project session
+ * means by "its" working copy.
  */
 export async function POST(
   request: Request,
@@ -73,13 +80,24 @@ export async function POST(
     return NextResponse.json({ ok: false, message: "Unknown action." }, { status: 400 });
   }
 
-  const projectPath = await sessionProjectPath(id);
-  if (!projectPath) {
+  const links = await sessionProjects(id);
+  if (links.length === 0) {
     return NextResponse.json(
       { ok: false, message: "This session has no project." },
       { status: 400 },
     );
   }
+
+  const requested = typeof body?.path === "string" ? body.path : null;
+  const link = requested ? links.find((l) => l.path === requested) : links[0];
+  if (!link) {
+    return NextResponse.json(
+      { ok: false, message: "Not a project this session is linked to." },
+      { status: 400 },
+    );
+  }
+
+  const projectPath = projectAbsolutePath(link);
 
   if (action === "refresh") {
     await fetchCanonical(projectPath);
