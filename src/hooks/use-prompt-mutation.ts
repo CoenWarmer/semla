@@ -21,6 +21,12 @@ export type PromptModel = {
 };
 
 type PromptInput = {
+  /**
+   * Set when this prompt replaces an earlier one. The server moves the session
+   * leaf to that entry's parent, so this turn supersedes it rather than being
+   * appended after the answer it corrects.
+   */
+  editEntryId?: string;
   model: PromptModel;
   text: string;
   tools: string[];
@@ -321,11 +327,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     PromptInput,
     { previousMessages: SessionMessage[] }
   >({
-    mutationFn: async ({ model, text, tools }) => {
+    mutationFn: async ({ editEntryId, model, text, tools }) => {
       const id = ++traceSeq;
       trace("mutationFn:start", { id, textLength: text.length });
       const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
-        body: JSON.stringify({ model, text, tools }),
+        body: JSON.stringify({ editEntryId, model, text, tools }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });

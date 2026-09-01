@@ -23,11 +23,18 @@ export async function POST(
     console.error("[api:sessions/prompt] Invalid JSON body:", error);
     return null;
   })) as {
+    editEntryId?: unknown;
     model?: { modelId?: unknown; provider?: unknown };
     text?: unknown;
     tools?: unknown;
   } | null;
   const text = typeof body?.text === "string" ? body.text.trim() : "";
+  // Present when this prompt replaces an earlier one. runPiPrompt moves the
+  // session leaf to that entry's parent so this turn supersedes it.
+  const editEntryId =
+    typeof body?.editEntryId === "string" && body.editEntryId.trim()
+      ? body.editEntryId.trim()
+      : null;
   const modelId =
     typeof body?.model?.modelId === "string" ? body.model.modelId : "";
   const provider =
@@ -113,6 +120,7 @@ export async function POST(
       }, 30 * 60 * 1000);
 
       void runPiPrompt({
+        editEntryId,
         model: { modelId, provider },
         onEvent: send,
         projectPath,

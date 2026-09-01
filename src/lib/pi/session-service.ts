@@ -12,6 +12,10 @@ import {
 } from "@/lib/pi/background-sessions";
 import { registerNotifier, type AskUserPayload } from "@/lib/pi/ask-user-bridge";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
+import {
+  applyBranchTarget,
+  resolveBranchTarget,
+} from "@/lib/pi/session-branch";
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
 import type { CodeMap } from "@/lib/code-map/types";
 import {
@@ -379,6 +383,7 @@ export const stopPiSession = async (semlaSessionId: string): Promise<boolean> =>
 };
 
 export const runPiPrompt = async ({
+  editEntryId = null,
   model,
   onEvent,
   projectPath = null,
@@ -387,6 +392,13 @@ export const runPiPrompt = async ({
   text,
   tools,
 }: {
+  /**
+   * Replace this entry instead of continuing from the end of the conversation.
+   * The leaf moves to its parent, so this turn becomes a sibling of it and the
+   * original — with everything said in reply to it — is left on a path nothing
+   * points at. Nothing is deleted; see session-branch.ts.
+   */
+  editEntryId?: string | null;
   model: { modelId: string; provider: string };
   onEvent: (event: PiSessionEvent) => void;
   /** Repo this session is working in; the source of each wiki page's repo tag. */
@@ -448,6 +460,16 @@ export const runPiPrompt = async ({
   // piSession.id, which is a Supabase pi_sessions row id. Keying it on the row
   // id made every lookup miss, so entity namespacing and capture-time
   // attribution silently did nothing while the turn-end sweep covered for them.
+  // Before anything is appended: move the leaf so this turn lands where the
+  // edited prompt was, rather than after the answer it is replacing.
+  if (editEntryId) {
+    applyBranchTarget(
+      sessionManager,
+      resolveBranchTarget(sessionManager.getEntries(), editEntryId),
+    );
+    log(semlaSessionId, "editing entry", { entry: editEntryId });
+  }
+
   const piRuntimeSessionId = sessionManager.getSessionId();
   setSessionRepo(piRuntimeSessionId, repoSlugFromProjectPath(projectPath));
   await mkdir(PI_AGENT_DIR, { recursive: true });
