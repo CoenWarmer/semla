@@ -10,7 +10,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useGlobalCost } from "@/hooks/use-global-cost";
-import { fetchSessionStatus, SESSION_STATUS_KEY } from "@/lib/session-status";
+import {
+  fetchSingleSessionStatus,
+  sessionStatusKey,
+} from "@/lib/session-status";
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -24,9 +27,10 @@ import { TokenUsage } from "./token-usage";
  * One badge per project the session relates to, each named and showing what its
  * branch is doing.
  *
- * The links come from the session-status poll the sidebar already runs, so this
- * costs no request of its own — and the badges themselves share a single query
- * keyed on the session, so a session in four repositories still makes one call.
+ * The links come from this session's own status query, which the session page
+ * also reads — so a session in four repositories still makes one call. It used
+ * to pick its row out of the sidebar's whole-list poll, which meant loading
+ * every session on the machine to find the one already named in the URL.
  *
  * Every project is shown, with no cap. A session gains projects one write at a
  * time and in practice holds a handful; hiding one behind a "+N" would defeat
@@ -34,11 +38,11 @@ import { TokenUsage } from "./token-usage";
  */
 function SessionProjectBadges({ sessionId }: { sessionId: string }) {
   const { data } = useQuery({
-    queryKey: SESSION_STATUS_KEY,
-    queryFn: fetchSessionStatus,
+    queryKey: sessionStatusKey(sessionId),
+    queryFn: () => fetchSingleSessionStatus(sessionId),
   });
 
-  const projects = data?.find((s) => s.id === sessionId)?.projects ?? [];
+  const projects = data?.projects ?? [];
 
   return (
     <>

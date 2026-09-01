@@ -1,10 +1,6 @@
-import { join } from "node:path";
-
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { hasTranscript, listSessionMeta } from "@/lib/pi/session-meta";
-import { orderLinks } from "@/lib/pi/session-project-links";
-import { isSessionActive } from "@/lib/pi/session-service";
+import { listSessionMeta } from "@/lib/pi/session-meta";
+import { toSessionStatus } from "@/lib/pi/session-status-view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +22,10 @@ export const dynamic = "force-dynamic";
  * Polled rather than pushed. Realtime is the better mechanism for a shared
  * database, but the state it was carrying is a boolean per session written by
  * this same machine, and a poll of a directory has no connection to lose.
+ *
+ * The whole list, for the one consumer that needs the whole list. Anything
+ * asking about a single session goes to /api/sessions/[id]/status instead,
+ * which reads one record rather than sweeping the directory.
  */
 export async function GET() {
   try {
@@ -33,25 +33,7 @@ export async function GET() {
 
     const sessions = listSessionMeta()
       .filter((meta) => meta.userId === null || meta.userId === user.id)
-      .map((meta) => ({
-        id: meta.id,
-        title: meta.title,
-        createdAt: meta.createdAt,
-        // A record can claim to be running after the process that was running
-        // it has gone: the turn clears the flag in a `finally`, which a killed
-        // server never reaches, leaving a spinner with nothing behind it.
-        // The loop only ever existed in memory, so this process not working on
-        // the session settles it.
-        isRunning: meta.isRunning && isSessionActive(meta.id),
-        // "Ran and finished" rather than "exists": a session that was created
-        // and never used has nothing to report as complete.
-        hasRun: hasTranscript(meta.id),
-        projects: orderLinks(meta.projects).map((link) => ({
-          absolutePath: join(PI_WORKSPACE_ROOT, link.path),
-          isPrimary: link.isPrimary,
-          path: link.path,
-        })),
-      }));
+      .map(toSessionStatus);
 
     return Response.json({ sessions });
   } catch (error) {

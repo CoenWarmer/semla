@@ -15,9 +15,11 @@ import {
   shouldReconnect,
 } from "@/lib/session-reconnect";
 import {
-  fetchSessionStatus,
+  fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
+  sessionStatusKey,
   type SessionStatus,
+  type SingleSessionStatus,
 } from "@/lib/session-status";
 import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
@@ -278,6 +280,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           // Correct the cached reading too, so the rest of the UI stops showing
           // a turn that has demonstrably ended rather than waiting for the next
           // poll. The route clears the stored flag; this is the local view of it.
+          queryClient.setQueryData<SingleSessionStatus>(
+            sessionStatusKey(sessionId),
+            (prev) => (prev ? { ...prev, isRunning: false } : prev),
+          );
+          // The sidebar reads the list, and its spinner should stop too rather
+          // than waiting out its own poll.
           queryClient.setQueryData<SessionStatus[]>(SESSION_STATUS_KEY, (prev) =>
             prev?.map((session) =>
               session.id === sessionId ? { ...session, isRunning: false } : session,
@@ -352,14 +360,13 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
    * running flag from disk and is reconciled against the process actually
    * working on the session, so it does not report a turn a restart ended.
    */
-  const { data: sessionStatuses } = useQuery({
-    queryKey: SESSION_STATUS_KEY,
-    queryFn: fetchSessionStatus,
+  const { data: sessionStatus } = useQuery({
+    queryKey: sessionStatusKey(sessionId),
+    queryFn: () => fetchSingleSessionStatus(sessionId),
     refetchInterval: 5_000,
   });
 
-  const serverIsRunning =
-    sessionStatuses?.find((session) => session.id === sessionId)?.isRunning ?? false;
+  const serverIsRunning = sessionStatus?.isRunning ?? false;
 
 
   const mutation = useMutation<
