@@ -133,6 +133,41 @@ export type Database = {
           },
         ]
       }
+      session_projects: {
+        Row: {
+          first_attached_at: string
+          is_primary: boolean
+          last_touched_at: string
+          origin: string
+          project_path: string
+          session_id: string
+        }
+        Insert: {
+          first_attached_at?: string
+          is_primary?: boolean
+          last_touched_at?: string
+          origin: string
+          project_path: string
+          session_id: string
+        }
+        Update: {
+          first_attached_at?: string
+          is_primary?: boolean
+          last_touched_at?: string
+          origin?: string
+          project_path?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_projects_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           created_at: string
