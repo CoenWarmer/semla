@@ -16,6 +16,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { GitStatusBadge } from "./git-status-badge";
 import { SessionFilesPanel } from "./session-files-panel";
+import { SessionProjectPicker } from "./session-project-picker";
 import { SessionProjectsPanel } from "./session-projects-panel";
 import { TokenUsage } from "./token-usage";
 
@@ -51,6 +52,10 @@ function SessionProjectBadges({ sessionId }: { sessionId: string }) {
           target={{ kind: "session", path: project.path, sessionId }}
         />
       ))}
+      <SessionProjectPicker
+        linkedPaths={new Set(projects.map((project) => project.path))}
+        sessionId={sessionId}
+      />
     </>
   );
 }
