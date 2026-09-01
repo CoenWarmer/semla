@@ -3,9 +3,19 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CircleCheckIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import {
+  CircleCheckIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { GitStatusBadge } from "@/components/git-status-badge";
-import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from "@/components/ui/item";
 import type { SessionProject } from "@/lib/session-status";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
@@ -107,7 +117,6 @@ export function SessionItem({
             <span className="flex flex-wrap items-center gap-1">
               {projects.slice(0, VISIBLE_PROJECTS).map((project) => (
                 <GitStatusBadge
-                  className="-mx-1 max-w-28"
                   key={project.path}
                   showBranchStatus={false}
                   showProjectName
@@ -146,38 +155,41 @@ export function SessionItem({
           <Spinner className="size-4 text-muted-foreground" />
         </div>
       ) : (
-      <>
-        {hasRun && (
-          <div
-            aria-label="Completed"
-            className="pointer-events-none absolute right-3 z-10 shrink-0 opacity-100 transition-opacity group-hover:opacity-0"
-            title="Completed"
-          >
-            <CircleCheckIcon className="size-4 text-muted-foreground/70" />
+        <>
+          {hasRun && (
+            <div
+              aria-label="Completed"
+              className="pointer-events-none absolute right-3 z-10 shrink-0 opacity-100 transition-opacity group-hover:opacity-0"
+              title="Completed"
+            >
+              <CircleCheckIcon className="size-4 text-muted-foreground/70" />
+            </div>
+          )}
+          <div className="relative z-10 ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className="flex items-center justify-center rounded p-0.5 hover:bg-accent"
+                aria-label="Session actions"
+              >
+                <MoreHorizontalIcon className="size-4 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start">
+                <DropdownMenuItem onClick={startRename}>
+                  <PencilIcon />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => void handleDelete()}
+                >
+                  <Trash2Icon />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
-      <div className="relative z-10 ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="flex items-center justify-center rounded p-0.5 hover:bg-accent"
-            aria-label="Session actions"
-          >
-            <MoreHorizontalIcon className="size-4 text-muted-foreground" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="start">
-            <DropdownMenuItem onClick={startRename}>
-              <PencilIcon />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => void handleDelete()}>
-              <Trash2Icon />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      </>
+        </>
       )}
     </Item>
   );

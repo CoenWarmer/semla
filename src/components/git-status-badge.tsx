@@ -5,9 +5,20 @@ import { ArrowDown, ArrowUp, GitBranch, GitMerge } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { gitStatusQueryKey, useGitStatus, type GitTarget } from "@/hooks/use-git-status";
-import { branchNameFromBase, describeGitStatus } from "@/lib/git-status-display";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  gitStatusQueryKey,
+  useGitStatus,
+  type GitTarget,
+} from "@/hooks/use-git-status";
+import {
+  branchNameFromBase,
+  describeGitStatus,
+} from "@/lib/git-status-display";
 import { cn } from "@/lib/utils";
 
 type GitAction = "merge" | "checkout";
@@ -47,6 +58,7 @@ export function GitStatusBadge({
   showBranchStatus = true,
   showProjectName = false,
   target,
+  showBorder,
 }: {
   className?: string;
   /**
@@ -62,6 +74,7 @@ export function GitStatusBadge({
   /** Render the project's name, taken from the target's path. */
   showProjectName?: boolean;
   target?: GitTarget;
+  showBorder?: boolean;
 }) {
   const { data } = useGitStatus(target);
   const queryClient = useQueryClient();
@@ -75,7 +88,10 @@ export function GitStatusBadge({
     const [url, payload] =
       target?.kind === "project"
         ? [`/api/projects/git`, { action, path: target.path }]
-        : [`/api/sessions/${target?.sessionId}/git`, { action, path: target?.path }];
+        : [
+            `/api/sessions/${target?.sessionId}/git`,
+            { action, path: target?.path },
+          ];
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -118,27 +134,35 @@ export function GitStatusBadge({
   if (!label && !projectName) return null;
 
   const face = (
-    <>
-      <GitBranch className="size-3.5 shrink-0" />
-      {projectName && <span className="max-w-32 truncate">{projectName}</span>}
+    <div className={`flex rounded gap-3 ${showBorder ? "border px-3" : ""}`}>
+      <div className="flex py-1 gap-1">
+        <GitBranch className="size-3.5 shrink-0" />
+        {projectName && <span>{projectName}</span>}
+      </div>
       {showBranchStatus && label && (
-        <>
+        <div className="flex border-l-1 items-center pl-3 gap-3">
           <span className="max-w-40 truncate font-mono">{label.ref}</span>
           {label.ahead !== null && (
-            <span className="flex items-center tabular-nums" aria-label={`${label.ahead} ahead`}>
+            <span
+              className="flex items-center tabular-nums"
+              aria-label={`${label.ahead} ahead`}
+            >
               <ArrowUp className="size-3" />
               {label.ahead}
             </span>
           )}
           {label.behind !== null && (
-            <span className="flex items-center tabular-nums" aria-label={`${label.behind} behind`}>
+            <span
+              className="flex items-center tabular-nums"
+              aria-label={`${label.behind} behind`}
+            >
               <ArrowDown className="size-3" />
               {label.behind}
             </span>
           )}
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 
   const faceClassName = cn(
@@ -228,7 +252,9 @@ export function GitStatusBadge({
             variant="outline"
           >
             <GitBranch className="size-3.5" />
-            {targetBranch ? `Check out ${targetBranch}` : "Check out canonical branch"}
+            {targetBranch
+              ? `Check out ${targetBranch}`
+              : "Check out canonical branch"}
           </Button>
         </div>
 
