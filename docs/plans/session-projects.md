@@ -6,7 +6,10 @@ several. Projects can be attached by the user at or after creation, and are
 attached automatically when the agent writes to one. The relation is stored on
 disk and in Postgres, disk authoritative.
 
-**Status:** designed, not started. Written 2026-09-01.
+**Status:** designed, not started. Written 2026-09-01. Eight open questions have
+been put to the user and answered; each settled decision records the reasoning
+rather than just the verdict, so a later reader can tell which way it went and
+why. Nothing in §10 is undecided — it is deliberately deferred.
 
 ---
 
@@ -235,12 +238,33 @@ Resolution, in a new `src/lib/pi/project-of-path.ts`:
 
 1. Absolutise against `PI_WORKSPACE_ROOT` (the agent's cwd).
 2. Reject anything that escapes the root.
-3. Walk up to the nearest ancestor containing `.git`, stopping at the root.
-4. Return it workspace-relative. Cache the directory→project answer per process;
-   this runs on every write tool call.
+3. Take the **first path segment** under the root.
+4. Return it if `getWorkspaceProjects()` lists it as a project; otherwise null.
 
-Nested repos resolve to the innermost one, which is the correct answer for a
-submodule.
+**This is deliberately not a `.git` walk, and it is much simpler as a result.**
+`getWorkspaceProjects()` scans exactly one level below the workspace root
+(`workspace.ts`: `readdir(PI_WORKSPACE_ROOT)`, then `.git` on each child), so a
+project *is* a first-level directory. Resolution is therefore a string split
+plus a lookup in a list that is already cached for 5s — no filesystem access, no
+per-process cache of its own.
+
+### Nested repositories attach to their top-level parent
+
+This matters concretely, not hypothetically. `/Users/coen/Dev` currently holds
+checkouts like `semantic-code-search/.repos/elastic_kibana/.git` — real
+repositories that `getWorkspaceProjects()` will never list.
+
+A write to `semantic-code-search/.repos/elastic_kibana/src/foo.ts` attaches
+**`semantic-code-search`**, not the inner checkout.
+
+The alternative — walking to the nearest `.git` — gives more accurate
+provenance and an unusable result: a project with no combobox entry, absent from
+the projects grid, and whose badge popover would 400, because
+`/api/projects/git` checks `isWorkspaceProject()` before acting and that reads
+the same one-level listing. One definition of "project" across the badge, the
+combobox, the grid, the file browser and the git actions is worth more than
+sub-repo precision. The coarseness is a known limit, recorded in the docblock
+alongside the bash gap.
 
 **Batching.** Accumulate touched projects in memory for the turn and flush only
 when a genuinely new one appears. Most edits hit an already-attached project, so
@@ -287,10 +311,10 @@ that interleaves two concurrent patches and asserts neither is lost.
 |---|---|
 | `session-project.ts` | `sessionProjectPath()` → `sessionProjects()` returning `{ primary, links }`. Everything else follows from this one function. |
 | `git/route.ts` | Badge shows the primary. The panel lists each attached project with its own branch; `readGitStatus` is already per-path. Checkout/merge take an explicit project. |
-| `file-browser.ts` | `basePath` = primary. |
+| `file-browser.ts` | `basePath: string \| null` → `basePaths: string[]` — every attached project is a root. See §9.5. |
 | `file-search.ts` | `inProject` becomes three bands — primary, other attached, workspace — which the existing coarse-band scoring absorbs without restructuring. |
 | `prompts.ts` | "The active project is X" → the primary plus the attached list. |
-| wiki stamp | Primary only. See below. |
+| wiki stamp | The whole attached set, as a list. See below. |
 | `sessions/route.ts` | Creates the first link. |
 
 ### The wiki is the deepest impact
@@ -301,10 +325,39 @@ drives how every captured wiki page is attributed. The wiki's *content* model
 already handles multi-repo — `prompts.ts` teaches `repo: [semla, ecs]` as a YAML
 list — but the stamp is singular.
 
-v1 stamps with the primary and does nothing cleverer. Correct multi-repo
-attribution means deciding attribution per page or per write, which is its own
-piece of work with its own failure modes. Out of scope here, and noted in the
-docblock so the limitation is traceable rather than surprising.
+The stamp becomes a list. Be aware this is a **cross-module-system contract
+change**, which is why it is the deepest impact rather than the largest:
+
+| File | Change |
+|---|---|
+| `extension-contract.ts:156` | `[WIKI_SESSION_REPOS]: Map<string, string>` → `Map<string, string[]>` |
+| `wiki-session-repo.ts` | `setSessionRepo(id, repo: string \| null)` → a slug list |
+| `wiki-ingest-bridge.ts:645` | `repoOf` reads the slot and yields a list |
+| `wiki-subagent-tools.ts` | `registerSubagentWikiToolset(pi, repoOf, ...)` tags captured sources with it |
+
+The two halves are loaded by *different module systems* — the server half
+through Next's graph, the bridge through jiti, which is why the bridge reads the
+`globalThis` slot directly instead of importing `getSessionRepo`. If they drift,
+the failure is silent misattribution, precisely what `wiki-session-repo.ts` says
+it exists to prevent. `extension-contract.test.ts` pins the shape; both sides
+change in one commit or neither does.
+
+### Stamp the turn's projects, not the session's
+
+Tagging every page from a multi-project session with `repo: [a, b]` is more
+accurate than tagging them all `a`, but a page purely about `b` still gets `a`
+attached to it.
+
+There is a strictly better answer available for free. §6.2 already accumulates
+the set of projects touched **during the current turn** in order to batch the
+writes, and `stampWikiRepo(semlaSessionId, projectPath, turnStartedAt)`
+(`session-service.ts:771`) already runs per turn against a turn-start timestamp.
+Feeding the *per-turn* set rather than the session-lifetime set costs nothing
+extra and narrows the over-tagging to pages written in a turn that genuinely did
+touch both repos.
+
+Recommended: stamp the per-turn set, falling back to the primary when a turn
+touched nothing.
 
 ---
 
@@ -421,13 +474,52 @@ date and the token usage — a row of chips underneath the date.
   badge already calls `stopPropagation` for the project-card case, which was a
   card-shaped button for the same reason, so it survives here unchanged.
 - A session with no projects renders no chips and no empty row.
+- **The chip is not clickable.** `SessionItem` is a stretched-link row, so a
+  click anywhere — the chip included — opens the session. Filtering the list by
+  project is the obvious thing a many-to-many unlocks, and deliberately not done
+  here: it needs filter state, a way out of it, and an empty state, none of
+  which belong in this change.
+
+### 9.5 File browser: one root per attached project
+
+The tree shows every attached project as a sibling root, rather than opening on
+the primary alone.
+
+- `resolveFileRoot()` returns `basePaths: string[]` instead of
+  `basePath: string | null`, ordered primary first.
+- `session-files-panel.tsx` renders one `SessionFileTree` per root.
+  `filesQueryKey(sessionId, dirPath)` is already keyed by directory, so several
+  roots coexist in the cache with no change to the query layer.
+- `/api/sessions/[id]/files` keeps taking an explicit `?path=`; the client asks
+  for each root by name. Only the no-path default changes — from "the primary"
+  to "the list of roots", which the panel then fans out.
+- Search `scope=project` loops the attached projects over one shared budget.
+  `listProjectFiles()` in `project-files.ts` is already per-project and uses
+  `git ls-files` rather than a walk, so N projects is N cheap index reads rather
+  than N directory sweeps.
+
+A session with one project renders exactly what it renders today, so this is
+additive rather than a change to what just shipped.
+
+Worth being clear about the cost: `session-file-tree.tsx` assumes a single root,
+and the panel's selected-file state is one path scoped to that root. Both become
+per-root. This is the largest UI change in the plan.
+
+---
 
 ## 10. Out of scope
 
 - Enforcement of any kind on writes (decision 3).
 - Bash write detection (§6.3).
-- Multi-repo wiki attribution (§8).
+- Sub-repository precision — a write inside a nested checkout attaches its
+  top-level parent (§6.2).
+- Per-page wiki attribution. The stamp becomes a per-turn list (§8), which is
+  better than one slug and still not per-page.
+- Filtering the sidebar by project (§9.4).
 - Per-project branch state on the join table (§5).
+- A project picker on `/sessions/new`, which today POSTs to `/api/sessions` with
+  no body at all. Auto-attach covers it: the session adopts its project on the
+  first write.
 - Dropping `sessions.project_path` — a follow-up migration once the mirror is
   no longer read.
 
@@ -457,7 +549,12 @@ Each step leaves the tree green.
 10. `projects` through `SessionStatus`, `SessionRow` and the server-rendered
     rows (§9.3), then the chips in `session-item.tsx` (§9.4).
 11. The session panel's anchor / touched-in-this-session sections (§9.1).
-12. Follow-up: drop `sessions.project_path` and the disk mirror.
+12. File browser sibling roots (§9.5) — the largest UI change, and independent
+    of everything above it once `sessionProjects()` exists.
+13. The wiki stamp as a per-turn list (§8). Both sides of the
+    `WIKI_SESSION_REPOS` contract in one commit, with
+    `extension-contract.test.ts` updated alongside.
+14. Follow-up: drop `sessions.project_path` and the disk mirror.
 
 Steps 9–10 are worth doing even before step 8 lands: with one project per
 session the chip is redundant against the header, but it proves the component
