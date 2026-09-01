@@ -83,13 +83,6 @@ export function HeaderActions() {
         </Button>
       )}
 
-      {/*
-        Branch and spend sit together on the right: both are about the session's
-        surroundings rather than the conversation, and both are read at a glance
-        rather than acted on mid-thought. The badge renders nothing off a session
-        page, so the group collapses to the cost on its own.
-      */}
-
       <div className="flex grow items-center justify-center gap-3 px-4">
         {sessionId && <SessionProjectBadges sessionId={sessionId} />}
       </div>
