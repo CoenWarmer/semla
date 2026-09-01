@@ -4,7 +4,7 @@ import {
   isSessionStreamActive,
   subscribeToSessionStream,
 } from "@/lib/pi/session-stream-store";
-import { createAdminClient } from "@/lib/supabase-admin";
+import { setSessionRunning } from "@/lib/pi/session-persistence";
 
 export const runtime = "nodejs";
 
@@ -23,14 +23,14 @@ export async function GET(
   }
 
   if (!isSessionStreamActive(id)) {
-    // Stream not found — either already finished or server restarted.
-    // Clear a potentially stale is_running flag from a server restart.
-    const admin = createAdminClient();
-    await admin
-      .from("sessions")
-      .update({ is_running: false })
-      .eq("id", id)
-      .eq("is_running", true);
+    // Stream not found — either already finished or server restarted. Clear a
+    // potentially stale running flag while we are here.
+    //
+    // Through setSessionRunning rather than a direct Supabase update: the flag
+    // lives in two places and the status poll reads the *disk* record, so
+    // updating only the database left the poll still reporting a turn that had
+    // demonstrably ended — and the client, trusting it, asking again.
+    await setSessionRunning(id, false);
 
     return Response.json({ active: false }, { status: 404 });
   }

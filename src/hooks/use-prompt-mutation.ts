@@ -10,7 +10,15 @@ import {
 } from "@/hooks/use-session-messages";
 import { appendConsoleLine } from "@/lib/console-log";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
-import { fetchSessionStatus, SESSION_STATUS_KEY } from "@/lib/session-status";
+import {
+  clearsDeadStreamLatch,
+  shouldReconnect,
+} from "@/lib/session-reconnect";
+import {
+  fetchSessionStatus,
+  SESSION_STATUS_KEY,
+  type SessionStatus,
+} from "@/lib/session-status";
 import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
@@ -169,6 +177,15 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // below never fired. Nothing renders from it, so a ref is the right tool.
   const titleUpdatedRef = useRef(false);
   const reconnectAbortRef = useRef<AbortController | null>(null);
+  // Set when a reattach is told this session has no stream. The status poll is a
+  // cache and goes on saying "running" for a few seconds after a turn ends, so
+  // without this memory the recovery effect refires on every settle and spins.
+  // A ref, not state: it must be readable by the effect on the same tick it is
+  // written, and nothing renders from it.
+  const streamKnownDeadRef = useRef(false);
+  // The previous poll reading, so a turn starting can be told from one that was
+  // already running when this page mounted.
+  const wasServerRunningRef = useRef(false);
 
   // Stable handlers object — state setters are guaranteed stable by React,
   // so this memo never needs to re-run. A factory function (the previous shape)
@@ -252,6 +269,21 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
 
         if (!response.ok || !response.body) {
           // Stream not active — server restarted or turn already finished.
+          // Remember it: the status poll is a cache and will keep reporting this
+          // turn as running for a few seconds yet, and asking again every time
+          // the effect settles is what turned one stale reading into eight
+          // requests.
+          streamKnownDeadRef.current = true;
+
+          // Correct the cached reading too, so the rest of the UI stops showing
+          // a turn that has demonstrably ended rather than waiting for the next
+          // poll. The route clears the stored flag; this is the local view of it.
+          queryClient.setQueryData<SessionStatus[]>(SESSION_STATUS_KEY, (prev) =>
+            prev?.map((session) =>
+              session.id === sessionId ? { ...session, isRunning: false } : session,
+            ),
+          );
+
           await queryClient.invalidateQueries({
             queryKey: sessionMessagesQueryKey(sessionId),
           });
@@ -494,10 +526,23 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   }, [inst, mutation.status, mutation.isPending, streamingText.length]);
 
   useEffect(() => {
-    // Only when the server is working and nothing is arriving here. Reattaching
-    // while a stream is live would tear down the one that is working.
-    if (!serverIsRunning) return;
-    if (mutation.isPending || isReconnecting) return;
+    // A turn the server has only just started re-arms the latch: the stream this
+    // page was told was gone is not the stream a new turn opens.
+    if (clearsDeadStreamLatch(wasServerRunningRef.current, serverIsRunning)) {
+      streamKnownDeadRef.current = false;
+    }
+    wasServerRunningRef.current = serverIsRunning;
+
+    if (
+      !shouldReconnect({
+        serverIsRunning,
+        isPending: mutation.isPending,
+        isReconnecting,
+        streamKnownDead: streamKnownDeadRef.current,
+      })
+    ) {
+      return;
+    }
 
     trace("stream-recovery:reattach");
     reconnectToStream();
