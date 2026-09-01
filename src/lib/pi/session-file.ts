@@ -16,16 +16,26 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { activePath } from "@/lib/pi/session-path";
 
 /** The row shape getTranscript consumes, from either source. */
 export interface TranscriptRow {
   created_at: string;
   id: string;
-  payload: { entry: { id?: string; timestamp?: string; type?: string } };
+  payload: {
+    entry: {
+      id?: string;
+      /** Parent in the session tree. Carried so superseded versions are findable. */
+      parentId?: string | null;
+      timestamp?: string;
+      type?: string;
+    };
+  };
 }
 
 interface SessionFileEntry {
   id?: string;
+  parentId?: string | null;
   timestamp?: string;
   type?: string;
 }
@@ -35,12 +45,17 @@ export function sessionFilePath(semlaSessionId: string, dir = PI_SESSION_DIR): s
 }
 
 /**
- * Message entries from a session file, or null when there is no file to read.
+ * Message entries on the session's live path, or null when there is no file.
  *
  * Null rather than an empty array on purpose: "no file" means fall back to
  * Postgres, while a file containing no messages is a real, empty transcript.
  * Unparseable lines are skipped rather than failing the read — a truncated
  * final line loses one entry, not the conversation.
+ *
+ * The file is a tree, so the lines are walked (see session-path.ts) before being
+ * filtered to messages, never after. Filtering first would cut the chain
+ * wherever a non-message entry — a branch summary, say — sits between two
+ * messages, and the walk would stop early at a gap of its own making.
  */
 export function readSessionEntries(
   semlaSessionId: string,
@@ -54,7 +69,7 @@ export function readSessionEntries(
     return null;
   }
 
-  const rows: TranscriptRow[] = [];
+  const entries: SessionFileEntry[] = [];
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (line.trim() === "") continue;
 
@@ -65,16 +80,18 @@ export function readSessionEntries(
       continue;
     }
 
-    // The header line describes the session; only message entries are
-    // transcript, matching the event_type filter on the Postgres side.
-    if (entry.type !== "message" || !entry.id) continue;
+    // The header describes the session rather than belonging to the tree, which
+    // is also how Pi's own getEntries() treats it.
+    if (entry.type === "session" || !entry.id) continue;
 
-    rows.push({
-      created_at: entry.timestamp ?? "",
-      id: entry.id,
-      payload: { entry },
-    });
+    entries.push(entry);
   }
 
-  return rows;
+  return activePath(entries)
+    .filter((entry) => entry.type === "message")
+    .map((entry) => ({
+      created_at: entry.timestamp ?? "",
+      id: entry.id as string,
+      payload: { entry },
+    }));
 }

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
 import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session-file";
+import { activePath } from "@/lib/pi/session-path";
 
 type PiUsage = {
   cacheRead?: number;
@@ -214,18 +215,42 @@ const getTranscriptFromDatabase = async (
     return { messages: [], toolCalls: [] };
   }
 
+  // Every entry type, not just messages. The session is a tree and the parent
+  // chain runs through entries that are not messages, so filtering here would
+  // cut the chain and strand everything above the gap — the same reason
+  // session-file.ts walks before it filters.
   const { data: entries, error: entriesError } = await supabase
     .from("pi_session_entries")
     .select("created_at, id, payload")
     .eq("pi_session_id", piSession.id)
-    .eq("event_type", "message")
     .order("created_at");
 
   if (entriesError) {
     throw new Error(`Unable to load Pi transcript: ${entriesError.message}`);
   }
 
-  return buildTranscript(entries as unknown as TranscriptRow[]);
+  return buildTranscript(liveMessageRows(entries as unknown as TranscriptRow[]));
+};
+
+/**
+ * Rows on the live path, filtered to messages.
+ *
+ * The tree identity lives in `payload.entry`, not in the row's own `id` column,
+ * so the walk is fed from the entry rather than from the row — the two are not
+ * required to agree, and depending on them agreeing would be a silent coupling.
+ */
+export const liveMessageRows = (rows: TranscriptRow[]): TranscriptRow[] => {
+  const walkable = rows
+    .filter((row) => row.payload?.entry?.id)
+    .map((row) => ({
+      id: row.payload.entry.id,
+      parentId: row.payload.entry.parentId,
+      row,
+    }));
+
+  return activePath(walkable)
+    .filter((entry) => entry.row.payload.entry.type === "message")
+    .map((entry) => entry.row);
 };
 
 /** The shared transform: both sources reduce to the same row shape. */
