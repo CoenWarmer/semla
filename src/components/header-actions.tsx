@@ -44,6 +44,7 @@ function SessionProjectBadges({ sessionId }: { sessionId: string }) {
         <GitStatusBadge
           key={project.path}
           showProjectName
+          showBorder
           // The session variant, not the workspace one: this is the indicator
           // being looked at, and it is where a stale ref actually misleads.
           target={{ kind: "session", path: project.path, sessionId }}
@@ -88,8 +89,11 @@ export function HeaderActions() {
         rather than acted on mid-thought. The badge renders nothing off a session
         page, so the group collapses to the cost on its own.
       */}
-      <div className="ml-auto flex items-center gap-3 px-4">
+
+      <div className="flex grow items-center justify-center gap-3 px-4">
         {sessionId && <SessionProjectBadges sessionId={sessionId} />}
+      </div>
+      <div className="flex">
         <GlobalCostBadge />
       </div>
 
