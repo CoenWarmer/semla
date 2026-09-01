@@ -133,14 +133,19 @@ export function GitStatusBadge({
   // has nothing left to render.
   if (!label && !projectName) return null;
 
+  // Spans, not divs, all the way down. This badge renders inside a <p> in the
+  // sidebar (ItemDescription) and inside a <button> in the popover trigger, and
+  // a <div> is legal in neither — React reports it as a hydration error rather
+  // than a layout one, so it surfaces far from the markup that caused it. The
+  // flex classes are unaffected: display is CSS, validity is the element.
   const face = (
-    <div className={`flex rounded gap-3 ${showBorder ? "border px-3" : ""}`}>
-      <div className="flex py-1 gap-1">
+    <span className={`flex rounded gap-3 ${showBorder ? "border px-3" : ""}`}>
+      <span className="flex py-1 gap-1">
         <GitBranch className="size-3.5 shrink-0" />
         {projectName && <span>{projectName}</span>}
-      </div>
+      </span>
       {showBranchStatus && label && (
-        <div className="flex border-l-1 items-center pl-3 gap-3">
+        <span className="flex border-l-1 items-center pl-3 gap-3">
           <span className="max-w-40 truncate font-mono">{label.ref}</span>
           {label.ahead !== null && (
             <span
@@ -160,9 +165,9 @@ export function GitStatusBadge({
               {label.behind}
             </span>
           )}
-        </div>
+        </span>
       )}
-    </div>
+    </span>
   );
 
   const faceClassName = cn(
