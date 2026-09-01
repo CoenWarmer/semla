@@ -16,6 +16,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { GitStatusBadge } from "./git-status-badge";
 import { SessionFilesPanel } from "./session-files-panel";
+import { SessionProjectsPanel } from "./session-projects-panel";
 import { TokenUsage } from "./token-usage";
 
 /**
@@ -105,6 +106,12 @@ export function HeaderActions() {
             <SheetHeader className="shrink-0 border-b px-6 py-4">
               <SheetTitle>Files</SheetTitle>
             </SheetHeader>
+            {/*
+              Above the tree rather than beside it: the projects decide what the
+              tree is rooted on, so reading them second would be reading the
+              answer before the question.
+            */}
+            <SessionProjectsPanel sessionId={sessionId} />
             <div className="min-h-0 flex-1">
               <SessionFilesPanel sessionId={sessionId} />
             </div>
