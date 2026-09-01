@@ -1,8 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { SearchIcon } from "lucide-react";
 import { useState } from "react";
 
+import { SessionFileSearch } from "@/components/session-file-search";
 import {
   filesQueryPrefix,
   SessionFileTree,
@@ -10,7 +12,9 @@ import {
   type DirectoryListing,
   type FileEntry,
 } from "@/components/session-file-tree";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 function useFileContent(sessionId: string, filePath: string | null) {
   return useQuery({
@@ -32,6 +36,8 @@ const lastSegment = (path: string | null) =>
 export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query.trim(), 200);
 
   const queryClient = useQueryClient();
   // An empty path means "wherever this session starts" — the server answers
@@ -78,14 +84,36 @@ export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
-        {projectName && (
-          <p className="shrink-0 truncate border-b px-3 py-2 text-xs text-muted-foreground">
-            {projectName}
-          </p>
-        )}
+        <div className="shrink-0 space-y-2 border-b p-2">
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Filter filenames"
+              className="h-8 pl-9 text-sm"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter filenames…"
+              type="search"
+              value={query}
+            />
+          </div>
+          {projectName && !debouncedQuery && (
+            <p className="truncate px-1 text-xs text-muted-foreground">
+              {projectName}
+            </p>
+          )}
+        </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {rootQuery.isLoading ? (
+          {debouncedQuery ? (
+            <SessionFileSearch
+              hasProject={rootQuery.data?.basePath != null}
+              onSelect={setSelectedPath}
+              projectName={projectName}
+              query={debouncedQuery}
+              selectedPath={selectedPath}
+              sessionId={sessionId}
+            />
+          ) : rootQuery.isLoading ? (
             <div className="flex items-center justify-center p-4">
               <Spinner className="size-4" />
             </div>
