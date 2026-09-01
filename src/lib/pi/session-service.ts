@@ -17,6 +17,10 @@ import {
   resolveBranchTarget,
 } from "@/lib/pi/session-branch";
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
+import {
+  attachWrittenProject,
+  writtenPath,
+} from "@/lib/pi/session-project-attach";
 import type { CodeMap } from "@/lib/code-map/types";
 import {
   createSessionDebugWriter,
@@ -596,6 +600,13 @@ export const runPiPrompt = async ({
     }
   }
 
+  // Which file each in-flight edit/write is about to change, and which projects
+  // this turn has already linked. The path is only available on the *start*
+  // event and success is only known on the *end* event, so the two are bridged
+  // by toolCallId — a failed edit must not attach the project it aimed at.
+  const pendingWrittenPaths = new Map<string, string>();
+  const attachedThisTurn = new Set<string>();
+
   let hasBackgroundWorkflow = false;
   let detectedBackgroundRunId: string | undefined;
   // A short background workflow can finish while the prompt turn is still
@@ -673,6 +684,10 @@ export const runPiPrompt = async ({
         ...(summary ? { summary } : {}),
         ...(params ? { params } : {}),
       });
+
+      // Held until the call ends, because only the end says whether it worked.
+      const written = writtenPath(event.toolName, event.args);
+      if (written) pendingWrittenPaths.set(event.toolCallId, written);
     }
 
     if (event.type === "tool_execution_end") {
@@ -685,6 +700,21 @@ export const runPiPrompt = async ({
         toolName: event.toolName,
         type: "tool-end",
       });
+
+      // A file in a project was actually changed, so the session relates to
+      // that project. Detached: the link is a record of what happened, and
+      // failing to write it must not fail the turn that earned it.
+      const written = pendingWrittenPaths.get(event.toolCallId);
+      if (written) {
+        pendingWrittenPaths.delete(event.toolCallId);
+        if (!event.isError) {
+          detach(
+            semlaSessionId,
+            "attach written project",
+            attachWrittenProject(semlaSessionId, written, attachedThisTurn),
+          );
+        }
+      }
 
       // code_map is Semla's own tool, so its structured map survives in the
       // result rather than having been flattened to text. Forwarded verbatim:
