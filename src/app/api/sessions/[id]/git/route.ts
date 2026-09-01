@@ -7,30 +7,10 @@ import {
   fetchCanonical,
   readGitStatus,
 } from "@/lib/pi/git-status";
-import { readSessionMeta } from "@/lib/pi/session-meta";
-import { createClient } from "@/lib/supabase/server";
+import { sessionProjectPath } from "@/lib/pi/session-project";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * The project a session works in.
- *
- * The disk record is authoritative and works without the database; the
- * Postgres row still answers for sessions created before it existed.
- */
-async function sessionProjectPath(id: string): Promise<string | null> {
-  const meta = readSessionMeta(id);
-  if (meta) return meta.projectPath ?? null;
-
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("sessions")
-    .select("project_path")
-    .eq("id", id)
-    .maybeSingle();
-  return data?.project_path ?? null;
-}
 
 /**
  * Branch and divergence for the project a session is working in.
