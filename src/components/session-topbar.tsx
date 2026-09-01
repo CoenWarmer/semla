@@ -98,7 +98,7 @@ export function SessionTopbar({
         {/* Center: goal */}
         <div className="flex min-w-0 flex-1 justify-center">
           {onGoalSave && (
-            <div className="w-full max-w-lg">
+            <div className="w-full max-w-lg items-center">
               <GoalEditor
                 goal={goal ?? null}
                 onSave={onGoalSave}
