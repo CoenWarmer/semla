@@ -476,6 +476,13 @@ export const runPiPrompt = async ({
 
   const piRuntimeSessionId = sessionManager.getSessionId();
 
+  // The projects this turn has already linked. It belongs by subject beside
+  // pendingWrittenPaths, where the tool events that fill it live, but it has to
+  // be declared before turnRepoSlugs — which reads it and is called two lines
+  // below. Declared after, every prompt threw on the temporal dead zone:
+  // "Cannot access 'attachedThisTurn' before initialization".
+  const attachedThisTurn = new Set<string>();
+
   /**
    * The repos this turn's wiki pages are attributed to: the session's anchor,
    * plus whatever it writes to along the way.
@@ -614,12 +621,11 @@ export const runPiPrompt = async ({
     }
   }
 
-  // Which file each in-flight edit/write is about to change, and which projects
-  // this turn has already linked. The path is only available on the *start*
-  // event and success is only known on the *end* event, so the two are bridged
-  // by toolCallId — a failed edit must not attach the project it aimed at.
+  // Which file each in-flight edit/write is about to change. The path is only
+  // available on the *start* event and success is only known on the *end*
+  // event, so the two are bridged by toolCallId — a failed edit must not
+  // attach the project it aimed at.
   const pendingWrittenPaths = new Map<string, string>();
-  const attachedThisTurn = new Set<string>();
 
   let hasBackgroundWorkflow = false;
   let detectedBackgroundRunId: string | undefined;
