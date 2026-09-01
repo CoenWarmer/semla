@@ -8,14 +8,25 @@ interface GoalEditorProps {
   onSave: (goal: string | null) => Promise<void>;
   /** Compact single-line variant for the topbar */
   variant?: "inline" | "block";
+  /**
+   * Open in edit mode with the field focused, so a goal can be typed without
+   * clicking first.
+   *
+   * Left to the caller rather than defaulted on, because blurring commits: if
+   * this opens over a goal that is already set, and the next thing typed was
+   * meant for the prompt box, moving focus away saves that text as the goal.
+   * Callers pass it when the field is empty and there is nothing to lose.
+   */
+  autoFocus?: boolean;
 }
 
 export function GoalEditor({
+  autoFocus = false,
   goal,
   onSave,
   variant = "block",
 }: GoalEditorProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(autoFocus);
   const [draft, setDraft] = useState(goal ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

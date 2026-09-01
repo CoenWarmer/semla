@@ -67,7 +67,12 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
             defaultTools={defaultTools}
             onSubmit={handleSubmit}
             goalEditor={
-              <GoalEditor goal={goal} onSave={handleGoalSave} variant="block" />
+              <GoalEditor
+                autoFocus={!goal?.trim()}
+                goal={goal}
+                onSave={handleGoalSave}
+                variant="block"
+              />
             }
           />
           {error && <p className="mt-2 text-sm text-destructive">{error}</p>}

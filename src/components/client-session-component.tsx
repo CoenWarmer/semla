@@ -388,7 +388,12 @@ export function ClientSessionComponent({
           <PromptEditor
             defaultTools={defaultTools}
             goalEditor={
-              <GoalEditor goal={goal} onSave={handleGoalSave} variant="block" />
+              <GoalEditor
+                autoFocus={!goal?.trim()}
+                goal={goal}
+                onSave={handleGoalSave}
+                variant="block"
+              />
             }
             isRunning={isActive}
             onStop={handleStop}
