@@ -11,6 +11,7 @@ import { useGlobalCost } from "@/hooks/use-global-cost";
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { GitStatusBadge } from "./git-status-badge";
 import { SessionFilesPanel } from "./session-files-panel";
 import { TokenUsage } from "./token-usage";
 
@@ -43,7 +44,16 @@ export function HeaderActions() {
         </Button>
       )}
 
-      <div className="ml-auto px-4">
+      {/*
+        Branch and spend sit together on the right: both are about the session's
+        surroundings rather than the conversation, and both are read at a glance
+        rather than acted on mid-thought. The badge renders nothing off a session
+        page, so the group collapses to the cost on its own.
+      */}
+      <div className="ml-auto flex items-center gap-3 px-4">
+        {sessionId && (
+          <GitStatusBadge target={{ kind: "session", sessionId }} />
+        )}
         <GlobalCostBadge />
       </div>
 

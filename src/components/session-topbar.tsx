@@ -13,7 +13,6 @@ import type { CodeMap } from "@/lib/code-map/types";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { BotIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
 import { useState } from "react";
-import { GitStatusBadge } from "./git-status-badge";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
@@ -111,9 +110,6 @@ export function SessionTopbar({
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
-          {/* Branch and divergence for this session's project */}
-          <GitStatusBadge target={{ kind: "session", sessionId }} />
-
           {/* Agent count — clicking opens the workflow panel */}
           {showAgentCount && (
             <button
