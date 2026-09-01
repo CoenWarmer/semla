@@ -158,7 +158,7 @@ export function SessionTopbar({
       {panelMode === "agents" && (
         <div
           className="shrink-0 border-b border-border/40 overflow-auto p-3"
-          style={{ height: 348 }}
+          style={{ height: 360 }}
         >
           <SessionWorkflowPanel
             messages={messages}
@@ -175,7 +175,7 @@ export function SessionTopbar({
       {panelMode === "codemap" && (
         <div
           className="shrink-0 border-b border-border/40 overflow-hidden p-3"
-          style={{ height: 348 }}
+          style={{ height: 353 }}
         >
           <CodeMapPanel map={codeMap} />
         </div>
@@ -184,7 +184,7 @@ export function SessionTopbar({
       {panelMode === "inspector" && (
         <div
           className="shrink-0 border-b border-border/40 overflow-hidden px-3"
-          style={{ height: 348 }}
+          style={{ height: 353 }}
         >
           <InspectorPanel goal={goal} sessionId={sessionId} />
         </div>
