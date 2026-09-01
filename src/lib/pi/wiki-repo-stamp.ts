@@ -20,12 +20,13 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+// repoSlugFromProjectPath is re-exported below but no longer called here:
+// callers now pass the slugs, because the anchor is only one of them.
 import {
   buildSourceRepoIndex,
   lineageRepo,
   PAGE_DIRS,
   parseRepoValue,
-  repoSlugFromProjectPath,
   stampRepoFrontmatter,
 } from "@/lib/pi/extensions/wiki-frontmatter";
 import { WIKI_HOME } from "@/lib/pi/runtime-config";

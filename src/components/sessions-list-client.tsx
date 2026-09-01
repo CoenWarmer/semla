@@ -55,6 +55,19 @@ export function mergeDiscoveredSessions(
   return [...discovered, ...kept].sort((a, b) => at(b).localeCompare(at(a)));
 }
 
+/**
+ * Whether `pathname` is showing the session `id` — its page or anything under
+ * it, such as a workflow run or an agent transcript.
+ *
+ * The prefix matters: an exact match left someone reading a workflow of the
+ * session they had just deleted sitting on a page whose session no longer
+ * exists.
+ */
+export function isOnSessionPage(pathname: string, id: string): boolean {
+  const base = `/sessions/${id}`;
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
 export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -94,14 +107,41 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
     // own refetch lands.
     setDeleted((current) => new Set(current).add(id));
 
+    // Leave before the request rather than after it. Waiting meant sitting on
+    // the page of a session already struck from the sidebar until a round trip
+    // finished — reading a transcript that was in the act of being deleted.
+    if (isOnSessionPage(pathname, id)) {
+      router.push("/");
+    }
+
     startTransition(async () => {
       removeOptimistically(id);
-      await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+
+      let deletedOnServer = true;
+      try {
+        const response = await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+        deletedOnServer = response.ok;
+        if (!response.ok) {
+          console.error(`[sessions] delete failed: ${response.status}`);
+        }
+      } catch (error) {
+        deletedOnServer = false;
+        console.error("[sessions] delete failed:", error);
+      }
+
+      // Navigating first means a failure cannot be reported by staying put, so
+      // the row comes back instead. There is no toast in this app; a session
+      // reappearing in the sidebar is the signal that it was not deleted.
+      if (!deletedOnServer) {
+        setDeleted((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }
+
       await queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
       router.refresh();
-      if (pathname === `/sessions/${id}`) {
-        router.push("/");
-      }
     });
   };
 
