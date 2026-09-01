@@ -174,7 +174,6 @@ export type Database = {
           goal: string | null
           id: string
           is_running: boolean
-          project_path: string | null
           title: string | null
           user_id: string | null
         }
@@ -183,7 +182,6 @@ export type Database = {
           goal?: string | null
           id?: string
           is_running?: boolean
-          project_path?: string | null
           title?: string | null
           user_id?: string | null
         }
@@ -192,7 +190,6 @@ export type Database = {
           goal?: string | null
           id?: string
           is_running?: boolean
-          project_path?: string | null
           title?: string | null
           user_id?: string | null
         }

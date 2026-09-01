@@ -24,11 +24,10 @@ describe("writeSessionMeta", () => {
   it("creates a record and reads it back", () => {
     const d = dir();
 
-    writeSessionMeta("s1", { title: "Orient semla", projectPath: "/Dev/semla" }, d);
+    writeSessionMeta("s1", { title: "Orient semla" }, d);
 
     const meta = readSessionMeta("s1", d)!;
     expect(meta.title).toBe("Orient semla");
-    expect(meta.projectPath).toBe("/Dev/semla");
     expect(meta.isRunning).toBe(false);
   });
 

@@ -15,63 +15,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
 /**
- * The absolute project path for a session, or null when it has none.
- *
- * The disk record is authoritative and works without the database; the Postgres
- * row still answers for sessions created before it existed.
- */
-export async function sessionProjectPath(id: string): Promise<string | null> {
-  const meta = readSessionMeta(id);
-  if (meta) return meta.projectPath ?? null;
-
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("sessions")
-    .select("project_path")
-    .eq("id", id)
-    .maybeSingle();
-  return data?.project_path ?? null;
-}
-
-/**
- * The single link a session written before this relation existed implies.
- *
- * Those records carry `projectPath` and nothing else. Rather than run a
- * one-shot backfill over the session directory, they are converted on read:
- * the workspace root is a runtime value, so read time is the only place that
- * reliably knows how to make the path relative. A record whose project sits
- * outside the root yields no link, which is the same answer the file API gives
- * it.
- *
- * Exported for tests; `sessionProjects` is what callers want.
- */
-export function impliedLinks(
-  workspaceRoot: string,
-  projectPath: string | null,
-  at: string,
-): ProjectLink[] {
-  const path = projectPrefix(workspaceRoot, projectPath);
-  if (!path) return [];
-
-  return [
-    {
-      path,
-      origin: "explicit",
-      isPrimary: true,
-      firstAttachedAt: at,
-      lastTouchedAt: at,
-    },
-  ];
-}
-
-/**
  * Every project a session relates to, anchor first.
  *
- * Disk first and authoritative, as everywhere else. The Postgres mirror answers
- * for a session whose record this machine does not have, and `project_path`
- * behind that for rows written before either existed — three fallbacks, each
- * one narrower than the last, so a session never silently loses its projects
- * because of where it was created.
+ * Disk first and authoritative, as everywhere else; the Postgres mirror answers
+ * for a session whose record this machine does not have.
+ *
+ * There used to be a third fallback that rebuilt a link from the old
+ * `project_path` column. It is gone: scripts/backfill-session-projects.mjs
+ * wrote those links down, and the column itself has been dropped.
  */
 export async function sessionProjects(
   id: string,
@@ -80,37 +31,22 @@ export async function sessionProjects(
   client?: SupabaseClient<Database>,
 ): Promise<ProjectLink[]> {
   const meta = readSessionMeta(id);
-  if (meta) {
-    return meta.projects.length > 0
-      ? orderLinks(meta.projects)
-      : impliedLinks(PI_WORKSPACE_ROOT, meta.projectPath, meta.createdAt);
-  }
+  if (meta) return orderLinks(meta.projects);
 
   const supabase = client ?? (await createClient());
-  const [{ data: rows }, { data: session }] = await Promise.all([
-    supabase
-      .from("session_projects")
-      .select("project_path, origin, is_primary, first_attached_at, last_touched_at")
-      .eq("session_id", id),
-    supabase.from("sessions").select("project_path, created_at").eq("id", id).maybeSingle(),
-  ]);
+  const { data: rows } = await supabase
+    .from("session_projects")
+    .select("project_path, origin, is_primary, first_attached_at, last_touched_at")
+    .eq("session_id", id);
 
-  if (rows && rows.length > 0) {
-    return orderLinks(
-      rows.map((row) => ({
-        path: row.project_path,
-        origin: row.origin === "explicit" ? "explicit" : "observed",
-        isPrimary: row.is_primary,
-        firstAttachedAt: row.first_attached_at,
-        lastTouchedAt: row.last_touched_at,
-      })),
-    );
-  }
-
-  return impliedLinks(
-    PI_WORKSPACE_ROOT,
-    session?.project_path ?? null,
-    session?.created_at ?? new Date().toISOString(),
+  return orderLinks(
+    (rows ?? []).map((row) => ({
+      path: row.project_path,
+      origin: row.origin === "explicit" ? "explicit" : "observed",
+      isPrimary: row.is_primary,
+      firstAttachedAt: row.first_attached_at,
+      lastTouchedAt: row.last_touched_at,
+    })),
   );
 }
 

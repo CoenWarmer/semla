@@ -43,7 +43,7 @@ export function ProjectsCombobox() {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: project.name, projectPath: project.path }),
+        body: JSON.stringify({ title: project.name, project: project.name }),
       });
       const body = await res.json().catch(() => null);
       if (res.ok && body?.id) {

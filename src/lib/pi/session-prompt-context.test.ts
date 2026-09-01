@@ -18,13 +18,25 @@ vi.mock("@/lib/pi/system-prompt", () => ({
 
 const { resolveSessionPromptContext } = await import("./session-prompt-context");
 
-/** Minimal Supabase stub: one row per table, or null. */
+/**
+ * Minimal Supabase stub: one row per table, or null.
+ *
+ * `eq()` answers both shapes the code uses — awaited directly for a list, and
+ * `.maybeSingle()` for a single row — because a stub that only knew the second
+ * silently returned nothing for the first.
+ */
 const supabaseWith = (rows: Record<string, unknown>) =>
   ({
     from: (table: string) => ({
-      select: () => ({
-        eq: () => ({ maybeSingle: async () => ({ data: rows[table] ?? null }) }),
-      }),
+      select: () => {
+        const data = rows[table] ?? null;
+        const answer = {
+          maybeSingle: async () => ({ data }),
+          then: (resolve: (value: { data: unknown }) => void) =>
+            resolve({ data: Array.isArray(data) ? data : [] }),
+        };
+        return { eq: () => answer };
+      },
     }),
   }) as never;
 
@@ -72,14 +84,22 @@ describe("resolveSessionPromptContext", () => {
           default_model_id: "db-model",
           default_model_provider: "db-provider",
         },
-        sessions: { project_path: "/workspace/one" },
+        session_projects: [
+          {
+            project_path: "one",
+            origin: "explicit",
+            is_primary: true,
+            first_attached_at: "2026-09-01T10:00:00.000Z",
+            last_touched_at: "2026-09-01T10:00:00.000Z",
+          },
+        ],
       }),
       "session-1",
       "user-1",
     );
 
     expect(result.systemPrompt).toContain("DB_PROMPT");
-    // The row is the last fallback, and it arrives as a link now.
+    // The mirror is the fallback now that project_path is gone.
     expect(result.projects).toEqual(["one"]);
     expect(result.defaultModel).toEqual({
       provider: "db-provider",

@@ -47,13 +47,7 @@ export interface SessionMeta {
   id: string;
   title: string | null;
   goal: string | null;
-  projectPath: string | null;
-  /**
-   * Every project this session relates to, primary first.
-   *
-   * Supersedes `projectPath`, which is kept as a mirror of the primary link
-   * while its readers are moved across one at a time.
-   */
+  /** Every project this session relates to, primary first. */
   projects: ProjectLink[];
   isRunning: boolean;
   createdAt: string;
@@ -67,7 +61,6 @@ const blank = (id: string): SessionMeta => ({
   id,
   title: null,
   goal: null,
-  projectPath: null,
   projects: [],
   isRunning: false,
   createdAt: new Date().toISOString(),
