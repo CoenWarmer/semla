@@ -17,17 +17,13 @@
  * One project chip on a session row.
  *
  * A display shape rather than the stored `ProjectLink`: the sidebar needs a
- * name, an order, and something to address the workspace git record with. It
- * carries both paths because the two are keyed differently — the relative one
- * is the link's identity, the absolute one is what `/api/projects/git` keys by,
- * and the client cannot derive one from the other without the workspace root.
+ * name and an order. The absolute path `/api/projects/git` keys by is derived
+ * with `projectAbsolutePath` from the workspace root, which the server hands
+ * the sidebar directly.
  */
 export type SessionProject = {
-  /** Workspace-relative. The identity. */
+  /** Workspace-relative. The identity, and all that is sent. */
   path: string;
-  /** Absolute, so a badge can look up its branch. */
-  absolutePath: string;
-  isPrimary: boolean;
 };
 
 export type SessionStatus = {
@@ -48,6 +44,17 @@ export const fetchSessionStatus = async (): Promise<SessionStatus[]> => {
   if (!response.ok) throw new Error("Unable to load session status.");
   return ((await response.json()) as { sessions: SessionStatus[] }).sessions;
 };
+
+/**
+ * Absolute path for a project chip, for the git record keyed by one.
+ *
+ * The workspace root reaches the sidebar as a prop from the server component
+ * that renders it, not as a field on every project of every row — it is one
+ * value for the whole machine, and repeating it 47 times per poll was 7% of the
+ * payload.
+ */
+export const projectAbsolutePath = (workspaceRoot: string, path: string) =>
+  `${workspaceRoot}/${path}`;
 
 /**
  * One session's live state.

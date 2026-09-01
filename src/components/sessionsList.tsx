@@ -1,4 +1,5 @@
 import { SessionsListClient } from "@/components/sessions-list-client";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { createClient } from "@/lib/supabase/server";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
@@ -112,5 +113,7 @@ export async function SessionsList() {
     usage: usageBySession.get(id),
   }));
 
-  return <SessionsListClient sessions={rows} />;
+  // Handed down rather than sent with every project of every status poll: it is
+  // one value for the whole machine, and this component is already on the server.
+  return <SessionsListClient sessions={rows} workspaceRoot={PI_WORKSPACE_ROOT} />;
 }

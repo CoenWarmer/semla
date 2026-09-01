@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchSessionStatus,
   fetchSingleSessionStatus,
+  projectAbsolutePath,
 } from "./session-status.ts";
 
 afterEach(() => {
@@ -63,6 +64,22 @@ describe("fetchSingleSessionStatus", () => {
 
     return expect(fetchSingleSessionStatus("abc")).rejects.toThrow(
       "Unable to load session status.",
+    );
+  });
+});
+
+describe("projectAbsolutePath", () => {
+  it("rebuilds the path the git record is keyed by", () => {
+    // The status payload sends the relative path only; the workspace root
+    // reaches the sidebar as a prop rather than on every project of every row.
+    expect(projectAbsolutePath("/Users/x/Dev", "semla")).toBe(
+      "/Users/x/Dev/semla",
+    );
+  });
+
+  it("handles a nested project path", () => {
+    expect(projectAbsolutePath("/Users/x/Dev", "work/api")).toBe(
+      "/Users/x/Dev/work/api",
     );
   });
 });

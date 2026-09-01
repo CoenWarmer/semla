@@ -68,7 +68,14 @@ export function isOnSessionPage(pathname: string, id: string): boolean {
   return pathname === base || pathname.startsWith(`${base}/`);
 }
 
-export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
+export function SessionsListClient({
+  sessions,
+  workspaceRoot,
+}: {
+  sessions: SessionRow[];
+  /** Absolute path the project chips are relative to. */
+  workspaceRoot: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
@@ -158,6 +165,7 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
           // persists across navigation, so it goes stale as the agent attaches
           // projects mid-session while the poll does not.
           projects={statusById.get(s.id)?.projects ?? []}
+          workspaceRoot={workspaceRoot}
           onDelete={handleDelete}
         />
       ))}

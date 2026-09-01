@@ -16,7 +16,7 @@ import {
   ItemDescription,
   ItemTitle,
 } from "@/components/ui/item";
-import type { SessionProject } from "@/lib/session-status";
+import { projectAbsolutePath, type SessionProject } from "@/lib/session-status";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import {
@@ -38,6 +38,8 @@ interface SessionItemProps {
   isRunning?: boolean;
   /** Projects this session relates to, anchor first. */
   projects?: SessionProject[];
+  /** Absolute path the project paths are relative to. */
+  workspaceRoot: string;
   title: string | null;
   usage?: { tokens: number; cost: number };
   onDelete: (id: string) => void;
@@ -49,6 +51,7 @@ export function SessionItem({
   hasRun,
   isRunning,
   projects = [],
+  workspaceRoot,
   title,
   usage,
   onDelete,
@@ -120,7 +123,10 @@ export function SessionItem({
                   key={project.path}
                   showBranchStatus={false}
                   showProjectName
-                  target={{ kind: "project", path: project.absolutePath }}
+                  target={{
+                    kind: "project",
+                    path: projectAbsolutePath(workspaceRoot, project.path),
+                  }}
                 />
               ))}
               {projects.length > VISIBLE_PROJECTS && (
