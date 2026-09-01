@@ -2,36 +2,55 @@ import { NextResponse } from "next/server";
 
 import { branchNameFromBase } from "@/lib/git-status-display";
 import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git-actions";
+import type { GitStatus } from "@/lib/git-status-display";
+import { fetchCanonical, readGitStatus } from "@/lib/pi/git-status";
 import {
-  EMPTY_GIT_STATUS,
-  fetchCanonical,
-  readGitStatus,
-} from "@/lib/pi/git-status";
-import { sessionProjectPath } from "@/lib/pi/session-project";
+  projectAbsolutePath,
+  sessionProjectPath,
+  sessionProjects,
+} from "@/lib/pi/session-project";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Branch and divergence for the project a session is working in.
+ * Branch and divergence for every project a session relates to, keyed by the
+ * project's workspace-relative path.
  *
- * A session without a project — one started from the sidebar rather than a
- * project card — has nothing to report, and says so with nulls rather than an
- * error, so the caller can simply render nothing.
+ * A record rather than one status, because a session can work in several
+ * repositories and the header shows a badge for each. The same shape
+ * `/api/projects/git` returns — though keyed differently, and deliberately:
+ * each route keys by the identity its callers already hold, which is the
+ * absolute path for a workspace project and the relative one for a link.
+ *
+ * A session with no projects returns `{}`, and the caller renders nothing.
+ *
+ * Unlike the workspace read, this one fetches. It is the indicator somebody is
+ * actually looking at, and stale refs lie — `fetchCanonical` exists because a
+ * branch once read "up to date" while hundreds of commits behind. The cost is
+ * bounded by a session's handful of projects, each throttled to one fetch a
+ * minute by GIT_FETCH_INTERVAL_MS.
  */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const projectPath = await sessionProjectPath(id);
+  const links = await sessionProjects(id);
 
-  if (!projectPath) {
-    return NextResponse.json({ projectPath: null, ...EMPTY_GIT_STATUS });
-  }
+  // Ordered primary first by sessionProjects, and JS preserves insertion order
+  // for non-numeric keys — so a caller that has no particular project in mind
+  // gets the anchor by taking the first entry.
+  const statuses = await Promise.all(
+    links.map((link) => readGitStatus(projectAbsolutePath(link))),
+  );
 
-  const status = await readGitStatus(projectPath);
-  return NextResponse.json({ projectPath, ...status });
+  const byProject: Record<string, GitStatus> = {};
+  links.forEach((link, index) => {
+    byProject[link.path] = statuses[index];
+  });
+
+  return NextResponse.json(byProject);
 }
 
 /**

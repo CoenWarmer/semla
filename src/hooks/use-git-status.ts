@@ -5,26 +5,32 @@ import type { GitStatus } from "@/lib/pi/git-status";
 /**
  * What a branch indicator is reporting on.
  *
- * A session knows its project and is the only repository on screen, so it is
- * read one at a time and may fetch. A card is one of dozens, so the whole
- * workspace is read in a single request and none of it fetches until you open
- * a card's popover.
+ * The split is about *fetching*, not about counting repositories. A session's
+ * projects are read one at a time and may fetch, because that is the indicator
+ * somebody is looking at and stale refs lie. Cards are one of dozens, so the
+ * whole workspace is read in a single request and none of it fetches until you
+ * open a card's popover.
+ *
+ * `path` narrows a session read to one of its projects. Omit it and the read
+ * yields the session's anchor. Either way the query key is the session, so
+ * every badge in a header shares one request however many there are.
  */
 export type GitTarget =
-  | { kind: "session"; sessionId: string }
+  | { kind: "session"; sessionId: string; path?: string }
   | { kind: "project"; path: string };
-
-export type SessionGitStatus = GitStatus & { projectPath: string | null };
 
 export const gitStatusQueryKey = (target: GitTarget | undefined) =>
   target?.kind === "session"
     ? ["git-status", "session", target.sessionId]
     : ["git-status", "workspace"];
 
-async function fetchSessionStatus(sessionId: string): Promise<GitStatus> {
+/** Keyed by workspace-relative project path, anchor first. */
+async function fetchSessionStatus(
+  sessionId: string,
+): Promise<Record<string, GitStatus>> {
   const res = await fetch(`/api/sessions/${sessionId}/git`);
   if (!res.ok) throw new Error(`git status ${res.status}`);
-  return (await res.json()) as SessionGitStatus;
+  return (await res.json()) as Record<string, GitStatus>;
 }
 
 async function fetchWorkspaceStatus(): Promise<Record<string, GitStatus>> {
@@ -33,8 +39,24 @@ async function fetchWorkspaceStatus(): Promise<Record<string, GitStatus>> {
   return (await res.json()) as Record<string, GitStatus>;
 }
 
-/** A session read yields one status; a workspace read yields one per path. */
-type GitStatusPayload = GitStatus | Record<string, GitStatus>;
+/** Both reads now yield one status per path; only the keying differs. */
+type GitStatusPayload = Record<string, GitStatus>;
+
+/**
+ * The status a target names within a payload.
+ *
+ * With a path, both kinds are a plain lookup. Without one — a session badge
+ * that has not been told which project it is for — the anchor is taken, which
+ * the session route emits first.
+ */
+const statusFor = (
+  payload: Record<string, GitStatus> | undefined,
+  target: GitTarget | undefined,
+): GitStatus | undefined => {
+  if (!payload || !target) return undefined;
+  if (target.path) return payload[target.path];
+  return Object.values(payload)[0];
+};
 
 /**
  * Branch and divergence for a session's project or a workspace project.
@@ -59,21 +81,10 @@ export function useGitStatus(target: GitTarget | undefined) {
       target?.kind === "session"
         ? fetchSessionStatus(target.sessionId)
         : fetchWorkspaceStatus(),
-    refetchInterval: (q) => {
-      const data = q.state.data;
-      const status =
-        target?.kind === "project"
-          ? (data as Record<string, GitStatus>)?.[target.path]
-          : (data as GitStatus | undefined);
-      return status?.fetching ? 3_000 : 30_000;
-    },
+    refetchInterval: (q) =>
+      statusFor(q.state.data, target)?.fetching ? 3_000 : 30_000,
     staleTime: 0,
   });
 
-  const data =
-    target?.kind === "project"
-      ? (query.data as Record<string, GitStatus> | undefined)?.[target.path]
-      : (query.data as GitStatus | undefined);
-
-  return { ...query, data };
+  return { ...query, data: statusFor(query.data, target) };
 }
