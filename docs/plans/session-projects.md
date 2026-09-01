@@ -461,21 +461,48 @@ become more alike, not less.
 Fetch cost is bounded: a session with three projects fetches three repositories,
 each throttled to once per 60s by `GIT_FETCH_INTERVAL_MS`, against a 30s poll.
 
-**The POST invariant must survive.** The route's docblock states a real security
-property:
+**The POST invariant must survive.** The route's docblock states a property the
+code currently holds:
 
 > The request names an action and nothing else. Refs are re-resolved here from
 > the same read the badge renders, so a caller cannot aim either operation at a
 > repository or a ref of its choosing.
 
-Per-project merge and checkout means the client now names a repository, which
-contradicts that as written. The property is preserved the way the workspace
-route already preserves it — by validating against an allowlist before acting.
-There it is `isWorkspaceProject()`; here it is "a project attached to *this*
-session", which `sessionProjects()` answers directly. Refs stay server-resolved.
-Implemented carelessly — taking `path` from the body and passing it through —
-this becomes an arbitrary-repository write, so it is called out here rather than
-left to review.
+Concretely: today the body is `{ action }`, and `projectPath` comes from
+`sessionProjectPath(id)` on the server. `mergeIntoCurrent(path, base)` and
+`checkoutBranch(path, branch)` run git in whatever directory they are handed, so
+"the client never names the directory" is the whole of the control.
+
+Per-project actions require the client to name a project, which removes it. The
+naive version — `checkoutBranch(body.path, branch)` — lets any caller run git in
+any directory on the machine.
+
+The fix already exists in this codebase, one route over. `/api/projects/git` has
+the identical problem and says so:
+
+> Unlike the session route, the path comes from the client — so it is checked
+> against the workspace listing before anything runs.
+
+The session route does the same, with the allowlist being "a project attached to
+*this* session", which `sessionProjects()` answers directly. Refs stay
+server-resolved either way.
+
+Scale honestly: bound to loopback (the default) `AUTH_REQUIRED` is false and
+nothing off the machine can reach the route, so this is not a live risk today.
+Exposed via `SEMLA_BIND_HOST`, the proxy requires a signed-in user but this
+route never checks *which* user — see the note below. The point is not that a
+vulnerability exists now; it is that the omission is one line, looks like
+nothing in review, and turns a bounded operation into an unbounded one.
+
+**Adjacent, pre-existing, and out of scope.** While tracing the above: the git
+route calls neither `requireSessionOwner` nor `requireUser`, and it is not
+alone — `files/route.ts`, `files/content/route.ts`, `files/search/route.ts` and
+`workflows/route.ts` do not either, while `prompt`, `stream`, `messages`,
+`stop`, `composition`, `context-check` and the rest do. Under `AUTH_REQUIRED`
+that means any signed-in user can read another user's session files and act on
+its repositories. That gap predates this plan and is not created by it, but it
+is what makes the allowlist above the *only* control on the widened POST, so it
+is recorded here rather than left unsaid.
 
 **Space.** Render every attached project — no cap, no `+N` overflow. The header
 is `h-11` with `px-2` and `gap-1` (`layout.tsx:56`) and already carries the
