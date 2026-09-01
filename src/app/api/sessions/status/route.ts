@@ -1,5 +1,10 @@
+import { join } from "node:path";
+
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { hasTranscript, listSessionMeta } from "@/lib/pi/session-meta";
+import { impliedLinks } from "@/lib/pi/session-project";
+import { orderLinks } from "@/lib/pi/session-project-links";
 import { isSessionActive } from "@/lib/pi/session-service";
 
 export const runtime = "nodejs";
@@ -42,6 +47,19 @@ export async function GET() {
         // "Ran and finished" rather than "exists": a session that was created
         // and never used has nothing to report as complete.
         hasRun: hasTranscript(meta.id),
+        // Records written before the relation existed carry only projectPath,
+        // and there are far more of those than of real links — synthesising
+        // here is what stops almost every existing session rendering as though
+        // it relates to nothing. Pure and file-free, so the route keeps costing
+        // one directory read.
+        projects: (meta.projects.length > 0
+          ? orderLinks(meta.projects)
+          : impliedLinks(PI_WORKSPACE_ROOT, meta.projectPath, meta.createdAt)
+        ).map((link) => ({
+          absolutePath: join(PI_WORKSPACE_ROOT, link.path),
+          isPrimary: link.isPrimary,
+          path: link.path,
+        })),
       }));
 
     return Response.json({ sessions });

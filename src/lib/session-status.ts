@@ -9,12 +9,31 @@
  * to guarantee that is one fetcher.
  */
 
+/**
+ * One project chip on a session row.
+ *
+ * A display shape rather than the stored `ProjectLink`: the sidebar needs a
+ * name, an order, and something to address the workspace git record with. It
+ * carries both paths because the two are keyed differently — the relative one
+ * is the link's identity, the absolute one is what `/api/projects/git` keys by,
+ * and the client cannot derive one from the other without the workspace root.
+ */
+export type SessionProject = {
+  /** Workspace-relative. The identity. */
+  path: string;
+  /** Absolute, so a badge can look up its branch. */
+  absolutePath: string;
+  isPrimary: boolean;
+};
+
 export type SessionStatus = {
   id: string;
   title: string | null;
   createdAt: string;
   isRunning: boolean;
   hasRun: boolean;
+  /** Anchor first. Empty for a session that relates to no project. */
+  projects: SessionProject[];
 };
 
 export const SESSION_STATUS_KEY = ["session-status"] as const;

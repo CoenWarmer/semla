@@ -113,6 +113,11 @@ export function SessionsListClient({ sessions }: { sessions: SessionRow[] }) {
           {...s}
           hasRun={statusById.get(s.id)?.hasRun ?? false}
           isRunning={statusById.get(s.id)?.isRunning ?? s.isRunning}
+          // Taken from the poll rather than threaded through the server render,
+          // the same way hasRun already is: the server list is a layout that
+          // persists across navigation, so it goes stale as the agent attaches
+          // projects mid-session while the poll does not.
+          projects={statusById.get(s.id)?.projects ?? []}
           onDelete={handleDelete}
         />
       ))}

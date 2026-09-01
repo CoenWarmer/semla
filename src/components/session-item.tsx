@@ -4,7 +4,9 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CircleCheckIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { GitStatusBadge } from "@/components/git-status-badge";
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import type { SessionProject } from "@/lib/session-status";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import {
@@ -15,18 +17,32 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/** How many project chips a row shows before collapsing the rest into "+N". */
+const VISIBLE_PROJECTS = 2;
+
 interface SessionItemProps {
   id: string;
   date: string;
   /** The session has produced a transcript, so it has actually run. */
   hasRun?: boolean;
   isRunning?: boolean;
+  /** Projects this session relates to, anchor first. */
+  projects?: SessionProject[];
   title: string | null;
   usage?: { tokens: number; cost: number };
   onDelete: (id: string) => void;
 }
 
-export function SessionItem({ id, date, hasRun, isRunning, title, usage, onDelete }: SessionItemProps) {
+export function SessionItem({
+  id,
+  date,
+  hasRun,
+  isRunning,
+  projects = [],
+  title,
+  usage,
+  onDelete,
+}: SessionItemProps) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(title ?? "");
@@ -84,6 +100,33 @@ export function SessionItem({ id, date, hasRun, isRunning, title, usage, onDelet
         </ItemTitle>
         <ItemDescription className="flex flex-col justify-between gap-1">
           <span>{date}</span>
+          {projects.length > 0 && (
+            // Names only — no branch, no counts, no popover. A row is one of
+            // dozens, and GitStatusBadge would otherwise fetch on hover for
+            // every project the pointer crossed on its way down the list.
+            <span className="flex flex-wrap items-center gap-1">
+              {projects.slice(0, VISIBLE_PROJECTS).map((project) => (
+                <GitStatusBadge
+                  className="-mx-1 max-w-28"
+                  key={project.path}
+                  showBranchStatus={false}
+                  showProjectName
+                  target={{ kind: "project", path: project.absolutePath }}
+                />
+              ))}
+              {projects.length > VISIBLE_PROJECTS && (
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={projects
+                    .slice(VISIBLE_PROJECTS)
+                    .map((project) => project.path)
+                    .join(", ")}
+                >
+                  +{projects.length - VISIBLE_PROJECTS}
+                </span>
+              )}
+            </span>
+          )}
           {usage && (
             <TokenUsage
               className="text-xs"

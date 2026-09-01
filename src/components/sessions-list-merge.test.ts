@@ -23,6 +23,7 @@ const polled = (id: string, createdAt: string) => ({
   title: id,
   isRunning: false,
   hasRun: false,
+  projects: [],
 });
 
 describe("mergeDiscoveredSessions", () => {
