@@ -310,8 +310,8 @@ that interleaves two concurrent patches and asserts neither is lost.
 | Consumer | Change |
 |---|---|
 | `session-project.ts` | `sessionProjectPath()` → `sessionProjects()` returning `{ primary, links }`. Everything else follows from this one function. |
-| `git/route.ts` | Badge shows the primary. The panel lists each attached project with its own branch; `readGitStatus` is already per-path. Checkout/merge take an explicit project. |
-| `file-browser.ts` | `basePath: string \| null` → `basePaths: string[]` — every attached project is a root. See §9.5. |
+| `git/route.ts` | GET returns a record keyed by project path, like `/api/projects/git` already does; `readGitStatus` is already per-path. POST takes a `path`, validated against the session's own links before acting — see §9.3 for why that validation is load-bearing. |
+| `file-browser.ts` | `basePath: string \| null` → `basePaths: string[]` — every attached project is a root. See §9.7. |
 | `file-search.ts` | `inProject` becomes three bands — primary, other attached, workspace — which the existing coarse-band scoring absorbs without restructuring. |
 | `prompts.ts` | "The active project is X" → the primary plus the attached list. |
 | wiki stamp | The whole attached set, as a list. See below. |
@@ -382,48 +382,26 @@ Placement: the Files sheet already moved to the left as navigation, and the
 project set is the same kind of thing. Most likely a section at the top of that
 sheet rather than a new surface.
 
-### 9.2 Sidebar: a badge per related project
+### 9.2 One component, three surfaces
 
-Every session row in the sidebar carries one badge per project it relates to.
-
-This does **not** get a new component. `GitStatusBadge`
-(`src/components/git-status-badge.tsx`) already is the branch indicator, already
-knows how to address a project, and is already reused by the app header and the
-project cards. It gains two props:
+`GitStatusBadge` (`src/components/git-status-badge.tsx`) is already the branch
+indicator, already knows how to address a project, and is already shared by the
+app header and the project cards. It is not replaced; it gains two props.
 
 ```ts
-/** Render the project's name. Off by default — the header has no room. */
-showProjectName?: boolean;
+/** Render the project's name. */
+showProjectName?: boolean;  // default false
 /** Render the branch ref, the ahead/behind counts, and the actions popover. */
 showBranchStatus?: boolean; // default true
 ```
 
-| Surface | Props | Result |
-|---|---|---|
-| App header (`header-actions.tsx`) | defaults | unchanged: branch, counts, popover |
-| Project cards (`projects-grid.tsx`) | defaults | unchanged: the card title is already the name |
-| Sidebar row (`session-item.tsx`) | `showProjectName`, `showBranchStatus={false}` | a compact project chip |
+| Surface | Props | Result | Count |
+|---|---|---|---|
+| App header (`header-actions.tsx`) | `showProjectName` | name + branch + counts + popover | one per attached project |
+| Sidebar row (`session-item.tsx`) | `showProjectName showBranchStatus={false}` | a compact name-only chip | one per attached project |
+| Project cards (`projects-grid.tsx`) | defaults | unchanged — the card title is already the name | one |
 
-Three consequences follow, and each is the reason the reuse works rather than
-an obstacle to it.
-
-**Use `{ kind: "project", path }` for sidebar badges, never `{ kind: "session" }`.**
-The session variant fetches `/api/sessions/[id]/git`, which is one React Query
-per session, each polling on its own 30s interval and each able to trigger a
-server-side `git fetch`. A sidebar of thirty sessions would be thirty polling
-queries. The project variant shares a single workspace-wide query across every
-badge on screen and never fetches from the poll — `use-git-status.ts` says so
-directly:
-
-> Every card shares one workspace query, so a page of forty projects makes one
-> request rather than forty.
-
-That is exactly the property a list of badges needs, so **no new `GitTarget`
-variant is required**. Note that `/api/projects/git` keys its record by the
-*absolute* path (`workspace-git.ts:63`, from `getWorkspaceProjects()`), so the
-sidebar resolves each link's workspace-relative path against the root before
-passing it. Relative stays the stored identity; absolute is the wire format this
-one endpoint already speaks.
+Two changes to the component itself, both forced by the new surfaces:
 
 **`showBranchStatus: false` must also suppress the popover.** Opening it fires
 `refresh.mutate()`, which POSTs `action: "refresh"` and performs a real network
@@ -433,18 +411,103 @@ pointer down a session list would fire a fetch per project passed over.
 a waste rather than a hazard — but a chip that is deliberately not showing
 branch state should not be offering "merge" and "check out" either. When
 `showBranchStatus` is false the badge renders a plain, non-interactive chip.
-*This is a judgement call, not something decided; a third prop could separate
-the popover from the counts if that turns out to be wanted.*
+*A judgement call; a third prop could separate the popover from the counts if
+that turns out to be wanted.*
 
 **`if (!label) return null` has to become conditional.** Today the badge renders
 nothing when git has nothing to say, and the docblock defends that: "An empty
-slot reads better here than a placeholder next to the model picker." That
-remains right for the header, but a sidebar chip should still name its project
-when the repo has no commits or git is unavailable — the relation is a fact
+slot reads better here than a placeholder next to the model picker." Still right
+for a branch-only badge — but a named badge should show its project when the
+repo has no commits or git is unavailable, because the relation is a fact
 independent of git state. The guard becomes: return null only when there is
-neither a name to show nor a label to show.
+neither a name nor a label to show.
 
-### 9.3 Getting the data there — free, as it happens
+### 9.3 App header: every related project, named, with its branch
+
+The header shows one badge per attached project, side by side, each carrying the
+project name *and* its branch status. Today it shows a single unnamed branch
+badge; a session working in three repos should say so at the top of the screen.
+
+**Keep `{ kind: "session" }` here, and give the route a record.**
+
+This is the opposite of the sidebar's answer (§9.4), and deliberately so. The
+distinction `use-git-status.ts` draws is between *fetching* and *not fetching*:
+
+> A session knows its project and is the only repository on screen, so it is
+> read one at a time and may fetch. A card is one of dozens, so the whole
+> workspace is read in a single request and none of it fetches until you open a
+> card's popover.
+
+Multiple header badges falsify the literal premise — the session is no longer
+"the only repository on screen" — but not the reasoning. The header is where
+freshness matters most, because it is *the* branch indicator and the whole
+reason `fetchCanonical` exists is that stale refs lie: the module notes a branch
+that "showed up to date while 432 commits behind". A session's handful of repos
+is still not a workspace's fifty.
+
+So `/api/sessions/[id]/git` returns a record keyed by project path, exactly as
+`/api/projects/git` already does, and the session target grows an optional
+`path` so each badge indexes into it:
+
+```ts
+| { kind: "session"; sessionId: string; path?: string }
+```
+
+The query key stays `["git-status", "session", sessionId]`, so **all the header
+badges share one request** however many there are, and `useGitStatus` ends up
+doing `data[target.path]` for *both* variants — the two branches of the hook
+become more alike, not less.
+
+Fetch cost is bounded: a session with three projects fetches three repositories,
+each throttled to once per 60s by `GIT_FETCH_INTERVAL_MS`, against a 30s poll.
+
+**The POST invariant must survive.** The route's docblock states a real security
+property:
+
+> The request names an action and nothing else. Refs are re-resolved here from
+> the same read the badge renders, so a caller cannot aim either operation at a
+> repository or a ref of its choosing.
+
+Per-project merge and checkout means the client now names a repository, which
+contradicts that as written. The property is preserved the way the workspace
+route already preserves it — by validating against an allowlist before acting.
+There it is `isWorkspaceProject()`; here it is "a project attached to *this*
+session", which `sessionProjects()` answers directly. Refs stay server-resolved.
+Implemented carelessly — taking `path` from the body and passing it through —
+this becomes an arbitrary-repository write, so it is called out here rather than
+left to review.
+
+**Space.** The header is `h-11` with `px-2` and `gap-1` (`layout.tsx:56`), and
+it already carries the sidebar trigger, the Files button, and the cost badge.
+A named badge with branch and counts is much wider than today's branch-only one,
+and there may be several.
+
+- Show up to three, then a `+N` that opens a popover listing the rest with their
+  branches.
+- Order primary first, then observed by `firstAttachedAt`.
+- `GitStatusBadge` truncates the ref at `max-w-40`; with a name alongside it and
+  more than one badge, the header passes something narrower.
+- Zero projects renders nothing at all, exactly as today.
+
+### 9.4 Sidebar: a name-only chip per project
+
+Every session row in the sidebar carries one chip per project it relates to.
+
+**Use `{ kind: "project", path }` here, never `{ kind: "session" }`.** The
+sidebar is the "dozens of repositories" case the hook was designed for: thirty
+sessions on `{ kind: "session" }` would be thirty polling queries, each able to
+trigger a fetch. The project variant shares a single workspace-wide query across
+every chip on screen and never fetches from the poll —
+
+> Every card shares one workspace query, so a page of forty projects makes one
+> request rather than forty.
+
+Note that `/api/projects/git` keys its record by the *absolute* path
+(`workspace-git.ts:63`, from `getWorkspaceProjects()`), so the sidebar resolves
+each link's workspace-relative path against the root before passing it. Relative
+stays the stored identity; absolute is the wire format that one endpoint speaks.
+
+### 9.5 Getting the data there — free, as it happens
 
 `/api/sessions/status` is built from `listSessionMeta()`: disk only, no
 database, no per-session query. The links live on that same record, so
@@ -458,12 +521,15 @@ Three types grow the field: `SessionStatus` (`src/lib/session-status.ts`),
 **All three, not just the poll.** `mergeDiscoveredSessions` only synthesises
 rows the server render did not know about; every already-known row keeps its
 server-supplied data. Add `projects` to the poll alone and existing sessions
-show no badges until something forces a server re-render — the same class of
-bug the merge function exists to fix.
+show no chips until something forces a server re-render — the same class of bug
+the merge function exists to fix.
 
-### 9.4 Layout
+The header reads the session's own links rather than this list, since it already
+has the session id and needs the ordering anyway.
 
-Badges sit in `ItemDescription`, which is already a `flex flex-col` holding the
+### 9.6 Sidebar layout
+
+Chips sit in `ItemDescription`, which is already a `flex flex-col` holding the
 date and the token usage — a row of chips underneath the date.
 
 - Order: primary first, then observed by `firstAttachedAt`.
@@ -474,13 +540,13 @@ date and the token usage — a row of chips underneath the date.
   badge already calls `stopPropagation` for the project-card case, which was a
   card-shaped button for the same reason, so it survives here unchanged.
 - A session with no projects renders no chips and no empty row.
-- **The chip is not clickable.** `SessionItem` is a stretched-link row, so a
-  click anywhere — the chip included — opens the session. Filtering the list by
+- **The chip is not clickable.** Because the row is a stretched link, a click
+  anywhere — the chip included — opens the session. Filtering the list by
   project is the obvious thing a many-to-many unlocks, and deliberately not done
   here: it needs filter state, a way out of it, and an empty state, none of
   which belong in this change.
 
-### 9.5 File browser: one root per attached project
+### 9.7 File browser: one root per attached project
 
 The tree shows every attached project as a sibling root, rather than opening on
 the primary alone.
@@ -515,7 +581,7 @@ per-root. This is the largest UI change in the plan.
   top-level parent (§6.2).
 - Per-page wiki attribution. The stamp becomes a per-turn list (§8), which is
   better than one slug and still not per-page.
-- Filtering the sidebar by project (§9.4).
+- Filtering the sidebar by project (§9.6).
 - Per-project branch state on the join table (§5).
 - A project picker on `/sessions/new`, which today POSTs to `/api/sessions` with
   no body at all. Auto-attach covers it: the session adopts its project on the
@@ -542,14 +608,22 @@ Each step leaves the tree green.
 7. `sessionProjects()`, and move the git route, file browser and prompt block
    onto it. `projectPath` on disk becomes a written-but-unread mirror.
 8. Observed attachment in the `tool_execution_start`/`end` handlers.
-9. `showProjectName` / `showBranchStatus` on `GitStatusBadge` (§9.2), with the
-   header and the project cards left on the defaults. Separable from everything
-   above: it is a props change plus the conditional render guard, and it can be
-   reviewed on its own before any badge consumes it.
+9. `showProjectName` / `showBranchStatus` on `GitStatusBadge` (§9.2), with every
+   existing call site left on the defaults. Separable from everything above: a
+   props change plus the conditional render guard, reviewable on its own before
+   any badge consumes it.
+9a. `/api/sessions/[id]/git` GET returns a record; `GitTarget`'s session variant
+    grows `path?`; `useGitStatus` indexes both variants the same way. Behaviour
+    is unchanged while the header still renders one badge, so this lands as a
+    pure refactor with the existing UI as its test.
+9b. The header renders one badge per attached project (§9.3), and POST grows the
+    `path` plus its allowlist check. The allowlist and the multi-badge render
+    belong in the same commit — shipping the parameter before the validation is
+    the failure mode §9.3 warns about.
 10. `projects` through `SessionStatus`, `SessionRow` and the server-rendered
-    rows (§9.3), then the chips in `session-item.tsx` (§9.4).
+    rows (§9.5), then the chips in `session-item.tsx` (§9.4, §9.6).
 11. The session panel's anchor / touched-in-this-session sections (§9.1).
-12. File browser sibling roots (§9.5) — the largest UI change, and independent
+12. File browser sibling roots (§9.7) — the largest UI change, and independent
     of everything above it once `sessionProjects()` exists.
 13. The wiki stamp as a per-turn list (§8). Both sides of the
     `WIKI_SESSION_REPOS` contract in one commit, with
