@@ -1,5 +1,4 @@
 import { WIKI_HOME } from "@/lib/pi/runtime-config";
-import { repoSlugFromProjectPath } from "@/lib/pi/wiki-repo-stamp";
 
 // DEFAULT_SYSTEM_PROMPT lives in system-prompt.ts, not here: this module pulls
 // in runtime-config (and through it pi-coding-agent), which must never reach a

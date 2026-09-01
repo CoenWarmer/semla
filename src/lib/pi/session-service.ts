@@ -57,10 +57,7 @@ import {
   releaseLiveSession,
   retainLiveSession,
 } from "@/lib/pi/live-sessions";
-import {
-  repoSlugFromProjectPath,
-  stampSessionWikiPages,
-} from "@/lib/pi/wiki-repo-stamp";
+import { stampSessionWikiPages } from "@/lib/pi/wiki-repo-stamp";
 import {
   clearSessionRepo,
   setSessionRepos,
