@@ -487,22 +487,35 @@ The session route does the same, with the allowlist being "a project attached to
 *this* session", which `sessionProjects()` answers directly. Refs stay
 server-resolved either way.
 
-Scale honestly: bound to loopback (the default) `AUTH_REQUIRED` is false and
-nothing off the machine can reach the route, so this is not a live risk today.
-Exposed via `SEMLA_BIND_HOST`, the proxy requires a signed-in user but this
-route never checks *which* user — see the note below. The point is not that a
-vulnerability exists now; it is that the omission is one line, looks like
-nothing in review, and turns a bounded operation into an unbounded one.
+**Do it, but for the right reason.** Semla is a single-user system today, bound
+to loopback, where `AUTH_REQUIRED` is false and nothing off the machine can
+reach the route. The only client is the owner's own browser, and the agent —
+which could in principle POST to the local API — already holds an unrestricted
+`bash` tool, so the endpoint grants it nothing it does not already have. As a
+*security* control here, the allowlist buys approximately nothing, and it would
+be dishonest to argue it in those terms.
 
-**Adjacent, pre-existing, and out of scope.** While tracing the above: the git
-route calls neither `requireSessionOwner` nor `requireUser`, and it is not
-alone — `files/route.ts`, `files/content/route.ts`, `files/search/route.ts` and
-`workflows/route.ts` do not either, while `prompt`, `stream`, `messages`,
-`stop`, `composition`, `context-check` and the rest do. Under `AUTH_REQUIRED`
-that means any signed-in user can read another user's session files and act on
-its repositories. That gap predates this plan and is not created by it, but it
-is what makes the allowlist above the *only* control on the widened POST, so it
-is recorded here rather than left unsaid.
+It is still worth the three lines:
+
+- A wrong or stale path fails as a clear 400 instead of running git somewhere
+  unintended.
+- It keeps the route's documented property true rather than leaving a docblock
+  that describes code that no longer behaves that way — the worst kind, because
+  the next reader trusts it.
+- It is the difference between a bounded and an unbounded operation on the day
+  the system stops being single-user, and it costs nothing to have already done.
+
+**Deferred, by decision.** The git route calls neither `requireSessionOwner` nor
+`requireUser`, and it is not alone — `files/route.ts`, `files/content/route.ts`,
+`files/search/route.ts` and `workflows/route.ts` do not either, while `prompt`,
+`stream`, `messages`, `stop`, `composition`, `context-check` and the rest do.
+Under `AUTH_REQUIRED` that would let any signed-in user read another user's
+session files and act on its repositories.
+
+This is deliberately *not* being fixed here. Semla is single-user, so the gap
+has no consequence today, and a route-by-route authorisation audit is its own
+piece of work with its own tests. It belongs with whatever makes Semla
+multi-user, and the list above is the starting point for it.
 
 **Space.** Render every attached project — no cap, no `+N` overflow. The header
 is `h-11` with `px-2` and `gap-1` (`layout.tsx:56`) and already carries the
@@ -611,6 +624,9 @@ per-root. This is the largest UI change in the plan.
 - Per-page wiki attribution. The stamp becomes a per-turn list (§8), which is
   better than one slug and still not per-page.
 - Filtering the sidebar by project (§9.6).
+- A route-by-route authorisation audit. Semla is single-user today; the missing
+  ownership checks listed in §9.3 belong with the work that makes it
+  multi-user, not with this change.
 - Per-project branch state on the join table (§5).
 - A project picker on `/sessions/new`, which today POSTs to `/api/sessions` with
   no body at all. Auto-attach covers it: the session adopts its project on the
