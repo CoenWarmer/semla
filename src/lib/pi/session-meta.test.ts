@@ -15,6 +15,7 @@ import {
   listSessionMeta,
   readSessionMeta,
   writeSessionMeta,
+  type ProjectLink,
 } from "./session-meta.ts";
 
 const dir = () => mkdtempSync(join(tmpdir(), "semla-meta-"));
@@ -57,6 +58,54 @@ describe("writeSessionMeta", () => {
 
   it("has no record for an unknown session", () => {
     expect(readSessionMeta("nope", dir())).toBeNull();
+  });
+
+  it("starts a session with no projects", () => {
+    const d = dir();
+    writeSessionMeta("s1", { title: "New Session" }, d);
+
+    expect(readSessionMeta("s1", d)!.projects).toEqual([]);
+  });
+
+  it("reads a record written before projects existed as having none", () => {
+    const d = dir();
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "s1.json"), JSON.stringify({ title: "old" }), "utf8");
+
+    expect(readSessionMeta("s1", d)!.projects).toEqual([]);
+  });
+
+  /**
+   * Appending is not last-writer-wins, so this asserts the property that makes
+   * it safe: writeSessionMeta never yields between its read and its write, so
+   * two callers cannot interleave.
+   *
+   * It passes trivially while the module is synchronous. That is the point —
+   * it exists to fail the day someone moves it to node:fs/promises, where the
+   * failure would otherwise be a silently dropped link rather than an error.
+   */
+  it("keeps both links when two writers append a project", async () => {
+    const d = dir();
+    const link = (path: string): ProjectLink => ({
+      path,
+      origin: "observed",
+      isPrimary: false,
+      firstAttachedAt: "2026-09-01T00:00:00.000Z",
+      lastTouchedAt: "2026-09-01T00:00:00.000Z",
+    });
+
+    const append = async (path: string) => {
+      const current = readSessionMeta("s1", d)?.projects ?? [];
+      writeSessionMeta("s1", { projects: [...current, link(path)] }, d);
+    };
+
+    writeSessionMeta("s1", { title: "Two repos" }, d);
+    await Promise.all([append("semla"), append("kibana")]);
+
+    expect(readSessionMeta("s1", d)!.projects.map((p) => p.path).sort()).toEqual([
+      "kibana",
+      "semla",
+    ]);
   });
 
   it("survives a corrupt record instead of throwing", () => {

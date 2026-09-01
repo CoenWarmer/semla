@@ -20,11 +20,41 @@ import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
 
+/**
+ * One project a session works in.
+ *
+ * `origin` records how the link came to exist, and the two are not
+ * interchangeable: `explicit` is a choice the user made and can undo, while
+ * `observed` is a record of the agent having written there. A project the user
+ * picked *and* the agent wrote to stays `explicit` — the choice is the stronger
+ * statement.
+ *
+ * `isPrimary` is the anchor the UI points at, and at most one link per session
+ * carries it. It is orthogonal to `origin` on purpose: a session that starts
+ * unanchored and reveals its subject by writing to a repo should be able to
+ * promote that observed link.
+ */
+export interface ProjectLink {
+  /** Workspace-relative path — the identity. See project-of-path.ts. */
+  path: string;
+  origin: "explicit" | "observed";
+  isPrimary: boolean;
+  firstAttachedAt: string;
+  lastTouchedAt: string;
+}
+
 export interface SessionMeta {
   id: string;
   title: string | null;
   goal: string | null;
   projectPath: string | null;
+  /**
+   * Every project this session relates to, primary first.
+   *
+   * Supersedes `projectPath`, which is kept as a mirror of the primary link
+   * while its readers are moved across one at a time.
+   */
+  projects: ProjectLink[];
   isRunning: boolean;
   createdAt: string;
   /** Who the session belongs to. Authorisation still consults Postgres. */
@@ -38,6 +68,7 @@ const blank = (id: string): SessionMeta => ({
   title: null,
   goal: null,
   projectPath: null,
+  projects: [],
   isRunning: false,
   createdAt: new Date().toISOString(),
   userId: null,
@@ -63,6 +94,16 @@ export function readSessionMeta(
  *
  * Read-modify-write is safe enough here: a session is written by the one
  * process that owns it, and the fields are last-writer-wins by nature.
+ *
+ * IMPORTANT: the synchrony is load-bearing, not incidental. `projects` is an
+ * array that callers append to, and "last writer wins" is the wrong rule for an
+ * append — a writer that read before another's write would drop a link. What
+ * makes it safe is that this function never yields: `readFileSync` and
+ * `writeFileSync` run in one turn of the event loop, so two callers cannot
+ * interleave and the whole read-modify-write is atomic within the process.
+ *
+ * Switching this module to `node:fs/promises` would look like a tidy-up and
+ * would silently start losing links. session-meta.test.ts pins it.
  */
 export function writeSessionMeta(
   id: string,
