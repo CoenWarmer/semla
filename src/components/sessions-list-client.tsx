@@ -9,6 +9,7 @@ import { formatSessionDate } from "@/lib/session-date";
 import {
   fetchSessionStatus,
   SESSION_STATUS_KEY,
+  sessionStatusKey,
   type SessionStatus,
 } from "@/lib/session-status";
 
@@ -117,7 +118,8 @@ export function SessionsListClient({
     // Leave before the request rather than after it. Waiting meant sitting on
     // the page of a session already struck from the sidebar until a round trip
     // finished — reading a transcript that was in the act of being deleted.
-    if (isOnSessionPage(pathname, id)) {
+    const leavingItsPage = isOnSessionPage(pathname, id);
+    if (leavingItsPage) {
       router.push("/");
     }
 
@@ -147,8 +149,29 @@ export function SessionsListClient({
         });
       }
 
-      await queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-      router.refresh();
+      // Drop the session's own status query rather than letting it be
+      // refetched. It is keyed under the list's prefix, so invalidating the
+      // list would otherwise sweep it up: a request for a session that has
+      // just been deleted, answered 404, retried once, and awaited — a second
+      // of nothing, in the middle of leaving the page.
+      if (deletedOnServer) {
+        queryClient.removeQueries({ queryKey: sessionStatusKey(id) });
+      }
+
+      // Exactly the list. The prefix would reach every session's own status
+      // query, and none of them have anything to learn from a deletion.
+      await queryClient.invalidateQueries({
+        queryKey: SESSION_STATUS_KEY,
+        exact: true,
+      });
+
+      // Only when we stayed. Navigating already fetched the route we landed on,
+      // and refreshing it again re-rendered the home page a second time — with
+      // the workspace git scan behind it, a second of churn after the delete
+      // had visibly finished.
+      if (!leavingItsPage) {
+        router.refresh();
+      }
     });
   };
 
