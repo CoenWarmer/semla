@@ -57,6 +57,27 @@ export const projectAbsolutePath = (workspaceRoot: string, path: string) =>
   `${workspaceRoot}/${path}`;
 
 /**
+ * The list with one session's running flag corrected.
+ *
+ * The sidebar's spinner comes from the list poll, whose interval only
+ * accelerates to 2s *after* a poll happens to catch something running — so at
+ * the idle 15s a short turn can begin and end between two polls and never show
+ * one. The page starting the turn knows before any poll does, so it says so
+ * directly instead of buying the answer with a request.
+ *
+ * Returns undefined untouched: a session the sidebar has not listed yet has no
+ * row to correct, and the poll will discover it.
+ */
+export const withSessionRunning = (
+  sessions: SessionStatus[] | undefined,
+  sessionId: string,
+  isRunning: boolean,
+): SessionStatus[] | undefined =>
+  sessions?.map((session) =>
+    session.id === sessionId ? { ...session, isRunning } : session,
+  );
+
+/**
  * One session's live state.
  *
  * What a page that is looking at a single session actually needs. The fields a

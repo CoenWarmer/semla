@@ -18,6 +18,8 @@ import {
   fetchSessionStatus,
   fetchSingleSessionStatus,
   projectAbsolutePath,
+  withSessionRunning,
+  type SessionStatus,
 } from "./session-status.ts";
 
 afterEach(() => {
@@ -65,6 +67,52 @@ describe("fetchSingleSessionStatus", () => {
     return expect(fetchSingleSessionStatus("abc")).rejects.toThrow(
       "Unable to load session status.",
     );
+  });
+});
+
+const row = (id: string, isRunning = false): SessionStatus => ({
+  id,
+  title: id,
+  createdAt: "2026-09-02T00:00:00.000Z",
+  isRunning,
+  hasRun: false,
+  projects: [],
+});
+
+describe("withSessionRunning", () => {
+  it("marks the named session and leaves the rest alone", () => {
+    const next = withSessionRunning([row("a"), row("b")], "a", true);
+
+    expect(next?.map((s) => [s.id, s.isRunning])).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
+  });
+
+  it("clears it again when the turn ends", () => {
+    const next = withSessionRunning([row("a", true)], "a", false);
+    expect(next?.[0].isRunning).toBe(false);
+  });
+
+  it("does not mutate the cached array", () => {
+    // React Query compares by reference; mutating in place would leave the
+    // sidebar rendering the old value.
+    const before = [row("a")];
+    const next = withSessionRunning(before, "a", true);
+
+    expect(before[0].isRunning).toBe(false);
+    expect(next).not.toBe(before);
+  });
+
+  it("leaves an unlisted session alone rather than inventing a row", () => {
+    // A session the sidebar has not polled yet has no row to correct; the poll
+    // discovers it. There is nothing here to build a full row from.
+    const before = [row("a")];
+    expect(withSessionRunning(before, "unknown", true)).toEqual(before);
+  });
+
+  it("is a no-op before the list has loaded", () => {
+    expect(withSessionRunning(undefined, "a", true)).toBeUndefined();
   });
 });
 

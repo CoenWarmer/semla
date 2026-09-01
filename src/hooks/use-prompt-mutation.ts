@@ -18,6 +18,7 @@ import {
   fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
   sessionStatusKey,
+  withSessionRunning,
   type SessionStatus,
   type SingleSessionStatus,
 } from "@/lib/session-status";
@@ -149,6 +150,23 @@ const readPiStream = async (
 export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean) => {
   const queryClient = useQueryClient();
   const router = useRouter();
+
+  /**
+   * Tell the sidebar what this page already knows about its own session.
+   *
+   * The list poll is the sidebar's only source, and at its idle interval a
+   * short turn can start and finish between two of them — so the row never
+   * shows a spinner for a turn this page watched from beginning to end.
+   * Writing the cache costs no request.
+   */
+  const setListRunning = useCallback(
+    (isRunning: boolean) => {
+      queryClient.setQueryData<SessionStatus[]>(SESSION_STATUS_KEY, (prev) =>
+        withSessionRunning(prev, sessionId, isRunning),
+      );
+    },
+    [queryClient, sessionId],
+  );
   // Non-zero while a submit is in flight; >1 means overlapping submits, which
   // would leave isPending true off the newest one after the first settles.
   const inFlightRef = useRef(0);
@@ -284,13 +302,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
             sessionStatusKey(sessionId),
             (prev) => (prev ? { ...prev, isRunning: false } : prev),
           );
-          // The sidebar reads the list, and its spinner should stop too rather
-          // than waiting out its own poll.
-          queryClient.setQueryData<SessionStatus[]>(SESSION_STATUS_KEY, (prev) =>
-            prev?.map((session) =>
-              session.id === sessionId ? { ...session, isRunning: false } : session,
-            ),
-          );
+          setListRunning(false);
 
           await queryClient.invalidateQueries({
             queryKey: sessionMessagesQueryKey(sessionId),
@@ -474,6 +486,9 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         }
       );
 
+      // The sidebar's poll cannot know yet; this turn has only just begun.
+      setListRunning(true);
+
       trace("onMutate:end");
       return { previousMessages };
     },
@@ -487,6 +502,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         queryKey: sessionMessagesQueryKey(sessionId),
       });
       trace("onSettled:invalidate-done");
+      setListRunning(false);
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });
 
