@@ -21,8 +21,8 @@ import {
   workflowRunsQueryKey,
 } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
-import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
+import { SessionActivityLine } from "@/components/session-activity-line";
 import { AskUserDialog } from "./ask-user-dialog";
 import { EditableUserMessage } from "./message-edit";
 import { SessionStepsStrip } from "./session-steps-strip";
@@ -36,7 +36,6 @@ const WikiMiniGraph = dynamic(
 );
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
-import { TokenUsage } from "./token-usage";
 import { MessageSquareIcon } from "lucide-react";
 import {
   usePendingPrompt,
@@ -411,18 +410,18 @@ export function ClientSessionComponent({
                 </MessageContent>
               </Message>
             )}
-            {isActive && !streamingText && (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Spinner />
-                <span>
-                  {activeTool ? `Running ${activeTool}…` : "Thinking…"}
-                </span>
-                {elapsedLabel && (
-                  <span className="tabular-nums">{elapsedLabel}</span>
-                )}
-                <TokenUsage approximate tokens={estimatedTokens} />
-              </div>
-            )}
+            {/*
+              `active` is the same value the prompt bar gets as `isRunning`
+              below. Passing one signal to both is what stops the stop button
+              and this line disagreeing about whether anything is happening.
+            */}
+            <SessionActivityLine
+              active={isActive}
+              activeTool={activeTool}
+              elapsedLabel={elapsedLabel}
+              estimatedTokens={estimatedTokens}
+              streaming={streamingText.length > 0}
+            />
             {errorMessage && (
               <p className="text-destructive text-sm">{errorMessage}</p>
             )}
@@ -460,6 +459,7 @@ export function ClientSessionComponent({
                 variant="block"
               />
             }
+            /* Same signal as SessionActivityLine above. */
             isRunning={isActive}
             onSelectionChange={handleSelectionChange}
             onStop={handleStop}

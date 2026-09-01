@@ -477,17 +477,19 @@ Implemented carelessly — taking `path` from the body and passing it through �
 this becomes an arbitrary-repository write, so it is called out here rather than
 left to review.
 
-**Space.** The header is `h-11` with `px-2` and `gap-1` (`layout.tsx:56`), and
-it already carries the sidebar trigger, the Files button, and the cost badge.
-A named badge with branch and counts is much wider than today's branch-only one,
-and there may be several.
+**Space.** Render every attached project — no cap, no `+N` overflow. The header
+is `h-11` with `px-2` and `gap-1` (`layout.tsx:56`) and already carries the
+sidebar trigger, the Files button and the cost badge, but a session accumulates
+projects one write at a time and in practice holds a handful, not a screenful.
+A cap would be machinery for a case that does not arise, and hiding a project
+behind `+N` defeats the point of showing them.
 
-- Show up to three, then a `+N` that opens a popover listing the rest with their
-  branches.
 - Order primary first, then observed by `firstAttachedAt`.
-- `GitStatusBadge` truncates the ref at `max-w-40`; with a name alongside it and
-  more than one badge, the header passes something narrower.
+- `GitStatusBadge` truncates the ref at `max-w-40`. With a name alongside it and
+  several badges in a row, the header passes something narrower.
 - Zero projects renders nothing at all, exactly as today.
+- Revisit only if a real session turns out to overflow; the badge group can
+  scroll or collapse then, with an actual case to design against.
 
 ### 9.4 Sidebar: a name-only chip per project
 
