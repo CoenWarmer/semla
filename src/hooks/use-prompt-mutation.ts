@@ -9,6 +9,7 @@ import {
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
 import { appendConsoleLine } from "@/lib/console-log";
+import { compositionQueryKey } from "@/hooks/use-session-composition";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import {
   clearsDeadStreamLatch,
@@ -330,6 +331,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         await queryClient.invalidateQueries({
           queryKey: sessionMessagesQueryKey(sessionId),
         });
+        // A turn that finished while this page was reattached ends here rather
+        // than in onSettled, and moves the composition just the same.
+        await queryClient.invalidateQueries({
+          queryKey: compositionQueryKey(sessionId),
+        });
         if (titleUpdatedRef.current) {
           titleUpdatedRef.current = false;
           setTimeout(() => router.refresh(), 0);
@@ -478,6 +484,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       trace("onSettled:invalidate-begin");
       await queryClient.invalidateQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
+      });
+      // The turn's entries have landed, so what the context window is made of
+      // has actually changed. This is the only moment it does.
+      await queryClient.invalidateQueries({
+        queryKey: compositionQueryKey(sessionId),
       });
       trace("onSettled:invalidate-done");
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);

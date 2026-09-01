@@ -71,12 +71,9 @@ export function SessionTopbar({
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
-  // Keyed on the conversation's length so it re-reads as turns land, rather
-  // than polling for numbers that only move when a message does.
-  const { data: composition } = useSessionComposition(
-    sessionId,
-    messages.length + (toolCalls?.length ?? 0),
-  );
+  // Re-read when a turn lands, via invalidation from the prompt mutation —
+  // not on every render that changes a message or tool-call count.
+  const { data: composition } = useSessionComposition(sessionId);
 
   const agentCount = snapshot?.agentCount ?? 0;
   const runningCount = snapshot?.runningCount ?? 0;

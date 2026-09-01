@@ -15,12 +15,18 @@ export const compositionQueryKey = (sessionId: string) =>
  * arithmetic over message lengths — stayed hidden until somebody opened the
  * inspector and paid for a model call.
  *
- * `turnKey` changes as the conversation grows, which refetches without needing
- * a tight poll: the numbers only move when a message or tool result lands.
+ * Refreshed by invalidation when a turn lands, not by a counter in the key.
+ *
+ * The key used to carry `messages.length + toolCalls.length`, which made every
+ * change to either a brand-new cache entry and therefore a fetch. That counted
+ * the optimistic prompt — refetching immediately on submit, for data the server
+ * cannot have yet, since a turn's entries are only persisted when it ends — and
+ * it counted *live* tool calls, so a tool-heavy turn re-parsed the whole
+ * transcript once per tool call. `placeholderData` kept it all off screen.
  */
-export function useSessionComposition(sessionId: string, turnKey: number) {
+export function useSessionComposition(sessionId: string) {
   return useQuery<CompositionBreakdown>({
-    queryKey: [...compositionQueryKey(sessionId), turnKey],
+    queryKey: compositionQueryKey(sessionId),
     queryFn: async () => {
       const res = await fetch(`/api/sessions/${sessionId}/composition`);
       if (!res.ok) throw new Error(`composition ${res.status}`);
