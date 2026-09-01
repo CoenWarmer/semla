@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
 import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session-file";
-import { activePath } from "@/lib/pi/session-path";
+import { activePath, supersededSiblings } from "@/lib/pi/session-path";
 
 type PiUsage = {
   cacheRead?: number;
@@ -26,6 +26,11 @@ export type SessionTranscriptEntry = {
   inputTokens?: number;
   role: "assistant" | "user";
   text: string;
+  /**
+   * Earlier wordings of this message, oldest first, present only where a prompt
+   * was edited. The live text is not included — it is `text`.
+   */
+  versions?: string[];
   /** The model's reasoning for this turn, when the provider returned any. */
   thinking?: string;
   tokenUsage?: { cost: number; total: number };
@@ -248,9 +253,19 @@ export const liveMessageRows = (rows: TranscriptRow[]): TranscriptRow[] => {
       row,
     }));
 
+  const superseded = supersededSiblings(walkable);
+
   return activePath(walkable)
     .filter((entry) => entry.row.payload.entry.type === "message")
-    .map((entry) => entry.row);
+    .map((entry) => {
+      const earlier = (superseded.get(entry.id as string) ?? [])
+        .map((sibling) => sibling.row.payload.entry)
+        .filter((sibling) => sibling.type === "message");
+
+      return earlier.length > 0
+        ? { ...entry.row, superseded: earlier }
+        : entry.row;
+    });
 };
 
 /** The shared transform: both sources reduce to the same row shape. */
@@ -316,12 +331,18 @@ export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => 
     const inputTokens = contextTokens != null && contextTokens > 0 ? contextTokens : null;
     const thinking =
       message.role === "assistant" ? getThinkingText(message) : undefined;
+    // What this prompt said before it was edited. Read-only history: the
+    // conversation itself only ever shows the live path.
+    const versions = (entry.superseded ?? [])
+      .map((sibling) => getMessageText(sibling.message as PiMessage))
+      .filter((text) => text.trim().length > 0);
     return [
       {
         createdAt,
         id: entry.id,
         role: message.role,
         text: getMessageText(message),
+        ...(versions.length > 0 ? { versions } : {}),
         ...(thinking ? { thinking } : {}),
         ...(message.role === "assistant" && cost != null && total != null
           ? { tokenUsage: { cost, total } }

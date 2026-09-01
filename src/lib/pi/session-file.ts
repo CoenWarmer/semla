@@ -16,7 +16,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
-import { activePath } from "@/lib/pi/session-path";
+import { activePath, supersededSiblings } from "@/lib/pi/session-path";
 
 /** The row shape getTranscript consumes, from either source. */
 export interface TranscriptRow {
@@ -25,16 +25,23 @@ export interface TranscriptRow {
   payload: {
     entry: {
       id?: string;
+      message?: unknown;
       /** Parent in the session tree. Carried so superseded versions are findable. */
       parentId?: string | null;
       timestamp?: string;
       type?: string;
     };
   };
+  /**
+   * Earlier versions of this entry — siblings it was branched away from, oldest
+   * first. Present only where a prompt was edited.
+   */
+  superseded?: Array<{ message?: unknown; timestamp?: string }>;
 }
 
 interface SessionFileEntry {
   id?: string;
+  message?: unknown;
   parentId?: string | null;
   timestamp?: string;
   type?: string;
@@ -87,11 +94,23 @@ export function readSessionEntries(
     entries.push(entry);
   }
 
+  const superseded = supersededSiblings(entries);
+
   return activePath(entries)
     .filter((entry) => entry.type === "message")
-    .map((entry) => ({
-      created_at: entry.timestamp ?? "",
-      id: entry.id as string,
-      payload: { entry },
-    }));
+    .map((entry) => {
+      // Only message siblings: a prompt branched away from may have a whole
+      // abandoned subtree under it, and "what did this say before" wants the
+      // prompt, not the replies it drew.
+      const earlier = (superseded.get(entry.id as string) ?? []).filter(
+        (sibling) => sibling.type === "message",
+      );
+
+      return {
+        created_at: entry.timestamp ?? "",
+        id: entry.id as string,
+        payload: { entry },
+        ...(earlier.length > 0 ? { superseded: earlier } : {}),
+      };
+    });
 }

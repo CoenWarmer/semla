@@ -9,6 +9,11 @@ export type SessionMessage = {
   /** The model's reasoning for this turn, when the provider returned any. */
   thinking?: string;
   tokenUsage?: { cost: number; total: number };
+  /**
+   * Earlier wordings of this prompt, oldest first, present only where it was
+   * edited. Mirrors SessionTranscriptEntry.versions on the server.
+   */
+  versions?: string[];
 };
 
 /** A tool the assistant invoked, rendered as a marker on the timeline. */

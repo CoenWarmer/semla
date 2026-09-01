@@ -162,12 +162,24 @@ interface PromptEditorProps {
   isRunning?: boolean;
   /** Interrupt that turn. Without it the button stays a submit button. */
   onStop?: () => void;
+  /**
+   * Reports the model and tools a submit would use right now.
+   *
+   * Editing a prompt runs a turn from somewhere else in the session, and it
+   * should run with the same selection the prompt bar is showing. The
+   * alternative was resolving the model a second time from user settings, which
+   * is this component's own fallback logic duplicated and free to drift.
+   */
+  onSelectionChange?: (
+    selection: { model: PromptEditorModel; tools: string[] } | null,
+  ) => void;
 }
 
 export function PromptEditor({
   defaultTools,
   goalEditor,
   isRunning,
+  onSelectionChange,
   onStop,
   onSubmit,
 }: PromptEditorProps) {
@@ -302,6 +314,14 @@ export function PromptEditor({
     },
     [onSubmit, selectedModelData, tools],
   );
+
+  // Reporting outward, not setting state here — the documented use for an
+  // effect. Runs whenever the resolved model or the tool selection changes.
+  useEffect(() => {
+    onSelectionChange?.(
+      selectedModelData ? { model: selectedModelData, tools } : null,
+    );
+  }, [onSelectionChange, selectedModelData, tools]);
 
   const configurationError =
     modelsError ?? userSettingsError ?? updateUserSettingsError;

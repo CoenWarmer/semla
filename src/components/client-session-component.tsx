@@ -24,6 +24,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { AskUserDialog } from "./ask-user-dialog";
+import { EditableUserMessage } from "./message-edit";
 import { GoalEditor } from "./goal-editor";
 import dynamic from "next/dynamic";
 
@@ -236,6 +237,39 @@ export function ClientSessionComponent({
     [promptMutation],
   );
 
+  // The model and tools the prompt bar would submit with. An edit runs a turn
+  // from a message rather than from the bar, and should use the same selection.
+  const selectionRef = useRef<{
+    model: PromptEditorModel;
+    tools: string[];
+  } | null>(null);
+  const handleSelectionChange = useCallback(
+    (selection: { model: PromptEditorModel; tools: string[] } | null) => {
+      selectionRef.current = selection;
+    },
+    [],
+  );
+
+  const handleEditPrompt = useCallback(
+    (entryId: string, text: string) => {
+      const selection = selectionRef.current;
+      // No model resolved yet, or a turn is already running — branching the leaf
+      // under a live turn would interleave two paths in one session.
+      if (!selection) return;
+
+      // Rejections surface through the mutation's onError as streamError.
+      promptMutation
+        .mutateAsync({
+          editEntryId: entryId,
+          model: selection.model,
+          text,
+          tools: selection.tools,
+        })
+        .catch(() => {});
+    },
+    [promptMutation],
+  );
+
   const pendingPromptRef = useRef<{
     prompt: PendingPrompt | null;
     sessionId: string;
@@ -334,7 +368,15 @@ export function ClientSessionComponent({
               messages.map((message) => (
                 <Message from={message.role} id={message.id} key={message.id}>
                   <MessageContent>
-                    <MessageResponse>{message.text}</MessageResponse>
+                    {message.role === "user" ? (
+                      <EditableUserMessage
+                        disabled={isActive}
+                        message={message}
+                        onSubmit={handleEditPrompt}
+                      />
+                    ) : (
+                      <MessageResponse>{message.text}</MessageResponse>
+                    )}
                   </MessageContent>
                 </Message>
               ))
@@ -396,6 +438,7 @@ export function ClientSessionComponent({
               />
             }
             isRunning={isActive}
+            onSelectionChange={handleSelectionChange}
             onStop={handleStop}
             onSubmit={handleSubmit}
           />

@@ -101,6 +101,40 @@ describe("readSessionEntries", () => {
     expect(readSessionEntries("s1", d)!.map((r) => r.id)).toEqual(["a", "b2", "c2"]);
   });
 
+  it("attaches the earlier wording of an edited message", () => {
+    const d = dir();
+    write(d, "s1", [
+      header,
+      message("a", "2026-08-31T09:00:01.000Z", null, "ask"),
+      message("b1", "2026-08-31T09:00:02.000Z", "a", "first wording"),
+      message("r1", "2026-08-31T09:00:03.000Z", "b1", "reply to the first"),
+      message("b2", "2026-08-31T09:00:04.000Z", "a", "second wording"),
+    ]);
+
+    const rows = readSessionEntries("s1", d)!;
+    const live = rows.find((row) => row.id === "b2")!;
+
+    // The earlier prompt, not the reply it drew — that subtree is not history
+    // of this message.
+    expect(live.superseded).toHaveLength(1);
+    expect(
+      (live.superseded![0].message as { content: { text: string }[] }).content[0].text,
+    ).toBe("first wording");
+  });
+
+  it("attaches nothing where a message was never edited", () => {
+    const d = dir();
+    write(d, "s1", [
+      header,
+      message("a", "2026-08-31T09:00:01.000Z", null),
+      message("b", "2026-08-31T09:00:02.000Z", "a"),
+    ]);
+
+    expect(readSessionEntries("s1", d)!.every((row) => row.superseded === undefined)).toBe(
+      true,
+    );
+  });
+
   it("carries parentId through, so superseded versions stay findable", () => {
     const d = dir();
     write(d, "s1", [
