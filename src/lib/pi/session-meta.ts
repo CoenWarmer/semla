@@ -83,7 +83,15 @@ export function readSessionMeta(
     const parsed = JSON.parse(raw) as Partial<SessionMeta>;
     // Spread over a blank so a record written by an older version is still
     // usable rather than throwing on a field that did not exist yet.
-    return { ...blank(id), ...parsed, id };
+    const merged = { ...blank(id), ...parsed, id };
+    return {
+      ...merged,
+      // The spread only covers a *missing* key. These files are plain JSON on
+      // disk and get hand-edited, so a present-but-wrong `projects` — null, or
+      // an object — would reach every caller as something it cannot iterate.
+      // One bad record must not take out the panels that read it.
+      projects: Array.isArray(merged.projects) ? merged.projects : [],
+    };
   } catch {
     return null;
   }

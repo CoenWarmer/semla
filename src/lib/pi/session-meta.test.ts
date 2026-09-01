@@ -75,6 +75,22 @@ describe("writeSessionMeta", () => {
     expect(readSessionMeta("s1", d)!.projects).toEqual([]);
   });
 
+  // Spreading over a blank only covers a *missing* key. These are plain JSON
+  // files that get hand-edited, and a present-but-wrong value would otherwise
+  // reach every caller as something it cannot iterate — one bad record taking
+  // out every panel that reads projects.
+  it.each([
+    ["null", null],
+    ["an object", { semla: true }],
+    ["a string", "semla"],
+  ])("reads projects stored as %s as having none", (_label, value) => {
+    const d = dir();
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "s1.json"), JSON.stringify({ projects: value }), "utf8");
+
+    expect(readSessionMeta("s1", d)!.projects).toEqual([]);
+  });
+
   /**
    * Appending is not last-writer-wins, so this asserts the property that makes
    * it safe: writeSessionMeta never yields between its read and its write, so
