@@ -287,21 +287,37 @@ strings.
 
 ---
 
-## 7. Hazard: `writeSessionMeta` is read-modify-write
+## 7. `writeSessionMeta` is safe — because it is synchronous
 
-Its docstring says this is safe:
+*An earlier draft of this plan claimed appending to an array would race with
+concurrent `isRunning` or `title` writes and silently drop links, and called for
+a per-session promise chain. That was wrong, and the correction is worth
+recording because the reasoning is what protects the invariant.*
 
-> Read-modify-write is safe enough here: a session is written by the one process
-> that owns it, and the fields are last-writer-wins by nature.
+`writeSessionMeta` is synchronous end to end — `mkdirSync`, `readFileSync`
+inside `readSessionMeta`, then `writeFileSync`. There is no `async`, no `await`
+and no `node:fs/promises` anywhere in `session-meta.ts`. Node runs it to
+completion before any other callback, so two callers **cannot** interleave, and
+the read-modify-write is atomic with respect to everything else in the process.
+An array append is exactly as safe as a scalar patch.
 
-**Auto-attach breaks that premise.** Appending to an array is not
-last-writer-wins. A concurrent `isRunning` or `title` write during a turn will
-read a stale record and drop a link, silently, and nobody will notice for weeks.
+The docstring's stated reason — "a session is written by the one process that
+owns it" — covers the cross-process case, and single-user Semla has one server
+process. Background continuations run in it too.
 
-Fix: a per-session-id promise chain inside `session-meta.ts`, with *every*
-writer routed through it — not just the attach path. Small, but it must land in
-the same commit as the array, not after it. `session-meta.test.ts` gets a case
-that interleaves two concurrent patches and asserts neither is lost.
+**What actually needs protecting is the synchrony itself.** The moment someone
+switches this module to `fs/promises` — a natural-looking cleanup, since most of
+the codebase is async — every claim above evaporates, and the failure is a
+silently dropped link rather than an error. So instead of a promise chain:
+
+- A comment on `writeSessionMeta` saying the synchrony is load-bearing for the
+  array, not incidental.
+- A test in `session-meta.test.ts` that appends from two callers and asserts
+  both survive. It passes trivially today; it exists to fail the day the
+  implementation goes async.
+
+This costs two lines and a test instead of a mutex, and it pins the real
+invariant rather than defending against a race that cannot occur.
 
 ---
 
@@ -311,7 +327,7 @@ that interleaves two concurrent patches and asserts neither is lost.
 |---|---|
 | `session-project.ts` | `sessionProjectPath()` → `sessionProjects()` returning `{ primary, links }`. Everything else follows from this one function. |
 | `git/route.ts` | GET returns a record keyed by project path, like `/api/projects/git` already does; `readGitStatus` is already per-path. POST takes a `path`, validated against the session's own links before acting — see §9.3 for why that validation is load-bearing. |
-| `file-browser.ts` | `basePath: string \| null` → `basePaths: string[]` — every attached project is a root. See §9.7. |
+| `file-browser.ts` | `basePath: string \| null` → `basePaths: string[]` — every attached project is a root. See §9.8. |
 | `file-search.ts` | `inProject` becomes three bands — primary, other attached, workspace — which the existing coarse-band scoring absorbs without restructuring. |
 | `prompts.ts` | "The active project is X" → the primary plus the attached list. |
 | wiki stamp | The whole attached set, as a list. See below. |
@@ -588,7 +604,35 @@ date and the token usage — a row of chips underneath the date.
   here: it needs filter state, a way out of it, and an empty state, none of
   which belong in this change.
 
-### 9.7 File browser: one root per attached project
+### 9.7 The `?project=` search param is vestigial
+
+Opening a project from the sidebar combobox or a project card navigates to
+`/sessions/<id>?project=<name>` (`projects-combobox.tsx:51`,
+`projects-grid.tsx:57`).
+
+**Nothing reads it.** `sessions/[id]/page.tsx` takes only `params`, never
+`searchParams`, and the only `useSearchParams` calls in the app are the wiki's
+`page` and login's `next`. The real association travels in the POST body as
+`projectPath`, which becomes `sessions.project_path` and `SessionMeta.projectPath`.
+The param is decoration, and it is already redundant with the session title,
+which is set to the project name by the same call.
+
+So nothing breaks. But under this plan it becomes actively misleading: a URL
+naming one project, for a session that may relate to several, which never
+updates as the agent attaches more. A search param looks like state; this one is
+a label that goes stale on the first write to a second repo.
+
+**Drop it.** Both call sites push a plain `/sessions/<id>`.
+
+There is one thing it could legitimately become, and it is deliberately deferred
+to §10: once the header shows a badge per project (§9.3) and the file tree has a
+root per project (§9.8), `?project=` could name which one is focused —
+deep-linking to a project's view *within* a session. That gives the param a real
+job instead of a decorative one, but it is a new feature rather than a
+consequence of this change, and it should not be designed on the back of a
+parameter that currently does nothing.
+
+### 9.8 File browser: one root per attached project
 
 The tree shows every attached project as a sibling root, rather than opening on
 the primary alone.
@@ -627,6 +671,10 @@ per-root. This is the largest UI change in the plan.
 - A route-by-route authorisation audit. Semla is single-user today; the missing
   ownership checks listed in §9.3 belong with the work that makes it
   multi-user, not with this change.
+- Deep-linking a project within a session. `?project=` is being deleted rather
+  than repurposed (§9.7); giving it a real job — focusing one header badge and
+  one file-tree root — is a feature to design on its own, not on the back of a
+  parameter that currently does nothing.
 - Per-project branch state on the join table (§5).
 - A project picker on `/sessions/new`, which today POSTs to `/api/sessions` with
   no body at all. Auto-attach covers it: the session adopts its project on the
@@ -643,8 +691,8 @@ Each step leaves the tree green.
 1. ~~**Land the file-browser work first.**~~ Done — `session-project.ts`, the
    chokepoint everything here routes through, landed in `6ade370`.
 2. `project-of-path.ts` + tests. Pure, no callers yet.
-3. Per-session write serialisation in `session-meta.ts` + the interleaving test
-   (§7).
+3. The synchrony comment on `writeSessionMeta` + the two-writer test that pins
+   it (§7). Not a mutex — see that section for why the race cannot occur.
 4. `projects: ProjectLink[]` on `SessionMeta`, written as a mirror of the
    existing `projectPath`. Nothing reads it yet.
 5. The `session_projects` migration + backfill from `sessions.project_path`,
@@ -668,8 +716,10 @@ Each step leaves the tree green.
 10. `projects` through `SessionStatus`, `SessionRow` and the server-rendered
     rows (§9.5), then the chips in `session-item.tsx` (§9.4, §9.6).
 11. The session panel's anchor / touched-in-this-session sections (§9.1).
-12. File browser sibling roots (§9.7) — the largest UI change, and independent
+12. File browser sibling roots (§9.8) — the largest UI change, and independent
     of everything above it once `sessionProjects()` exists.
+12a. Drop `?project=` from both navigation call sites (§9.7). One line each,
+     and nothing reads it.
 13. The wiki stamp as a per-turn list (§8). Both sides of the
     `WIKI_SESSION_REPOS` contract in one commit, with
     `extension-contract.test.ts` updated alongside.
