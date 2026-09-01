@@ -72,7 +72,7 @@ export async function POST(
   }
 
   const supabase = await createClient();
-  const { projectPath, systemPrompt } = await resolveSessionPromptContext(
+  const { projects, systemPrompt } = await resolveSessionPromptContext(
     supabase,
     id,
     userId,
@@ -123,7 +123,7 @@ export async function POST(
         editEntryId,
         model: { modelId, provider },
         onEvent: send,
-        projectPath,
+        projects,
         semlaSessionId: id,
         systemPrompt,
         text,

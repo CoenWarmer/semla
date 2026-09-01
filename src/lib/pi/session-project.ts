@@ -11,6 +11,8 @@ import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { readSessionMeta, type ProjectLink } from "@/lib/pi/session-meta";
 import { orderLinks } from "@/lib/pi/session-project-links";
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 
 /**
  * The absolute project path for a session, or null when it has none.
@@ -71,7 +73,12 @@ export function impliedLinks(
  * one narrower than the last, so a session never silently loses its projects
  * because of where it was created.
  */
-export async function sessionProjects(id: string): Promise<ProjectLink[]> {
+export async function sessionProjects(
+  id: string,
+  /** Injected so a caller that already has a client — or a test with a fake —
+   *  is not silently bypassed by one created here. */
+  client?: SupabaseClient<Database>,
+): Promise<ProjectLink[]> {
   const meta = readSessionMeta(id);
   if (meta) {
     return meta.projects.length > 0
@@ -79,7 +86,7 @@ export async function sessionProjects(id: string): Promise<ProjectLink[]> {
       : impliedLinks(PI_WORKSPACE_ROOT, meta.projectPath, meta.createdAt);
   }
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   const [{ data: rows }, { data: session }] = await Promise.all([
     supabase
       .from("session_projects")

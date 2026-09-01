@@ -11,7 +11,8 @@ import { repoSlugFromProjectPath } from "@/lib/pi/wiki-repo-stamp";
  * whether to orient first.
  */
 export const buildMemoryContextBlock = (
-  projectPath: string | null,
+  /** Workspace-relative project paths, anchor first. Doubles as the repo slug. */
+  projects: readonly string[],
 ): string => {
   const lines = [
     "# Codebase wiki",
@@ -95,11 +96,26 @@ export const buildMemoryContextBlock = (
     "If orphans exceed ~20 % of total pages, run the consolidate skill before considering the task done.",
   ];
 
-  if (projectPath) {
+  const [anchor, ...also] = projects;
+
+  if (anchor) {
     lines.push(
       "",
-      `The active project for this session is \`${projectPath}\`.`,
-      `For pages about this project, use \`repo: ${repoSlugFromProjectPath(projectPath)}\` in frontmatter.`,
+      `The active project for this session is \`${anchor}\`.`,
+      `For pages about it, use \`repo: ${anchor}\` in frontmatter.`,
+    );
+
+    // Named so the agent can attribute a page to the repo it is actually about.
+    // Without this the prompt claims one project while the session works in
+    // several, and every page it writes inherits the wrong slug.
+    if (also.length > 0) {
+      lines.push(
+        `This session also works in ${also.map((p) => `\`${p}\``).join(", ")}. ` +
+          "Tag a page with the repo it describes, or with a YAML list when it genuinely spans several.",
+      );
+    }
+
+    lines.push(
       "",
       "Before starting work: call `wiki_recall` with the project name to check for existing codebase knowledge. If no pages are returned, invoke the `orient` skill to initialise the wiki for this repo.",
     );

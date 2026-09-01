@@ -1,11 +1,12 @@
 import { buildMemoryContextBlock } from "@/lib/pi/prompts";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
-import { readSessionMeta } from "@/lib/pi/session-meta";
+import { sessionProjects } from "@/lib/pi/session-project";
 import { readUserSettings } from "@/lib/user-settings-store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface SessionPromptContext {
-  projectPath: string | null;
+  /** Workspace-relative, anchor first. Empty when the session has none. */
+  projects: string[];
   /** Exactly the system prompt a turn would be sent with. */
   systemPrompt: string;
   /**
@@ -33,9 +34,8 @@ export async function resolveSessionPromptContext(
   userId: string,
 ): Promise<SessionPromptContext> {
   const localSettings = readUserSettings(userId);
-  const localMeta = readSessionMeta(sessionId);
 
-  const [{ data: settingsData }, { data: sessionData }] = await Promise.all([
+  const [{ data: settingsData }, links] = await Promise.all([
     localSettings
       ? Promise.resolve({ data: null })
       : supabase
@@ -43,16 +43,11 @@ export async function resolveSessionPromptContext(
           .select("system_prompt, default_model_id, default_model_provider")
           .eq("user_id", userId)
           .maybeSingle(),
-    localMeta
-      ? Promise.resolve({ data: null })
-      : supabase
-          .from("sessions")
-          .select("project_path")
-          .eq("id", sessionId)
-          .maybeSingle(),
+    // Disk first with its own fallbacks; see sessionProjects.
+    sessionProjects(sessionId, supabase as never),
   ]);
 
-  const projectPath = localMeta?.projectPath ?? sessionData?.project_path ?? null;
+  const projects = links.map((link) => link.path);
   const basePrompt =
     localSettings?.systemPrompt ??
     settingsData?.system_prompt ??
@@ -63,8 +58,8 @@ export async function resolveSessionPromptContext(
   const modelId = localSettings?.defaultModelId ?? settingsData?.default_model_id;
 
   return {
-    projectPath,
-    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projectPath)}`,
+    projects,
+    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projects)}`,
     defaultModel: provider && modelId ? { provider, modelId } : null,
   };
 }

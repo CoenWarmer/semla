@@ -72,14 +72,15 @@ describe("resolveSessionPromptContext", () => {
           default_model_id: "db-model",
           default_model_provider: "db-provider",
         },
-        sessions: { project_path: "/ws/one" },
+        sessions: { project_path: "/workspace/one" },
       }),
       "session-1",
       "user-1",
     );
 
     expect(result.systemPrompt).toContain("DB_PROMPT");
-    expect(result.projectPath).toBe("/ws/one");
+    // The row is the last fallback, and it arrives as a link now.
+    expect(result.projects).toEqual(["one"]);
     expect(result.defaultModel).toEqual({
       provider: "db-provider",
       modelId: "db-model",
