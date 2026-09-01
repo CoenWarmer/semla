@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { writeSessionMeta } from "@/lib/pi/session-meta";
+import { mirrorSessionProjects } from "@/lib/pi/session-project-mirror";
+import { attachProject } from "@/lib/pi/session-project-links";
+import { projectPrefix } from "@/lib/pi/session-project";
 
 export async function POST(request: Request) {
   const userClient = await createClient();
@@ -32,13 +36,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // One timestamp for the record and the link it carries, so the session and
+  // its first project do not disagree about when they began.
+  const createdAt = new Date().toISOString();
+
+  // A project chosen from a card is an explicit link, and the anchor. Stored
+  // workspace-relative: an absolute path recorded on the host means nothing in
+  // the container. A project outside the workspace root has no relative form
+  // and is simply not linked — projectPath still records where it was.
+  const relativePath = projectPrefix(PI_WORKSPACE_ROOT, projectPath);
+  const projects = relativePath
+    ? attachProject([], {
+        at: createdAt,
+        origin: "explicit",
+        path: relativePath,
+        primary: true,
+      })
+    : [];
+
   // Recorded on disk too, so the session is findable without the database.
   writeSessionMeta(data.id, {
     title,
     projectPath,
+    projects,
     userId: user.id,
-    createdAt: new Date().toISOString(),
+    createdAt,
   });
+
+  // Best-effort, and after the disk write that actually matters.
+  await mirrorSessionProjects(data.id, projects);
 
   return NextResponse.json({ id: data.id }, { status: 201 });
 }
