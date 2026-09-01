@@ -13,7 +13,14 @@ import {
   type PromptEditorModel,
 } from "@/components/prompt-editor";
 
-export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
+export function NewSessionClient({
+  defaultTools,
+  project,
+}: {
+  defaultTools: string[];
+  /** Workspace-relative project this session should be anchored to, if any. */
+  project?: string | null;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { set: setPendingPrompt } = usePendingPrompt();
@@ -35,7 +42,14 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
 
       setError(undefined);
 
-      const res = await fetch("/api/sessions", { method: "POST" });
+      // The session is created here rather than when the project was chosen, so
+      // a card opened and abandoned leaves nothing behind. The project has been
+      // carried in the URL until now.
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(project ? { project, title: project } : {}),
+      });
       const body = await res.json().catch(() => null);
 
       if (!res.ok || !body?.id) {
@@ -56,7 +70,7 @@ export function NewSessionClient({ defaultTools }: { defaultTools: string[] }) {
 
       router.replace(`/sessions/${body.id}`);
     },
-    [goal, queryClient, router, setPendingPrompt],
+    [goal, project, queryClient, router, setPendingPrompt],
   );
 
   return (

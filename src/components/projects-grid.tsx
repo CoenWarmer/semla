@@ -1,7 +1,7 @@
 "use client";
 
 import { SearchIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 
 import { GitStatusBadge } from "@/components/git-status-badge";
@@ -20,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 type SortKey = "staleness" | "name-asc" | "name-desc";
 
@@ -36,29 +35,21 @@ function sortProjects(projects: WorkspaceProject[], sort: SortKey): WorkspacePro
   });
 }
 
+/**
+ * Where a card goes: a session that does not exist yet, carrying its project.
+ *
+ * A link rather than a click handler, so Next prefetches the route on hover and
+ * the navigation is already paid for by the time the card is pressed. It used
+ * to POST a session first and navigate once the id came back — half a second of
+ * a card looking unresponsive, and an empty session written whether or not
+ * anybody went on to type anything.
+ */
+export const newSessionHref = (projectName: string) =>
+  `/sessions/new?project=${encodeURIComponent(projectName)}`;
+
 export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
-  const router = useRouter();
-  const [navigating, setNavigating] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("staleness");
-
-  async function openProject(project: WorkspaceProject) {
-    if (navigating) return;
-    setNavigating(project.path);
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: project.name, project: project.name }),
-      });
-      const body = await res.json().catch(() => null);
-      if (res.ok && body?.id) {
-        router.push(`/sessions/${body.id}`);
-      }
-    } finally {
-      setNavigating(null);
-    }
-  }
 
   if (projects.length === 0) {
     return (
@@ -102,38 +93,46 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
         <p className="text-sm text-muted-foreground">No projects match &ldquo;{filter}&rdquo;.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((project) => {
-            const isLoading = navigating === project.path;
-            return (
-              <Card
-                key={project.path}
-                className={cn(
-                  "cursor-pointer transition-opacity hover:opacity-80",
-                  isLoading && "pointer-events-none opacity-60",
-                )}
-                onClick={() => openProject(project)}
+          {visible.map((project) => (
+            <Card
+              key={project.path}
+              className="relative transition-opacity hover:opacity-80"
+            >
+              {/*
+                A stretched link rather than a link around the card: the badge
+                below is interactive, and an anchor may not contain a button.
+                This covers the card, and everything that is not the badge is
+                inert so the click reaches it.
+              */}
+              <Link
+                aria-label={`Start a session in ${project.name}`}
+                className="absolute inset-0 rounded-[inherit]"
+                href={newSessionHref(project.name)}
               >
-                <CardHeader>
-                  <CardTitle>{project.name}</CardTitle>
-                  <CardDescription className="truncate font-mono text-xs">
-                    {project.path}
-                  </CardDescription>
-                </CardHeader>
-                <div className="flex items-center gap-2 px-6 pb-6">
-                  {/* Supersedes the branch name this card used to print: same
-                      branch, plus how far it has drifted, and the two actions
-                      that follow from that. */}
+                <span className="sr-only">Start a session in {project.name}</span>
+              </Link>
+              <CardHeader className="pointer-events-none relative">
+                <CardTitle>{project.name}</CardTitle>
+                <CardDescription className="truncate font-mono text-xs">
+                  {project.path}
+                </CardDescription>
+              </CardHeader>
+              <div className="pointer-events-none relative flex items-center gap-2 px-6 pb-6">
+                {/* Supersedes the branch name this card used to print: same
+                    branch, plus how far it has drifted, and the two actions
+                    that follow from that. */}
+                <span className="pointer-events-auto">
                   <GitStatusBadge
                     className="-mx-1"
                     target={{ kind: "project", path: project.path }}
                   />
-                  <span className="text-xs text-muted-foreground">
-                    {project.stalenessText}
-                  </span>
-                </div>
-              </Card>
-            );
-          })}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {project.stalenessText}
+                </span>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>
