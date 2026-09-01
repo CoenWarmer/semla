@@ -8,7 +8,6 @@ import {
   type SessionMessagesResult,
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
-import { appendConsoleLine } from "@/lib/console-log";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import {
   clearsDeadStreamLatch,
@@ -216,18 +215,10 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       onToolStart: (event) => {
         setActiveTool(event.toolName);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-        // The console shows what the agent is doing as it does it. `summary` is
-        // the same string the transcript labels the call with, so the two read
-        // alike rather than describing the same call two different ways.
-        appendConsoleLine(
-          event.summary ? `${event.toolName} ${event.summary}` : event.toolName,
-          "command",
-        );
       },
       onToolEnd: (event) => {
         setActiveTool(undefined);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-        if (event.isError) appendConsoleLine(`${event.toolName} failed`, "error");
         if (event.toolName === "ask_user") setPendingQuestion(null);
       },
       onAskUser: (payload) => setPendingQuestion(payload),

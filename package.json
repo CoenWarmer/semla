@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "tsc": "npx tsc",
     "generate:db-types": "npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > src/types/database.types.ts.tmp && mv src/types/database.types.ts.tmp src/types/database.types.ts || (rm -f src/types/database.types.ts.tmp; echo \"db types unchanged: generation failed\" >&2)",
-    "postinstall": "npm install --prefix .pi/packages/semla-otel && npm install --prefix .pi/npm && npm run generate:db-types"
+    "postinstall": "node scripts/fix-node-pty-helper.mjs && npm install --prefix .pi/packages/semla-otel && npm install --prefix .pi/npm && npm run generate:db-types"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -31,6 +31,8 @@
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/react-query": "^5.101.4",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.11.3",
     "ai": "^7.0.66",
     "ansi-to-react": "^6.2.6",
@@ -47,6 +49,7 @@
     "motion": "^13.1.0",
     "nanoid": "^6.0.1",
     "next": "16.3.1",
+    "node-pty": "^1.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-jsx-parser": "^2.4.1",
@@ -78,5 +81,8 @@
     "typescript": "^5",
     "typescript-language-server": "^6.0.0",
     "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
   }
 }
