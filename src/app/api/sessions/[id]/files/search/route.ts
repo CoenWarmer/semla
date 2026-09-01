@@ -64,8 +64,8 @@ function couldMatch(
   );
 }
 
-/** Top-level directories of the workspace, minus one already searched. */
-async function workspaceProjects(root: string, exclude: string | null) {
+/** Top-level directories of the workspace, minus the ones already searched. */
+async function workspaceProjects(root: string, exclude: ReadonlySet<string>) {
   const entries = await readdir(root, { withFileTypes: true });
   return entries
     .filter(
@@ -73,7 +73,7 @@ async function workspaceProjects(root: string, exclude: string | null) {
         entry.isDirectory() &&
         !entry.name.startsWith(".") &&
         !IGNORED_DIRECTORIES.has(entry.name) &&
-        join(root, entry.name) !== exclude,
+        !exclude.has(join(root, entry.name)),
     )
     .map((entry) => join(root, entry.name));
 }
@@ -96,12 +96,14 @@ export async function GET(
   const empty = NextResponse.json({ complete: true, matches: [], query, scope });
   if (!query) return empty;
 
-  const { root, basePath } = await resolveFileRoot(id);
-  const projectPath = basePath ? resolveInsideRoot(root, basePath) : null;
+  const { root, basePaths } = await resolveFileRoot(id);
+  const projectDirs = basePaths
+    .map((basePath) => resolveInsideRoot(root, basePath))
+    .filter((dir): dir is string => dir !== null);
 
   // A session with no project has nothing the project scope could return; the
   // workspace scope is then the whole of the search.
-  if (scope === "project" && !projectPath) return empty;
+  if (scope === "project" && projectDirs.length === 0) return empty;
 
   const lowerQuery = query.toLowerCase();
   const inProject = scope === "project";
@@ -130,13 +132,18 @@ export async function GET(
   let complete: boolean;
 
   if (scope === "project") {
-    ({ complete } = await listProjectFiles(projectPath!, collectorFor(projectPath!), {
-      budget: PROJECT_BUDGET,
-    }));
+    // Every attached project, not just the anchor. The budget is per project:
+    // a session working in three repositories is asking about all three, and
+    // splitting one budget between them would make each answer worse the more
+    // projects the session has.
+    const results = await mapWithConcurrency(projectDirs, GIT_CONCURRENCY, (dir) =>
+      listProjectFiles(dir, collectorFor(dir), { budget: PROJECT_BUDGET }),
+    );
+    complete = results.every((result) => result.complete);
   } else {
-    // The project has its own request; searching it again here would only
-    // produce duplicates for the client to strip out.
-    const projects = await workspaceProjects(root, projectPath);
+    // The attached projects have their own request; searching them again here
+    // would only produce duplicates for the client to strip out.
+    const projects = await workspaceProjects(root, new Set(projectDirs));
     const results = await mapWithConcurrency(projects, GIT_CONCURRENCY, (dir) =>
       listProjectFiles(dir, collectorFor(dir), { budget: PER_PROJECT_BUDGET }),
     );

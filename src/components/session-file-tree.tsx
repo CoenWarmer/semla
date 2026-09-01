@@ -22,7 +22,8 @@ export const filesQueryKey = (sessionId: string, dirPath: string) =>
 export type DirectoryListing = {
   files: FileEntry[];
   root: string;
-  basePath: string | null;
+  /** The session's projects, workspace-relative and anchor first. */
+  basePaths: string[];
   path: string;
 };
 

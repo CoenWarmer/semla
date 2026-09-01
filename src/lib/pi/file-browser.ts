@@ -13,7 +13,7 @@ import { readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { projectPrefix, sessionProjectPath } from "@/lib/pi/session-project";
+import { sessionProjects } from "@/lib/pi/session-project";
 import { createClient } from "@/lib/supabase/server";
 
 export type FileEntry = {
@@ -26,26 +26,35 @@ export type FileRoot = {
   /** Absolute workspace root; every relative path is resolved against it. */
   root: string;
   /**
-   * The session's project as a workspace-relative path, or null when the
-   * session has no project or it lies outside the workspace root.
+   * The session's projects as workspace-relative paths, anchor first.
+   *
+   * Empty when the session relates to no project, which is not an error — the
+   * browser then shows the workspace itself, as it always did.
    */
-  basePath: string | null;
+  basePaths: string[];
 };
 
-/** Where a session's file browser is rooted, and where it should open. */
+/**
+ * Where a session's file browser is rooted, and which trees it should show.
+ *
+ * A list rather than one path: a session can work in several repositories, and
+ * showing only the anchor would hide the others behind a search. Every path is
+ * relative to the workspace root, so the browser is simply rooted deeper —
+ * nothing else in the API changes shape.
+ */
 export async function resolveFileRoot(sessionId: string): Promise<FileRoot> {
   const supabase = await createClient();
-  const [{ data: piSession }, projectPath] = await Promise.all([
+  const [{ data: piSession }, links] = await Promise.all([
     supabase
       .from("pi_sessions")
       .select("workspace_root")
       .eq("semla_session_id", sessionId)
       .maybeSingle(),
-    sessionProjectPath(sessionId),
+    sessionProjects(sessionId),
   ]);
 
   const root = piSession?.workspace_root ?? PI_WORKSPACE_ROOT;
-  return { root, basePath: projectPrefix(root, projectPath) };
+  return { root, basePaths: links.map((link) => link.path) };
 }
 
 /**

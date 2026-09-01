@@ -33,6 +33,57 @@ function useFileContent(sessionId: string, filePath: string | null) {
 const lastSegment = (path: string | null) =>
   path ? (path.split("/").pop() ?? null) : null;
 
+/**
+ * One project's tree, under a heading naming it.
+ *
+ * Its own query rather than a slice of a shared one: each root is a separate
+ * directory listing, and `filesQueryKey` is already keyed by path, so several
+ * roots coexist in the cache with no change to the query layer.
+ */
+function ProjectTree({
+  expandedPaths,
+  name,
+  onExpandedChange,
+  onSelect,
+  rootPath,
+  selectedPath,
+  sessionId,
+}: {
+  expandedPaths: Set<string>;
+  name: string;
+  onExpandedChange: (paths: Set<string>) => void;
+  onSelect: (path: string) => void;
+  rootPath: string;
+  selectedPath: string | null;
+  sessionId: string;
+}) {
+  const query = useSessionFiles(sessionId, rootPath);
+
+  return (
+    <div>
+      <p className="truncate px-1 pb-1 text-xs font-medium text-muted-foreground">
+        {name}
+      </p>
+      {query.isLoading ? (
+        <div className="flex items-center justify-center p-2">
+          <Spinner className="size-4" />
+        </div>
+      ) : query.error ? (
+        <p className="px-1 text-sm text-destructive">Unable to list files</p>
+      ) : (
+        <SessionFileTree
+          entries={query.data?.files ?? []}
+          expandedPaths={expandedPaths}
+          onExpandedChange={onExpandedChange}
+          onSelect={onSelect}
+          selectedPath={selectedPath}
+          sessionId={sessionId}
+        />
+      )}
+    </div>
+  );
+}
+
 export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -41,11 +92,12 @@ export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
 
   const queryClient = useQueryClient();
   // An empty path means "wherever this session starts" — the server answers
-  // with the project directory when the session has one.
+  // with the anchor's directory, and tells us the whole set alongside it.
   const rootQuery = useSessionFiles(sessionId, "");
   const contentQuery = useFileContent(sessionId, selectedPath);
 
-  const projectName = lastSegment(rootQuery.data?.basePath ?? null);
+  const basePaths = rootQuery.data?.basePaths ?? [];
+  const projectName = lastSegment(basePaths[0] ?? null);
 
   /**
    * The tree reports a selection by path alone, so the entry's type is looked
@@ -96,7 +148,9 @@ export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
               value={query}
             />
           </div>
-          {projectName && !debouncedQuery && (
+          {basePaths.length === 1 && !debouncedQuery && (
+            // One project needs no heading inside the tree, so it is named
+            // here. Several are named by their own root rows instead.
             <p className="truncate px-1 text-xs text-muted-foreground">
               {projectName}
             </p>
@@ -106,9 +160,11 @@ export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {debouncedQuery ? (
             <SessionFileSearch
-              hasProject={rootQuery.data?.basePath != null}
+              hasProject={basePaths.length > 0}
               onSelect={setSelectedPath}
-              projectName={projectName}
+              projectName={
+                basePaths.length > 1 ? `${basePaths.length} projects` : projectName
+              }
               query={debouncedQuery}
               selectedPath={selectedPath}
               sessionId={sessionId}
@@ -119,6 +175,24 @@ export function SessionFilesPanel({ sessionId }: { sessionId: string }) {
             </div>
           ) : rootQuery.error ? (
             <p className="p-4 text-sm text-destructive">Unable to list files</p>
+          ) : basePaths.length > 1 ? (
+            // One tree per project, each rooted at its own directory. A session
+            // working in three repositories should show all three rather than
+            // hide two of them behind a search.
+            <div className="space-y-3">
+              {basePaths.map((basePath) => (
+                <ProjectTree
+                  expandedPaths={expandedPaths}
+                  key={basePath}
+                  name={lastSegment(basePath) ?? basePath}
+                  onExpandedChange={setExpandedPaths}
+                  onSelect={handleSelect}
+                  rootPath={basePath}
+                  selectedPath={selectedPath}
+                  sessionId={sessionId}
+                />
+              ))}
+            </div>
           ) : (
             <SessionFileTree
               entries={rootQuery.data?.files ?? []}
