@@ -53,7 +53,8 @@ interface WikiRegistryFile {
 }
 
 export function stampWikiPages(options: {
-  slug: string;
+  /** Fallback attribution, used only where a page's lineage says nothing. */
+  slugs: readonly string[];
   since: number;
   wikiHome?: string;
 }): StampedPage[] {
@@ -80,7 +81,7 @@ export function stampWikiPages(options: {
         // The session's repo is only the fallback. A page synthesised from
         // another session's source belongs to that source's repo, however
         // recently this turn happened to touch it.
-        const fallback = lineageRepo(markdown, sourceRepos) ?? options.slug;
+        const fallback = lineageRepo(markdown, sourceRepos) ?? options.slugs;
         const outcome = stampRepoFrontmatter(markdown, fallback);
         if (!outcome.changed || !outcome.repo) continue;
         writeFileSync(path, outcome.content, "utf8");
@@ -137,25 +138,34 @@ function patchRegistry(wikiHome: string, stamped: StampedPage[]): void {
  * Stamp the pages a turn produced and make the tags visible to the graph.
  */
 export async function stampSessionWikiPages(options: {
-  projectPath: string | null;
+  /**
+   * The repos this turn is attributed to — the session's anchor plus anything
+   * it wrote to along the way. A page whose lineage names a repo still wins;
+   * these are the fallback for pages that have nothing else to go on.
+   */
+  slugs: readonly string[];
   since: number;
   wikiHome?: string;
 }): Promise<StampedPage[]> {
-  const slug = repoSlugFromProjectPath(options.projectPath);
-  if (!slug) return [];
+  const slugs = [...new Set(options.slugs.filter(Boolean))];
+  if (slugs.length === 0) return [];
 
   // Callers fire this and forget it from a finally block; yield first so the
   // turn finishes tearing down before we start reading the vault.
   await new Promise((resolve) => setImmediate(resolve));
 
   const wikiHome = options.wikiHome ?? WIKI_HOME;
-  const stamped = stampWikiPages({ slug, since: options.since, wikiHome });
+  const stamped = stampWikiPages({ slugs, since: options.since, wikiHome });
   if (stamped.length > 0) patchRegistry(wikiHome, stamped);
 
   // The hub every `repo:` field points at. Created before the sweep so a
   // person or organisation promoted below has a repo page to sit beside.
-  const repoPage = ensureRepositoryPage({ wikiHome, repo: slug });
-  if (repoPage.created) console.info(`[wiki] created the repository page for ${slug}`);
+  // One hub per repo: a page tagged `[a, b]` points at two of them, and a
+  // missing hub is a `repo:` field pointing at nothing.
+  for (const slug of slugs) {
+    const repoPage = ensureRepositoryPage({ wikiHome, repo: slug });
+    if (repoPage.created) console.info(`[wiki] created the repository page for ${slug}`);
+  }
 
   // After the stamp, never before: canonicalising a person's page means
   // stripping the repo qualifier from its title, and the only safe way to know

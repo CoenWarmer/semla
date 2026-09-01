@@ -80,7 +80,7 @@ describe("two repos sharing one vault", () => {
     const first = commitSynthesis(paths, "SRC-001", { title: "a" }, synthesis("buildkite-tray"));
     expect(first.ok).toBe(true);
     attributeSource("SRC-001", "buildkite-tray");
-    stampWikiPages({ slug: "buildkite-tray", since: 0, wikiHome: root });
+    stampWikiPages({ slugs: ["buildkite-tray"], since: 0, wikiHome: root });
 
     expect(readFileSync(concept, "utf8")).toContain("repo: buildkite-tray");
 
@@ -100,7 +100,7 @@ describe("two repos sharing one vault", () => {
     });
     writeFileSync(concept, merged.content, "utf8");
     attributeSource("SRC-002", "semla");
-    stampWikiPages({ slug: "semla", since: 0, wikiHome: root });
+    stampWikiPages({ slugs: ["semla"], since: 0, wikiHome: root });
 
     // ── the outcome ───────────────────────────────────────────────────────
     expect(readdirSync(join(paths.wiki, "entities")).sort()).toEqual([

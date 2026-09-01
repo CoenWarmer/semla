@@ -59,6 +59,21 @@ const isFence = (line: string) => line.trim() === "---";
 const repoKey = /^repo\s*:/;
 
 /**
+ * The YAML a set of slugs should be written as, or null when there are none.
+ *
+ * One slug stays a bare scalar — `repo: semla` — because that is what almost
+ * every page is and a one-element list would be noise. Several become the
+ * flow-sequence form the prompt already teaches and `parseRepoValue` already
+ * reads, so a page a session touched two repositories for says both rather
+ * than silently claiming one.
+ */
+function repoYamlValue(slug: string | readonly string[]): string | null {
+  const slugs = [...new Set((typeof slug === "string" ? [slug] : slug).filter(Boolean))];
+  if (slugs.length === 0) return null;
+  return slugs.length === 1 ? slugs[0]! : `[${slugs.join(", ")}]`;
+}
+
+/**
  * Keys pi-llm-wiki recognises in frontmatter — its STANDARD_FIELDS plus the
  * extension keys the vault already carries. A trailing block built only from
  * these is duplicated metadata the parser never reads, so dropping it loses
@@ -101,8 +116,14 @@ export interface StampOutcome {
  * that carried the field had it in that orphan block, where the parser reads
  * it as body prose and the registry never sees it.
  */
-export function stampRepoFrontmatter(markdown: string, slug: string): StampOutcome {
+export function stampRepoFrontmatter(
+  markdown: string,
+  slug: string | readonly string[],
+): StampOutcome {
   const unchanged: StampOutcome = { changed: false, content: markdown, repo: null };
+
+  const stampValue = repoYamlValue(slug);
+  if (!stampValue) return unchanged;
 
   const lines = markdown.split("\n");
   if (lines.length === 0 || !isFence(lines[0]!)) return unchanged;
@@ -137,7 +158,7 @@ export function stampRepoFrontmatter(markdown: string, slug: string): StampOutco
   const front = lines.slice(1, close);
   const existing = front.findIndex((line) => repoKey.test(line));
 
-  const value = orphanRepo ?? slug;
+  const value = orphanRepo ?? stampValue;
   const next = [...lines];
 
   // Drop the orphan (and the gap ahead of it) first, so the insert below still

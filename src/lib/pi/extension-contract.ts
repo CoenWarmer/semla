@@ -153,7 +153,16 @@ export interface ContractSlots {
   [WIKI_INGEST_DISPATCHER]: WikiIngestDispatcher;
   [WIKI_REINDEX_DISPATCHER]: WikiReindexDispatcher;
   [BRIDGE_RUN_STARTED]: BridgeRunNotifier;
-  [WIKI_SESSION_REPOS]: Map<string, string>;
+  /**
+   * Session id → the repo slugs its wiki pages should be attributed to.
+   *
+   * A list since a session can work in several repositories. Written by
+   * wiki-session-repo.ts through Next's module graph and read by the bridge
+   * through jiti, which is why this declaration is the only thing keeping the
+   * two halves agreeing — and why a mismatch would be silent misattribution
+   * rather than an error.
+   */
+  [WIKI_SESSION_REPOS]: Map<string, string[]>;
   [WORKFLOW_MANAGER_REGISTRY]: Map<string, WeakRef<WorkflowSnapshotSource>>;
   [EXTENSION_HEALTH]: ExtensionHealthSnapshot;
 }

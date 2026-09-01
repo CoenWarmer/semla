@@ -63,7 +63,7 @@ import {
 } from "@/lib/pi/wiki-repo-stamp";
 import {
   clearSessionRepo,
-  setSessionRepo,
+  setSessionRepos,
 } from "@/lib/pi/wiki-session-repo";
 import {
   createSessionFile,
@@ -300,12 +300,24 @@ const bgAbortControllers = new Map<string, AbortController>();
  * Fire-and-forget by design: the wiki is a side product of the turn, so a slow
  * or failing stamp must not hold the SSE stream open or fail the prompt.
  */
+/**
+ * The anchor's slug as a list, for callers with no per-turn set to draw on.
+ *
+ * A background continuation is one: the workflow's own writes go through their
+ * own sessions, so there is nothing this turn touched to add. Pages it produced
+ * are attributed by lineage first regardless.
+ */
+const anchorSlugs = (projectPath: string | null): string[] => {
+  const slug = repoSlugFromProjectPath(projectPath);
+  return slug ? [slug] : [];
+};
+
 const stampWikiRepo = (
   semlaSessionId: string,
-  projectPath: string | null,
+  slugs: readonly string[],
   since: number,
 ) => {
-  void stampSessionWikiPages({ projectPath, since })
+  void stampSessionWikiPages({ slugs, since })
     .then((stamped) => {
       if (stamped.length > 0) {
         log(semlaSessionId, "wiki repo stamped", { pages: stamped.length });
@@ -475,7 +487,22 @@ export const runPiPrompt = async ({
   }
 
   const piRuntimeSessionId = sessionManager.getSessionId();
-  setSessionRepo(piRuntimeSessionId, repoSlugFromProjectPath(projectPath));
+
+  /**
+   * The repos this turn's wiki pages are attributed to: the session's anchor,
+   * plus whatever it writes to along the way.
+   *
+   * Per turn rather than per session. Tagging every page with everything the
+   * session has ever touched is more accurate than tagging them all with the
+   * anchor, and still wrong for a turn that only worked in one of them — the
+   * touched set is already accumulated for the link writes, so narrowing it
+   * this way costs nothing.
+   */
+  const anchorSlug = repoSlugFromProjectPath(projectPath);
+  const turnRepoSlugs = (): string[] =>
+    [anchorSlug, ...attachedThisTurn].filter((slug): slug is string => Boolean(slug));
+
+  setSessionRepos(piRuntimeSessionId, turnRepoSlugs());
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
@@ -711,7 +738,11 @@ export const runPiPrompt = async ({
           detach(
             semlaSessionId,
             "attach written project",
-            attachWrittenProject(semlaSessionId, written, attachedThisTurn),
+            attachWrittenProject(semlaSessionId, written, attachedThisTurn).then(
+              // A page captured after the agent strays into a second repo
+              // should say so, so republish rather than wait for the next turn.
+              () => setSessionRepos(piRuntimeSessionId, turnRepoSlugs()),
+            ),
           );
         }
       }
@@ -798,7 +829,7 @@ export const runPiPrompt = async ({
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);
-    stampWikiRepo(semlaSessionId, projectPath, turnStartedAt);
+    stampWikiRepo(semlaSessionId, turnRepoSlugs(), turnStartedAt);
     const settledDuringPrompt =
       deliveredDuringPrompt &&
       (!detectedBackgroundRunId ||
@@ -1014,7 +1045,7 @@ const runBackgroundContinuation = async (
     unsubscribeBg();
     bgAbortControllers.delete(semlaSessionId);
     detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
-    stampWikiRepo(semlaSessionId, projectPath, continuationStartedAt);
+    stampWikiRepo(semlaSessionId, anchorSlugs(projectPath), continuationStartedAt);
     if (supersededByNewPrompt) {
       // A new prompt took over this session. Do NOT dispose — that would kill the
       // shared bash executor and abort the new session's in-flight tool calls.

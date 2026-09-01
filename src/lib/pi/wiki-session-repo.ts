@@ -19,21 +19,33 @@ import {
   WIKI_SESSION_REPOS,
 } from "@/lib/pi/extension-contract";
 
-const repos = (): Map<string, string> =>
+const repos = (): Map<string, string[]> =>
   readOrInitSlot(WIKI_SESSION_REPOS, () => new Map());
 
-/** Publish the repo a session is working in. No slug means nothing to record. */
-export function setSessionRepo(
+/**
+ * Publish the repos a session's pages should be attributed to.
+ *
+ * A list, because a session can work in several. Called again as a turn
+ * discovers more, so the set a captured page is tagged with is the one that was
+ * true when it was captured rather than at the start of the turn.
+ *
+ * An empty list clears the entry instead of recording nothing, so a session
+ * that loses its projects stops attributing pages to the ones it used to have.
+ */
+export function setSessionRepos(
   sessionId: string | undefined,
-  repo: string | null,
+  slugs: readonly string[],
 ): void {
-  if (!sessionId || !repo) return;
-  repos().set(sessionId, repo);
+  if (!sessionId) return;
+
+  const unique = [...new Set(slugs.filter(Boolean))];
+  if (unique.length === 0) repos().delete(sessionId);
+  else repos().set(sessionId, unique);
 }
 
-export function getSessionRepo(sessionId: string | undefined): string | null {
-  if (!sessionId) return null;
-  return repos().get(sessionId) ?? null;
+export function getSessionRepos(sessionId: string | undefined): string[] {
+  if (!sessionId) return [];
+  return repos().get(sessionId) ?? [];
 }
 
 /**

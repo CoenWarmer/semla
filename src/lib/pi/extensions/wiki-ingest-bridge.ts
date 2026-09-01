@@ -347,7 +347,7 @@ function reportSynthesisGrounding(
 function createBatchCommitSynthesisTool(
   manifests: Map<string, Record<string, unknown>>,
   paths: WikiVaultPaths,
-  repoOf: () => string | null,
+  repoOf: () => string[],
 ) {
   return defineTool({
     name: "commit_synthesis",
@@ -395,7 +395,10 @@ function createBatchCommitSynthesisTool(
         );
       }
 
-      const repo = sourceRepo(paths, source_id) ?? repoOf();
+      // One repo, not the session's whole set: this qualifies entity titles,
+      // and a title cannot be namespaced to two repositories at once. The
+      // source's own repo wins; the session's anchor is the fallback.
+      const repo = sourceRepo(paths, source_id) ?? repoOf()[0] ?? null;
       // Entities are artifacts of one repo, so they are qualified before the
       // package derives a slug from the title. Concepts are shared on purpose
       // and keep their plain names.
@@ -579,7 +582,7 @@ function ensureSemlaVaultExists(): void {
  */
 function registerSubagentWikiToolset(
   pi: ExtensionAPI,
-  repoOf: () => string | null,
+  repoOf: () => string[],
   sessionIdOf: () => string | undefined,
 ): void {
   let wikiTools: Array<ReturnType<typeof defineTool>> = [];
@@ -640,10 +643,10 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
   // Read straight off the shared slot: the server-side half of this pair
   // (wiki-session-repo.ts) imports through the "@/" alias, which jiti cannot
   // resolve from here.
-  const repoOf = (): string | null =>
+  const repoOf = (): string[] =>
     (sessionId
       ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
-      : null) ?? null;
+      : null) ?? [];
 
   registerSubagentWikiToolset(pi, repoOf, () => sessionId);
 

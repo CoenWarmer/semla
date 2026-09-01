@@ -218,7 +218,7 @@ describe("stampWikiPages", () => {
     const stale = write(home, "concepts/old.md", "---\ntype: concept\n---\n", since - 60_000);
     const fresh = write(home, "concepts/new.md", "---\ntype: concept\n---\n");
 
-    const stamped = stampWikiPages({ slug: "semla", since, wikiHome: home });
+    const stamped = stampWikiPages({ slugs: ["semla"], since, wikiHome: home });
 
     expect(stamped).toEqual([{ id: "concepts/new", repo: "semla" }]);
     expect(readFileSync(fresh, "utf8")).toContain("repo: semla");
@@ -231,7 +231,7 @@ describe("stampWikiPages", () => {
     write(home, "entities/thing.md", "---\ntype: entity\n---\n");
     write(home, "concepts/index.md", "---\ntype: concept\n---\n");
 
-    const stamped = stampWikiPages({ slug: "semla", since: 0, wikiHome: home });
+    const stamped = stampWikiPages({ slugs: ["semla"], since: 0, wikiHome: home });
 
     expect(stamped).toEqual([{ id: "entities/thing", repo: "semla" }]);
   });
@@ -240,7 +240,67 @@ describe("stampWikiPages", () => {
     const home = vault();
     write(home, "concepts/tagged.md", "---\ntype: concept\nrepo: other\n---\n");
 
-    expect(stampWikiPages({ slug: "semla", since: 0, wikiHome: home })).toEqual([]);
+    expect(stampWikiPages({ slugs: ["semla"], since: 0, wikiHome: home })).toEqual([]);
+  });
+
+  /**
+   * A turn that wrote to two repositories should say so. The wiki's own model
+   * has always allowed `repo: [a, b]` — parseRepoValue reads it and the prompt
+   * teaches it — it was only the stamp that could not produce one.
+   */
+  it("tags a page with every repo the turn is attributed to", () => {
+    const home = vault();
+    const page = write(home, "concepts/shared.md", "---\ntype: concept\n---\n");
+
+    const stamped = stampWikiPages({
+      slugs: ["semla", "catalog-info"],
+      since: 0,
+      wikiHome: home,
+    });
+
+    expect(stamped).toEqual([{ id: "concepts/shared", repo: "[semla, catalog-info]" }]);
+    expect(readFileSync(page, "utf8")).toContain("repo: [semla, catalog-info]");
+  });
+
+  it("writes a single repo as a bare scalar, not a one-element list", () => {
+    // Almost every page is this, and `repo: [semla]` would be noise.
+    const home = vault();
+    const page = write(home, "concepts/one.md", "---\ntype: concept\n---\n");
+
+    stampWikiPages({ slugs: ["semla"], since: 0, wikiHome: home });
+
+    expect(readFileSync(page, "utf8")).toContain("repo: semla");
+  });
+
+  it("does not repeat a repo that appears twice in the set", () => {
+    const home = vault();
+    const page = write(home, "concepts/dup.md", "---\ntype: concept\n---\n");
+
+    stampWikiPages({ slugs: ["semla", "semla"], since: 0, wikiHome: home });
+
+    expect(readFileSync(page, "utf8")).toContain("repo: semla");
+  });
+
+  it("stamps nothing when the turn is attributed to no repo at all", () => {
+    const home = vault();
+    const page = write(home, "concepts/none.md", "---\ntype: concept\n---\n");
+
+    expect(stampWikiPages({ slugs: [], since: 0, wikiHome: home })).toEqual([]);
+    expect(readFileSync(page, "utf8")).not.toContain("repo:");
+  });
+
+  /**
+   * The rule this module exists to protect: a page that names its own repo
+   * keeps it. A multi-repo turn must not overwrite that with its whole set.
+   */
+  it("leaves a page that declares its own repo alone", () => {
+    const home = vault();
+    const page = write(home, "concepts/own.md", "---\ntype: concept\nrepo: elsewhere\n---\n");
+
+    stampWikiPages({ slugs: ["semla", "catalog-info"], since: 0, wikiHome: home });
+
+    expect(readFileSync(page, "utf8")).toContain("repo: elsewhere");
+    expect(readFileSync(page, "utf8")).not.toContain("catalog-info");
   });
 });
 
@@ -275,7 +335,7 @@ describe("stampSessionWikiPages", () => {
     );
 
     const stamped = await stampSessionWikiPages({
-      projectPath: "/Users/coen/Dev/react-otel-trace-waterfall",
+      slugs: ["react-otel-trace-waterfall"],
       since: 0,
       wikiHome: home,
     });
@@ -297,7 +357,7 @@ describe("stampSessionWikiPages", () => {
       "utf8",
     );
 
-    await stampSessionWikiPages({ projectPath: "/Dev/other", since: 0, wikiHome: home });
+    await stampSessionWikiPages({ slugs: ["other"], since: 0, wikiHome: home });
 
     expect(registryOf(home).pages["concepts/shared"]!.repo).toEqual(["semla", "ecs"]);
   });
@@ -310,7 +370,7 @@ describe("stampSessionWikiPages", () => {
       "utf8",
     );
 
-    expect(await stampSessionWikiPages({ projectPath: null, since: 0, wikiHome: home })).toEqual([]);
+    expect(await stampSessionWikiPages({ slugs: [], since: 0, wikiHome: home })).toEqual([]);
     expect(registryOf(home).pages["concepts/thing"]!.repo).toBeUndefined();
   });
 });
@@ -398,7 +458,7 @@ describe("lineage attribution", () => {
     // A page with no lineage, which the sweeping session does own.
     writeFileSync(join(wiki, "concepts", "hand-written.md"), page([]), "utf8");
 
-    const stamped = stampWikiPages({ slug: "buildkite-tray", since: 0, wikiHome: home });
+    const stamped = stampWikiPages({ slugs: ["buildkite-tray"], since: 0, wikiHome: home });
     const byId = new Map(stamped.map((p) => [p.id, p.repo]));
 
     expect(byId.get("concepts/from-semla")).toBe("semla");

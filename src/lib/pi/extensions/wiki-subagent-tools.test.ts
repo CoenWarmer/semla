@@ -85,7 +85,7 @@ describe("collectWikiSubagentTools", () => {
       name: string;
       execute?: (...args: never[]) => unknown;
       parameters?: unknown;
-    }>({}, { wikiHome: mkdtempSync(join(tmpdir(), "semla-collect-")), repoOf: () => null });
+    }>({}, { wikiHome: mkdtempSync(join(tmpdir(), "semla-collect-")), repoOf: () => [] });
 
     expect(tools.map((t) => t.name).sort()).toEqual([...WIKI_SUBAGENT_TOOL_NAMES].sort());
     for (const tool of tools) {
@@ -105,7 +105,7 @@ describe("collectWikiSubagentTools", () => {
 describe("guardVaultWrites", () => {
   const guard = () => ({
     wikiHome: mkdtempSync(join(tmpdir(), "semla-guard-")),
-    repoOf: () => null,
+    repoOf: () => [],
   });
 
   const deferredTool = (name: string, log: string[]) => ({
@@ -184,7 +184,7 @@ describe("guardVaultWrites", () => {
         return "ok";
       },
     };
-    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => null });
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => [] });
 
     await tool!.execute!();
     await tool!.execute!();
@@ -224,7 +224,7 @@ describe("guardVaultWrites", () => {
         return "ok";
       },
     };
-    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => ["semla"] });
 
     await callTool(tool!, { file_path: "/tmp/semla_history.log", title: "semla History (150 commits, bodies)" });
 
@@ -253,7 +253,7 @@ describe("guardVaultWrites", () => {
         return "ok";
       },
     };
-    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => ["semla"] });
 
     await callTool(tool!, { file_path: "/tmp/other.log", title: "Something Else" });
 
@@ -276,7 +276,7 @@ describe("guardVaultWrites", () => {
       },
     };
 
-    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => "semla" });
+    const [tool] = guardVaultWrites([capture], { wikiHome, repoOf: () => ["semla"] });
     await tool!.execute!();
 
     expect(readFileSync(join(dir, "SRC-002.md"), "utf8")).toContain("repo: semla");
@@ -392,7 +392,7 @@ describe("rejectUnfetchableUrl", () => {
     const execute = vi.fn();
     const [capture] = guardVaultWrites(
       [{ name: "wiki_capture_source", execute }],
-      { wikiHome: mkdtempSync(join(tmpdir(), "semla-reject-")), repoOf: () => "semla" },
+      { wikiHome: mkdtempSync(join(tmpdir(), "semla-reject-")), repoOf: () => ["semla"] },
     );
 
     const result = (await capture!.execute!(

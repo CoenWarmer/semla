@@ -148,8 +148,13 @@ export function selectSubagentTools<T extends NamedTool>(tools: T[]): T[] {
 
 export interface VaultGuardOptions {
   wikiHome: string;
-  /** The repo of the session these tools belong to, resolved per call. */
-  repoOf: () => string | null;
+  /**
+   * The repos of the session these tools belong to, resolved per call.
+   *
+   * Per call rather than captured once, so a source captured after the agent
+   * has strayed into a second repository is tagged with both.
+   */
+  repoOf: () => string[];
 }
 
 /**
@@ -364,13 +369,17 @@ function patchManifestTitle(wikiHome: string, sourceId: string, title: string): 
   }
 }
 
-function attributeNewSources(wikiHome: string, before: Set<string>, repo: string): void {
+function attributeNewSources(
+  wikiHome: string,
+  before: Set<string>,
+  repos: readonly string[],
+): void {
   const dir = join(wikiHome, ".llm-wiki", "wiki", "sources");
   for (const entry of sourcePages(wikiHome)) {
     if (before.has(entry) || !entry.endsWith(".md")) continue;
     const path = join(dir, entry);
     try {
-      const outcome = stampRepoFrontmatter(readFileSync(path, "utf8"), repo);
+      const outcome = stampRepoFrontmatter(readFileSync(path, "utf8"), repos);
       if (outcome.changed) writeFileSync(path, outcome.content, "utf8");
     } catch {
       // The turn-end sweep still covers this page, just less precisely.
@@ -437,7 +446,7 @@ export function guardVaultWrites<T extends ExecutableTool>(
         return withVaultLock(options.wikiHome, tool.name, async () => {
           const before = isCapture ? new Set(sourcePages(options.wikiHome)) : null;
           const result = await execute(...args);
-          const repo = options.repoOf();
+          const repos = options.repoOf();
           if (before) {
             const request = args[1] as { file_path?: unknown; title?: unknown } | null;
             const wanted = typeof request?.title === "string" ? request.title.trim() : "";
@@ -446,8 +455,8 @@ export function guardVaultWrites<T extends ExecutableTool>(
             }
             await rebuildVaultMetadata(options.wikiHome);
           }
-          if (before && repo) {
-            attributeNewSources(options.wikiHome, before, repo);
+          if (before && repos.length > 0) {
+            attributeNewSources(options.wikiHome, before, repos);
           } else if (before && !warnedNoRepo) {
             warnedNoRepo = true;
             console.warn(
