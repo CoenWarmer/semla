@@ -305,6 +305,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
               sessionMessagesQueryKey(sessionId),
               (prev) => ({
                 contextWindow: prev?.contextWindow ?? null,
+                systemPromptChars: prev?.systemPromptChars,
                 toolCalls: prev?.toolCalls ?? [],
                 messages: [
                   ...(prev?.messages ?? []),
@@ -409,6 +410,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           (prev) => ({
             contextWindow: prev?.contextWindow ?? null,
             messages: context.previousMessages,
+            systemPromptChars: prev?.systemPromptChars,
             toolCalls: prev?.toolCalls ?? [],
           })
         );
@@ -452,6 +454,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         sessionMessagesQueryKey(sessionId),
         {
           contextWindow: previous?.contextWindow ?? null,
+          // Carried, not recomputed: these writes rebuild the cache entry, and
+          // anything they leave out is dropped. The context-window bar reads
+          // both, so losing them mid-turn empties the bar the prompt just
+          // filled.
+          systemPromptChars: previous?.systemPromptChars,
           // Preserve the tool-call markers already on the timeline; the refetch
           // after this turn brings in the ones this prompt produces.
           toolCalls: previous?.toolCalls ?? [],
