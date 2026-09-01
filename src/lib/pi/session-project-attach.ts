@@ -16,9 +16,9 @@
  */
 
 import { projectOfWrittenPath } from "@/lib/pi/project-of-path";
-import { readSessionMeta, writeSessionMeta, type ProjectLink } from "@/lib/pi/session-meta";
+import type { ProjectLink } from "@/lib/pi/session-meta";
 import { attachProject } from "@/lib/pi/session-project-links";
-import { mirrorSessionProjects } from "@/lib/pi/session-project-mirror";
+import { updateSessionProjects } from "@/lib/pi/session-project-store";
 
 /**
  * The file a tool call is about to change, or null if it changes no file.
@@ -53,21 +53,15 @@ export async function recordProjectTouch(
     mirror?: (id: string, links: readonly ProjectLink[]) => Promise<void>;
   } = {},
 ): Promise<boolean> {
-  const { at = new Date().toISOString(), dir, mirror = mirrorSessionProjects } = options;
+  const { at = new Date().toISOString(), ...rest } = options;
 
-  const meta = dir ? readSessionMeta(sessionId, dir) : readSessionMeta(sessionId);
-  if (!meta) return false;
+  const result = await updateSessionProjects(
+    sessionId,
+    (links) => attachProject(links, { at, origin: "observed", path: projectPath }),
+    rest,
+  );
 
-  const next = attachProject(meta.projects, { at, origin: "observed", path: projectPath });
-  if (sameLinks(meta.projects, next)) return false;
-
-  // Disk first, and synchronously, so the append cannot interleave with
-  // another writer. See writeSessionMeta on why the synchrony is load-bearing.
-  if (dir) writeSessionMeta(sessionId, { projects: next }, dir);
-  else writeSessionMeta(sessionId, { projects: next });
-
-  await mirror(sessionId, next);
-  return true;
+  return result.status === "ok" && result.changed;
 }
 
 /**
@@ -92,23 +86,3 @@ export async function attachWrittenProject(
   attachedThisTurn.add(project);
   await recordProjectTouch(sessionId, project);
 }
-
-/**
- * Whether two link sets are the same in every field that is persisted.
- *
- * `lastTouchedAt` counts: a second write to an already-linked project moves it,
- * and skipping that write would let the timestamp drift arbitrarily far behind
- * the work it describes.
- */
-const sameLinks = (a: readonly ProjectLink[], b: readonly ProjectLink[]): boolean =>
-  a.length === b.length &&
-  a.every((link, index) => {
-    const other = b[index];
-    return (
-      link.path === other.path &&
-      link.origin === other.origin &&
-      link.isPrimary === other.isPrimary &&
-      link.firstAttachedAt === other.firstAttachedAt &&
-      link.lastTouchedAt === other.lastTouchedAt
-    );
-  });
