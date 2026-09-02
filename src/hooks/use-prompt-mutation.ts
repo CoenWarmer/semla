@@ -37,6 +37,13 @@ export type PromptModel = {
 
 type PromptInput = {
   /**
+   * Present when this prompt is also what creates the session: /sessions/new
+   * mints the id and navigates without waiting, so the first prompt is the
+   * request that brings the session into being. One round trip rather than two
+   * before the agent starts.
+   */
+  create?: { project: string | null; title: string };
+  /**
    * Set when this prompt replaces an earlier one. The server moves the session
    * leaf to that entry's parent, so this turn supersedes it rather than being
    * appended after the answer it corrects.
@@ -383,11 +390,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     PromptInput,
     { previousMessages: SessionMessage[] }
   >({
-    mutationFn: async ({ editEntryId, model, text, tools }) => {
+    mutationFn: async ({ create, editEntryId, model, text, tools }) => {
       const id = ++traceSeq;
       trace("mutationFn:start", { id, textLength: text.length });
       const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
-        body: JSON.stringify({ editEntryId, model, text, tools }),
+        body: JSON.stringify({ create, editEntryId, model, text, tools }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });

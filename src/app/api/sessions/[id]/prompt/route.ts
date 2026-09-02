@@ -1,4 +1,10 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import {
+  createSession,
+  readSessionCreateRequest,
+  sessionExistsOnDisk,
+} from "@/lib/pi/session-create";
+import { parseRequestedSessionId } from "@/lib/pi/session-id";
 import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
 import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
@@ -23,6 +29,8 @@ export async function POST(
     console.error("[api:sessions/prompt] Invalid JSON body:", error);
     return null;
   })) as {
+    /** Present when this prompt is also what brings the session into being. */
+    create?: unknown;
     editEntryId?: unknown;
     model?: { modelId?: unknown; provider?: unknown };
     text?: unknown;
@@ -65,6 +73,51 @@ export async function POST(
 
   let userId: string;
   try {
+    /**
+     * The session may not exist yet.
+     *
+     * /sessions/new mints the id and navigates without waiting, so the first
+     * prompt is also the request that brings the session into being. Doing it
+     * here rather than as a separate call is one round trip rather than two
+     * between arriving on the page and the agent starting work.
+     *
+     * `create` is what /sessions/new knew and this route otherwise could not:
+     * the project the session is anchored to, and its title. A prompt for a
+     * missing session that carries no `create` is still a 404 — the caller is
+     * addressing something that never existed.
+     */
+    if (body?.create && !sessionExistsOnDisk(id)) {
+      // The id is a route parameter, and creating means writing a file named
+      // after it — `<session dir>/<id>.json`. Every other path through this
+      // route only ever read a session that already existed, so an id that
+      // could climb out of that directory never reached a write before. It is
+      // validated to a uuid here, and a prompt is refused rather than silently
+      // retargeted.
+      const newId = parseRequestedSessionId(id);
+
+      if (!newId) {
+        return Response.json({ error: "Invalid session id." }, { status: 400 });
+      }
+
+      const { supabase: creating, user } = await requireUser();
+      const { project, title } = readSessionCreateRequest(body.create);
+
+      const created = await createSession({
+        client: creating,
+        id: newId,
+        project,
+        title,
+        userId: user.id,
+      });
+
+      if (created.kind === "failed") {
+        return Response.json({ error: created.message }, { status: 500 });
+      }
+    }
+
+    // Still checked, and against the record that now exists: creating a session
+    // does not authorise prompting one, and the id may name a session somebody
+    // else owns.
     const { user } = await requireSessionOwner(id);
     userId = user.id;
   } catch (error) {
