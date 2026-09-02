@@ -5,6 +5,7 @@ import {
   subscribeToSessionStream,
 } from "@/lib/pi/session-stream-store";
 import { setSessionRunning } from "@/lib/pi/session-persistence";
+import { isSessionActive } from "@/lib/pi/session-service";
 
 export const runtime = "nodejs";
 
@@ -23,14 +24,24 @@ export async function GET(
   }
 
   if (!isSessionStreamActive(id)) {
-    // Stream not found — either already finished or server restarted. Clear a
-    // potentially stale running flag while we are here.
+    // No stream to attach to — but that is not the same as nothing running.
+    //
+    // A prompt turn that started a background workflow closes its stream and
+    // then hands off to runBackgroundContinuation, which keeps working and
+    // delivers a report turn later. The client reconnects the moment the turn's
+    // stream ends, lands here, and used to have the running flag cleared out
+    // from under it — so the sidebar spinner and the prompt bar both went idle
+    // while four subagents were still going, and nothing turned them back on.
+    //
+    // isSessionActive is the honest test: a live session or an armed
+    // continuation. It is false after a restart, which is the stale-flag case
+    // this clearing exists for, and it stays false there.
     //
     // Through setSessionRunning rather than a direct Supabase update: the flag
     // lives in two places and the status poll reads the *disk* record, so
     // updating only the database left the poll still reporting a turn that had
     // demonstrably ended — and the client, trusting it, asking again.
-    await setSessionRunning(id, false);
+    if (!isSessionActive(id)) await setSessionRunning(id, false);
 
     return Response.json({ active: false }, { status: 404 });
   }
