@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -88,7 +87,7 @@ type StreamHandlers = {
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
   onCodeMap: (map: CodeMap) => void;
   onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
-  onTitleUpdated: () => void;
+  onTitleUpdated: (title: string) => void;
   onError: (message: string) => void;
   onWikiTool: (toolName: string) => void;
 };
@@ -142,7 +141,7 @@ const readPiStream = async (
       } else if (piEvent.type === "workflow-started") {
         handlers.onWorkflowStarted(piEvent);
       } else if (piEvent.type === "title-updated") {
-        handlers.onTitleUpdated();
+        handlers.onTitleUpdated(piEvent.title);
       } else if (piEvent.type === "complete") {
         // nothing — loop will end on done
       } else if (piEvent.type === "error") {
@@ -159,7 +158,6 @@ const readPiStream = async (
 
 export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean) => {
   const queryClient = useQueryClient();
-  const router = useRouter();
 
   /**
    * Tell the sidebar what this page already knows about its own session.
@@ -202,10 +200,20 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   const [wikiActive, setWikiActive] = useState(false);
   const wikiActiveRef = useRef(false);
   // A ref, not state. This is written from inside the SSE reader loop and read
-  // by onSettled a couple of milliseconds later, with no render in between — so
-  // as state, onSettled always closed over the stale `false` and the refresh
-  // below never fired. Nothing renders from it, so a ref is the right tool.
-  const titleUpdatedRef = useRef(false);
+  /**
+   * The title the server derived from the first prompt.
+   *
+   * The server sends this once per session, on its first turn. It used to set a
+   * ref that triggered `router.refresh()` after the turn — a full root-layout
+   * re-render, measured at 3,974ms and 78KB of RSC payload carrying every
+   * session in the sidebar and its token usage, to propagate one string.
+   *
+   * The string is in the event, so the page can simply render it. The sidebar
+   * needs nothing either: a session the server render did not have is added
+   * from the status poll, with the title the poll reports — which is the
+   * new-session case, and the only case this event fires in.
+   */
+  const [serverTitle, setServerTitle] = useState<string | null>(null);
   const reconnectAbortRef = useRef<AbortController | null>(null);
   // Set when a reattach is told this session has no stream. The status poll is a
   // cache and goes on saying "running" for a few seconds after a turn ends, so
@@ -247,8 +255,10 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           runningCount: 0,
           startedAt: event.startedAt,
         }),
-      onTitleUpdated: () => {
-        titleUpdatedRef.current = true;
+      onTitleUpdated: (title) => {
+        setServerTitle(title);
+        // So the sidebar shows it now rather than on its next poll.
+        void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
       },
       onError: (message) => setStreamError(message),
       onWikiTool: (toolName) => {
@@ -345,10 +355,6 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         await queryClient.invalidateQueries({
           queryKey: sessionMessagesQueryKey(sessionId),
         });
-        if (titleUpdatedRef.current) {
-          titleUpdatedRef.current = false;
-          setTimeout(() => router.refresh(), 0);
-        }
       }
     };
 
@@ -454,7 +460,6 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       setLiveToolCalls([]);
       setWorkflowSnapshot(undefined);
       setPendingQuestion(null);
-      titleUpdatedRef.current = false;
       await queryClient.cancelQueries({
         queryKey: sessionMessagesQueryKey(sessionId),
       });
@@ -495,7 +500,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       return { previousMessages };
     },
     onSettled: async () => {
-      trace("onSettled:start", { titleUpdated: titleUpdatedRef.current });
+      trace("onSettled:start");
       setStreamingText("");
       setActiveTool(undefined);
       setPendingQuestion(null);
@@ -519,21 +524,6 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       setListRunning(false);
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });
-
-      // The server only sends title-updated on a session's first prompt, so
-      // this picks up the generated title for the topbar and the sidebar list.
-      //
-      // Deferred until after the stream has fully closed — calling it mid-stream
-      // can disrupt the SSE reader loop — and past this callback, so a route
-      // re-render can never sit between onSettled resolving and query-core
-      // marking the mutation settled.
-      if (titleUpdatedRef.current) {
-        titleUpdatedRef.current = false;
-        setTimeout(() => {
-          trace("router-refresh");
-          router.refresh();
-        }, 0);
-      }
     },
   });
 
@@ -600,6 +590,8 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     liveToolCalls,
     mutation,
     pendingQuestion,
+    /** The title the server derived from the first prompt, once it has. */
+    serverTitle,
     streamError,
     streamingText,
     wikiActive,

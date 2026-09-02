@@ -69,6 +69,7 @@ export function ClientSessionComponent({
     mutation: promptMutation,
     pendingQuestion,
     serverIsRunning,
+    serverTitle,
     streamError,
     streamingText,
     wikiActive,
@@ -76,6 +77,17 @@ export function ClientSessionComponent({
   } = usePromptMutation(sessionId, isRunning);
 
   const { consume: consumePendingPrompt } = usePendingPrompt();
+
+  /**
+   * The session's title.
+   *
+   * `title` is the server's render, which for a session created by its own
+   * first prompt is null — the title is derived from that prompt while the turn
+   * runs, and arrives over the stream. Rendering it from here is what replaced
+   * a `router.refresh()` after the turn: a full root-layout re-render, measured
+   * at ~4s, to propagate one string.
+   */
+  const shownTitle = serverTitle ?? title;
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
 
   const handleStop = useCallback(() => {
@@ -349,7 +361,7 @@ export function ClientSessionComponent({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
-        title={title}
+        title={shownTitle}
         codeMap={codeMap}
         contextWindow={messagesQuery.data?.contextWindow ?? null}
         systemPromptChars={messagesQuery.data?.systemPromptChars}
