@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rm } from "node:fs/promises";
 
-import { resolveSessionCwd } from "./session-cwd.ts";
+import { isProjectAnchored, resolveSessionCwd } from "./session-cwd.ts";
 
 let root: string;
 
@@ -83,4 +83,29 @@ describe("resolveSessionCwd", () => {
       join(root, "semla", "packages", "app"),
     );
   });
+});
+
+/**
+ * Gates the project-scoped extensions. Derived from the resolved cwd rather
+ * than the project list, so every reason an anchor was refused — missing,
+ * escaping the root, or naming a directory that is gone — lands on the same
+ * answer as having no project at all.
+ */
+describe("isProjectAnchored", () => {
+  it("is true for a session running inside a project", () => {
+    expect(isProjectAnchored(resolveSessionCwd(["semla"], root), root)).toBe(true);
+  });
+
+  it("is false for a session with no project", () => {
+    expect(isProjectAnchored(resolveSessionCwd([], root), root)).toBe(false);
+  });
+
+  it.each([["gone"], ["notes.md"], ["../elsewhere"]])(
+    "is false for an anchor that was refused: %s",
+    (anchor) => {
+      expect(isProjectAnchored(resolveSessionCwd([anchor], root), root)).toBe(
+        false,
+      );
+    },
+  );
 });

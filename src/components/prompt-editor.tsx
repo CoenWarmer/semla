@@ -163,6 +163,12 @@ interface PromptEditorProps {
   /** Interrupt that turn. Without it the button stays a submit button. */
   onStop?: () => void;
   /**
+   * Which session this editor belongs to, so the tool list is the one that
+   * session will actually run with. Absent on /sessions/new, where no session
+   * exists yet and the full set is the right answer.
+   */
+  sessionId?: string;
+  /**
    * Reports the model and tools a submit would use right now.
    *
    * Editing a prompt runs a turn from somewhere else in the session, and it
@@ -182,6 +188,7 @@ export function PromptEditor({
   onSelectionChange,
   onStop,
   onSubmit,
+  sessionId,
 }: PromptEditorProps) {
   const {
     data: models = [],
@@ -193,7 +200,7 @@ export function PromptEditor({
     error: userSettingsError,
     isSuccess: userSettingsLoaded,
   } = useUserSettings();
-  const { data: piTools } = useTools();
+  const { data: piTools } = useTools(sessionId);
 
   const { error: updateUserSettingsError, mutate: updateUserSettings } =
     useUpdateUserSettings();

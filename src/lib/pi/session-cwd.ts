@@ -53,3 +53,18 @@ export const resolveSessionCwd = (
 
   return candidate;
 };
+
+/**
+ * Whether a session ended up anchored on a project, rather than falling back to
+ * the workspace root.
+ *
+ * Derived from the resolved cwd rather than from the project list, so it
+ * accounts for every reason `resolveSessionCwd` refuses an anchor — missing,
+ * escaping the root, or naming a directory that is no longer there. All of
+ * those leave the agent at the root, where a project-scoped extension is both
+ * ruinously expensive and meaningless.
+ */
+export const isProjectAnchored = (
+  agentCwd: string,
+  workspaceRoot: string = PI_WORKSPACE_ROOT,
+): boolean => agentCwd !== workspaceRoot;

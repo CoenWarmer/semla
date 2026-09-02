@@ -466,6 +466,7 @@ export function ClientSessionComponent({
             onSelectionChange={handleSelectionChange}
             onStop={handleStop}
             onSubmit={handleSubmit}
+            sessionId={sessionId}
           />
         </div>
       </div>

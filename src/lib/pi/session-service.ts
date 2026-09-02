@@ -48,8 +48,10 @@ import {
   assertExtensionPathsExist,
   assertManifestIsCoherent,
   buildExtensionLoadReport,
+  EXTENSION_MANIFEST,
   extensionFactoriesInLoadOrder,
   extensionPathsInLoadOrder,
+  manifestForSession,
 } from "@/lib/pi/extension-manifest";
 import {
   getLiveSession,
@@ -60,7 +62,6 @@ import {
   PI_AGENT_DIR,
   PI_SESSION_DIR,
   PI_TOOLS,
-  PI_WORKSPACE_ROOT,
   WORKFLOW_SKILLS_PATH,
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
@@ -68,7 +69,7 @@ import {
   applyBranchTarget,
   resolveBranchTarget,
 } from "@/lib/pi/session-branch";
-import { resolveSessionCwd } from "@/lib/pi/session-cwd";
+import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session-cwd";
 import { createTurnEventRouter } from "@/lib/pi/session-event-router";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
@@ -291,8 +292,23 @@ export const runPiPrompt = async ({
    * feed the `ctx.cwd` extensions read on session_start.
    */
   const agentCwd = resolveSessionCwd(projects);
-  if (agentCwd !== PI_WORKSPACE_ROOT) {
+  const projectAnchored = isProjectAnchored(agentCwd);
+
+  /**
+   * A session with no project loads a smaller extension set: see
+   * `requiresProjectAnchor`. It picks the rest up on the next turn after a
+   * project appears, including one the agent attached itself by writing a file.
+   */
+  const specs = manifestForSession({ projectAnchored });
+
+  if (projectAnchored) {
     sessionLog(semlaSessionId, "agent cwd", { cwd: agentCwd });
+  } else {
+    sessionLog(semlaSessionId, "no project anchor — project-scoped extensions skipped", {
+      skipped: EXTENSION_MANIFEST.filter((spec) => spec.requiresProjectAnchor)
+        .map((spec) => spec.id)
+        .join(","),
+    });
   }
 
   const sessionFile = await createSessionFile(semlaSessionId, persistedEntries);
@@ -347,15 +363,15 @@ export const runPiPrompt = async ({
   // Validate before Pi ever sees the paths: a missing entry file or an
   // inconsistent manifest fails here with a fix attached, rather than becoming
   // a session that quietly runs without the tools it was supposed to have.
-  assertManifestIsCoherent();
-  assertExtensionPathsExist();
+  assertManifestIsCoherent(specs);
+  assertExtensionPathsExist(specs);
 
   const resourceLoader = new DefaultResourceLoader({
     // Paths first, then factories — that is the order Pi loads them in, and the
     // manifest relies on it: wiki-ingest-bridge is a factory that requires the
     // path-loaded wiki extension. assertManifestIsCoherent enforces it.
-    additionalExtensionPaths: extensionPathsInLoadOrder(),
-    extensionFactories: extensionFactoriesInLoadOrder(),
+    additionalExtensionPaths: extensionPathsInLoadOrder(specs),
+    extensionFactories: extensionFactoriesInLoadOrder(specs),
     additionalSkillPaths: [WORKFLOW_SKILLS_PATH],
     agentDir: PI_AGENT_DIR,
     cwd: agentCwd,
@@ -412,6 +428,7 @@ export const runPiPrompt = async ({
     loadedPaths: loadedExtensions,
     loadErrors: extensionsResult.errors,
     registeredTools: boundTools,
+    specs,
   });
 
   // Publish before any throw, so a failed load is visible at /api/pi/health

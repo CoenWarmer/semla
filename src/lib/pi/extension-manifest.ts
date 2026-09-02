@@ -88,6 +88,25 @@ export type ExtensionSpec = {
   optionalTools: readonly string[];
   /** Contract slots this extension must have published once bound. */
   providesSlots: readonly ContractSlotKey[];
+  /**
+   * Load this extension only for a session anchored on a project.
+   *
+   * For an extension whose cost scales with the tree it is pointed at, and
+   * whose answers only mean anything inside one project. supi-code-intelligence
+   * stands up an LSP workspace over the session's cwd from a `session_start`
+   * handler: 519ms for a project, 75 seconds for the workspace root above all
+   * fifty of them — paid on every turn, before the model sees the prompt, and
+   * not avoidable by deselecting tools, because tool selection happens after
+   * binding.
+   *
+   * Gated on the anchor rather than on the prompt because the extension set has
+   * to be decided before the prompt is read. Guessing from the text would mean
+   * turns where the agent silently has no code tools and cannot recover — the
+   * failure this manifest exists to prevent. The anchor is known up front, and
+   * it is the condition under which the tools are useful at all: every one of
+   * them is a project-scoped symbol query.
+   */
+  requiresProjectAnchor?: boolean;
   /** Shown when the extension is missing, so the fix is in the error. */
   remedy: string;
 };
@@ -168,6 +187,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     id: "code-intelligence",
     source: { kind: "path", path: CODE_INTELLIGENCE_EXTENSION_PATH },
     requires: [],
+    requiresProjectAnchor: true,
     // Exactly what the headless profile registers, which is asserted against
     // the package itself in code-intelligence-contract.test.ts rather than
     // trusted to stay true across releases.
@@ -227,6 +247,36 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
 export const EXTENSION_TOOLS: readonly string[] = EXTENSION_MANIFEST.flatMap(
   (spec) => [...spec.providesTools],
 );
+
+/**
+ * The extensions a session should load.
+ *
+ * A session with no project — a new one before its first write attaches
+ * anything, or one whose anchor has since been moved — skips the extensions
+ * that only mean something inside a project. It gains them on the next turn
+ * after a project appears, including one the agent attached itself.
+ */
+export function manifestForSession({
+  projectAnchored,
+}: {
+  projectAnchored: boolean;
+}): readonly ExtensionSpec[] {
+  if (projectAnchored) return EXTENSION_MANIFEST;
+  return EXTENSION_MANIFEST.filter((spec) => !spec.requiresProjectAnchor);
+}
+
+/**
+ * What the UI may advertise for a session.
+ *
+ * Session-scoped for the same reason `optionalTools` is excluded from
+ * EXTENSION_TOOLS: offering a tool the agent does not have is worse than
+ * offering fewer.
+ */
+export function extensionToolsForSession(options: {
+  projectAnchored: boolean;
+}): readonly string[] {
+  return manifestForSession(options).flatMap((spec) => [...spec.providesTools]);
+}
 
 // ── Load order ───────────────────────────────────────────────────────────────
 
@@ -409,6 +459,23 @@ export function assertManifestIsCoherent(
           `"${spec.id}" is loaded from a path but requires "${dependency}", ` +
             "which is an imported factory — Pi loads all paths before any factory, " +
             `so "${dependency}" would not exist yet`,
+        );
+      }
+    }
+  }
+
+  // An anchor-gated extension is absent for a session with no project, so
+  // anything that survives that filter must not depend on one: the load order
+  // would resolve against a spec that is not there and throw on an unknown
+  // dependency, refusing every unanchored turn.
+  for (const spec of specs) {
+    if (spec.requiresProjectAnchor) continue;
+    for (const dependency of spec.requires) {
+      if (byId.get(dependency)?.requiresProjectAnchor) {
+        problems.push(
+          `"${spec.id}" requires "${dependency}", which is only loaded for a ` +
+            `session anchored on a project — so "${spec.id}" must be gated the ` +
+            "same way, or must not require it",
         );
       }
     }
