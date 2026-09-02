@@ -1,4 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
+import { detach } from "@/lib/pi/session-log";
 import { finalizeBackgroundRun } from "@/lib/pi/session-persistence";
 import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
 import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
@@ -124,7 +125,11 @@ export async function GET(
         snapshot.completedAt
       ) {
         const finalStatus = snapshot.errorCount > 0 ? "failed" : "completed";
-        void finalizeBackgroundRun(id, run.run_id, finalStatus);
+        detach(
+          id,
+          "finalize run",
+          finalizeBackgroundRun(id, run.run_id, finalStatus),
+        );
         return { ...run, snapshot, status: finalStatus };
       }
       return { ...run, snapshot: snapshot ?? stored.get(run.run_id) ?? null };
