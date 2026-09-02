@@ -68,6 +68,39 @@ deep-imported through computed path strings (see `wiki-ingest-bridge.ts` and
 dependency above, so moving it is its own piece of work rather than a tidy-up.
 `.pi/packages/semla-otel` also keeps its own lockfile.
 
+## Extensions are imported, not pointed at
+
+**Decision.** An extension this repository writes is handed to Pi as an imported
+factory — `source: { kind: "factory", factory }` in `extension-manifest.ts`,
+passed through `extensionFactories`. A file path for Pi's own loader is reserved
+for third-party packages that publish TypeScript source.
+
+**Why.** Pi compiles path-loaded extensions with jiti, which resolves module
+specifiers differently from both tsc and Next: no `"@/"` alias, and an import
+that type-checks can still fail to load. Importing them instead puts them
+through the same toolchain as the rest of the app, so the two agree.
+
+**Why the exception is not laziness.** Neither third-party package ships a
+compiled extension entry, in any version, and both are published expecting a
+transpiling loader. Node refuses to strip types under `node_modules`; a static
+import drags tsc into source that does not type-check here; and bundling breaks
+`import.meta.url`, which `@mrclrchtr/supi-tree-sitter` uses to spawn a worker and
+locate 31 grammar files. jiti transpiles *in place*, which is precisely why those
+packages expect it.
+
+**The constraint to remember.** Pi loads every path extension before any
+factory. So a path extension may not `require` a factory — `wiki-ingest-bridge`
+is a factory that depends on the path-loaded wiki extension, and the reverse
+would fail as an undefined contract slot rather than an error.
+`assertManifestIsCoherent` rejects it, and `extension-manifest-load.test.ts`
+proves Pi still orders them that way.
+
+**Two consequences worth knowing before you add one.** A bundled extension's
+`await import(computedPath)` will be statically analysed by Turbopack and fail —
+mark those `turbopackIgnore`. And a dynamic import of a `.ts` file only resolves
+when the importing module was itself loaded by jiti, so reach for a package's
+`dist` build, not its source.
+
 # Validate your changes
 
 Run tsc, lint and test to make sure your changes are valid.
