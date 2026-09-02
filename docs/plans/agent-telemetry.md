@@ -5,8 +5,9 @@ spawns, as real spans with a real parent/child tree — and render them in the
 trace panel that already exists, instead of the ones it currently invents.
 
 **Status:** designed, not started. Written 2026-09-02. Layers 1 and 2 of the
-three sketched in discussion are in scope; a collector is not (§9). Six open
-questions are in §8 and none of them block starting on §6 step 1.
+three sketched in discussion are in scope; a collector is not (§9). The four
+decisions that shape the storage and the span tree are settled in §8; two
+smaller ones are noted there as still open and neither blocks §6 step 1.
 
 ---
 
@@ -127,10 +128,9 @@ pi.harness.run            (a prompt turn; host session)
 of a phase. They are declared with `defineTelemetrySchema` so they are typed
 the same way, rather than as loose strings.
 
-A background workflow outlives the turn that started it, so its run span is a
-**link**, not a child, once the prompt turn ends. Otherwise the turn span would
-stay open for the duration of a background run and every trace would look like
-one enormous turn.
+A background workflow outlives the turn that started it and still nests under
+it — decided in §8.4, which also covers what that means for closing the turn
+span from the continuation rather than from `runPiPrompt`.
 
 ## 6. Work, in order
 
@@ -138,7 +138,8 @@ one enormous turn.
    `TelemetryContext` implementation that records spans into an array with
    parent ids, plus the schema declaration for the three `semla.workflow.*`
    spans. Pure, no I/O, unit-testable. Trace id derived from the session id so a
-   reload keeps the same trace.
+   reload keeps the same trace. Takes `sensitive` and `maxSpans` options from
+   the outset (§8.1, §8.3) and counts recorded spans always.
 2. **Layer 1: workflow and subagent spans.** Emit at the existing hooks in
    `workflow.ts` / `workflow-manager.ts`, and around `createAgentSession` in
    `agent.ts`. Nothing else changes; the manager keeps writing snapshots.
@@ -178,28 +179,59 @@ looking at, and a stream that dropped is exactly when you cannot see it.
 already receives. Patching for `pi.ai.request` is worth doing, but as its own
 change with its own justification, not smuggled into the foundation.
 
-## 8. Open questions
+## 8. Decided, 2026-09-02
 
-1. **Always on, or opt-in?** Recommendation: always on for the in-app sink,
-   bounded (§8.3). It is cheap, and telemetry you have to remember to enable is
-   telemetry you do not have when it matters.
-2. **Persist where?** Options: beside the run file under
-   `~/.pi/workflows/projects/<key>/runs/`; a `session_spans` table; or
-   `.semla-debug`. Recommendation: the run file's directory, disk-first like
-   everything else, with Postgres left out until something needs it off-machine.
-3. **What bound?** A long orient run emits thousands of spans. A cap per trace
-   with an explicit "truncated" marker, the way `code_map` states its own
-   limits, rather than silent loss.
-4. **Sensitive attributes.** pi marks some attributes `sensitive`. Recommendation:
-   drop them at the sink by default, with a dev-only switch — prompts and tool
-   arguments are already in `.semla-debug` if wanted, and this is the one
-   decision that is hard to walk back once traces are persisted.
-5. **Do synthesised spans stay?** They are the only thing that can draw a run
-   recorded before this lands. Recommendation: keep as a labelled fallback,
-   never merged with real spans in one trace.
-6. **Offer 2b upstream, or patch locally?** Recommendation: both — patch to
-   unblock, and offer the passthrough, because carrying it forever is worse than
-   a week of waiting.
+Four were put to Coen and answered. Three went against the recommendation
+above; the reasoning that follows is his choice plus what it costs to build,
+not a re-argument.
+
+**8.1 Sensitive attributes: keep them, for now.** pi flags some attributes
+`sensitive` — prompts and tool arguments among them — and they are recorded.
+Said plainly so a later reader is not surprised: persisted traces under
+`~/.pi/workflows/projects/<key>/runs/` will contain prompt and tool-argument
+text, unencrypted, for as long as the run files live, and anything that later
+ships those spans anywhere inherits that.
+
+"For now" is load-bearing, so **the redaction is built and defaulted off**
+rather than left out. A `sensitive: "keep" | "drop"` option on the sink, honoured
+at record time, is a few lines while the sink is being written and a plumbing
+job afterwards. Flipping it later must not mean revisiting every call site.
+
+**8.2 Persisted beside the run file.** `~/.pi/workflows/projects/<key>/runs/`,
+alongside the state the reader already knows how to find. Disk-first like every
+other record here, and no migration. Not visible off-machine, which is accepted.
+
+**8.3 No cap.** Everything is recorded. Same accommodation as 8.1: the sink
+takes a `maxSpans` that defaults to `Infinity`, and **counts what it records
+regardless**, so if a run ever produces a file that hurts, the number is already
+in the trace rather than something to go and measure. A cap becomes a config
+change, not a redesign.
+
+**8.4 A background workflow nests under its turn.** One trace tells the whole
+causal story, at the cost of a backgrounded turn reading as minutes long.
+
+This is more consistent with the rest of Semla than the alternative was.
+`is_running` already stays true through a background continuation
+(`decideContinuation` returns `watch`, and the flag is cleared by
+`background-continuation.ts`, not by the turn), so a turn that spawns a workflow
+*already* reads as ongoing everywhere else in the UI. A 6-minute turn span
+agrees with the 6-minute spinner. The recommendation would have made the trace
+the one place that disagreed.
+
+It does move a span's lifetime across a module boundary: the turn span cannot be
+closed by `runPiPrompt`'s `finally`, because the run it parents outlives it. The
+continuation closes it — which is tractable only because that code is now its
+own module with an explicit hand-off (`a5e0b85`). Concretely: the sink is keyed
+by session, the turn span id is handed to `runBackgroundContinuation` the way
+`agentCwd` and `debug` already are, and the `settled` / `watch` / `idle` branches
+decide whether the turn span closes now or later. A dropped stream must still
+close it, or a trace stays open forever — the same `finally` that clears
+`is_running` is the right place.
+
+**Still open, neither blocking:** whether synthesised spans stay as a labelled
+fallback for runs recorded before this (recommendation: yes, never merged into
+one trace with real spans), and whether 2b is patched locally, offered upstream,
+or both (recommendation: both).
 
 ## 9. Deliberately not in scope
 
