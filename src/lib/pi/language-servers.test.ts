@@ -14,8 +14,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   describeLanguageServers,
   ensureLanguageServersOnPath,
+  languageServerBinDirs,
   localBinDir,
   resolveLanguageServers,
+  shimBinDir,
   withLocalBin,
 } from "./language-servers.ts";
 
@@ -24,10 +26,16 @@ afterEach(() => {
   process.env.PATH = originalPath;
 });
 
-/** A fake project root with the named binaries linked into node_modules/.bin. */
-const projectWith = (binaries: string[]) => {
+/**
+ * A fake project root holding the named binaries.
+ *
+ * `where` picks the directory, because which of the two a server is found in is
+ * itself part of the contract: TypeScript comes from the repository's shim
+ * directory, anything installed as a devDependency from node_modules/.bin.
+ */
+const projectWith = (binaries: string[], where: "shim" | "modules" = "shim") => {
   const root = mkdtempSync(join(tmpdir(), "semla-ls-"));
-  const bin = join(root, "node_modules", ".bin");
+  const bin = where === "shim" ? shimBinDir(root) : localBinDir(root);
   mkdirSync(bin, { recursive: true });
   for (const binary of binaries) writeFileSync(join(bin, binary), "", "utf8");
   return root;
@@ -60,23 +68,47 @@ describe("resolveLanguageServers", () => {
     const root = projectWith(["typescript-language-server"]);
 
     expect(
-      resolveLanguageServers(localBinDir(root), {
+      resolveLanguageServers(languageServerBinDirs(root), {
         python: "pyright-langserver",
         typescript: "typescript-language-server",
       }),
     ).toEqual({ missing: ["python"], resolved: ["typescript"] });
   });
+
+  it("finds a server in either directory, not just the first", () => {
+    const root = projectWith(["pyright-langserver"], "modules");
+
+    expect(
+      resolveLanguageServers(languageServerBinDirs(root), {
+        python: "pyright-langserver",
+      }),
+    ).toEqual({ missing: [], resolved: ["python"] });
+  });
 });
 
 describe("ensureLanguageServersOnPath", () => {
-  it("puts the project's bin directory on PATH and reports what resolved", () => {
+  it("puts the project's bin directories on PATH and reports what resolved", () => {
     const root = projectWith(["typescript-language-server"]);
 
     const report = ensureLanguageServersOnPath(root);
 
     expect(report.added).toBe(true);
     expect(report.resolved).toContain("typescript");
-    expect(process.env.PATH?.split(delimiter)[0]).toBe(localBinDir(root));
+    expect(process.env.PATH?.split(delimiter).slice(0, 2)).toEqual([
+      shimBinDir(root),
+      localBinDir(root),
+    ]);
+  });
+
+  it("ranks the shim ahead of node_modules, so a global TS 5 server cannot win", () => {
+    const root = projectWith(["typescript-language-server"]);
+    const entries = ensureLanguageServersOnPath(root).binDirs;
+
+    const path = process.env.PATH?.split(delimiter) ?? [];
+    expect(entries[0]).toBe(shimBinDir(root));
+    expect(path.indexOf(shimBinDir(root))).toBeLessThan(
+      path.indexOf(localBinDir(root)),
+    );
   });
 
   it("is idempotent, so a reload cannot grow PATH without bound", () => {
@@ -102,7 +134,7 @@ describe("describeLanguageServers", () => {
   it("names the consequence of a missing server, not just its absence", () => {
     const line = describeLanguageServers({
       added: true,
-      binDir: "/repo/node_modules/.bin",
+      binDirs: ["/repo/scripts/language-servers", "/repo/node_modules/.bin"],
       missing: ["python"],
       resolved: ["typescript"],
     });
@@ -116,7 +148,7 @@ describe("describeLanguageServers", () => {
     expect(
       describeLanguageServers({
         added: true,
-        binDir: "/repo/node_modules/.bin",
+        binDirs: ["/repo/scripts/language-servers", "/repo/node_modules/.bin"],
         missing: ["typescript"],
         resolved: [],
       }),

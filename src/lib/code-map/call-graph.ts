@@ -19,9 +19,17 @@
  *    dependency's internals would bury the code the question was about.
  */
 
+import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
-import ts from "typescript";
+import type {
+  CallExpression,
+  NewExpression,
+  Node,
+  SourceFile,
+} from "typescript/unstable/ast";
+import { isCallExpression, isNewExpression } from "typescript/unstable/ast/is";
+import { type NodeHandle, type Project, SymbolFlags } from "typescript/unstable/sync";
 
 import {
   containerName,
@@ -86,13 +94,13 @@ export class SymbolNotFoundError extends Error {
 }
 
 /** Every callable declaration in a file, with the label each answers to. */
-function callableDeclarations(source: ts.SourceFile): Array<{
+function callableDeclarations(source: SourceFile): Array<{
   label: string;
-  node: ts.Node;
+  node: Node;
 }> {
-  const found: Array<{ label: string; node: ts.Node }> = [];
+  const found: Array<{ label: string; node: Node }> = [];
 
-  const visit = (node: ts.Node) => {
+  const visit = (node: Node) => {
     if (isCallableDeclaration(node)) {
       const name = declarationName(node);
       const container = containerName(node);
@@ -101,15 +109,15 @@ function callableDeclarations(source: ts.SourceFile): Array<{
         node,
       });
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
 
-  ts.forEachChild(source, visit);
+  source.forEachChild(visit);
   return found;
 }
 
 /** Pick the declaration matching `symbol`, by bare name or `Container.name`. */
-function findEntry(source: ts.SourceFile, symbol: string): ts.Node {
+function findEntry(source: SourceFile, symbol: string): Node {
   const declarations = callableDeclarations(source);
 
   const exact = declarations.find((entry) => entry.label === symbol);
@@ -133,31 +141,46 @@ function findEntry(source: ts.SourceFile, symbol: string): ts.Node {
  *
  * Overloaded functions declare each signature separately; only the last carries
  * an implementation, and that is the one whose line a reader wants.
+ *
+ * Under TS 7 a symbol carries `NodeHandle`s rather than nodes, so each one has
+ * to be resolved against the project that produced it before it can be asked
+ * whether it has a body. Resolution is a round-trip, so this stops at the first
+ * declaration that does — the fallback keeps whichever resolved first, which is
+ * the pure-signature case where there is no implementation to prefer.
  */
 function pickDeclaration(
-  declarations: readonly ts.Declaration[],
-): ts.Declaration | undefined {
-  const withBody = declarations.find((declaration) => {
+  handles: readonly NodeHandle[],
+  project: Project,
+): Node | undefined {
+  let first: Node | undefined;
+
+  for (const handle of handles) {
+    const declaration = handle.resolve(project);
+    if (!declaration) continue;
+    first ??= declaration;
+
     const unwrapped = unwrapDeclaration(declaration);
-    return (
+    if (
       "body" in unwrapped &&
       (unwrapped as { body?: unknown }).body !== undefined
-    );
-  });
+    ) {
+      return declaration;
+    }
+  }
 
-  return withBody ?? declarations[0];
+  return first;
 }
 
 /** Call and construction expressions anywhere inside a declaration. */
-function callsWithin(declaration: ts.Node): Array<ts.CallExpression | ts.NewExpression> {
-  const calls: Array<ts.CallExpression | ts.NewExpression> = [];
+function callsWithin(declaration: Node): Array<CallExpression | NewExpression> {
+  const calls: Array<CallExpression | NewExpression> = [];
 
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) || ts.isNewExpression(node)) calls.push(node);
-    ts.forEachChild(node, visit);
+  const visit = (node: Node) => {
+    if (isCallExpression(node) || isNewExpression(node)) calls.push(node);
+    node.forEachChild(visit);
   };
 
-  ts.forEachChild(declaration, visit);
+  declaration.forEachChild(visit);
   return calls;
 }
 
@@ -175,7 +198,7 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
   // several repos, and "x-pack/.../plugin.ts" resolves to a directory that does
   // not exist. Reporting that as "no tsconfig found" sends the reader looking
   // for the wrong problem.
-  if (!ts.sys.fileExists(filePath)) {
+  if (!existsSync(filePath)) {
     throw new Error(
       `${options.file} does not exist. Paths are resolved relative to ${cwd}, ` +
         "so a file inside a repository there needs the repository name too " +
@@ -183,7 +206,7 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
     );
   }
 
-  const { checker, program, projectRoot } = getProjectProgram(
+  const { checker, program, project, projectRoot } = getProjectProgram(
     dirname(filePath),
   );
 
@@ -208,12 +231,12 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
   const expanded = new Set<string>();
   let truncated = false;
 
-  let frontier: Array<{ declaration: ts.Node; id: string }> = [
+  let frontier: Array<{ declaration: Node; id: string }> = [
     { declaration: entry, id: rootNode.id },
   ];
 
   for (let hop = 0; hop < depth && frontier.length > 0; hop += 1) {
-    const next: Array<{ declaration: ts.Node; id: string }> = [];
+    const next: Array<{ declaration: Node; id: string }> = [];
 
     for (const current of frontier) {
       if (expanded.has(current.id)) continue;
@@ -221,10 +244,10 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
 
       for (const call of callsWithin(current.declaration)) {
         const line = lineOf(call);
-        const kind = ts.isNewExpression(call) ? "new" : "call";
+        const kind = isNewExpression(call) ? "new" : "call";
 
         let symbol = checker.getSymbolAtLocation(call.expression);
-        if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+        if (symbol && symbol.flags & SymbolFlags.Alias) {
           symbol = checker.getAliasedSymbol(symbol);
         }
 
@@ -238,7 +261,7 @@ export function buildCodeMap(options: BuildCodeMapOptions): CodeMap {
           continue;
         }
 
-        const declaration = pickDeclaration(symbol.declarations ?? []);
+        const declaration = pickDeclaration(symbol.declarations ?? [], project);
         if (!declaration) {
           unresolved.push({
             from: current.id,

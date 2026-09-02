@@ -15,29 +15,50 @@
 
 import { isAbsolute, relative } from "node:path";
 
-import ts from "typescript";
+import type {
+  ArrowFunction,
+  ClassDeclaration,
+  ConstructorDeclaration,
+  FunctionDeclaration,
+  FunctionExpression,
+  MethodDeclaration,
+  Node,
+} from "typescript/unstable/ast";
+import {
+  isArrowFunction,
+  isClassDeclaration,
+  isConstructorDeclaration,
+  isExportAssignment,
+  isFunctionDeclaration,
+  isFunctionExpression,
+  isIdentifier,
+  isMethodDeclaration,
+  isPropertyAssignment,
+  isPropertyDeclaration,
+  isVariableDeclaration,
+} from "typescript/unstable/ast/is";
 
 import { codeMapNodeId, type CodeMapNode, type CodeMapNodeKind } from "./types.ts";
 
 /** Declaration kinds a code map treats as a node with a body worth walking. */
 export type CallableDeclaration =
-  | ts.ArrowFunction
-  | ts.ClassDeclaration
-  | ts.ConstructorDeclaration
-  | ts.FunctionDeclaration
-  | ts.FunctionExpression
-  | ts.MethodDeclaration;
+  | ArrowFunction
+  | ClassDeclaration
+  | ConstructorDeclaration
+  | FunctionDeclaration
+  | FunctionExpression
+  | MethodDeclaration;
 
 export function isCallableDeclaration(
-  node: ts.Node,
+  node: Node,
 ): node is CallableDeclaration {
   return (
-    ts.isFunctionDeclaration(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isConstructorDeclaration(node) ||
-    ts.isArrowFunction(node) ||
-    ts.isFunctionExpression(node) ||
-    ts.isClassDeclaration(node)
+    isFunctionDeclaration(node) ||
+    isMethodDeclaration(node) ||
+    isConstructorDeclaration(node) ||
+    isArrowFunction(node) ||
+    isFunctionExpression(node) ||
+    isClassDeclaration(node)
   );
 }
 
@@ -46,28 +67,49 @@ export function isCallableDeclaration(
  *
  * `const handle = () => {}` resolves to the VariableDeclaration; the callable is
  * its initializer. Returns the input unchanged when there is nothing to unwrap.
+ *
+ * Takes a `Node` rather than a `Declaration` because it decides what it is
+ * looking at structurally, with predicates. Requiring TS 7's branded
+ * `Declaration` would mean callers casting a node they resolved from a symbol
+ * handle — asserting the brand rather than checking it, to satisfy a function
+ * that never needed it.
  */
-export function unwrapDeclaration(node: ts.Declaration): ts.Node {
-  if (ts.isVariableDeclaration(node) && node.initializer) {
+export function unwrapDeclaration(node: Node): Node {
+  if (isVariableDeclaration(node) && node.initializer) {
     if (
-      ts.isArrowFunction(node.initializer) ||
-      ts.isFunctionExpression(node.initializer)
+      isArrowFunction(node.initializer) ||
+      isFunctionExpression(node.initializer)
     ) {
       return node.initializer;
     }
   }
 
   // `export default function () {}` and re-exported aliases land here.
-  if (ts.isExportAssignment(node) && node.expression) return node.expression;
+  if (isExportAssignment(node) && node.expression) return node.expression;
 
   return node;
 }
 
-function kindOf(node: ts.Node): CodeMapNodeKind {
-  if (ts.isClassDeclaration(node)) return "class";
-  if (ts.isConstructorDeclaration(node)) return "constructor";
-  if (ts.isMethodDeclaration(node)) return "method";
+function kindOf(node: Node): CodeMapNodeKind {
+  if (isClassDeclaration(node)) return "class";
+  if (isConstructorDeclaration(node)) return "constructor";
+  if (isMethodDeclaration(node)) return "method";
   return "function";
+}
+
+/**
+ * The name a declaration carries, if it carries one.
+ *
+ * Replaces TS 5's `ts.getNameOfDeclaration`, which TS 7 does not export. The
+ * property test is deliberately structural rather than a list of node kinds:
+ * it covers every named declaration in one go, including the ones a call lands
+ * on but a hand-written list forgets — MethodSignature on an interface (which
+ * is what `Array.map` is), PropertySignature, ambient declarations.
+ */
+function nameOfDeclaration(node: Node): string | null {
+  const named = node as { name?: { getText?: () => string } };
+  const text = named.name?.getText?.();
+  return text ? text : null;
 }
 
 /**
@@ -78,27 +120,24 @@ function kindOf(node: ts.Node): CodeMapNodeKind {
  * label rather than being dropped — an unnamed node in the right place is more
  * informative than a missing edge.
  */
-export function declarationName(node: ts.Node): string {
-  if (ts.isConstructorDeclaration(node)) {
+export function declarationName(node: Node): string {
+  if (isConstructorDeclaration(node)) {
     const owner = node.parent;
-    return ts.isClassDeclaration(owner) && owner.name
+    return isClassDeclaration(owner) && owner.name
       ? `${owner.name.getText()}.constructor`
       : "constructor";
   }
 
-  // Covers every named declaration kind in one go, including the ones a call
-  // lands on but a hand-written list forgets: MethodSignature on an interface
-  // (which is what `Array.map` is), PropertySignature, ambient declarations.
-  const declared = ts.getNameOfDeclaration(node as ts.Declaration);
-  if (declared) return declared.getText();
+  const declared = nameOfDeclaration(node);
+  if (declared) return declared;
 
-  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+  if (isArrowFunction(node) || isFunctionExpression(node)) {
     const parent = node.parent;
-    if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+    if (isVariableDeclaration(parent) && isIdentifier(parent.name)) {
       return parent.name.getText();
     }
-    if (ts.isPropertyAssignment(parent)) return parent.name.getText();
-    if (ts.isPropertyDeclaration(parent) && parent.name) {
+    if (isPropertyAssignment(parent)) return parent.name.getText();
+    if (isPropertyDeclaration(parent) && parent.name) {
       return parent.name.getText();
     }
   }
@@ -107,11 +146,11 @@ export function declarationName(node: ts.Node): string {
 }
 
 /** The class a method belongs to, for grouping in the diagram. */
-export function containerName(node: ts.Node): string | null {
-  let current: ts.Node | undefined = node.parent;
+export function containerName(node: Node): string | null {
+  let current: Node | undefined = node.parent;
 
   while (current) {
-    if (ts.isClassDeclaration(current) && current.name) {
+    if (isClassDeclaration(current) && current.name) {
       return current.name.getText();
     }
     current = current.parent;
@@ -131,7 +170,7 @@ export function isExternalFile(fileName: string): boolean {
 }
 
 /** One-based line of a node, as a reader would cite it. */
-export function lineOf(node: ts.Node): number {
+export function lineOf(node: Node): number {
   const source = node.getSourceFile();
   return source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
 }
@@ -164,7 +203,7 @@ export function displayPath(
 
 /** Build the code map node for a declaration. */
 export function toCodeMapNode(
-  node: ts.Node,
+  node: Node,
   roots: readonly string[],
 ): CodeMapNode {
   const fileName = node.getSourceFile().fileName;

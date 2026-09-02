@@ -1,5 +1,5 @@
 /**
- * A cached `ts.Program` for the project a map is being built from.
+ * A cached TypeScript project for the code a map is being built from.
  *
  * Building a program is the expensive part of resolving a call graph — a few
  * seconds for a repository this size — and the panel asks for one every time a
@@ -12,12 +12,19 @@
  * The tsconfig's own mtime is checked too, because changing `include` or `paths`
  * changes which files exist as far as the checker is concerned, and that is not
  * something a time-based expiry would catch quickly enough to be obvious.
+ *
+ * **Under TypeScript 7 a program is a subprocess, not an object.** `new API()`
+ * spawns the native compiler and every node, symbol and type reached from here
+ * is a handle into it. That makes disposal load-bearing in a way it never was
+ * with TS 5: an entry dropped from this cache without `close()` leaks a running
+ * compiler, and the panel rebuilds often. Eviction therefore goes through
+ * `release`, and every path that removes an entry uses it.
  */
 
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import ts from "typescript";
+import { API, type Checker, type Program, type Project } from "typescript/unstable/sync";
 
 /**
  * How long a program may be reused. Short enough that an edit made during a
@@ -26,14 +33,25 @@ import ts from "typescript";
 export const PROGRAM_TTL_MS = 30_000;
 
 export type ProjectProgram = {
-  program: ts.Program;
-  checker: ts.TypeChecker;
+  program: Program;
+  checker: Checker;
+  /**
+   * The project the program belongs to. Callers need it to turn the
+   * `NodeHandle`s on a symbol back into nodes — a handle is only meaningful
+   * within the project that produced it.
+   */
+  project: Project;
   /** Directory holding the tsconfig, which paths are reported relative to. */
   projectRoot: string;
   configPath: string;
 };
 
-type CacheEntry = ProjectProgram & { builtAt: number; configMtimeMs: number };
+type CacheEntry = ProjectProgram & {
+  builtAt: number;
+  configMtimeMs: number;
+  /** Shuts down the compiler subprocess behind this entry. */
+  release: () => void;
+};
 
 const cache = new Map<string, CacheEntry>();
 
@@ -43,7 +61,7 @@ export function findTsConfig(from: string): string | null {
 
   for (;;) {
     const candidate = join(dir, "tsconfig.json");
-    if (ts.sys.fileExists(candidate)) return candidate;
+    if (existsSync(candidate)) return candidate;
 
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -59,43 +77,44 @@ const mtimeOf = (path: string): number => {
   }
 };
 
-function build(configPath: string): ProjectProgram {
+function build(configPath: string): Omit<CacheEntry, "builtAt" | "configMtimeMs"> {
   const projectRoot = dirname(configPath);
-  const config = ts.readConfigFile(configPath, (path) => ts.sys.readFile(path));
+  const api = new API({ cwd: projectRoot });
 
-  if (config.error) {
-    throw new Error(
-      `Cannot read ${configPath}: ${ts.flattenDiagnosticMessageText(config.error.messageText, " ")}`,
-    );
+  // Anything past this point owns a subprocess, so a throw has to take it down
+  // with it or the failure leaks a compiler per attempt.
+  try {
+    // Config problems are fatal; type errors are not. A project that does not
+    // compile still has calls worth drawing, so only the config is checked.
+    api.parseConfigFile(configPath);
+
+    const snapshot = api.updateSnapshot({ openProjects: [configPath] });
+    const project = snapshot.getProject(configPath);
+
+    if (!project) {
+      throw new Error(
+        `${configPath} parsed but produced no project. It may define no files ` +
+          "— check its `include` and `files` patterns.",
+      );
+    }
+
+    return {
+      checker: project.checker,
+      configPath,
+      program: project.program,
+      project,
+      projectRoot,
+      release: () => {
+        snapshot.dispose();
+        api.close();
+      },
+    };
+  } catch (error) {
+    api.close();
+    throw error instanceof Error
+      ? new Error(`Cannot load ${configPath}: ${error.message}`)
+      : error;
   }
-
-  const parsed = ts.parseJsonConfigFileContent(
-    config.config,
-    ts.sys,
-    projectRoot,
-  );
-
-  // Diagnostics here are configuration problems, not type errors. Type errors
-  // are irrelevant to a call graph — a project that does not compile still has
-  // calls worth drawing — so only the config is treated as fatal.
-  if (parsed.errors.length > 0) {
-    const [first] = parsed.errors;
-    throw new Error(
-      `Cannot parse ${configPath}: ${ts.flattenDiagnosticMessageText(first.messageText, " ")}`,
-    );
-  }
-
-  const program = ts.createProgram({
-    options: parsed.options,
-    rootNames: parsed.fileNames,
-  });
-
-  return {
-    checker: program.getTypeChecker(),
-    configPath,
-    program,
-    projectRoot,
-  };
 }
 
 /**
@@ -126,12 +145,21 @@ export function getProjectProgram(
     return cached;
   }
 
+  // Built before the stale entry is released, so a failed rebuild leaves the
+  // cache as it was rather than emptied.
   const built = build(configPath);
+  cached?.release();
   cache.set(configPath, { ...built, builtAt: now, configMtimeMs });
   return built;
 }
 
-/** Drop cached programs. Exported for tests and for an explicit refresh. */
+/**
+ * Drop cached programs, shutting down their compilers.
+ *
+ * Exported for tests and for an explicit refresh. Not optional under TS 7: the
+ * subprocesses outlive the cache entries otherwise.
+ */
 export function clearProgramCache(): void {
+  for (const entry of cache.values()) entry.release();
   cache.clear();
 }

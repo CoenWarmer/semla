@@ -2,11 +2,20 @@
  * Puts this repository's own language servers on PATH before pi loads packages.
  *
  * @mrclrchtr/supi-code-intelligence finds language servers the way every LSP
- * client does: by binary name on PATH. Semla installs typescript-language-server
- * as a devDependency rather than leaning on a global one, for the same reason
- * the agent directory is isolated to ~/.semla/agent (see agent-dir.ts) — what
- * the agent can see should follow from this repository, not from whatever
- * happens to be installed on the machine that runs it.
+ * client does: by binary name on PATH. Semla puts its own directories there
+ * rather than leaning on a global install, for the same reason the agent
+ * directory is isolated to ~/.semla/agent (see agent-dir.ts) — what the agent
+ * can see should follow from this repository, not from whatever happens to be
+ * installed on the machine that runs it.
+ *
+ * TypeScript is served by TypeScript 7, which has no tsserver and ships no
+ * language-server package: it answers LSP from the compiler binary itself. supi
+ * spawns `typescript-language-server --stdio` and its server table is only
+ * configurable per-cwd or per-home, neither of which is this repository, so the
+ * translation lives in `scripts/language-servers/typescript-language-server` —
+ * a shim under our control on a PATH entry under our control. That is why two
+ * directories go on PATH: the shim directory, and node_modules/.bin for the
+ * `tsc` it execs and for any future server installed as a devDependency.
  *
  * The failure mode is what makes this worth a module rather than a line. A
  * missing server does not break supi: it reports semantic relations as
@@ -25,20 +34,21 @@ import { delimiter, join } from "node:path";
 /**
  * Binaries supi looks for, by the language they serve.
  *
- * Only TypeScript is installed today. The rest are listed because supi supports
- * them and a reader should be able to see what adding one costs: a devDependency
- * and a line here, not new extraction code.
+ * Only TypeScript is available today, via the shim described above rather than
+ * a package. The rest are listed because supi supports them and a reader should
+ * be able to see what adding one costs: a devDependency and a line here, not
+ * new extraction code.
  */
 export const LANGUAGE_SERVER_BINARIES: Readonly<Record<string, string>> = {
   typescript: "typescript-language-server",
 };
 
 export type LanguageServerReport = {
-  /** Directory that was prepended, whether or not it was already present. */
-  binDir: string;
-  /** True when PATH did not already contain binDir and was changed. */
+  /** Directories that were prepended, whether or not they were already present. */
+  binDirs: readonly string[];
+  /** True when PATH did not already contain all of them and was changed. */
   added: boolean;
-  /** Languages whose server binary resolved inside binDir. */
+  /** Languages whose server binary resolved inside one of them. */
   resolved: string[];
   /** Languages whose server binary is absent, so supi degrades to structural. */
   missing: string[];
@@ -47,6 +57,24 @@ export type LanguageServerReport = {
 /** The local bin directory npm links executables into. */
 export function localBinDir(cwd: string = process.cwd()): string {
   return join(cwd, "node_modules", ".bin");
+}
+
+/** Where this repository keeps the server shims it maintains itself. */
+export function shimBinDir(cwd: string = process.cwd()): string {
+  return join(cwd, "scripts", "language-servers");
+}
+
+/**
+ * The directories that hold servers, in PATH order.
+ *
+ * The shim directory comes first so the TypeScript 7 shim outranks any
+ * `typescript-language-server` a machine happens to have installed globally —
+ * that one would be a TS 5 server with no compiler behind it.
+ */
+export function languageServerBinDirs(
+  cwd: string = process.cwd(),
+): readonly string[] {
+  return [shimBinDir(cwd), localBinDir(cwd)];
 }
 
 /**
@@ -62,16 +90,17 @@ export function withLocalBin(path: string | undefined, binDir: string): string {
   return [binDir, ...entries].join(delimiter);
 }
 
-/** Which of the known servers actually exist in `binDir`. */
+/** Which of the known servers actually exist in any of `binDirs`. */
 export function resolveLanguageServers(
-  binDir: string,
+  binDirs: readonly string[],
   binaries: Readonly<Record<string, string>> = LANGUAGE_SERVER_BINARIES,
 ): Pick<LanguageServerReport, "missing" | "resolved"> {
   const resolved: string[] = [];
   const missing: string[] = [];
 
   for (const [language, binary] of Object.entries(binaries)) {
-    (existsSync(join(binDir, binary)) ? resolved : missing).push(language);
+    const found = binDirs.some((dir) => existsSync(join(dir, binary)));
+    (found ? resolved : missing).push(language);
   }
 
   return { missing, resolved };
@@ -111,12 +140,17 @@ export function describeLanguageServers(report: LanguageServerReport): string {
 export function ensureLanguageServersOnPath(
   cwd: string = process.cwd(),
 ): LanguageServerReport {
-  const binDir = localBinDir(cwd);
+  const binDirs = languageServerBinDirs(cwd);
   const before = process.env.PATH;
-  const after = withLocalBin(before, binDir);
+
+  // Prepended back-to-front, so the first entry of binDirs ends up first
+  // on PATH.
+  const after = [...binDirs]
+    .reverse()
+    .reduce<string>((path, dir) => withLocalBin(path, dir), before ?? "");
   const added = after !== before;
 
   process.env.PATH = after;
 
-  return { added, binDir, ...resolveLanguageServers(binDir) };
+  return { added, binDirs, ...resolveLanguageServers(binDirs) };
 }
