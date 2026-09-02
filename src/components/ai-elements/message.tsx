@@ -30,6 +30,8 @@ import {
 } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
 
+import { MarkdownParagraph } from "./markdown-paragraph";
+
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
@@ -323,6 +325,10 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins: PluginConfig = { cjk, code: code as PluginConfig["code"], math, mermaid };
 
+// Only `p` is replaced; Streamdown spreads its own defaults first and the
+// caller's over them, so every other element keeps its renderer.
+const streamdownComponents = { p: MarkdownParagraph };
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -330,6 +336,7 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      components={streamdownComponents}
       plugins={streamdownPlugins}
       {...props}
     />

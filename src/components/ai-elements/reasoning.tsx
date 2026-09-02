@@ -25,6 +25,8 @@ import {
 } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
 
+import { MarkdownParagraph } from "./markdown-paragraph";
+
 import { Shimmer } from "./shimmer";
 
 interface ReasoningContextValue {
@@ -206,6 +208,10 @@ export type ReasoningContentProps = ComponentProps<
 
 const streamdownPlugins: PluginConfig = { cjk, code: code as PluginConfig["code"], math, mermaid };
 
+// See MarkdownParagraph: reasoning text is markdown too, so it can put an
+// image beside other content in one paragraph just as an answer can.
+const streamdownComponents = { p: MarkdownParagraph };
+
 export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
     <CollapsibleContent
@@ -216,7 +222,9 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+      <Streamdown components={streamdownComponents} plugins={streamdownPlugins}>
+        {children}
+      </Streamdown>
     </CollapsibleContent>
   )
 );
