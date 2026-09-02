@@ -76,7 +76,7 @@ const getHandleCoordsByPosition = (
       break;
     }
     default: {
-      throw new Error(`Invalid handle position: ${handlePosition}`);
+      throw new Error(`Invalid handle position: ${String(handlePosition)}`);
     }
   }
 

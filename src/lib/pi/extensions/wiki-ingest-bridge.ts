@@ -677,7 +677,7 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
       {
         sources: sources.map((s) => ({
           sourceId: s.id,
-          title: String(s.manifest.title ?? s.id),
+          title: typeof s.manifest.title === "string" ? s.manifest.title : s.id,
           extractedContent: s.extracted.slice(0, 24_000),
         })),
       },

@@ -187,7 +187,7 @@ export function SessionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  onClick={() => void handleDelete()}
+                  onClick={handleDelete}
                 >
                   <Trash2Icon />
                   Delete

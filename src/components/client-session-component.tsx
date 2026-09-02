@@ -207,7 +207,7 @@ export function ClientSessionComponent({
     if (!wasJustPending) return;
     const userMsgCount = messages.filter((m) => m.role === "user").length;
     if (userMsgCount > 0 && userMsgCount % 10 === 0) {
-      void contextCheckTrigger.mutate();
+      contextCheckTrigger.mutate();
     }
   }, [isActive, messages, contextCheckTrigger]);
 

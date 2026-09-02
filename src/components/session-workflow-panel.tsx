@@ -82,7 +82,7 @@ function FitViewOnChange({
     prevNodeCount.current = nodeCount;
     prevExpanded.current = expanded;
     if (nodeCountChanged) {
-      fitView({ duration: 300, padding: 0.25 });
+      void fitView({ duration: 300, padding: 0.25 });
     } else if (expandedChanged) {
       // Delay until the 200ms height transition completes.
       const id = setTimeout(

@@ -8,6 +8,19 @@ type LoginFormProps = {
   nextPath: string;
 };
 
+/**
+ * A text field's value, or "" when the field is absent.
+ *
+ * `FormData.get` returns `string | File | null`, so `String()` on it renders a
+ * missing field as the literal "null" and a file as "[object File]". Both would
+ * be sent to Supabase as a credential and come back as a failed sign-in that
+ * blames the password.
+ */
+function readField(formData: FormData, name: string): string {
+  const value = formData.get(name);
+  return typeof value === "string" ? value : "";
+}
+
 export function LoginForm({ nextPath }: LoginFormProps) {
   const router = useRouter();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -20,8 +33,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
     const formData = new FormData(event.currentTarget);
     const { error } = await createClient().auth.signInWithPassword({
-      email: String(formData.get("email")),
-      password: String(formData.get("password")),
+      email: readField(formData, "email"),
+      password: readField(formData, "password"),
     });
 
     if (error) {

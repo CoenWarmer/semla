@@ -61,7 +61,7 @@ const mtimeOf = (path: string): number => {
 
 function build(configPath: string): ProjectProgram {
   const projectRoot = dirname(configPath);
-  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const config = ts.readConfigFile(configPath, (path) => ts.sys.readFile(path));
 
   if (config.error) {
     throw new Error(

@@ -18,7 +18,7 @@ const { fetchNow, refreshRemote, resetFetchStateForTests } =
  * entry in a `.finally`, which is a microtask — nothing observable happens
  * until the queue drains, and fake timers do not drain it.
  */
-const settle = () => new Promise(process.nextTick);
+const settle = () => new Promise((resolve) => process.nextTick(resolve));
 
 /** A fetch that stays pending until released, to observe in-flight behaviour. */
 function pendingFetch() {

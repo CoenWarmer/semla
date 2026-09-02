@@ -32,6 +32,9 @@ export function followBridgeRunProgress(
   runId: string,
   emitSnapshot: (snapshot: unknown) => void,
 ): () => void {
+  // Extracted to guard on its presence before subscribing; `this` is restored
+  // by the .call(manager) in `forward` below.
+  // oxlint-disable-next-line typescript/unbound-method
   const getSnapshot = manager?.getSnapshot;
   if (!manager?.on || !getSnapshot) return () => {};
 

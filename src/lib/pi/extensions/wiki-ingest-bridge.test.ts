@@ -44,6 +44,8 @@ function makeSessionPi(sessionId: string) {
     // wiki tools there so a run cannot start before they exist.
     start: async () => {
       for (const handler of handlers) {
+        // Awaiting a non-promise is the behaviour under test, per the note above.
+        // oxlint-disable-next-line typescript/await-thenable
         await handler(undefined, { sessionManager: { getSessionId: () => sessionId } });
       }
     },
