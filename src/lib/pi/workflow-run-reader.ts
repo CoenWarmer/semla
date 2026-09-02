@@ -7,7 +7,7 @@
  * pi-dynamic-workflows dist — kept in sync manually.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -94,6 +94,10 @@ function sanitize(value: string): string {
   );
 }
 
+function workflowProjectsDir(): string {
+  return join(homedir(), ".pi", "workflows", "projects");
+}
+
 function workflowRunsDir(cwd: string): string {
   const projectPath = resolve(cwd);
   const slug = sanitize(basename(projectPath) || "project");
@@ -102,7 +106,49 @@ function workflowRunsDir(cwd: string): string {
     .digest("hex")
     .slice(0, 12);
   const key = `${slug}-${hash}`;
-  return join(homedir(), ".pi", "workflows", "projects", key, "runs");
+  return join(workflowProjectsDir(), key, "runs");
+}
+
+/**
+ * Every path a run could be at, cheapest first.
+ *
+ * The project key is a hash of the cwd the *extension* ran under, and this
+ * module can only guess at that: the caller's idea of the cwd and the agent's
+ * have to agree exactly or the lookup misses silently — a background workflow
+ * that runs to completion while the panel shows nothing and the watchdog never
+ * fires. They diverged the moment sessions stopped running at the workspace
+ * root (see session-cwd.ts), and a run written before that change is keyed
+ * under the old cwd for its whole life.
+ *
+ * So the keyed path is a fast path, not the answer. On a miss every project
+ * directory is searched, which is a readdir of a directory holding one entry
+ * per project ever worked in. That is cheap, and it is the difference between
+ * "wrong cwd" being a silent stall and being invisible.
+ */
+function runFileCandidates(cwd: string, runId: string): string[] {
+  const keyed = workflowRunsDir(cwd);
+  const candidates = [
+    join(keyed, `${runId}.tson`),
+    join(keyed, `${runId}.json`),
+    // Legacy location: .pi/workflows/runs/ inside the cwd itself.
+    join(cwd, ".pi", "workflows", "runs", `${runId}.tson`),
+    join(cwd, ".pi", "workflows", "runs", `${runId}.json`),
+  ];
+
+  if (candidates.some((path) => existsSync(path))) return candidates;
+
+  let keys: string[];
+  try {
+    keys = readdirSync(workflowProjectsDir());
+  } catch {
+    return candidates;
+  }
+
+  for (const key of keys) {
+    const runs = join(workflowProjectsDir(), key, "runs");
+    candidates.push(join(runs, `${runId}.tson`), join(runs, `${runId}.json`));
+  }
+  return candidates;
 }
 
 /** Canonical on-disk path of a run's persisted state, for pointing the model
@@ -127,22 +173,17 @@ export const isRunTerminal = (
   run !== null && TERMINAL_RUN_STATUSES.has(run.status);
 
 export function workflowRunPath(cwd: string, runId: string): string {
-  const jsonPath = join(workflowRunsDir(cwd), `${runId}.json`);
-  if (existsSync(jsonPath)) return jsonPath;
-  return join(workflowRunsDir(cwd), `${runId}.tson`);
+  const found = runFileCandidates(cwd, runId).find((path) => existsSync(path));
+  // Nothing on disk yet: name the path it will be written to, which is what
+  // the message pointing a reader at it wants to say.
+  return found ?? join(workflowRunsDir(cwd), `${runId}.tson`);
 }
 
 export function readWorkflowRun(
   cwd: string,
   runId: string,
 ): PersistedRunState | null {
-  const primary = join(workflowRunsDir(cwd), `${runId}.tson`);
-  const primaryJson = join(workflowRunsDir(cwd), `${runId}.json`);
-  // Also check legacy location (.pi/workflows/runs/ inside cwd)
-  const legacy = join(cwd, ".pi", "workflows", "runs", `${runId}.tson`);
-  const legacyJson = join(cwd, ".pi", "workflows", "runs", `${runId}.json`);
-
-  for (const path of [primary, primaryJson, legacy, legacyJson]) {
+  for (const path of runFileCandidates(cwd, runId)) {
     if (existsSync(path)) {
       try {
         return JSON.parse(readFileSync(path, "utf8")) as PersistedRunState;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, expect, test } from "vitest";
 
 import { readWorkflowRun } from "./workflow-run-reader.ts";
 
@@ -98,4 +98,26 @@ test("agent startedAt and endedAt survive a round-trip", () => {
   const result = readWorkflowRun(TEST_CWD, "run-timestamps");
   assert.equal(result?.agents[0].startedAt, "2026-08-25T20:50:24.002Z");
   assert.equal(result?.agents[0].endedAt, "2026-08-25T20:50:25.925Z");
+});
+
+/**
+ * A run is keyed by a hash of the cwd the extension ran under, and the reader
+ * can only guess at that. Sessions stopped running at the workspace root (see
+ * session-cwd.ts), so a caller's cwd and the run's key now routinely disagree —
+ * and every run written before that change is keyed under the old cwd for the
+ * rest of its life. A miss is silent: the panel shows nothing and the watchdog
+ * never fires, while the workflow runs to completion.
+ */
+test("finds a run keyed under a different cwd than the caller's", () => {
+  writeRun("run-elsewhere", ".json");
+
+  // Read as a session anchored somewhere else entirely.
+  const run = readWorkflowRun("/tmp/semla-test-reader/some/project", "run-elsewhere");
+
+  assert.ok(run, "run written under another cwd's key should still be found");
+  assert.equal(run.runId, "run-elsewhere");
+});
+
+test("still returns null for a run that is nowhere", () => {
+  expect(readWorkflowRun(TEST_CWD, "run-that-never-existed")).toBeNull();
 });
