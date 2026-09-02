@@ -68,6 +68,39 @@ deep-imported through computed path strings (see `wiki-ingest-bridge.ts` and
 dependency above, so moving it is its own piece of work rather than a tidy-up.
 `.pi/packages/semla-otel` also keeps its own lockfile.
 
+**And it is patched.** The published tarball has no
+`Symbol.for("semla.wiki-ingest-dispatcher")` hook, so without the patch
+`wiki-ingest-bridge.ts` installs a dispatcher that nothing ever calls and
+`wiki_ingest` falls back to inline synthesis — with no error, because the line
+that would have called it is simply absent. The patch also switches `wiki_lint`
+and `wiki_rebuild_meta` from background to synchronous, and adds a repo
+derivation to the ingest worker.
+
+Those edits used to exist only in `.pi/npm/node_modules`, which is untracked —
+that directory's `.gitignore` is `*` — and were reproducible by nothing. They
+survived only because npm does not re-extract a package that already matches
+the lockfile, so `npm ci`, a fresh clone, or one cache miss would have removed
+them silently. They are now committed under `patches/` and re-applied by
+`scripts/apply-package-patches.mjs`, which `postinstall` runs after the trees
+are installed. It is strict on purpose: a patch that no longer applies, or a
+version that has moved away from the one the patch was cut against, fails the
+install rather than leaving the tree half-patched.
+
+Note the patch touches the package's `.ts` sources, not its `dist/`. That is
+what runs: `WIKI_EXTENSION_PATH` points jiti at `extensions/llm-wiki/index.ts`.
+The `dist/*.js` files the bridge deep-imports are pristine.
+
+**Before moving this package to the root tree**, three things have to be true,
+and only the third is done: the patch has to survive the move (it is keyed to a
+tree in `apply-package-patches.mjs`), the root install has to keep the wildcard
+peer off the vulnerable runtime — `overrides` aliasing
+`@mariozechner/pi-coding-agent` onto `npm:@earendil-works/pi-coding-agent@0.84.2`
+was measured to do this, taking `npm audit` to zero, and only two of the
+package's eighteen imports of it are values — and the six hardcoded
+`.pi/npm/node_modules/@zosmaai/...` paths across `runtime-config.ts`,
+`wiki-ingest-bridge.ts` and `wiki-subagent-tools.ts` want collapsing to one
+constant first.
+
 ## Extensions are imported, not pointed at
 
 **Decision.** An extension this repository writes is handed to Pi as an imported

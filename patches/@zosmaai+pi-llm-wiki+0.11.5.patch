@@ -1,0 +1,193 @@
+--- a/extensions/llm-wiki/lib/tools.ts
++++ b/extensions/llm-wiki/lib/tools.ts
+@@ -396,6 +396,36 @@
+       // when no runtime/model is available (resolveModel ok:false).
+       const wantBackground = params.background !== false;
+       if (wantBackground && runtime) {
++        // ── Semla workflow bridge ──────────────────────────────────────────────
++        // When running inside Semla, an external dispatcher replaces the default
++        // launchTask approach so synthesis runs appear in the workflow trace panel.
++        type SemlaDispatcher = (sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>) => boolean;
++        const semlaDispatcher = (globalThis as Record<symbol, unknown>)[Symbol.for("semla.wiki-ingest-dispatcher")] as SemlaDispatcher | undefined;
++        if (semlaDispatcher) {
++          const dispatched = semlaDispatcher(sources.map((s) => ({ id: s.id, extracted: s.extracted, manifest: s.manifest })));
++          if (dispatched) {
++            return {
++              content: [
++                {
++                  type: "text",
++                  text: [
++                    `🔄 **Ingesting ${sources.length} source(s) via Semla workflows** — progress visible in the workflow panel.`,
++                    "",
++                    ...sources.map((s) => `- **${s.id}**: ${s.manifest.title || s.id}`),
++                    "",
++                    "You'll be notified as each source completes. Do NOT synthesize these yourself.",
++                  ].join("\n"),
++                },
++              ],
++              details: {
++                background: true,
++                dispatched: sources.map((s) => s.id),
++                remaining: toProcess.length - batch.length,
++              } as Record<string, unknown>,
++            };
++          }
++        }
++        // ── Default: pi-llm-wiki background runtime ────────────────────────────
+         runtime.ensureConfig(ctx.cwd);
+         // Per-call model override (issue #69): 'provider/id' beats the
+         // configured taskModel; a malformed/unknown ref degrades to the
+@@ -816,9 +846,11 @@
+         };
+       }
+ 
+-      // Full-vault scan (+ optional auto-fix writes + reindex) is O(pages):
+-      // run it in the background and report the health summary (issue #77).
+-      return dispatchReported(runtime, ctx as ToolCtx, {
++      // Full-vault scan is deterministic file I/O (no LLM). Run synchronously
++      // so the agent sees the result immediately and can act on it in the same
++      // turn. Passing undefined for runtime triggers dispatchReported's inline
++      // fallback path (Semla patch: background→sync for lint/rebuild_meta).
++      return dispatchReported(undefined, ctx as ToolCtx, {
+         label: `lint:${paths.root}`,
+         started:
+           "\u{1F9F9} LLM Wiki: lint started in the background — the health report will be posted with your next message.",
+@@ -1104,9 +1136,10 @@
+         };
+       }
+ 
+-      // Heavy O(pages) rebuild — dispatch off the agent's critical path and
+-      // report on completion (issue #77).
+-      return dispatchReported(runtime, ctx as ToolCtx, {
++      // Deterministic projection rebuild (no LLM). Run synchronously so the
++      // agent sees the result inline. Passing undefined for runtime triggers
++      // dispatchReported's inline fallback (Semla patch: background→sync).
++      return dispatchReported(undefined, ctx as ToolCtx, {
+         label: `rebuild_meta:${paths.root}`,
+         started:
+           "\u{1F9E0} LLM Wiki: metadata rebuild started in the background — the result will be reported with your next message.",
+@@ -1186,6 +1219,24 @@
+         };
+       }
+ 
++      // ── Semla workflow bridge ──────────────────────────────────────────────
++      type ReindexDispatcher = (args: { paths: unknown; embedder: unknown; force: boolean }) => boolean;
++      const reindexDispatcher = (globalThis as Record<symbol, unknown>)[Symbol.for("semla.wiki-reindex-dispatcher")] as ReindexDispatcher | undefined;
++      if (reindexDispatcher) {
++        const handled = reindexDispatcher({ paths, embedder, force: params.force === true });
++        if (handled) {
++          return {
++            content: [
++              {
++                type: "text",
++                text: `🔄 **Reindexing ${embedder.model} embeddings via Semla workflow** — progress visible in the workflow panel.`,
++              },
++            ],
++            details: { background: true, enabled: true, model: embedder.model } as Record<string, unknown>,
++          };
++        }
++      }
++      // ── Default: pi-llm-wiki background runtime ────────────────────────────
+       // Embedding is network-bound and O(pages) — run it in the background and
+       // report the stats on completion (issue #77).
+       return dispatchReported(runtime, ctx as ToolCtx, {
+--- a/extensions/llm-wiki/lib/ingest-worker.ts
++++ b/extensions/llm-wiki/lib/ingest-worker.ts
+@@ -1,5 +1,5 @@
+ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+-import { join } from "node:path";
++import { basename, dirname, join } from "node:path";
+ import type { AgentTool } from "@mariozechner/pi-agent-core";
+ import type { Api, Model } from "@mariozechner/pi-ai";
+ import { Type } from "typebox";
+@@ -190,17 +190,12 @@
+   title: string,
+   description: string,
+   sourceId: string,
+-  lang?: string,
++  _lang?: string,
+ ): string {
+   const desc = description.trim() || "One-line description.";
+-  const h = getHeadings(lang);
+   return `# ${title}
+ 
+ ${desc}
+-
+-## ${h.overview}
+-
+-[Key facts]
+ 
+ ## Links
+ 
+@@ -211,18 +206,13 @@
+   title: string,
+   definition: string,
+   sourceId: string,
+-  lang?: string,
++  _lang?: string,
+ ): string {
+   const def = definition.trim() || "One-line definition.";
+-  const h = getHeadings(lang);
+   return `# ${title}
+ 
+ ${def}
+ 
+-## ${h.definition}
+-
+-[Clear explanation]
+-
+ ## Links
+ 
+ - [${sourceId}](/sources/${sourceId}.md)`;
+@@ -321,6 +311,17 @@
+   return serializeKnowledgeDocument(doc);
+ }
+ 
++/** Derive a short repo name from an absolute file path by walking up to the .git root. */
++function repoFromFilePath(filePath: string): string | undefined {
++  if (!filePath) return undefined;
++  let dir = dirname(filePath);
++  while (dir !== dirname(dir)) {
++    if (existsSync(join(dir, ".git"))) return basename(dir);
++    dir = dirname(dir);
++  }
++  return undefined;
++}
++
+ /**
+  * Persist a synthesis deterministically: rewrite the source page (status →
+  * ingested), create missing entity/concept pages (existing pages are linked,
+@@ -334,6 +335,9 @@
+   date: string = fmtDate(),
+   lang?: string,
+ ): CommitSynthesisOutcome {
++  const repo = repoFromFilePath(typeof manifest.file_path === "string" ? manifest.file_path : "");
++  const repoField = repo ? { repo } : {};
++
+   const result: CommitResult = {
+     sourceId,
+     sourcePage: join(paths.wiki, "sources", `${sourceId}.md`),
+@@ -374,6 +378,7 @@
+         captured: String(manifest.captured || date),
+         status: "ingested",
+         updated: date,
++        ...repoField,
+       },
+       buildIngestedSourcePageBody(manifest, data, date, lang),
+     );
+@@ -398,6 +403,7 @@
+           description: e.description.trim() || "One-line description.",
+           created: date,
+           updated: date,
++          ...repoField,
+         },
+         buildEntityPageBody(e.title, e.description, sourceId, lang),
+         [{ id: sourceId, resource: `/sources/${sourceId}.md` }],
+@@ -424,6 +430,7 @@
+           description: c.definition.trim() || "One-line definition.",
+           created: date,
+           updated: date,
++          ...repoField,
+         },
+         buildConceptPageBody(c.title, c.definition, sourceId, lang),
+         [{ id: sourceId, resource: `/sources/${sourceId}.md` }],

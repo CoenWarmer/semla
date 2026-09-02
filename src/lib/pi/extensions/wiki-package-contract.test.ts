@@ -65,6 +65,61 @@ describe(`${WIKI_PACKAGE} version pin`, () => {
   });
 });
 
+/**
+ * The package is patched, and has to be: the dispatcher hook the tests below
+ * look for is not in the published tarball. Those edits lived only in
+ * `.pi/npm/node_modules`, which is untracked — that directory's .gitignore is
+ * `*` — and reproducible by nothing. They survived only because npm does not
+ * re-extract a package already matching the lockfile, so `npm ci`, a fresh
+ * clone, or one cache miss would have dropped them and left wiki_ingest
+ * silently falling back to inline synthesis.
+ *
+ * They are committed under `patches/` now. Three things have to hold for that
+ * to be worth anything: the patch exists, it was cut against the version that
+ * is pinned, and something re-applies it after an install.
+ */
+describe(`${WIKI_PACKAGE} patch`, () => {
+  const declared = (
+    readJson(join(PI_NPM_DIR, "package.json")).dependencies as Record<
+      string,
+      string
+    >
+  )[WIKI_PACKAGE];
+  const patchFile = `${WIKI_PACKAGE.replace("/", "+")}+${declared}.patch`;
+  const patchPath = join(process.cwd(), "patches", patchFile);
+
+  it("is committed, cut against the pinned version", () => {
+    expect(
+      existsSync(patchPath),
+      `Expected patches/${patchFile}. A version bump needs the patch re-cut ` +
+        "against the new release, not carried over.",
+    ).toBe(true);
+  });
+
+  it("carries the dispatcher hook the bridge depends on", () => {
+    // If this line is not in the patch, nothing puts it in the package, and
+    // the hook tests below pass only for as long as the working copy survives.
+    expect(readFileSync(patchPath, "utf8")).toContain(
+      "semla.wiki-ingest-dispatcher",
+    );
+  });
+
+  it("is re-applied by the install", () => {
+    const postinstall = (
+      readJson(join(process.cwd(), "package.json")).scripts as Record<
+        string,
+        string
+      >
+    ).postinstall;
+
+    expect(
+      postinstall,
+      "postinstall must run scripts/apply-package-patches.mjs, or a reinstall " +
+        "silently unpatches the package.",
+    ).toContain("apply-package-patches.mjs");
+  });
+});
+
 describe(`${WIKI_PACKAGE} deep imports`, () => {
   it.each(DEEP_IMPORTS)(
     "$path still exists and exports what Semla calls",
