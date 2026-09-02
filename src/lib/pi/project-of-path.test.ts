@@ -12,7 +12,7 @@ describe("projectOfPath", () => {
     expect(owner("/Users/x/Dev/semla/src/lib/pi/session-meta.ts")).toBe("semla");
   });
 
-  it("resolves a path relative to the workspace root, which is the agent's cwd", () => {
+  it("resolves a path relative to the workspace root by default", () => {
     expect(owner("semla/src/lib/pi/session-meta.ts")).toBe("semla");
     expect(owner("./semla/package.json")).toBe("semla");
   });
@@ -61,5 +61,35 @@ describe("projectOfPath", () => {
 
   it("has no project when the workspace lists none", () => {
     expect(projectOfPath("/Users/x/Dev/semla/foo.ts", ROOT, new Set())).toBeNull();
+  });
+});
+
+/**
+ * The agent runs in its anchor project rather than the workspace root — see
+ * session-cwd.ts — so a relative path from `edit` or `write` is relative to
+ * that, while a project is still named relative to the root. Resolving a
+ * relative write against the root instead named a directory that is not a
+ * project, so the write attached nothing at all.
+ */
+describe("projectOfPath with the agent running inside a project", () => {
+  const inSemla = (path: string) =>
+    projectOfPath(path, ROOT, PROJECTS, `${ROOT}/semla`);
+
+  it("resolves a relative path against the agent's cwd", () => {
+    expect(inSemla("src/lib/pi/session-meta.ts")).toBe("semla");
+    expect(inSemla("./package.json")).toBe("semla");
+  });
+
+  it("still resolves an absolute path to its own project", () => {
+    expect(inSemla("/Users/x/Dev/kibana/src/a.ts")).toBe("kibana");
+  });
+
+  // The agent can step up and into a sibling repository.
+  it("follows a relative path out into another project", () => {
+    expect(inSemla("../kibana/src/a.ts")).toBe("kibana");
+  });
+
+  it("refuses a relative path that climbs out of the workspace", () => {
+    expect(inSemla("../../etc/passwd")).toBeNull();
   });
 });

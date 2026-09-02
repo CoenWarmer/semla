@@ -2,9 +2,15 @@
  * Which workspace project a path belongs to.
  *
  * Used to turn a file the agent just wrote into the project that should be
- * attached to the session. The agent runs with `cwd` set to the workspace root,
- * so the paths it hands to `edit` and `write` are either absolute or relative
- * to that root, and both have to resolve to the same answer.
+ * attached to the session. The paths it hands to `edit` and `write` are either
+ * absolute or relative to wherever it is running, and both have to resolve to
+ * the same answer.
+ *
+ * Where it is running is no longer the workspace root — see session-cwd.ts —
+ * so the base a relative path resolves against is a separate argument from the
+ * root a project is named relative to. Collapsing the two would attach nothing
+ * for every relative write: `src/a.ts` resolved against the workspace root
+ * names a directory that is not a project.
  *
  * Deliberately *not* a walk up to the nearest `.git`. A project in Semla is a
  * directory one level below the workspace root — that is what
@@ -44,12 +50,18 @@ export function projectOfPath(
   path: string,
   workspaceRoot: string,
   projects: ReadonlySet<string>,
+  /**
+   * What a relative path is relative to — the directory the agent is running
+   * in. Defaults to the workspace root for callers that speak in
+   * workspace-relative paths already.
+   */
+  resolveBase: string = workspaceRoot,
 ): string | null {
   if (!path) return null;
 
   // resolve() ignores the base when the path is already absolute, so this
   // handles both shapes without asking which one it was given.
-  const rel = relative(workspaceRoot, resolve(workspaceRoot, path));
+  const rel = relative(workspaceRoot, resolve(resolveBase, path));
 
   // Empty means the root itself. A leading ".." (or separator) means the path
   // climbed out of the workspace, which is the same refusal the file API makes
@@ -70,6 +82,8 @@ export function projectOfPath(
  */
 export async function projectOfWrittenPath(
   path: string,
+  /** The directory the agent wrote from; see session-cwd.ts. */
+  resolveBase: string = PI_WORKSPACE_ROOT,
   workspaceRoot: string = PI_WORKSPACE_ROOT,
 ): Promise<string | null> {
   const projects = await getWorkspaceProjects();
@@ -77,5 +91,6 @@ export async function projectOfWrittenPath(
     path,
     workspaceRoot,
     new Set(projects.map((project) => project.name)),
+    resolveBase,
   );
 }

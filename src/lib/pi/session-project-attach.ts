@@ -79,8 +79,13 @@ export async function attachWrittenProject(
   sessionId: string,
   path: string,
   attachedThisTurn: Set<string>,
+  /**
+   * The directory the agent is running in, which a relative path from `edit`
+   * or `write` is relative to. See session-cwd.ts.
+   */
+  agentCwd?: string,
 ): Promise<void> {
-  const project = await projectOfWrittenPath(path);
+  const project = await projectOfWrittenPath(path, agentCwd);
   if (!project || attachedThisTurn.has(project)) return;
 
   attachedThisTurn.add(project);

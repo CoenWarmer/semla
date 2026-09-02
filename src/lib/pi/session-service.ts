@@ -64,6 +64,7 @@ import {
   applyBranchTarget,
   resolveBranchTarget,
 } from "@/lib/pi/session-branch";
+import { resolveSessionCwd } from "@/lib/pi/session-cwd";
 import { createTurnEventRouter } from "@/lib/pi/session-event-router";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
@@ -274,12 +275,23 @@ export const runPiPrompt = async ({
   });
   debug.onSessionRestored(persistedEntries.length);
 
+  /**
+   * The agent runs in the session's anchor project, not the workspace root
+   * above all of them — see session-cwd.ts for what that cost. Resolved once
+   * and passed to every seam that takes a cwd, because they must agree: the
+   * resource loader, the agent session, and the session manager's override all
+   * feed the `ctx.cwd` extensions read on session_start.
+   */
+  const agentCwd = resolveSessionCwd(projects);
+  if (agentCwd !== PI_WORKSPACE_ROOT) {
+    sessionLog(semlaSessionId, "agent cwd", { cwd: agentCwd });
+  }
+
   const sessionFile = await createSessionFile(semlaSessionId, persistedEntries);
-  const sessionManager = SessionManager.open(
-    sessionFile,
-    PI_SESSION_DIR,
-    PI_WORKSPACE_ROOT,
-  );
+  // Third argument is pi's cwdOverride, which supersedes the session header's
+  // recorded cwd — so an existing session file written against the workspace
+  // root still runs in the right place.
+  const sessionManager = SessionManager.open(sessionFile, PI_SESSION_DIR, agentCwd);
   phase("session-loaded");
 
   // Before anything is appended: move the leaf so this turn lands where the
@@ -338,14 +350,14 @@ export const runPiPrompt = async ({
     extensionFactories: extensionFactoriesInLoadOrder(),
     additionalSkillPaths: [WORKFLOW_SKILLS_PATH],
     agentDir: PI_AGENT_DIR,
-    cwd: PI_WORKSPACE_ROOT,
+    cwd: agentCwd,
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
   });
   await resourceLoader.reload();
   phase("extensions-compiled");
 
   const { extensionsResult, session } = await createAgentSession({
-    cwd: PI_WORKSPACE_ROOT,
+    cwd: agentCwd,
     model: configuredModel.model,
     modelRuntime: configuredModel.runtime,
     resourceLoader,
@@ -428,12 +440,12 @@ export const runPiPrompt = async ({
   // Inject the result as a context message so Pi sees the completed workflow in this prompt.
   const stuckRuns = await fetchStuckBackgroundRuns(semlaSessionId);
   for (const { run_id } of stuckRuns) {
-    const runState = readWorkflowRun(PI_WORKSPACE_ROOT, run_id);
+    const runState = readWorkflowRun(agentCwd, run_id);
     if (!runState || runState.status !== "completed") continue;
     try {
       await session.sendCustomMessage(
         {
-          content: finishedRunMessage(runState, run_id),
+          content: finishedRunMessage(runState, run_id, agentCwd),
           customType: "workflow-result",
           display: true,
         },
@@ -453,6 +465,7 @@ export const runPiPrompt = async ({
   const state = createTurnBackgroundState();
 
   const router = createTurnEventRouter({
+    agentCwd,
     attachedThisTurn,
     debug,
     emit,
@@ -531,9 +544,9 @@ export const runPiPrompt = async ({
 
     const decision = decideContinuation({
       findUnfinishedRun: () =>
-        unfinishedBackgroundRunId(semlaSessionId, PI_WORKSPACE_ROOT),
+        unfinishedBackgroundRunId(semlaSessionId, agentCwd),
       isRunTerminal: (runId) =>
-        isRunTerminal(readWorkflowRun(PI_WORKSPACE_ROOT, runId)),
+        isRunTerminal(readWorkflowRun(agentCwd, runId)),
       state,
     });
 
@@ -565,6 +578,7 @@ export const runPiPrompt = async ({
 
       void runBackgroundContinuation({
         abortSignal: armBackgroundContinuation(semlaSessionId),
+        agentCwd,
         debug,
         piSessionId: piSession.id,
         projects,

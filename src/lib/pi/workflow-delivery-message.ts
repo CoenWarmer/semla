@@ -16,6 +16,8 @@ import {
 export const finishedRunMessage = (
   run: PersistedRunState,
   runId: string,
+  /** The cwd the run is keyed under; see session-cwd.ts. */
+  cwd: string = PI_WORKSPACE_ROOT,
 ): string => {
   const done = run.agents.filter((agent) => agent.status === "done").length;
   return [
@@ -23,6 +25,6 @@ export const finishedRunMessage = (
     "",
     summarizeRunResult(run.result, run.logs ?? []),
     "",
-    `↳ Full result: ${workflowRunPath(PI_WORKSPACE_ROOT, runId)}`,
+    `↳ Full result: ${workflowRunPath(cwd, runId)}`,
   ].join("\n");
 };

@@ -66,6 +66,7 @@ export type TurnEventRouter = {
 };
 
 export const createTurnEventRouter = ({
+  agentCwd,
   attachedThisTurn,
   debug,
   emit,
@@ -75,6 +76,11 @@ export const createTurnEventRouter = ({
   state,
   turnRepoSlugs,
 }: {
+  /**
+   * Where the agent is running, so a relative path from `edit` or `write`
+   * resolves to the project it actually touched. See session-cwd.ts.
+   */
+  agentCwd: string;
   /** Projects this turn has already linked; written as tool results arrive. */
   attachedThisTurn: Set<string>;
   debug: SessionDebugWriter;
@@ -180,7 +186,12 @@ export const createTurnEventRouter = ({
         detach(
           semlaSessionId,
           "attach written project",
-          attachWrittenProject(semlaSessionId, written, attachedThisTurn).then(
+          attachWrittenProject(
+            semlaSessionId,
+            written,
+            attachedThisTurn,
+            agentCwd,
+          ).then(
             // A page captured after the agent strays into a second repo
             // should say so, so republish rather than wait for the next turn.
             () => setSessionRepos(piRuntimeSessionId, turnRepoSlugs()),

@@ -14,7 +14,6 @@
 import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
 import { releaseBackgroundContinuation } from "@/lib/pi/bg-continuation-registry";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
 import {
@@ -54,6 +53,7 @@ export type ContinuableSession = {
 
 export const runBackgroundContinuation = async ({
   abortSignal,
+  agentCwd,
   debug,
   piSessionId,
   projects,
@@ -62,6 +62,8 @@ export const runBackgroundContinuation = async ({
   session,
 }: {
   abortSignal: AbortSignal;
+  /** Where the turn's agent ran; run files are keyed by it. See session-cwd.ts. */
+  agentCwd: string;
   debug: SessionDebugWriter;
   piSessionId: string;
   projects: readonly string[];
@@ -146,7 +148,7 @@ export const runBackgroundContinuation = async ({
     ? setInterval(() => {
         if (selfDelivering || !resolveDelivery) return;
 
-        const run = readWorkflowRun(PI_WORKSPACE_ROOT, runId);
+        const run = readWorkflowRun(agentCwd, runId);
         if (!isRunTerminal(run)) {
           terminalSince = undefined;
           return;
@@ -163,7 +165,7 @@ export const runBackgroundContinuation = async ({
         void session
           .sendCustomMessage(
             {
-              content: finishedRunMessage(run, runId),
+              content: finishedRunMessage(run, runId, agentCwd),
               customType: "workflow-result",
               display: true,
             },

@@ -53,6 +53,7 @@ const setup = (state: TurnBackgroundState = createTurnBackgroundState()) => {
   const attachedThisTurn = new Set<string>();
   const session = { dispose: vi.fn() };
   const router = createTurnEventRouter({
+    agentCwd: "/w/proj",
     attachedThisTurn,
     debug: debugStub(),
     emit: (event) => emitted.push(event),
@@ -166,6 +167,29 @@ describe("project links", () => {
       "s1",
       "/w/proj/a.ts",
       expect.any(Set),
+      "/w/proj",
+    );
+  });
+
+  /**
+   * The agent runs in its anchor project, not the workspace root, so a
+   * relative path has to be resolved against that — otherwise every relative
+   * write attaches nothing. See session-cwd.ts.
+   */
+  it("hands the agent's cwd over so a relative write resolves", async () => {
+    const { router } = setup();
+
+    router.onSessionEvent(
+      toolStart({ args: { path: "src/a.ts" }, toolName: "write" }),
+    );
+    router.onSessionEvent(toolEnd({ toolName: "write" }));
+    await flush();
+
+    expect(attachWrittenProject).toHaveBeenCalledWith(
+      "s1",
+      "src/a.ts",
+      expect.any(Set),
+      "/w/proj",
     );
   });
 
