@@ -1,8 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { parseRequestedSessionId } from "@/lib/pi/session-id";
-import { writeSessionMeta } from "@/lib/pi/session-meta";
+import {
+  hasTranscript,
+  readSessionMeta,
+  writeSessionMeta,
+} from "@/lib/pi/session-meta";
 import { mirrorSessionProjects } from "@/lib/pi/session-project-mirror";
 import { attachProject } from "@/lib/pi/session-project-links";
 
@@ -33,19 +39,40 @@ export async function POST(request: Request) {
       : null;
 
     // The client may mint the id so /sessions/new can navigate before this
-    // request is sent; see session-id.ts for why it is validated. An id already
-    // in use fails the insert, which is the right answer for a collision.
-    const requestedId = parseRequestedSessionId(body?.id);
+    // request is sent; see session-id.ts for why it is validated. Failing that,
+    // it is minted here rather than by Postgres: nothing about naming a session
+    // needs the database, and taking the name from the insert's result made the
+    // id — and so the disk record, and the response — wait on it.
+    const id = parseRequestedSessionId(body?.id) ?? randomUUID();
 
-    const { data, error } = await supabase
+    // Checked against the authoritative store, not left to the table's primary
+    // key. Now that a client supplies the id, a collision would otherwise be
+    // caught only after `writeSessionMeta` had already overwritten the record
+    // of the session that owns it.
+    if (readSessionMeta(id) || hasTranscript(id)) {
+      return NextResponse.json(
+        { error: "That session already exists." },
+        { status: 409 },
+      );
+    }
+
+    /**
+     * Awaited, and it has to be.
+     *
+     * Postgres is a mirror for *reading* a session — every reader consults the
+     * disk record first — but `sessions` is a parent row, and the first turn
+     * writes children of it: `pi_sessions.semla_session_id` is `not null
+     * references sessions(id)`, so `ensurePiSession` fails outright if this row
+     * is not there yet. And `requireSessionOwner` reads it to decide ownership
+     * whenever auth is on.
+     *
+     * The session page prompts within milliseconds of this returning, so
+     * letting the insert run unawaited would fail the first turn on a foreign
+     * key, or 404 it — not degrade to a local-only session.
+     */
+    const { error } = await supabase
       .from("sessions")
-      .insert(
-        requestedId
-          ? { id: requestedId, title, user_id: user.id }
-          : { title, user_id: user.id },
-      )
-      .select("id")
-      .single();
+      .insert({ id, title, user_id: user.id });
 
     if (error) {
       console.error("[api:sessions] Failed to create session:", error);
@@ -69,7 +96,7 @@ export async function POST(request: Request) {
     // Recorded on disk too, so the session is findable without the database.
     // This is also what the session page reads first, so it is the write that
     // has to happen before the response.
-    writeSessionMeta(data.id, {
+    writeSessionMeta(id, {
       title,
       projects,
       userId: user.id,
@@ -84,10 +111,10 @@ export async function POST(request: Request) {
     // has already succeeded, so waiting for the copy only delays the id the
     // caller is blocked on.
     if (projects.length > 0) {
-      void mirrorSessionProjects(data.id, projects);
+      void mirrorSessionProjects(id, projects);
     }
 
-    return NextResponse.json({ id: data.id }, { status: 201 });
+    return NextResponse.json({ id }, { status: 201 });
   } catch (error) {
     return handleRouteError(error, "Could not create a new session.");
   }
