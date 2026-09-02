@@ -574,7 +574,7 @@ docblock is proud of — the sidebar works when Postgres does not.
 
 Three types grow the field: `SessionStatus` (`src/lib/session-status.ts`),
 `SessionRow` (`sessions-list-client.tsx`), and the rows built server-side in
-`sessionsList.tsx`.
+`sessions-list.tsx`.
 
 **All three, not just the poll.** `mergeDiscoveredSessions` only synthesises
 rows the server render did not know about; every already-known row keeps its

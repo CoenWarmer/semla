@@ -82,7 +82,7 @@ export async function SessionsList() {
   ].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 
   if (error && sessions.length === 0) {
-    console.error("[sessionsList] Failed to load sessions:", error);
+    console.error("[sessions-list] Failed to load sessions:", error);
     return (
       <p className="text-destructive text-sm">
         Failed to load sessions. Please refresh the page.

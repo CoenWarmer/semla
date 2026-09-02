@@ -13,7 +13,7 @@ import { BookOpen, Settings } from "lucide-react";
 import Link from "next/link";
 import { NewSessionButton } from "./new-session-button";
 import { ProjectsCombobox } from "./projects-combobox";
-import { SessionsList } from "./sessionsList";
+import { SessionsList } from "./sessions-list";
 
 export function AppSidebar() {
   return (
