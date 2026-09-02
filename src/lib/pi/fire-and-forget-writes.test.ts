@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 /** Writes that reject, and must therefore never be fired as a bare `void`. */
 const THROWING_WRITES = [
+  "persistEntries",
   "persistWorkflowSnapshot",
   "persistBackgroundWorkflowStart",
   "setSessionRunning",
@@ -31,6 +32,7 @@ const THROWING_WRITES = [
  */
 const CALLERS = [
   "src/app/api/sessions/[id]/stream/route.ts",
+  "src/lib/pi/entry-persist-queue.ts",
   "src/app/api/sessions/[id]/workflows/route.ts",
   "src/lib/pi/background-continuation.ts",
   "src/lib/pi/session-event-router.ts",

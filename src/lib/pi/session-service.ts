@@ -18,6 +18,10 @@ import { mkdir } from "node:fs/promises";
 
 import { registerNotifier } from "@/lib/pi/ask-user-bridge";
 import { runBackgroundContinuation } from "@/lib/pi/background-continuation";
+import {
+  queueEntries,
+  seedPersistedEntryIds,
+} from "@/lib/pi/entry-persist-queue";
 import { unfinishedBackgroundRunId } from "@/lib/pi/background-run-recovery";
 import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
 import {
@@ -74,7 +78,6 @@ import {
   fetchPersistedEntries,
   fetchStuckBackgroundRuns,
   finalizeBackgroundRun,
-  persistEntry,
   setSessionRunning,
   updateSessionTitle,
   type PiSessionEntry,
@@ -269,6 +272,11 @@ export const runPiPrompt = async ({
   phase("model-resolved");
   const piSession = await ensurePiSession(semlaSessionId, configuredModel);
   const persistedEntries = await fetchPersistedEntries(piSession.id);
+  // What the mirror already holds, so the turn only writes what it adds.
+  seedPersistedEntryIds(
+    piSession.id,
+    persistedEntries.map((entry) => entry.id),
+  );
 
   sessionLog(semlaSessionId, "session restored", {
     entries: persistedEntries.length,
@@ -510,11 +518,15 @@ export const runPiPrompt = async ({
       entries: entries.length,
       background: state.hasBackgroundWorkflow,
     });
-    for (let i = 0; i < entries.length; i++) {
-      const t0 = Date.now();
-      await persistEntry(piSession.id, entries[i] as PiSessionEntry);
-      debug.onPersistEntry(i + 1, entries.length, Date.now() - t0);
-    }
+    // Queued, not awaited: the answer has already streamed, and the session
+    // file — which is what getTranscript reads — is already written. Waiting
+    // here kept the client spinning through a write the UI never reads.
+    const queued = queueEntries(
+      piSession.id,
+      semlaSessionId,
+      entries as PiSessionEntry[],
+    );
+    debug.onEntriesQueued(queued, entries.length);
     debug.onPromptComplete(entries.length, state.hasBackgroundWorkflow);
     if (persistedEntries.length === 0) {
       const title = generateTitle(text);

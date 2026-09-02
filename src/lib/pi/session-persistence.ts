@@ -237,6 +237,80 @@ export const persistEntry = async (piSessionId: string, entry: PiSessionEntry) =
   }
 };
 
+/**
+ * How many entries go in one upsert. Large enough that a long conversation is
+ * one or two round trips, small enough that a single failure re-sends little.
+ */
+const ENTRY_BATCH = 250;
+
+/**
+ * Mirror a run of entries to Postgres in as few round trips as possible.
+ *
+ * `persistEntry` costs two round trips per entry — the upsert and the leaf
+ * pointer — and the turn used to call it once per entry in the whole
+ * conversation. A ten-turn session in .semla-debug spent 337 seconds across
+ * 3,009 of those calls re-writing rows that had not changed, and the cost grew
+ * with every turn.
+ *
+ * Here the rows go up together and the leaf pointer is written once, from the
+ * last entry. `parent_entry_id` is a self-referencing foreign key, but it is
+ * enforced by an AFTER ROW trigger that fires at the end of the statement, so
+ * every row in a batch is visible to every other by the time it is checked.
+ *
+ * On failure the batch is retried one entry at a time through `persistEntry`,
+ * which keeps the ASCII-payload degradation that exists so one unstorable
+ * entry cannot take the rest of the turn — including the assistant's answer —
+ * down with it.
+ */
+export const persistEntries = async (
+  piSessionId: string,
+  entries: readonly PiSessionEntry[],
+): Promise<void> => {
+  if (entries.length === 0) return;
+
+  const admin = createAdminClient();
+
+  for (let i = 0; i < entries.length; i += ENTRY_BATCH) {
+    const batch = entries.slice(i, i + ENTRY_BATCH);
+    const { error } = await admin.from("pi_session_entries").upsert(
+      batch.map((entry) => ({
+        event_type: entry.type,
+        id: entry.id,
+        parent_entry_id: entry.parentId,
+        payload: toJson({ entry }),
+        pi_session_id: piSessionId,
+      })),
+      { onConflict: "id" },
+    );
+
+    if (error) {
+      console.warn(
+        `[pi:session-persistence] Batch of ${batch.length} entries rejected: ${describeDbError(error.message)} — retrying individually`,
+      );
+      for (const entry of batch) {
+        await persistEntry(piSessionId, entry);
+      }
+      // persistEntry already moved the leaf for each of these.
+      continue;
+    }
+
+    const leaf = batch[batch.length - 1]!;
+    const { error: updateError } = await admin
+      .from("pi_sessions")
+      .update({
+        active_leaf_entry_id: leaf.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", piSessionId);
+
+    if (updateError) {
+      throw new Error(
+        `Unable to update Pi session: ${describeDbError(updateError.message)}`,
+      );
+    }
+  }
+};
+
 export const fetchPersistedEntries = async (piSessionId: string) => {
   const admin = createAdminClient();
   const { data, error } = await admin

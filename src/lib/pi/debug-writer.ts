@@ -62,7 +62,12 @@ export interface SessionDebugWriter {
   onToolEnd(toolName: string, result?: unknown): void;
   onWorkflowSnapshot(snapshot: WorkflowSnapshot, mode: "background" | "foreground"): void;
   onError(message: string): void;
-  onPersistEntry(index: number, total: number, ms: number): void;
+  /**
+   * Entries handed to the persistence queue: how many were new, out of how
+   * many the conversation now holds. Replaces a per-entry event, because the
+   * turn no longer writes them one at a time or waits for them at all.
+   */
+  onEntriesQueued(queued: number, total: number): void;
   onPromptComplete(entryCount: number, hasBackground: boolean): void;
   onSseComplete(): void;
   onBgStart(): void;
@@ -82,7 +87,7 @@ const NOP: SessionDebugWriter = {
   onToolEnd: () => {},
   onWorkflowSnapshot: () => {},
   onError: () => {},
-  onPersistEntry: () => {},
+  onEntriesQueued: () => {},
   onPromptComplete: () => {},
   onSseComplete: () => {},
   onBgStart: () => {},
@@ -164,7 +169,7 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
     },
 
     // Timing only — the transcript stays readable, the attribution lives in
-    // events.jsonl next to the persist-entry durations.
+    // events.jsonl.
     onPhase(phase: SessionPhase, ms: number) {
       appendEvent({
         type: "phase",
@@ -238,8 +243,8 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
       appendEvent({ type: "error", message });
     },
 
-    onPersistEntry(index: number, total: number, ms: number) {
-      appendEvent({ type: "persist-entry", index, total, ms });
+    onEntriesQueued(queued: number, total: number) {
+      appendEvent({ type: "entries-queued", queued, total });
     },
 
     onPromptComplete(entryCount: number, hasBackground: boolean) {

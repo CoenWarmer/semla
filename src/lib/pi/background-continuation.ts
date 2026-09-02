@@ -13,12 +13,12 @@
 
 import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
 import { releaseBackgroundContinuation } from "@/lib/pi/bg-continuation-registry";
+import { queueEntries } from "@/lib/pi/entry-persist-queue";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
 import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
 import {
   finalizeBackgroundRun,
-  persistEntry,
   persistWorkflowSnapshot,
   setSessionRunning,
   type PiSessionEntry,
@@ -206,9 +206,7 @@ export const runBackgroundContinuation = async ({
     sessionLog(semlaSessionId, "bg continuation complete", {
       entries: entries.length,
     });
-    for (const entry of entries) {
-      await persistEntry(piSessionId, entry as PiSessionEntry);
-    }
+    queueEntries(piSessionId, semlaSessionId, entries as PiSessionEntry[]);
     debug.onBgComplete(entries.length);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
