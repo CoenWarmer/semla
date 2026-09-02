@@ -71,6 +71,11 @@ import {
 } from "@/lib/pi/session-branch";
 import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session-cwd";
 import { createTurnEventRouter } from "@/lib/pi/session-event-router";
+import {
+  releaseSpanSink,
+  retainSpanSink,
+} from "@/lib/pi/telemetry/sink-registry";
+import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
 import {
@@ -355,6 +360,17 @@ export const runPiPrompt = async ({
     [...projects, ...attachedThisTurn].filter(Boolean);
 
   setSessionRepos(piRuntimeSessionId, turnRepoSlugs());
+
+  /**
+   * Span sink for this turn, published before bindExtensions so the workflow
+   * extension can find it on session_start.
+   *
+   * Nothing reads the spans yet — transport and rendering are the next steps of
+   * docs/plans/agent-telemetry.md. The count is logged at turn end so that a
+   * real run can be checked to be producing them at all.
+   */
+  const spanSink = createSpanSink(semlaSessionId);
+  retainSpanSink(piRuntimeSessionId, spanSink);
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
@@ -566,6 +582,16 @@ export const runPiPrompt = async ({
     unregisterNotifier();
     releaseLiveSession(semlaSessionId);
     clearSessionRepo(piRuntimeSessionId);
+    // The recorder the manager holds closes over the sink, so a background run
+    // keeps recording after this; only the lookup goes away.
+    releaseSpanSink(piRuntimeSessionId);
+    if (spanSink.counts.recorded > 0) {
+      sessionLog(semlaSessionId, "spans recorded", {
+        open: spanSink.counts.open,
+        recorded: spanSink.counts.recorded,
+        trace: spanSink.traceId,
+      });
+    }
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);

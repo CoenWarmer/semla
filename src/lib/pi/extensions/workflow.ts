@@ -44,6 +44,8 @@ import {
 } from "./dynamic-workflows/src/workflow-settings";
 import { createWorkflowTool } from "./dynamic-workflows/src/workflow-tool";
 import { registerWorkflowModelsCommand } from "./dynamic-workflows/src/workflows-models-command";
+import { getSpanSink } from "../telemetry/sink-registry";
+import { createWorkflowTelemetry } from "../telemetry/workflow-recorder";
 import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
   ACTIVE_WORKFLOW_MANAGER,
@@ -316,6 +318,12 @@ export default function extension(pi: ExtensionAPI) {
     // launching directory across /resume into another project; ctx.cwd is
     // the session header's project path.
     const sessionCwd = resolve(ctx.cwd || process.cwd());
+
+    // Span recorder for this session, if the turn published one. Keyed on the
+    // *pi runtime* session id — the same key wiki-session-repo uses, and for
+    // the same reason: it is the only id both sides can see from here.
+    const sink = getSpanSink(ctx.sessionManager.getSessionId());
+    if (sink) manager.setTelemetry(createWorkflowTelemetry(sink));
 
     if (sessionCwd !== resolve(manager.getCwd())) {
       // Cross-project: the live manager is for the wrong tree. Pause anything

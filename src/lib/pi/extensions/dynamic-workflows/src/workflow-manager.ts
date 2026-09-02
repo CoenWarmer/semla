@@ -5,6 +5,9 @@
 import { EventEmitter } from "node:events";
 import type { ModelRegistry, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { WorkflowAgent } from "./agent.ts";
+// Relative, and type-only: erased at build time, so this module gains no
+// runtime dependency on the host and would still load under jiti.
+import type { WorkflowTelemetry } from "../../../telemetry/workflow-recorder";
 import {
   preview,
   recomputeWorkflowSnapshot,
@@ -198,6 +201,17 @@ export interface ExecOptions {
 
 export interface WorkflowManagerOptions {
   cwd?: string;
+  /**
+   * Span recorder, when the host supplies one. Called at the points below that
+   * already update the snapshot, so telemetry and the panel can never describe
+   * different runs. Absent by default — see NO_WORKFLOW_TELEMETRY.
+   */
+  telemetry?: WorkflowTelemetry;
+  /**
+   * Span id of the turn that owns this manager, for runs to nest under
+   * (docs/plans/agent-telemetry.md §8.4). Only meaningful with `telemetry`.
+   */
+  turnSpanId?: string | null;
   concurrency?: number;
   /** Resolve a saved-workflow name to its script, enabling nested `workflow('name')`. */
   loadSavedWorkflow?: (name: string) => string | undefined;
@@ -267,6 +281,11 @@ export type WorkflowManagerReloadOptions = Pick<
   | "defaultTokenBudget"
   | "toolsets"
   | "defaultToolset"
+  // Refreshed on reload for the same reason the defaults are: a manager handed
+  // across /reload would otherwise keep recording into the sink of the session
+  // that built it, which by then may be a different session entirely.
+  | "telemetry"
+  | "turnSpanId"
   | "excludeSubagentTools"
   | "persistAgentSessions"
 >;
@@ -366,6 +385,60 @@ export class WorkflowManager extends EventEmitter {
   private excludeSubagentTools?: string[];
   private persistAgentSessions: boolean;
 
+  /**
+   * Attach a span recorder after construction.
+   *
+   * The manager is built by the extension factory, which has no session; the
+   * sink only becomes reachable on session_start. A dedicated setter rather
+   * than `reconfigureAfterReload`, which would also reset concurrency and the
+   * defaults to whatever the caller happened to pass.
+   */
+  setTelemetry(telemetry: WorkflowTelemetry, turnSpanId?: string | null): void {
+    this.telemetry = telemetry;
+    this.turnSpanId = turnSpanId;
+  }
+
+  /**
+   * Move a run to a non-running status and close its span.
+   *
+   * Every `managed.status = ...` transition goes through here rather than
+   * assigning directly, so a site added later cannot forget the span — the
+   * failure that would produce is a trace claiming a run is still going, which
+   * looks like nothing at all.
+   */
+  private endRun(managed: ManagedRun, status: ManagedRun["status"]): void {
+    managed.status = status;
+    // "pending" and "running" are not endings: a pending run has not begun and
+    // a running one has not finished.
+    if (status === "running" || status === "pending") return;
+
+    const agents = managed.snapshot.agents;
+    this.telemetry.runEnded(managed.runId, {
+      agentCount: agents.length,
+      doneCount: agents.filter((agent) => agent.status === "done").length,
+      errorCount: agents.filter((agent) => agent.status === "error").length,
+      status,
+    });
+  }
+
+  /**
+   * The span a run nests under — the turn that started it.
+   *
+   * Set by the host alongside `telemetry`, because the manager has no notion of
+   * a turn. Undefined leaves a run as a root span, which is right for one
+   * recovered after a restart: the turn that started it is gone.
+   */
+  private turnSpanId?: string | null;
+
+  /** No-op unless the host supplied one; see WorkflowManagerOptions.telemetry. */
+  private telemetry: WorkflowTelemetry = {
+    agentEnded: () => {},
+    agentStarted: () => {},
+    phaseStarted: () => {},
+    runEnded: () => {},
+    runStarted: () => {},
+  };
+
   constructor(options: WorkflowManagerOptions = {}) {
     super();
     this.cwd = options.cwd ?? process.cwd();
@@ -381,6 +454,8 @@ export class WorkflowManager extends EventEmitter {
     this.toolsets = options.toolsets;
     this.defaultToolset = options.defaultToolset;
     this.excludeSubagentTools = options.excludeSubagentTools;
+    if (options.telemetry) this.telemetry = options.telemetry;
+    this.turnSpanId = options.turnSpanId;
     this.persistAgentSessions = options.persistAgentSessions ?? false;
     this.maxTerminalRunsInMemory = options.maxTerminalRunsInMemory ?? DEFAULT_MAX_TERMINAL_RUNS_IN_MEMORY;
     this.persistence = createRunPersistence(this.cwd);
@@ -466,6 +541,8 @@ export class WorkflowManager extends EventEmitter {
     this.toolsets = options.toolsets;
     this.defaultToolset = options.defaultToolset;
     this.excludeSubagentTools = options.excludeSubagentTools;
+    if (options.telemetry) this.telemetry = options.telemetry;
+    this.turnSpanId = options.turnSpanId;
     this.persistAgentSessions = options.persistAgentSessions ?? false;
   }
 
@@ -550,6 +627,11 @@ export class WorkflowManager extends EventEmitter {
     };
 
     this.runs.set(runId, managed);
+    this.telemetry.runStarted(runId, {
+      background: managed.background,
+      name: managed.snapshot.name,
+      parentSpanId: this.turnSpanId,
+    });
 
     // Register this manager in the shared globalThis registry so Semla's
     // snapshot API can access live running/queued agent state across module
@@ -618,6 +700,11 @@ export class WorkflowManager extends EventEmitter {
     managed.concurrency = exec.concurrency !== undefined ? exec.concurrency : this.concurrency;
     managed.agentRetries = exec.agentRetries !== undefined ? exec.agentRetries : this.defaultAgentRetries;
     this.runs.set(managed.runId, managed);
+    this.telemetry.runStarted(managed.runId, {
+      background: managed.background,
+      name: managed.snapshot.name,
+      parentSpanId: this.turnSpanId,
+    });
     // Persist the initial state immediately so listRuns()/the task panel can see
     // the run the moment it starts, not only after the first agent journals.
     this.persistRun(managed);
@@ -794,6 +881,7 @@ export class WorkflowManager extends EventEmitter {
           progress();
         },
         onPhase: (title) => {
+          this.telemetry.phaseStarted(managed.runId, title);
           managed.snapshot.currentPhase = title;
           if (!managed.snapshot.phases.includes(title)) {
             managed.snapshot.phases.push(title);
@@ -820,11 +908,28 @@ export class WorkflowManager extends EventEmitter {
           // Real per-agent start time, captured the moment the agent actually
           // starts (not the run's startedAt) — see agentTimestamps.
           managed.agentTimestamps.set(id, { startedAt: new Date().toISOString() });
+          // After the snapshot entry, so the numeric id the panel uses is
+          // known. Keyed on event.id, which is the agent() call — never the
+          // label, for the reason agentsById gives above.
+          this.telemetry.agentStarted(managed.runId, {
+            callId: event.id,
+            id,
+            label: event.label,
+            model: event.model,
+            phase: event.phase,
+            prompt: event.prompt,
+          });
           this.emitLive(managed, "agentStart", { runId: managed.runId, ...event });
           progress();
         },
         onAgentEnd: (event) => {
           const agent = managed.agentsById.get(event.id);
+          this.telemetry.agentEnded(managed.runId, {
+            callId: event.id,
+            cost: event.tokenUsage?.cost,
+            status: event.result === null ? "error" : "done",
+            totalTokens: event.tokenUsage?.total ?? event.tokens,
+          });
           if (agent) {
             agent.status = event.result === null ? "error" : "done";
             // Keep the full value for the interactive pager; compact surfaces
@@ -874,7 +979,7 @@ export class WorkflowManager extends EventEmitter {
         },
       });
 
-      managed.status = "completed";
+      this.endRun(managed, "completed");
       managed.result = result;
       // Gated the same way as disk/lease below (see emitLive()): a stale
       // execution's "complete" would otherwise still deliver a result for a
@@ -911,15 +1016,15 @@ export class WorkflowManager extends EventEmitter {
       if (managed.controller.signal.aborted) {
         // Intentional abort (pause/stop/Esc) — preserve status set by pause()/stop()
         if (managed.status === "running") {
-          managed.status = "aborted";
+          this.endRun(managed, "aborted");
         }
       } else if (usageLimitPaused) {
         // Provider quota/usage limit: NOT a failure. Checkpoint the run as paused so
         // the persisted journal (completed agent results) is replayed by resume()
         // once the budget refills — instead of the user starting from scratch.
-        managed.status = "paused";
+        this.endRun(managed, "paused");
       } else {
-        managed.status = "failed";
+        this.endRun(managed, "failed");
       }
       managed.error = workflowError;
       // Both branches gated via emitLive() (see its doc comment) — a stale
@@ -1220,7 +1325,7 @@ export class WorkflowManager extends EventEmitter {
     if (managed?.status !== "running") return false;
 
     managed.controller.abort();
-    managed.status = "paused";
+    this.endRun(managed, "paused");
     this.emit("paused", { runId });
     this.persistRun(managed);
     this.releaseRunLease(managed);
@@ -1342,6 +1447,11 @@ export class WorkflowManager extends EventEmitter {
       agentsById: new Map(),
     };
     this.runs.set(runId, managed);
+    this.telemetry.runStarted(runId, {
+      background: managed.background,
+      name: managed.snapshot.name,
+      parentSpanId: this.turnSpanId,
+    });
     // Persist before notifying renderers: listRuns() is their source of truth for
     // lifecycle status, while getRun() supplies the live in-memory snapshot.
     this.persistRun(managed);
@@ -1412,7 +1522,7 @@ export class WorkflowManager extends EventEmitter {
       // small leak in exactly the class this manager otherwise bounds.
       const hadNoPendingSettle = managed.status === "paused";
       managed.controller.abort();
-      managed.status = "aborted";
+      this.endRun(managed, "aborted");
       this.emit("stopped", { runId });
       this.persistRun(managed);
       this.releaseRunLease(managed);

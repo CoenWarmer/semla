@@ -24,7 +24,12 @@ import {
 } from "@/lib/pi/telemetry/schema";
 import type { OpenSpan, SpanSink } from "@/lib/pi/telemetry/span-sink";
 
-export type WorkflowRunStatus = "aborted" | "completed" | "failed";
+/**
+ * "paused" is terminal *for a span*: the run can resume, and a resume starts a
+ * new span under the same run id (see `runStarted`). A resumed run therefore
+ * reads as two spans, which is what happened.
+ */
+export type WorkflowRunStatus = "aborted" | "completed" | "failed" | "paused";
 export type WorkflowAgentStatus = "aborted" | "done" | "error";
 
 /**
@@ -36,8 +41,9 @@ export type WorkflowTelemetry = {
   agentEnded: (
     runId: string,
     agent: {
+      /** The agent() call id — see `agentStarted`. */
+      callId: string;
       cost?: number;
-      id: number;
       status: WorkflowAgentStatus;
       totalTokens?: number;
       turns?: number;
@@ -46,7 +52,14 @@ export type WorkflowTelemetry = {
   agentStarted: (
     runId: string,
     agent: {
-      id: number;
+      /**
+       * Unique per agent() call. Concurrent agents routinely share a label, so
+       * this is the only safe key — the vendored options say the same thing
+       * about their own bookkeeping.
+       */
+      callId: string;
+      /** Position in the run snapshot, which is how the panel identifies it. */
+      id?: number;
       label: string;
       model?: string;
       phase?: string;
@@ -70,7 +83,8 @@ export type WorkflowTelemetry = {
 };
 
 type RunState = {
-  agents: Map<number, OpenSpan>;
+  /** Keyed by agent() call id, never by label. */
+  agents: Map<string, OpenSpan>;
   /** The phase agents currently attach to, if the workflow declared any. */
   phase: OpenSpan | null;
   phaseCount: number;
@@ -146,16 +160,17 @@ export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
       state.phaseCount += 1;
     },
 
-    agentStarted: (runId, { id, label, model, prompt }) => {
+    agentStarted: (runId, { callId, id, label, model, prompt }) => {
       const state = runs.get(runId);
       if (!state) return;
 
       state.phaseAgents += 1;
       state.agents.set(
-        id,
+        callId,
         sink.openSpan({
           attributes: {
-            "semla.workflow.agent.id": id,
+            "semla.workflow.agent.call_id": callId,
+            ...(id === undefined ? {} : { "semla.workflow.agent.id": id }),
             "semla.workflow.agent.label": label,
             ...(model ? { "semla.workflow.agent.model": model } : {}),
             // Sensitive, and kept by default today — the sink decides, from
@@ -171,8 +186,8 @@ export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
       );
     },
 
-    agentEnded: (runId, { cost, id, status, totalTokens, turns }) => {
-      const span = runs.get(runId)?.agents.get(id);
+    agentEnded: (runId, { callId, cost, status, totalTokens, turns }) => {
+      const span = runs.get(runId)?.agents.get(callId);
       if (!span) return;
 
       span.setAttributes({
@@ -188,7 +203,7 @@ export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
           ? { status: "ok" }
           : { status: "error", error: { message: status, name: "AgentFailed" } },
       );
-      runs.get(runId)?.agents.delete(id);
+      runs.get(runId)?.agents.delete(callId);
     },
 
     runEnded: (runId, { agentCount, doneCount, errorCount, status }) => {
@@ -219,7 +234,7 @@ export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
           : { "semla.workflow.error_count": errorCount }),
       });
       state.run.close(
-        status === "completed"
+        status === "completed" || status === "paused"
           ? { status: "ok" }
           : { status: "error", error: { message: status, name: "RunFailed" } },
       );

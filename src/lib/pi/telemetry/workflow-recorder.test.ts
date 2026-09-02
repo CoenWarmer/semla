@@ -38,8 +38,8 @@ describe("the tree", () => {
 
     telemetry.runStarted("r1", { background: false, name: "review" });
     telemetry.phaseStarted("r1", "Review");
-    telemetry.agentStarted("r1", { id: 1, label: "review:bugs" });
-    telemetry.agentEnded("r1", { id: 1, status: "done" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "review:bugs" });
+    telemetry.agentEnded("r1", { callId: "c1", status: "done" });
     telemetry.runEnded("r1", { status: "completed" });
 
     const run = byName(sink, WORKFLOW_RUN_SPAN)[0]!;
@@ -71,7 +71,7 @@ describe("the tree", () => {
     const { sink, telemetry } = setup();
 
     telemetry.runStarted("r1", { background: false, name: "w" });
-    telemetry.agentStarted("r1", { id: 1, label: "solo" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "solo" });
 
     expect(byName(sink, WORKFLOW_PHASE_SPAN)).toEqual([]);
     expect(named(sink, "solo")?.parentSpanId).toBe(
@@ -107,8 +107,8 @@ describe("concurrent runs", () => {
     telemetry.runStarted("r2", { background: true, name: "b" });
     telemetry.phaseStarted("r1", "A");
     telemetry.phaseStarted("r2", "B");
-    telemetry.agentStarted("r1", { id: 1, label: "in-a" });
-    telemetry.agentStarted("r2", { id: 1, label: "in-b" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "in-a" });
+    telemetry.agentStarted("r2", { callId: "c1", id: 1, label: "in-b" });
 
     const phaseA = byName(sink, WORKFLOW_PHASE_SPAN).find(
       (s) => s.attributes["semla.workflow.phase.title"] === "A",
@@ -127,10 +127,10 @@ describe("concurrent runs", () => {
 
     telemetry.runStarted("r1", { background: false, name: "a" });
     telemetry.runStarted("r2", { background: false, name: "b" });
-    telemetry.agentStarted("r1", { id: 1, label: "in-a" });
-    telemetry.agentStarted("r2", { id: 1, label: "in-b" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "in-a" });
+    telemetry.agentStarted("r2", { callId: "c1", id: 1, label: "in-b" });
 
-    telemetry.agentEnded("r1", { id: 1, status: "done" });
+    telemetry.agentEnded("r1", { callId: "c1", status: "done" });
 
     expect(named(sink, "in-a")?.endTimeMs).not.toBeNull();
     expect(named(sink, "in-b")?.endTimeMs).toBeNull();
@@ -156,11 +156,11 @@ describe("everything closes", () => {
 
     telemetry.runStarted("r1", { background: false, name: "w" });
     telemetry.phaseStarted("r1", "One");
-    telemetry.agentStarted("r1", { id: 1, label: "a" });
-    telemetry.agentEnded("r1", { id: 1, status: "done" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "a" });
+    telemetry.agentEnded("r1", { callId: "c1", status: "done" });
     telemetry.phaseStarted("r1", "Two");
-    telemetry.agentStarted("r1", { id: 2, label: "b" });
-    telemetry.agentEnded("r1", { id: 2, status: "done" });
+    telemetry.agentStarted("r1", { callId: "c2", id: 2, label: "b" });
+    telemetry.agentEnded("r1", { callId: "c2", status: "done" });
     telemetry.runEnded("r1", { status: "completed" });
 
     expect(sink.counts.open).toBe(0);
@@ -176,7 +176,7 @@ describe("everything closes", () => {
     const { sink, telemetry } = setup();
 
     telemetry.runStarted("r1", { background: false, name: "w" });
-    telemetry.agentStarted("r1", { id: 1, label: "abandoned" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "abandoned" });
     telemetry.runEnded("r1", { status: "aborted" });
 
     expect(sink.counts.open).toBe(0);
@@ -204,7 +204,7 @@ describe("everything closes", () => {
     const { sink, telemetry } = setup();
 
     telemetry.runStarted("r1", { background: false, name: "w" });
-    telemetry.agentStarted("r1", { id: 1, label: "first-pass" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "first-pass" });
     telemetry.runStarted("r1", { background: false, name: "w" });
 
     expect(byName(sink, WORKFLOW_RUN_SPAN)).toHaveLength(2);
@@ -224,8 +224,8 @@ describe("callbacks for a run it never saw", () => {
 
     expect(() => {
       telemetry.phaseStarted("ghost", "One");
-      telemetry.agentStarted("ghost", { id: 1, label: "a" });
-      telemetry.agentEnded("ghost", { id: 1, status: "done" });
+      telemetry.agentStarted("ghost", { callId: "c1", id: 1, label: "a" });
+      telemetry.agentEnded("ghost", { callId: "c1", status: "done" });
       telemetry.runEnded("ghost", { status: "completed" });
     }).not.toThrow();
 
@@ -237,7 +237,7 @@ describe("callbacks for a run it never saw", () => {
     telemetry.runStarted("r1", { background: false, name: "w" });
 
     expect(() =>
-      telemetry.agentEnded("r1", { id: 99, status: "done" }),
+      telemetry.agentEnded("r1", { callId: "c99", status: "done" }),
     ).not.toThrow();
     expect(byName(sink, WORKFLOW_AGENT_SPAN)).toEqual([]);
   });
@@ -273,14 +273,15 @@ describe("attributes", () => {
 
     telemetry.runStarted("r1", { background: false, name: "w" });
     telemetry.agentStarted("r1", {
+      callId: "c1",
       id: 1,
       label: "a",
       model: "openrouter/anthropic/claude-sonnet-5",
       prompt: "do the thing",
     });
     telemetry.agentEnded("r1", {
+      callId: "c1",
       cost: 0.42,
-      id: 1,
       status: "done",
       totalTokens: 1234,
       turns: 3,
@@ -300,10 +301,11 @@ describe("attributes", () => {
     const { sink, telemetry } = setup();
 
     telemetry.runStarted("r1", { background: false, name: "w" });
-    telemetry.agentStarted("r1", { id: 1, label: "a" });
-    telemetry.agentEnded("r1", { id: 1, status: "done" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "a" });
+    telemetry.agentEnded("r1", { callId: "c1", status: "done" });
 
     expect(Object.keys(named(sink, "a")?.attributes ?? {})).toEqual([
+      "semla.workflow.agent.call_id",
       "semla.workflow.agent.id",
       "semla.workflow.agent.label",
       "semla.workflow.agent.status",
@@ -315,8 +317,8 @@ describe("attributes", () => {
 
     telemetry.runStarted("r1", { background: false, name: "w" });
     telemetry.phaseStarted("r1", "One");
-    telemetry.agentStarted("r1", { id: 1, label: "a" });
-    telemetry.agentStarted("r1", { id: 2, label: "b" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "a" });
+    telemetry.agentStarted("r1", { callId: "c2", id: 2, label: "b" });
     telemetry.phaseStarted("r1", "Two");
 
     expect(
@@ -330,8 +332,8 @@ describe("attributes", () => {
     const { sink, telemetry } = setup();
 
     telemetry.runStarted("r1", { background: false, name: "w" });
-    telemetry.agentStarted("r1", { id: 1, label: "a" });
-    telemetry.agentEnded("r1", { id: 1, status: "error" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "a" });
+    telemetry.agentEnded("r1", { callId: "c1", status: "error" });
 
     expect(named(sink, "a")?.status).toMatchObject({
       status: "error",

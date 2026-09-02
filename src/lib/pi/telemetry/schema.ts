@@ -68,9 +68,11 @@ export const SEMLA_TELEMETRY_SCHEMA = defineTelemetrySchema({
           type: "number",
         },
         "semla.workflow.status": {
-          description: "Terminal run status.",
+          description:
+            "How the run's span ended. \"paused\" is terminal for the span but " +
+            "not for the run: a resume opens a new one under the same run id.",
           type: "string",
-          values: ["completed", "failed", "aborted"],
+          values: ["completed", "failed", "aborted", "paused"],
           cardinality: "low",
         },
       },
@@ -115,11 +117,20 @@ export const SEMLA_TELEMETRY_SCHEMA = defineTelemetrySchema({
         spans: [WORKFLOW_PHASE_SPAN, WORKFLOW_RUN_SPAN],
       },
       startAttributes: {
+        "semla.workflow.agent.call_id": {
+          description:
+            "Unique per agent() call, not per label — concurrent agents " +
+            "routinely share a label. The key everything per-agent hangs off.",
+          type: "string",
+          required: true,
+          cardinality: "high",
+        },
         "semla.workflow.agent.id": {
           description:
-            "Agent id within the run — unique per agent() call, not per label.",
+            "The agent's position in the run snapshot, which is what the " +
+            "workflow panel and the waterfall identify it by.",
           type: "number",
-          required: true,
+          required: false,
         },
         "semla.workflow.agent.label": {
           description: "Human label from the agent() call.",
