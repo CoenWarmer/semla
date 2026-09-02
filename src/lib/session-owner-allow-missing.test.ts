@@ -113,6 +113,9 @@ describe("which handlers may allow a missing session", () => {
   it("is exactly the read-only polls a pending session makes", () => {
     expect([...tolerant].sort()).toEqual([
       "GET src/app/api/sessions/[id]/context-check/route.ts",
+      // The trace the panel loads on mount, for the same reason as /status:
+      // a session created by its own first prompt is read before it exists.
+      "GET src/app/api/sessions/[id]/spans/route.ts",
       "GET src/app/api/sessions/[id]/status/route.ts",
       "GET src/app/api/tools/route.ts",
     ]);

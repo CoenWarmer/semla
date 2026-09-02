@@ -9,6 +9,11 @@ import {
 } from "@/hooks/use-session-messages";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { promptFailureMessage } from "@/lib/prompt-failure";
+import {
+  fetchSessionSpans,
+  mergeSpans,
+  sessionSpansKey,
+} from "@/lib/session-spans";
 import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
 import {
   projectChangeInvalidations,
@@ -217,10 +222,24 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     () => new Map(),
   );
   /**
-   * The same spans as an array, memoised so the timeline is not handed a new
-   * one on every unrelated re-render of the page.
+   * What this session has recorded, from disk and from the live stream.
+   *
+   * The query is what makes a reload keep its trace: live spans only ever
+   * existed in the turn's stream, so without it the timeline falls back to the
+   * derived one the moment the page refreshes.
    */
-  const spans = useMemo(() => [...spansById.values()], [spansById]);
+  const { data: persistedSpans } = useQuery({
+    queryKey: sessionSpansKey(sessionId),
+    queryFn: () => fetchSessionSpans(sessionId),
+    // The file only grows through this page's own turns, which arrive on the
+    // stream anyway. Nothing to poll for.
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  const spans = useMemo(
+    () => mergeSpans(persistedSpans ?? [], spansById),
+    [persistedSpans, spansById],
+  );
   const wikiActiveRef = useRef(false);
   /**
    * The title the server derived from the first prompt.

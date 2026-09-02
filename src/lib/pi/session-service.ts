@@ -76,6 +76,7 @@ import {
   retainSpanSink,
 } from "@/lib/pi/telemetry/sink-registry";
 import { createSpanPublisher } from "@/lib/pi/telemetry/span-publisher";
+import { appendSpans } from "@/lib/pi/telemetry/span-store";
 import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
@@ -386,15 +387,23 @@ export const runPiPrompt = async ({
    * turn end so the last closes are not left behind by the timer.
    */
   let spanFlush: ReturnType<typeof setTimeout> | undefined;
-  const flushSpans = () => {
+  /**
+   * One batch, two destinations: the stream for this page, and the file for
+   * the next one. Both want the same delta, and computing it once is what
+   * keeps them from disagreeing about what has been seen.
+   */
+  const flushSpans = async () => {
     const pending = spanPublisher.pending(spanSink.spans());
-    if (pending.length > 0) emit({ spans: pending, type: "spans" });
+    if (pending.length === 0) return;
+    emit({ spans: pending, type: "spans" });
+    await appendSpans(semlaSessionId, pending);
   };
   const scheduleSpanFlush = () => {
     if (spanFlush) return;
     spanFlush = setTimeout(() => {
       spanFlush = undefined;
-      flushSpans();
+      // Not awaited: this is a timer, and `appendSpans` never rejects.
+      void flushSpans();
     }, SPAN_FLUSH_MS);
   };
 
@@ -620,7 +629,9 @@ export const runPiPrompt = async ({
     // the stream is about to shut. Cancel it and send them synchronously.
     if (spanFlush) clearTimeout(spanFlush);
     spanFlush = undefined;
-    flushSpans();
+    // Awaited, unlike the timer: after this the turn is over, and a
+    // fire-and-forget write here is a trace that loses its last spans.
+    await flushSpans();
     if (spanSink.counts.recorded > 0) {
       sessionLog(semlaSessionId, "spans recorded", {
         open: spanSink.counts.open,
