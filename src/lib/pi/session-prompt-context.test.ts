@@ -32,6 +32,8 @@ const supabaseWith = (rows: Record<string, unknown>) =>
         const data = rows[table] ?? null;
         const answer = {
           maybeSingle: async () => ({ data }),
+          // oxlint-disable-next-line no-thenable -- the point of this stub is
+          // to be a thenable, like the Supabase query builder it stands in for.
           then: (resolve: (value: { data: unknown }) => void) =>
             resolve({ data: Array.isArray(data) ? data : [] }),
         };

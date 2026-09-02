@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { PI_TOOLS, WIKI_EXTENSION_PATH } from "./runtime-config.ts";
 

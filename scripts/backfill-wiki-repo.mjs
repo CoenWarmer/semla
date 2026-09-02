@@ -3,7 +3,7 @@
 // Usage: node scripts/backfill-wiki-repo.mjs <repo-slug>
 // Example: node scripts/backfill-wiki-repo.mjs semla
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
 
 const repo = process.argv[2];

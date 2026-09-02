@@ -724,7 +724,7 @@ export function SessionWorkflowPanel({
   toolCalls?: SessionToolCall[];
   workflowRuns?: WorkflowRun[];
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, _setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
   const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null);
   const [liveNow, setLiveNow] = useState(() => Date.now());
