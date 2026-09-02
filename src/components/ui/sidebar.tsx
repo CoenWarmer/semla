@@ -82,7 +82,7 @@ function SidebarProvider({
     const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
     if (stored) {
       const n = parseInt(stored, 10)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // oxlint-disable-next-line react/set-state-in-effect
       if (!isNaN(n)) _setWidthPx(n)
     }
   }, [])

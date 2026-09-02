@@ -1,0 +1,63 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // The plugin set that eslint-config-next covered. react-perf, unicorn,
+  // promise, node and vitest are deliberately left off: they are curation this
+  // project has never linted against, and turning them on adds several hundred
+  // findings that say nothing about whether the code is correct.
+  "plugins": [
+    "typescript",
+    "react",
+    "react-hooks",
+    "nextjs",
+    "jsx-a11y",
+    "import",
+    "oxc"
+  ],
+
+  "categories": {
+    "correctness": "error"
+  },
+
+  "rules": {
+    // Next's automatic JSX runtime means React is never in scope, by design.
+    "react/react-in-jsx-scope": "off",
+
+    // Everything below is an error in oxlint's `correctness` category and was a
+    // warning under eslint-config-next. Keeping them warnings leaves the React
+    // Compiler rules — set-state-in-effect, refs, immutability,
+    // static-components — as the only things that fail the lint, which is the
+    // point: those are the ones that mean a component lost its optimisation.
+    "react-hooks/exhaustive-deps": "warn",
+    "nextjs/no-img-element": "warn",
+    "jsx-a11y/alt-text": "warn",
+    "jsx-a11y/anchor-has-content": "warn",
+    "jsx-a11y/aria-props": "warn",
+    "jsx-a11y/aria-unsupported-elements": "warn",
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/control-has-associated-label": "warn",
+    "jsx-a11y/heading-has-content": "warn",
+    "jsx-a11y/media-has-caption": "warn",
+    "jsx-a11y/no-autofocus": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/prefer-tag-over-role": "warn",
+    "jsx-a11y/role-has-required-aria-props": "warn",
+    "jsx-a11y/role-supports-aria-props": "warn"
+  },
+
+  "ignorePatterns": [
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    // Sibling dependency trees and their build output; see AGENTS.md.
+    ".pi/**",
+    // Runtime artefacts, not source.
+    ".semla-debug/**",
+    ".semla-sessions/**",
+    // Third-party source inlined from @quintinshaw/pi-dynamic-workflows;
+    // not subject to this project's lint rules.
+    "src/lib/pi/extensions/dynamic-workflows/**"
+  ]
+}

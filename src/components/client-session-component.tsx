@@ -224,7 +224,7 @@ export function ClientSessionComponent({
       return () => clearInterval(id);
     }
     startTimeRef.current = null;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // oxlint-disable-next-line react/set-state-in-effect
     setElapsedMs(0);
   }, [isActive]);
 
@@ -355,7 +355,7 @@ export function ClientSessionComponent({
     // promptMutation and handleGoalSave are deliberately omitted: they change
     // identity every render, and rescheduling the timer on each one could
     // starve it. Both are only read inside the timeout.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [consumePendingPrompt, sessionId]);
 
   return (

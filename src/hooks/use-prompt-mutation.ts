@@ -281,7 +281,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         }
       },
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -369,7 +369,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     };
 
     void reconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   useEffect(() => {

@@ -105,6 +105,28 @@ when the importing module was itself loaded by jiti, so reach for a package's
 
 Run tsc, lint and test to make sure your changes are valid.
 
+`npm run lint` is oxlint, configured in `.oxlintrc.json`. It replaced ESLint and
+`eslint-config-next`, which are no longer installed — `next build` does not run a
+linter in Next 16, so nothing else depends on them.
+
+The reason the swap was safe is that oxlint implements the React Compiler rules
+this repository actually relies on. `reactCompiler` is on in `next.config.ts`, so
+`react/set-state-in-effect`, `react/refs`, `react/immutability`,
+`react/static-components` and `react-hooks/exhaustive-deps` are the rules that
+tell you a component has fallen out of the compiler's reach. oxlint reports the
+same violations at the same sites eslint-config-next did.
+
+Two things to know before changing the config. Severities are pinned by name for
+the `jsx-a11y` and `nextjs` rules, because oxlint files those under `correctness`
+(error) while eslint-config-next raised them as warnings; the explicit `"warn"`
+entries keep the compiler rules the only errors, so a real one is not buried.
+And oxlint carries no type information, so a rule needing types — anything
+`@typescript-eslint` offered on the type-aware side — is not enabled here; tsc is
+what covers that ground. `oxlint --type-aware` exists but is not wired up.
+
+Suppressions are `// oxlint-disable-next-line <rule>`. oxlint still honours
+`eslint-disable` comments, but nothing in this repository should add one.
+
 `npm run audit:all` audits all three dependency trees, not just the root one.
 It is expected to be red until the exception above is resolved; the point is
 that the number is visible rather than hidden behind a clean root audit.

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, test } from "vitest";
 import { WorkflowManager } from "./extensions/dynamic-workflows/src/workflow-manager.ts";
 
 // A mock agent that resolves immediately — no real Pi session is started.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 const mockAgent = { run: async () => "mock result" } as any;
 
 let tmpDir: string;

@@ -167,5 +167,5 @@ Before committing, run:
 
 ```bash
 npm run tsc    # type check
-npm run lint   # eslint
+npm run lint   # oxlint
 ```

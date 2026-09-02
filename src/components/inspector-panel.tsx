@@ -107,7 +107,7 @@ export function InspectorPanel({
     if (!inspectionsLoading && !hasHistory && !trigger.isPending) {
       trigger.mutate();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [inspectionsLoading]);
 
   const handleIntervention = useCallback(

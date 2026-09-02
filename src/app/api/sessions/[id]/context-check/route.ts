@@ -147,7 +147,7 @@ async function runInspectorLlm(
   ].join("\n");
 
   const result = await modelRuntime.completeSimple(model, {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any
     messages: [{ content: [{ text: userPrompt, type: "text" }], role: "user", timestamp: 0 }] as any,
     systemPrompt: INSPECTOR_SYSTEM_PROMPT,
   });
