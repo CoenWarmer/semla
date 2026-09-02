@@ -20,6 +20,7 @@
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "^0.84.2",
+    "@mrclrchtr/supi-code-intelligence": "6.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@react-sigma/core": "^5.0.6",

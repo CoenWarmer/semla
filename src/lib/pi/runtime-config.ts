@@ -36,6 +36,22 @@ export const ASK_USER_EXTENSION_PATH = join(
   "src/lib/pi/extensions/ask-user.ts",
 );
 
+// Code intelligence: LSP- and tree-sitter-backed navigation. Declared in this
+// repository's package.json and loaded from root node_modules by path, not
+// through pi's package resolution out of .pi/npm — see the extension-dependency
+// decision in AGENTS.md.
+//
+// The *headless* profile deliberately, not the full interactive one. It
+// registers six inspection tools and needs nothing but registerTool and on,
+// where the interactive profile also contributes settings, a footer, a slash
+// command and two refactor tools that can apply edits. Semla renders none of
+// that UI, and an agent that can rewrite files behind a code-navigation tool is
+// not what this is here for.
+export const CODE_INTELLIGENCE_EXTENSION_PATH = join(
+  process.cwd(),
+  "node_modules/@mrclrchtr/supi-code-intelligence/src/headless.ts",
+);
+
 // Resolves a call graph with the TypeScript checker and draws it in the session
 // panel. Registered here rather than taken from a package because owning the
 // tool is what keeps the structured map intact through the tool result.

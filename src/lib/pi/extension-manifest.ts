@@ -29,6 +29,7 @@ import {
 } from "@/lib/pi/extension-contract";
 import {
   ASK_USER_EXTENSION_PATH,
+  CODE_INTELLIGENCE_EXTENSION_PATH,
   CODE_MAP_EXTENSION_PATH,
   INSTALL_GUARD_EXTENSION_PATH,
   PI_TOOLS,
@@ -41,6 +42,7 @@ export type ExtensionId =
   | "workflow"
   | "ask-user"
   | "code-map"
+  | "code-intelligence"
   | "install-guard"
   | "wiki"
   | "wiki-ingest-bridge";
@@ -137,6 +139,26 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/code-map.ts.",
+  },
+  {
+    id: "code-intelligence",
+    path: CODE_INTELLIGENCE_EXTENSION_PATH,
+    requires: [],
+    // Exactly what the headless profile registers, which is asserted against
+    // the package itself in code-intelligence-contract.test.ts rather than
+    // trusted to stay true across releases.
+    providesTools: [
+      "code_resolve",
+      "code_inspect",
+      "code_orientation",
+      "code_graph",
+      "code_find",
+      "code_health",
+    ],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "Run `npm install` — @mrclrchtr/supi-code-intelligence is declared in this repo's package.json and loaded from root node_modules.",
   },
   {
     id: "install-guard",

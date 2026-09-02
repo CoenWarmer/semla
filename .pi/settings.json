@@ -1,7 +1,6 @@
 {
   "packages": [
     "./packages/semla-otel",
-    "npm:@zosmaai/pi-llm-wiki",
-    "npm:@mrclrchtr/supi-code-intelligence"
+    "npm:@zosmaai/pi-llm-wiki"
   ]
 }
