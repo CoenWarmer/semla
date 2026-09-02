@@ -50,6 +50,7 @@ import {
   writeSlot,
   type BridgeRunNotifier,
 } from "@/lib/pi/extension-contract";
+import { unfinishedBackgroundRunId } from "@/lib/pi/background-run-recovery";
 import { followBridgeRunProgress } from "@/lib/pi/bridge-run-progress";
 import { recordExtensionLoad } from "@/lib/pi/extension-health";
 import {
@@ -80,6 +81,7 @@ import {
   publishToSessionStream,
 } from "@/lib/pi/session-stream-store";
 import {
+  isRunTerminal,
   readWorkflowRun,
   workflowRunPath,
   type PersistedRunState,
@@ -211,15 +213,6 @@ const liveSnapshot = (
   const withId = withRunId(snapshot, runId);
   return withId.runId ? stampLiveTimestamps(withId.runId, withId) : withId;
 };
-
-// Run states after which no further agent work happens, so a result that has
-// not been delivered yet never will be without intervention.
-const TERMINAL_RUN_STATUSES = new Set(["aborted", "completed", "failed"]);
-
-const isRunTerminal = (
-  run: PersistedRunState | null,
-): run is PersistedRunState =>
-  run !== null && TERMINAL_RUN_STATUSES.has(run.status);
 
 // The message pi-dynamic-workflows would have delivered for a finished run.
 // Used by both recovery paths: the in-continuation watchdog and the
@@ -839,25 +832,46 @@ export const runPiPrompt = async ({
         session.dispose();
       }
       detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
-    } else if (hasBackgroundWorkflow) {
+    } else {
       // Keep the session alive to receive background workflow progress and the
       // final report turn that pi delivers when the workflow completes.
       // is_running stays true until runBackgroundContinuation clears it.
-      const bgAbort = new AbortController();
-      bgAbortControllers.set(semlaSessionId, bgAbort);
-      void runBackgroundContinuation(
-        piSession.id,
-        semlaSessionId,
-        session,
-        debug,
-        detectedBackgroundRunId,
-        bgAbort.signal,
-        projects,
-      );
-    } else {
-      log(semlaSessionId, "session disposed");
-      session.dispose();
-      detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+      //
+      // Not only for a workflow *this* turn started. Every new prompt aborts
+      // the previous continuation, so a turn that merely chats — "how is it
+      // going?" — would otherwise leave an earlier workflow running with
+      // nothing watching it: no snapshots, so the panel freezes; no running
+      // flag, so the UI reads idle; no watchdog, so the result waits for the
+      // next prompt. Asking the session what it still has in flight covers
+      // both cases with one branch.
+      const watchRunId = hasBackgroundWorkflow
+        ? detectedBackgroundRunId
+        : unfinishedBackgroundRunId(semlaSessionId, PI_WORKSPACE_ROOT);
+
+      if (hasBackgroundWorkflow || watchRunId) {
+        if (!hasBackgroundWorkflow) {
+          log(semlaSessionId, "re-arming continuation for an earlier run", {
+            run: watchRunId,
+          });
+          detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
+        }
+
+        const bgAbort = new AbortController();
+        bgAbortControllers.set(semlaSessionId, bgAbort);
+        void runBackgroundContinuation(
+          piSession.id,
+          semlaSessionId,
+          session,
+          debug,
+          watchRunId,
+          bgAbort.signal,
+          projects,
+        );
+      } else {
+        log(semlaSessionId, "session disposed");
+        session.dispose();
+        detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+      }
     }
   }
 };

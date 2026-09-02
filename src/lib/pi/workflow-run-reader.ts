@@ -107,6 +107,25 @@ function workflowRunsDir(cwd: string): string {
 
 /** Canonical on-disk path of a run's persisted state, for pointing the model
  *  (or a human) at the full result of a run we only summarise. */
+/**
+ * Run states after which no further agent work happens.
+ *
+ * Shared rather than redeclared: a turn deciding whether to keep watching a run
+ * and a recovery path deciding whether to deliver its result must agree on what
+ * "finished" means, and two copies of this set would drift into a workflow that
+ * one half thinks is over and the other is still waiting on.
+ */
+export const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "aborted",
+  "completed",
+  "failed",
+]);
+
+export const isRunTerminal = (
+  run: PersistedRunState | null,
+): run is PersistedRunState =>
+  run !== null && TERMINAL_RUN_STATUSES.has(run.status);
+
 export function workflowRunPath(cwd: string, runId: string): string {
   const jsonPath = join(workflowRunsDir(cwd), `${runId}.json`);
   if (existsSync(jsonPath)) return jsonPath;
