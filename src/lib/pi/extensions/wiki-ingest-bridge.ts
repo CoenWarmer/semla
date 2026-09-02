@@ -173,7 +173,7 @@ function buildVaultPaths(): WikiVaultPaths {
 // ── Dynamic import for pi-llm-wiki runtime functions ─────────────────────────
 //
 // The package's *compiled* output, not its TypeScript source. These are plain
-// `await import()` calls, and a dynamic import of a .ts file only resolves when
+// `await import(/* turbopackIgnore: true */ )` calls, and a dynamic import of a .ts file only resolves when
 // the importing module was itself loaded by jiti — which stopped being true when
 // this extension became a statically imported factory. The dist build is ESM
 // JavaScript, so Node loads it directly.
@@ -226,14 +226,14 @@ function createRunReindexTool(embedder: WikiEmbedder, paths: WikiVaultPaths, for
     promptSnippet: "Run the embedding reindex",
     parameters: Type.Object({}),
     async execute() {
-      const embeddings = (await import(EMBEDDINGS_PATH)) as {
+      const embeddings = (await import(/* turbopackIgnore: true */ EMBEDDINGS_PATH)) as {
         reindexEmbeddings: (
           paths: WikiVaultPaths,
           embedder: WikiEmbedder,
           opts: { force?: boolean },
         ) => Promise<ReindexStats>;
       };
-      const meta = (await import(METADATA_PATH)) as { appendEvent: AppendEventFn };
+      const meta = (await import(/* turbopackIgnore: true */ METADATA_PATH)) as { appendEvent: AppendEventFn };
 
       const stats = await embeddings.reindexEmbeddings(paths, embedder, { force });
 
@@ -382,8 +382,8 @@ function createBatchCommitSynthesisTool(
         };
       }
 
-      const worker = (await import(INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
-      const meta = (await import(METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
+      const worker = (await import(/* turbopackIgnore: true */ INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
+      const meta = (await import(/* turbopackIgnore: true */ METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
 
       // Deliberately the *source's* repo, not the session's. pi-llm-wiki reads
       // one literal symbol for the dispatcher and calls it with sources only,

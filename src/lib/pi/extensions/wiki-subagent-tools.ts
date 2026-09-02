@@ -83,7 +83,7 @@ export const WIKI_TOOLS_WITHHELD_FROM_SUBAGENTS: Readonly<
 
 const WIKI_TOOLS_MODULE = join(
   process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/tools.ts",
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/tools.js",
 );
 
 /**
@@ -243,7 +243,7 @@ export function rejectUnfetchableUrl(
 
 const METADATA_MODULE = join(
   process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/metadata.ts",
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/metadata.js",
 );
 
 /** Mirrors getVaultPaths in pi-llm-wiki utils.ts. */
@@ -283,7 +283,7 @@ async function rebuildVaultMetadata(wikiHome: string): Promise<void> {
   // worth reporting — it is a vault being exercised without the wiki installed.
   if (!existsSync(METADATA_MODULE)) return;
   try {
-    const meta = (await import(METADATA_MODULE)) as {
+    const meta = (await import(/* turbopackIgnore: true */ METADATA_MODULE)) as {
       rebuildMetadataLight: (paths: ReturnType<typeof vaultPaths>) => { ok?: boolean };
     };
     const result = meta.rebuildMetadataLight(vaultPaths(wikiHome));
@@ -485,7 +485,7 @@ export async function collectWikiSubagentTools<T extends ExecutableTool>(
   pi: object,
   guard: VaultGuardOptions,
 ): Promise<T[]> {
-  const registrars = (await import(WIKI_TOOLS_MODULE)) as Record<
+  const registrars = (await import(/* turbopackIgnore: true */ WIKI_TOOLS_MODULE)) as Record<
     string,
     ((collector: object) => void) | undefined
   >;

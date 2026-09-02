@@ -21,6 +21,7 @@ import {
   assertManifestIsCoherent,
   describeExtensionProblems,
   EXTENSION_MANIFEST,
+  extensionEntryId,
   resolveExtensionLoadOrder,
   type ExtensionLoadReport,
 } from "@/lib/pi/extension-manifest";
@@ -98,7 +99,7 @@ export function getExtensionHealth(): ExtensionHealth {
     contractVersion: EXTENSION_CONTRACT_VERSION,
     manifest: ordered.map((spec) => ({
       id: spec.id,
-      path: spec.path,
+      path: extensionEntryId(spec),
       requires: [...spec.requires],
       providesTools: [...spec.providesTools],
       optionalTools: [...spec.optionalTools],

@@ -40,6 +40,7 @@ import {
   assertExtensionPathsExist,
   assertManifestIsCoherent,
   buildExtensionLoadReport,
+  extensionFactoriesInLoadOrder,
   extensionPathsInLoadOrder,
 } from "@/lib/pi/extension-manifest";
 import {
@@ -509,7 +510,11 @@ export const runPiPrompt = async ({
   assertExtensionPathsExist();
 
   const resourceLoader = new DefaultResourceLoader({
+    // Paths first, then factories — that is the order Pi loads them in, and the
+    // manifest relies on it: wiki-ingest-bridge is a factory that requires the
+    // path-loaded wiki extension. assertManifestIsCoherent enforces it.
     additionalExtensionPaths: extensionPathsInLoadOrder(),
+    extensionFactories: extensionFactoriesInLoadOrder(),
     additionalSkillPaths: [WORKFLOW_SKILLS_PATH],
     agentDir: PI_AGENT_DIR,
     cwd: PI_WORKSPACE_ROOT,

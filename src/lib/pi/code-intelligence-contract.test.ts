@@ -76,7 +76,12 @@ describe(`${PACKAGE} tool set`, () => {
     // package that failed to load became a session with no tools and only a
     // console warning.
     expect(spec).toBeDefined();
-    expect(spec?.path).toBe(CODE_INTELLIGENCE_EXTENSION_PATH);
+    // Loaded by path on purpose: the package publishes TypeScript source, so
+    // Pi's loader has to compile it. See ExtensionSource.
+    expect(spec?.source).toEqual({
+      kind: "path",
+      path: CODE_INTELLIGENCE_EXTENSION_PATH,
+    });
   });
 
   it.skipIf(!installed)(

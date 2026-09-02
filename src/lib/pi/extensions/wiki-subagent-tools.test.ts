@@ -94,8 +94,12 @@ describe("collectWikiSubagentTools", () => {
     }
   });
 
-  it("declares the module it reaches into", () => {
-    expect(WIKI_SUBAGENT_DEEP_IMPORTS[0]!.path).toMatch(/pi-llm-wiki.*lib\/tools\.ts$/);
+  it("reaches into the package's compiled output, not its source", () => {
+    // A dynamic import of .ts only resolves when the importing module is itself
+    // loaded by jiti. This one is bundled now, so it must be the dist build.
+    expect(WIKI_SUBAGENT_DEEP_IMPORTS[0]!.path).toMatch(
+      /pi-llm-wiki\/dist\/.*lib\/tools\.js$/,
+    );
   });
 });
 

@@ -19,6 +19,8 @@
 
 import { statSync } from "node:fs";
 
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+
 import {
   ACTIVE_WORKFLOW_MANAGER,
   hasSlot,
@@ -28,15 +30,17 @@ import {
   type ContractSlotKey,
 } from "@/lib/pi/extension-contract";
 import {
-  ASK_USER_EXTENSION_PATH,
   CODE_INTELLIGENCE_EXTENSION_PATH,
-  CODE_MAP_EXTENSION_PATH,
-  INSTALL_GUARD_EXTENSION_PATH,
   PI_TOOLS,
   WIKI_EXTENSION_PATH,
-  WIKI_INGEST_BRIDGE_PATH,
-  WORKFLOW_EXTENSION_PATH,
 } from "@/lib/pi/runtime-config";
+
+// Semla's own extensions, imported rather than pointed at. See ExtensionSource.
+import askUserExtension from "@/lib/pi/extensions/ask-user";
+import codeMapExtension from "@/lib/pi/extensions/code-map";
+import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
+import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
+import workflowExtension from "@/lib/pi/extensions/workflow";
 
 export type ExtensionId =
   | "workflow"
@@ -47,11 +51,31 @@ export type ExtensionId =
   | "wiki"
   | "wiki-ingest-bridge";
 
+/**
+ * How Pi gets hold of an extension.
+ *
+ * `factory` is an imported function, handed to Pi as an inline extension. This
+ * is what Semla's own extensions use: they are then compiled by the same
+ * toolchain as the rest of the app, so tsc and the runtime finally resolve
+ * imports the same way, the "@/" alias works, and an edit is picked up by HMR
+ * instead of needing the extension cache cleared.
+ *
+ * `path` is an entry file for Pi's own loader, which compiles it with jiti.
+ * Reserved for third-party packages that publish TypeScript source: Node
+ * refuses to strip types under node_modules, and bundling them breaks the
+ * `import.meta.url` that @mrclrchtr/supi-tree-sitter uses to find its 31
+ * grammar files and spawn its worker. jiti transpiles in place, which is
+ * precisely why those packages expect it.
+ */
+export type ExtensionSource =
+  | { kind: "factory"; factory: ExtensionFactory }
+  | { kind: "path"; path: string };
+
 export type ExtensionSpec = {
   /** Stable identifier, used in `requires` and in diagnostics. */
   id: ExtensionId;
-  /** Absolute path to the entry file handed to Pi's resource loader. */
-  path: string;
+  /** Where the extension comes from. */
+  source: ExtensionSource;
   /** Extensions that must be loaded before this one. */
   requires: readonly ExtensionId[];
   /** Tool names this extension must have registered once bound. */
@@ -108,7 +132,7 @@ const WIKI_TRAJECTORY_TOOLS = [
 export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
   {
     id: "workflow",
-    path: WORKFLOW_EXTENSION_PATH,
+    source: { factory: workflowExtension, kind: "factory" },
     requires: [],
     providesTools: ["workflow", "workflow_control"],
     optionalTools: [],
@@ -116,21 +140,21 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     // bindExtensions() — so it is present by the time verification runs.
     providesSlots: [ACTIVE_WORKFLOW_MANAGER],
     remedy:
-      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/workflow.ts.",
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/workflow.ts.",
   },
   {
     id: "ask-user",
-    path: ASK_USER_EXTENSION_PATH,
+    source: { factory: askUserExtension, kind: "factory" },
     requires: [],
     providesTools: ["ask_user"],
     optionalTools: [],
     providesSlots: [],
     remedy:
-      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/ask-user.ts.",
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/ask-user.ts.",
   },
   {
     id: "code-map",
-    path: CODE_MAP_EXTENSION_PATH,
+    source: { factory: codeMapExtension, kind: "factory" },
     // Reads the project with the TypeScript checker and returns a structured
     // map; depends on nothing else in the session.
     requires: [],
@@ -138,11 +162,11 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     optionalTools: [],
     providesSlots: [],
     remedy:
-      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/code-map.ts.",
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/code-map.ts.",
   },
   {
     id: "code-intelligence",
-    path: CODE_INTELLIGENCE_EXTENSION_PATH,
+    source: { kind: "path", path: CODE_INTELLIGENCE_EXTENSION_PATH },
     requires: [],
     // Exactly what the headless profile registers, which is asserted against
     // the package itself in code-intelligence-contract.test.ts rather than
@@ -162,7 +186,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
   },
   {
     id: "install-guard",
-    path: INSTALL_GUARD_EXTENSION_PATH,
+    source: { factory: installGuardExtension, kind: "factory" },
     // Blocks tool calls rather than contributing any, so it depends on nothing
     // and nothing depends on it.
     requires: [],
@@ -170,11 +194,11 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     optionalTools: [],
     providesSlots: [],
     remedy:
-      "This extension lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/install-guard-extension.ts.",
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/install-guard-extension.ts.",
   },
   {
     id: "wiki",
-    path: WIKI_EXTENSION_PATH,
+    source: { kind: "path", path: WIKI_EXTENSION_PATH },
     requires: [],
     providesTools: WIKI_TOOLS,
     optionalTools: WIKI_TRAJECTORY_TOOLS,
@@ -184,7 +208,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
   },
   {
     id: "wiki-ingest-bridge",
-    path: WIKI_INGEST_BRIDGE_PATH,
+    source: { factory: wikiIngestBridgeExtension, kind: "factory" },
     // Needs the workflow manager slot, and replaces a pi-llm-wiki code path —
     // both must already be in place when its dispatchers are installed.
     requires: ["workflow", "wiki"],
@@ -192,7 +216,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     optionalTools: [],
     providesSlots: [WIKI_INGEST_DISPATCHER, WIKI_REINDEX_DISPATCHER],
     remedy:
-      "This bridge lives in this repo; a load error here is a code or import problem in src/lib/pi/extensions/wiki-ingest-bridge.ts.",
+      "This bridge is imported directly; a failure here is a code problem in src/lib/pi/extensions/wiki-ingest-bridge.ts.",
   },
 ] as const;
 
@@ -248,11 +272,42 @@ export function resolveExtensionLoadOrder(
   return ordered;
 }
 
+/**
+ * What Pi reports as an extension's `path`, whichever way it was loaded.
+ *
+ * Pi labels an inline extension `<inline:{name}>`, and Semla passes the spec id
+ * as that name — so this one value identifies a spec in the loaded set for both
+ * kinds, and the load report needs no branch.
+ */
+export function extensionEntryId(spec: ExtensionSpec): string {
+  return spec.source.kind === "path"
+    ? spec.source.path
+    : `<inline:${spec.id}>`;
+}
+
 /** The `additionalExtensionPaths` array, in dependency order. */
 export function extensionPathsInLoadOrder(
   specs: readonly ExtensionSpec[] = EXTENSION_MANIFEST,
 ): string[] {
-  return resolveExtensionLoadOrder(specs).map((spec) => spec.path);
+  return resolveExtensionLoadOrder(specs).flatMap((spec) =>
+    spec.source.kind === "path" ? [spec.source.path] : [],
+  );
+}
+
+/**
+ * The `extensionFactories` array, in dependency order.
+ *
+ * Named with the spec id so Pi's `<inline:{name}>` label lines up with
+ * extensionEntryId.
+ */
+export function extensionFactoriesInLoadOrder(
+  specs: readonly ExtensionSpec[] = EXTENSION_MANIFEST,
+): Array<{ factory: ExtensionFactory; name: string }> {
+  return resolveExtensionLoadOrder(specs).flatMap((spec) =>
+    spec.source.kind === "factory"
+      ? [{ factory: spec.source.factory, name: spec.id }]
+      : [],
+  );
 }
 
 // ── Pre-load validation ──────────────────────────────────────────────────────
@@ -272,24 +327,29 @@ export function assertExtensionPathsExist(
   const problems: string[] = [];
 
   for (const spec of specs) {
-    if (!/\.(ts|js|mjs|cjs)$/.test(spec.path)) {
+    // Factories were imported at build time; a broken one is a compile error,
+    // not a missing file. Only Pi's own loader needs a path checked.
+    if (spec.source.kind !== "path") continue;
+    const path = spec.source.path;
+
+    if (!/\.(ts|js|mjs|cjs)$/.test(path)) {
       problems.push(
-        `${spec.id}: ${spec.path} is not an importable module file. ${spec.remedy}`,
+        `${spec.id}: ${path} is not an importable module file. ${spec.remedy}`,
       );
       continue;
     }
 
     let stat;
     try {
-      stat = statSync(spec.path);
+      stat = statSync(path);
     } catch {
-      problems.push(`${spec.id}: missing at ${spec.path}. ${spec.remedy}`);
+      problems.push(`${spec.id}: missing at ${path}. ${spec.remedy}`);
       continue;
     }
 
     if (!stat.isFile()) {
       problems.push(
-        `${spec.id}: ${spec.path} is a directory, not a file. ${spec.remedy}`,
+        `${spec.id}: ${path} is a directory, not a file. ${spec.remedy}`,
       );
     }
   }
@@ -336,6 +396,24 @@ export function assertManifestIsCoherent(
     }
   }
 
+  // Pi loads every path extension before any inline factory (see
+  // DefaultResourceLoader.loadFinalExtensionSet), so a path extension can never
+  // observe a factory. The topological sort cannot express that, and the failure
+  // would be a slot read as undefined rather than an error — so it is checked.
+  const byId = new Map(specs.map((spec) => [spec.id, spec]));
+  for (const spec of specs) {
+    if (spec.source.kind !== "path") continue;
+    for (const dependency of spec.requires) {
+      if (byId.get(dependency)?.source.kind === "factory") {
+        problems.push(
+          `"${spec.id}" is loaded from a path but requires "${dependency}", ` +
+            "which is an imported factory — Pi loads all paths before any factory, " +
+            `so "${dependency}" would not exist yet`,
+        );
+      }
+    }
+  }
+
   if (problems.length > 0) {
     throw new Error(`Pi extension manifest is inconsistent:\n- ${problems.join("\n- ")}`);
   }
@@ -345,6 +423,7 @@ export function assertManifestIsCoherent(
 
 export type ExtensionStatus = {
   id: ExtensionId;
+  /** Entry file, or `<inline:{id}>` for an imported factory. */
   path: string;
   loaded: boolean;
   /** Load error reported by Pi, if any. */
@@ -395,12 +474,13 @@ export function buildExtensionLoadReport({
     .map(([path]) => path);
 
   const extensions = specs.map((spec): ExtensionStatus => {
-    const loaded = loadedSet.has(spec.path);
+    const entry = extensionEntryId(spec);
+    const loaded = loadedSet.has(entry);
     return {
       id: spec.id,
-      path: spec.path,
+      path: entry,
       loaded,
-      error: errorByPath.get(spec.path) ?? null,
+      error: errorByPath.get(entry) ?? null,
       // Only report missing contributions for an extension that loaded — an
       // extension that failed outright already explains itself.
       missingTools: loaded
@@ -415,7 +495,7 @@ export function buildExtensionLoadReport({
     };
   });
 
-  const manifestPaths = new Set(specs.map((spec) => spec.path));
+  const manifestPaths = new Set(specs.map(extensionEntryId));
   const unexpectedErrors = loadErrors
     .filter(({ path }) => !manifestPaths.has(path))
     .map(({ path, error }) => `${path}: ${String(error)}`);

@@ -22,15 +22,18 @@ import {
   describeExtensionProblems,
   EXTENSION_MANIFEST,
   EXTENSION_TOOLS,
+  extensionEntryId,
+  extensionFactoriesInLoadOrder,
   extensionPathsInLoadOrder,
   resolveExtensionLoadOrder,
   type ExtensionSpec,
 } from "./extension-manifest.ts";
 import { PI_TOOLS } from "./runtime-config.ts";
 
+/** Path-loaded by default; pass `source` for a factory. */
 const spec = (over: Partial<ExtensionSpec> & Pick<ExtensionSpec, "id">) =>
   ({
-    path: `/tmp/${over.id}.ts`,
+    source: { kind: "path", path: `/tmp/${over.id}.ts` },
     requires: [],
     providesTools: [],
     optionalTools: [],
@@ -73,9 +76,42 @@ describe("load order", () => {
     expect(new Set(order.map((s) => s.id)).size).toBe(EXTENSION_MANIFEST.length);
   });
 
-  it("emits paths in the resolved order", () => {
+  it("emits paths in the resolved order, factories excluded", () => {
+    const ordered = resolveExtensionLoadOrder();
+
     expect(extensionPathsInLoadOrder()).toEqual(
-      resolveExtensionLoadOrder().map((s) => s.path),
+      ordered.flatMap((s) => (s.source.kind === "path" ? [s.source.path] : [])),
+    );
+  });
+
+  it("emits factories in the resolved order, named by id", () => {
+    const ordered = resolveExtensionLoadOrder();
+
+    expect(extensionFactoriesInLoadOrder().map((f) => f.name)).toEqual(
+      ordered.flatMap((s) => (s.source.kind === "factory" ? [s.id] : [])),
+    );
+  });
+
+  it("labels a factory the way Pi does, so the load report can match it", () => {
+    // Pi names an inline extension `<inline:{name}>`, and we pass the spec id.
+    expect(extensionEntryId(spec({ id: "workflow" }))).toBe("/tmp/workflow.ts");
+    expect(
+      extensionEntryId(
+        spec({ id: "workflow", source: { factory: () => {}, kind: "factory" } }),
+      ),
+    ).toBe("<inline:workflow>");
+  });
+
+  it("rejects a path extension that requires a factory", () => {
+    // Pi loads every path before any factory, so this dependency could never be
+    // satisfied — and would fail as an undefined slot rather than an error.
+    const bad = [
+      spec({ id: "workflow", source: { factory: () => {}, kind: "factory" } }),
+      spec({ id: "wiki", requires: ["workflow"] }),
+    ];
+
+    expect(() => assertManifestIsCoherent(bad)).toThrow(
+      /loaded from a path but requires "workflow"/,
     );
   });
 
@@ -157,7 +193,7 @@ describe("path validation", () => {
     const asDirectory = [
       spec({
         id: "wiki" as const,
-        path: process.cwd(),
+        source: { kind: "path", path: process.cwd() },
         remedy: "Run `npm install --prefix .pi/npm`.",
       }),
     ];
@@ -170,7 +206,7 @@ describe("path validation", () => {
     const missing = [
       spec({
         id: "wiki" as const,
-        path: "/tmp/definitely-not-installed.ts",
+        source: { kind: "path", path: "/tmp/definitely-not-installed.ts" },
         remedy: "Run `npm install --prefix .pi/npm`.",
       }),
     ];
@@ -184,13 +220,13 @@ describe("load report", () => {
   const specs = [
     spec({
       id: "workflow" as const,
-      path: "/tmp/workflow.ts",
+      source: { kind: "path", path: "/tmp/workflow.ts" },
       providesTools: ["workflow", "workflow_control"],
       providesSlots: [ACTIVE_WORKFLOW_MANAGER],
     }),
     spec({
       id: "wiki-ingest-bridge" as const,
-      path: "/tmp/bridge.ts",
+      source: { kind: "path", path: "/tmp/bridge.ts" },
       requires: ["workflow" as const],
       providesSlots: [WIKI_INGEST_DISPATCHER, WIKI_REINDEX_DISPATCHER],
     }),

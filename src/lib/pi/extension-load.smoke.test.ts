@@ -30,6 +30,7 @@ import type { ExtensionLoadReport, ExtensionSpec } from "./extension-manifest.ts
 const BOOT_TIMEOUT_MS = 180_000;
 
 type Loaded = {
+  entryId: (spec: ExtensionSpec) => string;
   report: ExtensionLoadReport;
   specs: readonly ExtensionSpec[];
   boundTools: string[];
@@ -70,6 +71,8 @@ beforeAll(async () => {
     assertManifestIsCoherent,
     buildExtensionLoadReport,
     EXTENSION_MANIFEST,
+    extensionEntryId,
+    extensionFactoriesInLoadOrder,
     extensionPathsInLoadOrder,
   } = await import("./extension-manifest.ts");
   const contract = await import("./extension-contract.ts");
@@ -104,7 +107,10 @@ beforeAll(async () => {
   );
 
   const resourceLoader = new DefaultResourceLoader({
+    // Both lists, exactly as session-service passes them — the point of this
+    // test is that the manifest matches the real runtime.
     additionalExtensionPaths: extensionPathsInLoadOrder(),
+    extensionFactories: extensionFactoriesInLoadOrder(),
     additionalSkillPaths: [WORKFLOW_SKILLS_PATH],
     agentDir,
     cwd: workspace,
@@ -126,6 +132,7 @@ beforeAll(async () => {
   const boundTools = session.getActiveToolNames();
 
   loaded = {
+    entryId: extensionEntryId,
     report: buildExtensionLoadReport({
       loadedPaths,
       loadErrors: extensionsResult.errors,
@@ -160,11 +167,12 @@ describe("Pi extension load (real session)", () => {
     });
 
   check("loads every extension in the manifest", (l) => {
+    const entryId = l.entryId;
     for (const spec of l.specs) {
       expect(
         l.loadedPaths,
         `${spec.id} did not load. ${spec.remedy}`,
-      ).toContain(spec.path);
+      ).toContain(entryId(spec));
     }
   });
 

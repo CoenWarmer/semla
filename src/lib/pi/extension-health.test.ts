@@ -9,6 +9,7 @@ import { getExtensionHealth, recordExtensionLoad } from "./extension-health.ts";
 import {
   buildExtensionLoadReport,
   EXTENSION_MANIFEST,
+  extensionEntryId,
 } from "./extension-manifest.ts";
 
 afterEach(() => {
@@ -41,7 +42,7 @@ describe("extension health", () => {
     // silent — the shape of a real degradation.
     recordExtensionLoad(
       buildExtensionLoadReport({
-        loadedPaths: EXTENSION_MANIFEST.map((s) => s.path),
+        loadedPaths: EXTENSION_MANIFEST.map(extensionEntryId),
         loadErrors: [],
         registeredTools: [],
       }),
@@ -67,7 +68,7 @@ describe("extension health", () => {
 
     recordExtensionLoad(
       buildExtensionLoadReport({
-        loadedPaths: EXTENSION_MANIFEST.map((s) => s.path),
+        loadedPaths: EXTENSION_MANIFEST.map(extensionEntryId),
         loadErrors: [],
         registeredTools: tools,
       }),
