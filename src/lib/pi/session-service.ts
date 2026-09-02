@@ -26,7 +26,10 @@ import {
   hasBackgroundContinuation,
 } from "@/lib/pi/bg-continuation-registry";
 import { followBridgeRunProgress } from "@/lib/pi/bridge-run-progress";
-import { createSessionDebugWriter } from "@/lib/pi/debug-writer";
+import {
+  createSessionDebugWriter,
+  type SessionPhase,
+} from "@/lib/pi/debug-writer";
 import {
   ACTIVE_WORKFLOW_MANAGER,
   BRIDGE_RUN_STARTED,
@@ -247,7 +250,22 @@ export const runPiPrompt = async ({
   });
   debug.onPromptStart(text, `${model.provider}/${model.modelId}`, tools);
 
+  /**
+   * Close off a phase and record how long it took.
+   *
+   * Everything from here to the first persisted entry was previously one
+   * unrecorded window, so a stalled provider request and a slow extension
+   * compile left identical artifacts. See SessionPhase.
+   */
+  let phaseMark = Date.now();
+  const phase = (name: SessionPhase) => {
+    const now = Date.now();
+    debug.onPhase(name, now - phaseMark);
+    phaseMark = now;
+  };
+
   const configuredModel = await getConfiguredModel(model);
+  phase("model-resolved");
   const piSession = await ensurePiSession(semlaSessionId, configuredModel);
   const persistedEntries = await fetchPersistedEntries(piSession.id);
 
@@ -262,6 +280,7 @@ export const runPiPrompt = async ({
     PI_SESSION_DIR,
     PI_WORKSPACE_ROOT,
   );
+  phase("session-loaded");
 
   // Before anything is appended: move the leaf so this turn lands where the
   // edited prompt was, rather than after the answer it is replacing.
@@ -323,6 +342,7 @@ export const runPiPrompt = async ({
     appendSystemPrompt: [systemPrompt ?? DEFAULT_SYSTEM_PROMPT],
   });
   await resourceLoader.reload();
+  phase("extensions-compiled");
 
   const { extensionsResult, session } = await createAgentSession({
     cwd: PI_WORKSPACE_ROOT,
@@ -331,6 +351,7 @@ export const runPiPrompt = async ({
     resourceLoader,
     sessionManager,
   });
+  phase("agent-created");
 
   // Registered before the turn starts so a stop request has something to reach.
   retainLiveSession(semlaSessionId, session);
@@ -364,6 +385,8 @@ export const runPiPrompt = async ({
   // what the manifest declared. Previously only a missing `workflow` tool was
   // fatal — every other extension could fail to load and the session would run
   // on silently without its tools.
+  phase("extensions-bound");
+
   const boundTools = session.getActiveToolNames();
   const extensionReport = buildExtensionLoadReport({
     loadedPaths: loadedExtensions,
@@ -423,6 +446,7 @@ export const runPiPrompt = async ({
       sessionWarn(semlaSessionId, `bg run recovery failed for ${run_id}: ${msg}`);
     }
   }
+  phase("stuck-runs-checked");
 
   // What this turn learns about background work as it streams, and what the
   // `finally` below reads to decide whether anything still needs watching.
@@ -464,8 +488,10 @@ export const runPiPrompt = async ({
 
   try {
     sessionLog(semlaSessionId, "prompting");
+    debug.onModelRequestStart();
     await session.prompt(text);
     await session.agent.waitForIdle();
+    phase("model-turn");
     const entries = session.sessionManager.getEntries();
     sessionLog(semlaSessionId, "prompt complete", {
       entries: entries.length,
@@ -488,6 +514,9 @@ export const runPiPrompt = async ({
     emit({ type: "complete" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Recorded on the way out too: how long a turn ran before it failed is the
+    // more interesting number, and a provider timeout arrives as a throw.
+    phase("model-turn");
     debug.onError(msg);
     throw new Error(msg);
   } finally {

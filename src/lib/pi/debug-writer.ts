@@ -18,9 +18,45 @@ function ts(): string {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
 
+/**
+ * The phases of a turn between the prompt arriving and the first entry being
+ * persisted.
+ *
+ * Everything here used to be one unrecorded window. A session that took 81
+ * seconds to answer "Hi how's it going?" produced an artifact in which the
+ * first event was the prompt and the next was a persisted entry 78 seconds
+ * later, so a stalled model request, a cold extension compile and an
+ * unreachable database were indistinguishable after the fact — in a tool whose
+ * point is traceability. Each phase now reports its own duration, because the
+ * event timestamps are only second-resolution.
+ */
+export type SessionPhase =
+  /** Resolving the model through ModelRuntime, including its availability fetch. */
+  | "model-resolved"
+  /** Reading the session's entries back out of Supabase and onto disk. */
+  | "session-loaded"
+  /** jiti compiling the path-loaded extensions. */
+  | "extensions-compiled"
+  /** createAgentSession. */
+  | "agent-created"
+  /** bindExtensions — where extension tools register and slots are published. */
+  | "extensions-bound"
+  /** Looking for background runs whose delivery was lost. */
+  | "stuck-runs-checked"
+  /** The agent loop: the model request and everything it drives. */
+  | "model-turn";
+
 export interface SessionDebugWriter {
   onPromptStart(text: string, model: string, tools: string[]): void;
   onSessionRestored(entryCount: number): void;
+  /** A phase completed, having taken `ms`. */
+  onPhase(phase: SessionPhase, ms: number): void;
+  /**
+   * The model request is about to go out. Starts the clock that the first
+   * assistant byte is measured against — the number that separates "the
+   * provider stalled" from "we were slow to get there".
+   */
+  onModelRequestStart(): void;
   onAssistantDelta(delta: string): void;
   onToolStart(toolName: string): void;
   onToolEnd(toolName: string, result?: unknown): void;
@@ -39,6 +75,8 @@ export interface SessionDebugWriter {
 const NOP: SessionDebugWriter = {
   onPromptStart: () => {},
   onSessionRestored: () => {},
+  onPhase: () => {},
+  onModelRequestStart: () => {},
   onAssistantDelta: () => {},
   onToolStart: () => {},
   onToolEnd: () => {},
@@ -75,6 +113,14 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
   const eventsFile = join(dir, "events.jsonl");
 
   let inAssistantBlock = false;
+  /** Set by onPromptStart, so phases can be placed on one timeline. */
+  let promptStartedAt = Date.now();
+  /**
+   * When the model request went out, and whether its first byte is still
+   * unreported. Cleared once reported so the background report turn's deltas
+   * are not measured against a request that finished long ago.
+   */
+  let modelRequestAt: number | undefined;
 
   function appendConvo(text: string) {
     appendFileSync(convoFile, text, "utf8");
@@ -108,6 +154,8 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
       }
 
       appendConvo(`\n---\n\n## User · ${ts()}\n\n${text}\n`);
+      promptStartedAt = Date.now();
+      modelRequestAt = undefined;
       appendEvent({ type: "prompt-start", model, tools, textLength: text.length });
     },
 
@@ -115,7 +163,38 @@ export function createSessionDebugWriter(semlaSessionId: string): SessionDebugWr
       appendEvent({ type: "session-restored", entries: entryCount });
     },
 
+    // Timing only — the transcript stays readable, the attribution lives in
+    // events.jsonl next to the persist-entry durations.
+    onPhase(phase: SessionPhase, ms: number) {
+      appendEvent({
+        type: "phase",
+        phase,
+        ms,
+        sincePromptMs: Date.now() - promptStartedAt,
+      });
+    },
+
+    onModelRequestStart() {
+      modelRequestAt = Date.now();
+      appendEvent({
+        type: "model-request-start",
+        sincePromptMs: modelRequestAt - promptStartedAt,
+      });
+    },
+
     onAssistantDelta(delta: string) {
+      // The first byte back from the provider. Emitted from here rather than
+      // asked of the caller: the event router that sees the deltas has no
+      // reason to know when the request went out.
+      if (modelRequestAt !== undefined) {
+        appendEvent({
+          type: "first-token",
+          ms: Date.now() - modelRequestAt,
+          sincePromptMs: Date.now() - promptStartedAt,
+        });
+        modelRequestAt = undefined;
+      }
+
       if (!inAssistantBlock) {
         appendConvo(`\n---\n\n## Assistant · ${ts()}\n\n`);
         inAssistantBlock = true;
