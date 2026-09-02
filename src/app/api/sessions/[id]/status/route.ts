@@ -35,11 +35,18 @@ export async function GET(
     const meta = readSessionMeta(id);
     // A session with no record on disk is not an error here — it may simply
     // predate the record, or be mid-creation. Nothing running, nothing linked.
+    //
+    // `exists` is reported because the page otherwise cannot tell mid-creation
+    // from never-created, and the difference matters: a first prompt carries
+    // the `create` payload, and the prompt bar's own submits do not. Without
+    // it a session whose creation handoff was lost answers 404 to every prompt
+    // typed into it, forever, with nothing on screen saying why.
     if (!meta) {
-      return Response.json({ isRunning: false, projects: [] });
+      return Response.json({ exists: false, isRunning: false, projects: [] });
     }
 
     return Response.json({
+      exists: true,
       isRunning: sessionIsRunning(meta),
       projects: sessionProjects(meta.projects),
     });

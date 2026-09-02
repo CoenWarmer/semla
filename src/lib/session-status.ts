@@ -86,6 +86,13 @@ export const withSessionRunning = (
  * drift back into a copy of the list's.
  */
 export type SingleSessionStatus = {
+  /**
+   * Whether the session has a record on disk.
+   *
+   * Read as `=== false` by callers, never as `!exists`: undefined means a
+   * server that did not report it, which is not the same claim.
+   */
+  exists?: boolean;
   isRunning: boolean;
   projects: SessionProject[];
 };

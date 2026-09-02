@@ -8,6 +8,7 @@ import {
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
+import { promptFailureMessage } from "@/lib/prompt-failure";
 import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
 import {
   projectChangeInvalidations,
@@ -425,6 +426,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   });
 
   const serverIsRunning = sessionStatus?.isRunning ?? false;
+  /**
+   * Undefined until the first poll answers, and while it is undefined the page
+   * must not claim anything: a `?new=1` page is legitimately promptable before
+   * its session exists.
+   */
+  const sessionExists = sessionStatus?.exists;
 
 
   const mutation = useMutation<
@@ -449,7 +456,10 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Pi could not start this prompt.");
+        // The route's own message is the useful one — "Session not found." for
+        // a session whose creation handoff was lost, which the generic text
+        // turned into a mystery.
+        throw new Error(await promptFailureMessage(response));
       }
 
       const piError = await readPiStream(response.body.getReader(), handlers);
@@ -626,6 +636,8 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */
     serverTitle,
+    /** Whether the server has a record for this session. See `sessionExists`. */
+    sessionExists,
     /**
      * This session's recorded spans, in the order they opened — which is what
      * the Map already holds, since re-writing a key on close keeps its

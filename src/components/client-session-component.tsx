@@ -34,6 +34,10 @@ const WikiMiniGraph = dynamic(
   () => import("./wiki/wiki-mini-graph").then((m) => m.WikiMiniGraph),
   { ssr: false },
 );
+import Link from "next/link";
+
+import { isSessionMissing } from "@/lib/prompt-failure";
+
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
 import { SessionTopbar } from "./session-topbar";
 import { MessageSquareIcon } from "lucide-react";
@@ -70,6 +74,7 @@ export function ClientSessionComponent({
     pendingQuestion,
     serverIsRunning,
     serverTitle,
+    sessionExists,
     streamError,
     streamingText,
     wikiActive,
@@ -245,11 +250,20 @@ export function ClientSessionComponent({
     setSelectedAgent({ agentId, runId });
   }, []);
 
-  const errorMessage =
-    streamError ??
-    (messagesQuery.error instanceof Error
-      ? messagesQuery.error.message
-      : undefined);
+  // Why this is the test, and why it does not flash on a legitimate ?new=1
+  // page, is in `isSessionMissing`.
+  const sessionMissing = isSessionMissing({
+    exists: sessionExists,
+    promptErrored: promptMutation.isError,
+    promptIdle: promptMutation.isIdle,
+  });
+
+  const errorMessage = sessionMissing
+    ? undefined
+    : (streamError ??
+      (messagesQuery.error instanceof Error
+        ? messagesQuery.error.message
+        : undefined));
 
   const handleSubmit = useCallback(
     async (
@@ -455,6 +469,23 @@ export function ClientSessionComponent({
             />
             {errorMessage && (
               <p className="text-destructive text-sm">{errorMessage}</p>
+            )}
+            {sessionMissing && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+                <p className="font-medium">This session was never created.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Its first prompt is what brings a session into being, and
+                  that prompt never reached the server — most likely the page
+                  was reloaded before it was sent. Prompts typed here cannot
+                  create it, so they will keep failing.
+                </p>
+                <Link
+                  className="mt-3 inline-block underline hover:no-underline"
+                  href="/sessions/new"
+                >
+                  Start a new session
+                </Link>
+              </div>
             )}
           </ConversationContent>
           {/* {messages.length > 0 && (
