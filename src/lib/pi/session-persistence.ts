@@ -9,7 +9,12 @@ import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "./runtime-config";
 import { writeSessionMeta } from "./session-meta";
 import { listRunningWorkflowRuns, upsertWorkflowRun } from "./workflow-run-index";
 
-type PiSessionEntry = {
+/**
+ * The fields of a pi session entry this table stores. Pi's own entry type
+ * carries far more; callers hand their entries over as this shape, so it is
+ * exported rather than restated at each call site.
+ */
+export type PiSessionEntry = {
   id: string;
   parentId: string | null;
   timestamp: string;

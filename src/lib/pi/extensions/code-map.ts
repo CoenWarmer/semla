@@ -6,8 +6,8 @@
  * A third-party tool's result reaches the session as model-facing text — supi's
  * code_graph, for instance, formats its entries into strings and caps them at
  * twenty before anything outside the package sees them. Owning the registration
- * means the `CodeMap` travels intact in `details`, and session-service can
- * persist and draw the same object the checker produced rather than trying to
+ * means the `CodeMap` travels intact in `details`, and the turn's event router
+ * can forward the same object the checker produced rather than trying to
  * recover a graph from prose.
  *
  * The tool is deliberately narrow: one entry symbol, bounded depth, bounded

@@ -5,7 +5,7 @@
  * extension jiti loads from source, and it arrives as `unknown` on a tool
  * result. Nothing about that path is checked by the compiler, so it is checked
  * here instead — the same reasoning as getBackgroundWorkflowRunId in
- * session-service.ts, which validates its own result shape rather than casting.
+ * session-events.ts, which validates its own result shape rather than casting.
  *
  * A malformed map returns null rather than throwing. A tool result that cannot
  * be read should cost the panel a drawing, not the turn.

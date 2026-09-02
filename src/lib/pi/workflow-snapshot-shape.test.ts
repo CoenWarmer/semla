@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { asWorkflowSnapshot } from "./session-service.ts";
+import { asWorkflowSnapshot } from "./session-events.ts";
 
 const snapshot = {
   runId: "wiki-ingest-mthammjf-r0yajj",
