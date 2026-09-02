@@ -224,7 +224,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     optionalTools: WIKI_TRAJECTORY_TOOLS,
     providesSlots: [],
     remedy:
-      "Run `npm install --prefix .pi/npm` to install @zosmaai/pi-llm-wiki at the pinned version.",
+      "Run `npm install` to install @zosmaai/pi-llm-wiki at the pinned version, and check that scripts/apply-package-patches.mjs ran.",
   },
   {
     id: "wiki-ingest-bridge",

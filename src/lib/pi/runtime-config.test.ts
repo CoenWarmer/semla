@@ -23,7 +23,7 @@ describe("WIKI_EXTENSION_PATH", () => {
     expect(
       existsSync(WIKI_EXTENSION_PATH),
       `Wiki extension not found at ${WIKI_EXTENSION_PATH}. ` +
-        "Run `pi packages sync` or `npm install` inside .pi/npm to install it.",
+        "Run `npm install`, and check that scripts/apply-package-patches.mjs ran.",
     ).toBe(true);
 
     const stat = statSync(WIKI_EXTENSION_PATH);
@@ -37,7 +37,7 @@ describe("WIKI_EXTENSION_PATH", () => {
 
   it("is anchored to process.cwd(), not PI_WORKSPACE_ROOT", async () => {
     // PI_WORKSPACE_ROOT is the user's project directory — e.g. /Users/coen/Dev.
-    // The wiki package lives under Semla's own .pi/npm/, so the path must be
+    // The wiki package lives in Semla's own node_modules, so the path must be
     // rooted at the server's cwd, not the workspace the agent is operating in.
     // This test re-imports the module with a spoofed PI_WORKSPACE_ROOT to catch
     // any regression where the constant switches back to using that env var.

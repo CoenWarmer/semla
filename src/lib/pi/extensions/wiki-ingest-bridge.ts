@@ -53,6 +53,9 @@ import {
   groundingReport,
   type GroundingReport,
 } from "./synthesis-grounding";
+// Relative, not "@/lib/pi/runtime-config": the "@/" alias is a Next.js
+// convention that jiti — the loader for path extensions — does not resolve.
+import { WIKI_PACKAGE_DIR } from "../runtime-config";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
@@ -182,18 +185,10 @@ function buildVaultPaths(): WikiVaultPaths {
 // type-check under this project's tsconfig, and allowJs would pull the compiled
 // output in too. wiki-package-contract.test.ts is the compensating check.
 
-const INGEST_WORKER_PATH = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/ingest-worker.js",
-);
-const METADATA_PATH = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/metadata.js",
-);
-const EMBEDDINGS_PATH = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/embeddings.js",
-);
+const WIKI_DIST = join(WIKI_PACKAGE_DIR, "dist/extensions/llm-wiki/lib");
+const INGEST_WORKER_PATH = join(WIKI_DIST, "ingest-worker.js");
+const METADATA_PATH = join(WIKI_DIST, "metadata.js");
+const EMBEDDINGS_PATH = join(WIKI_DIST, "embeddings.js");
 
 /**
  * The deep imports above are computed strings, so tsc cannot check them and a

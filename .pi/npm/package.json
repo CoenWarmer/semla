@@ -1,7 +1,0 @@
-{
-  "name": "pi-extensions",
-  "private": true,
-  "dependencies": {
-    "@zosmaai/pi-llm-wiki": "0.11.5"
-  }
-}

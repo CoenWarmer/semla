@@ -55,20 +55,22 @@ cannot degrade into a session that quietly has no tools.
 3. an entry in `EXTENSION_MANIFEST` declaring the tools it must register;
 4. a contract test pinning the version and asserting the tool set against the
    installed package. `code-intelligence-contract.test.ts` is the worked
-   example, and it also fails if the package reappears in `.pi/npm`.
+   example. `.pi/npm` is gone, and `pi-npm-tree-removed.test.ts` keeps it
+   gone — a tree there is invisible to `npm audit` run at the root.
 
 Prefer a package's headless or non-interactive profile where it offers one.
 Semla renders no TUI, so settings, footer and slash-command contributions are
 dead weight, and tools that can apply edits should be an explicit choice rather
 than something inherited from an interactive default.
 
-**Known exception.** `@zosmaai/pi-llm-wiki` is still declared in `.pi/npm`. It is
-deep-imported through computed path strings (see `wiki-ingest-bridge.ts` and
-`wiki-package-contract.test.ts`) and it is the source of the wildcard peer
-dependency above, so moving it is its own piece of work rather than a tidy-up.
-`.pi/packages/semla-otel` also keeps its own lockfile.
+**No exceptions left, and one that took work.** `@zosmaai/pi-llm-wiki` was the
+last package in `.pi/npm`, and that tree is now deleted. Only
+`.pi/packages/semla-otel` still keeps a lockfile of its own, which is why
+`audit:all` still exists.
 
-**And it is patched.** The published tarball has no
+Moving it needed three things that are worth knowing before touching any of it.
+
+**It is patched.** The published tarball has no
 `Symbol.for("semla.wiki-ingest-dispatcher")` hook, so without the patch
 `wiki-ingest-bridge.ts` installs a dispatcher that nothing ever calls and
 `wiki_ingest` falls back to inline synthesis — with no error, because the line
@@ -76,30 +78,46 @@ that would have called it is simply absent. The patch also switches `wiki_lint`
 and `wiki_rebuild_meta` from background to synchronous, and adds a repo
 derivation to the ingest worker.
 
-Those edits used to exist only in `.pi/npm/node_modules`, which is untracked —
-that directory's `.gitignore` is `*` — and were reproducible by nothing. They
-survived only because npm does not re-extract a package that already matches
-the lockfile, so `npm ci`, a fresh clone, or one cache miss would have removed
-them silently. They are now committed under `patches/` and re-applied by
-`scripts/apply-package-patches.mjs`, which `postinstall` runs after the trees
-are installed. It is strict on purpose: a patch that no longer applies, or a
-version that has moved away from the one the patch was cut against, fails the
-install rather than leaving the tree half-patched.
+Those edits used to exist only in `node_modules`, untracked and reproducible by
+nothing. They survived only because npm does not re-extract a package that
+already matches the lockfile, so `npm ci`, a fresh clone, or one cache miss
+would have removed them silently. They are committed under `patches/` now and
+re-applied by `scripts/apply-package-patches.mjs`, which `postinstall` runs
+after the trees are installed. It is strict on purpose: a patch that no longer
+applies, or a version that has moved away from the one it was cut against,
+fails the install rather than leaving the tree half-patched.
 
-Note the patch touches the package's `.ts` sources, not its `dist/`. That is
-what runs: `WIKI_EXTENSION_PATH` points jiti at `extensions/llm-wiki/index.ts`.
-The `dist/*.js` files the bridge deep-imports are pristine.
+The patch touches the package's `.ts` sources, not its `dist/`. That is what
+runs: `WIKI_EXTENSION_PATH` points jiti at `extensions/llm-wiki/index.ts`. The
+`dist/*.js` files the bridge deep-imports are pristine, and the hook is not in
+them at all.
 
-**Before moving this package to the root tree**, three things have to be true,
-and only the third is done: the patch has to survive the move (it is keyed to a
-tree in `apply-package-patches.mjs`), the root install has to keep the wildcard
-peer off the vulnerable runtime — `overrides` aliasing
-`@mariozechner/pi-coding-agent` onto `npm:@earendil-works/pi-coding-agent@0.84.2`
-was measured to do this, taking `npm audit` to zero, and only two of the
-package's eighteen imports of it are values — and the six hardcoded
-`.pi/npm/node_modules/@zosmaai/...` paths across `runtime-config.ts`,
-`wiki-ingest-bridge.ts` and `wiki-subagent-tools.ts` want collapsing to one
-constant first.
+**Its old-scope imports need two different mechanisms, for two different
+reasons.** The package imports `@mariozechner/pi-coding-agent`,
+`@mariozechner/pi-tui` and `@mariozechner/pi-agent-core` — a scope pi has since
+been renamed away from. Of eighteen imports of the first, only two are values
+(`getAgentDir`, `isToolCallEventType`), and both exist on the renamed package;
+`@mariozechner/pi-ai` appears only in type positions, which jiti erases.
+
+- `pi-coding-agent` and `pi-tui` are **declared** by the package, the first as
+  `peerDependencies: { "@mariozechner/pi-coding-agent": "*" }`. A wildcard
+  against an abandoned scope is what npm answered by installing a *second*
+  agent runtime, 0.73.1, with two high-severity advisories including a race in
+  `auth.json` writes that can expose stored credentials. Two `overrides` alias
+  those edges onto the packages this repository already pins.
+- `pi-agent-core` is **not declared at all** — an undeclared import that used
+  to resolve by accident against a transitive of that vulnerable runtime.
+  `overrides` cannot help, because there is no dependency edge to rewrite. It is
+  an aliased entry in `dependencies` instead:
+  `"@mariozechner/pi-agent-core": "npm:@earendil-works/pi-agent-core@0.84.2"`.
+
+Both are asserted in `wiki-package-contract.test.ts`, against `package.json`
+*and* against what npm actually put on disk, because removing either brings the
+vulnerable copy back silently.
+
+**Every path into the package derives from `WIKI_PACKAGE_DIR`** in
+`runtime-config.ts`. There were six spelled out across three files when this
+moved, which is why there is now one.
 
 ## Extensions are imported, not pointed at
 

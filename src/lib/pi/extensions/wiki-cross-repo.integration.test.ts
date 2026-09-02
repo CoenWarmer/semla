@@ -11,12 +11,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { WIKI_PACKAGE_DIR } from "@/lib/pi/runtime-config";
 import { stampWikiPages } from "@/lib/pi/wiki-repo-stamp";
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.ts";
 
+// Derived, not spelled out: this path moved once already, when the package
+// left `.pi/npm` for the root tree.
 const WORKER = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/ingest-worker.ts",
+  WIKI_PACKAGE_DIR,
+  "extensions/llm-wiki/lib/ingest-worker.ts",
 );
 
 type Commit = (

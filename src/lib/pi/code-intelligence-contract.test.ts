@@ -53,12 +53,8 @@ describe(`${PACKAGE} declaration`, () => {
     expect(declared).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it("is no longer declared in .pi/npm", () => {
-    const piNpm = readJson(join(process.cwd(), ".pi/npm/package.json"));
-    const deps = (piNpm.dependencies ?? {}) as Record<string, string>;
-
-    expect(Object.keys(deps)).not.toContain(PACKAGE);
-  });
+  // The tree it used to be declared in is gone entirely; see
+  // pi-npm-tree-removed.test.ts for the invariant that keeps it gone.
 
   it("is no longer loaded through pi's package resolution", () => {
     const settings = readJson(join(process.cwd(), ".pi/settings.json"));

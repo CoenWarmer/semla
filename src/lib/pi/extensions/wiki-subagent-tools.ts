@@ -25,6 +25,9 @@ import { join } from "node:path";
 
 import { stampRepoFrontmatter } from "./wiki-frontmatter";
 import { withVaultLock } from "./wiki-vault-lock";
+// Relative, not "@/lib/pi/runtime-config": the "@/" alias is a Next.js
+// convention that jiti — the loader for path extensions — does not resolve.
+import { WIKI_PACKAGE_DIR } from "../runtime-config";
 
 /** Toolset tag a workflow passes to reach these tools. */
 export const WIKI_SUBAGENT_TOOLSET = "wiki";
@@ -82,8 +85,8 @@ export const WIKI_TOOLS_WITHHELD_FROM_SUBAGENTS: Readonly<
 };
 
 const WIKI_TOOLS_MODULE = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/tools.js",
+  WIKI_PACKAGE_DIR,
+  "dist/extensions/llm-wiki/lib/tools.js",
 );
 
 /**
@@ -242,8 +245,8 @@ export function rejectUnfetchableUrl(
 }
 
 const METADATA_MODULE = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/metadata.js",
+  WIKI_PACKAGE_DIR,
+  "dist/extensions/llm-wiki/lib/metadata.js",
 );
 
 /** Mirrors getVaultPaths in pi-llm-wiki utils.ts. */

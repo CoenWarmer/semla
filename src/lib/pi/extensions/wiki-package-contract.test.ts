@@ -33,26 +33,53 @@ import { WIKI_SUBAGENT_DEEP_IMPORTS } from "./wiki-subagent-tools.ts";
 const DEEP_IMPORTS = [...WIKI_PACKAGE_DEEP_IMPORTS, ...WIKI_SUBAGENT_DEEP_IMPORTS];
 
 const WIKI_PACKAGE = "@zosmaai/pi-llm-wiki";
-const PI_NPM_DIR = join(process.cwd(), ".pi/npm");
-const INSTALLED_DIR = join(PI_NPM_DIR, "node_modules", WIKI_PACKAGE);
+const INSTALLED_DIR = join(process.cwd(), "node_modules", WIKI_PACKAGE);
+const ROOT_PACKAGE = () => readJson(join(process.cwd(), "package.json"));
+
+/**
+ * The wildcard peer this package declares, and what package.json aliases it
+ * onto.
+ *
+ * `peerDependencies: { "@mariozechner/pi-coding-agent": "*" }` names a scope pi
+ * has since been renamed away from, so npm satisfied it by installing a second,
+ * older agent runtime — 0.73.1 — carrying three high-severity advisories, one a
+ * race in `auth.json` writes that can expose stored credentials. That is what
+ * kept this package in a tree of its own, where `npm audit` could not see it
+ * from the root.
+ *
+ * The overrides redirect it onto the runtime this repository already pins.
+ * Remove them and the vulnerable copy returns silently, which is why they are
+ * asserted rather than trusted to a comment. Only two of the package's imports
+ * of it are values — `getAgentDir` and `isToolCallEventType` — and both exist
+ * on the renamed package.
+ */
+const ALIASED_PEERS: Record<string, string> = {
+  "@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@0.84.2",
+  "@mariozechner/pi-tui": "npm:@earendil-works/pi-tui@0.84.2",
+};
 
 const readJson = (path: string): Record<string, unknown> =>
   JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
 
 describe(`${WIKI_PACKAGE} version pin`, () => {
   const declared = (
-    readJson(join(PI_NPM_DIR, "package.json")).dependencies as Record<
-      string,
-      string
-    >
+    ROOT_PACKAGE().dependencies as Record<string, string>
   )[WIKI_PACKAGE];
+
+  it("is a dependency of this repository", () => {
+    expect(
+      declared,
+      `${WIKI_PACKAGE} must be declared in the root package.json — see the ` +
+        "extension-dependency decision in AGENTS.md",
+    ).toBeDefined();
+  });
 
   it("is pinned to an exact version", () => {
     // A caret range on a package we deep-import into means a patch release can
     // relocate a file and take wiki synthesis down without any commit here.
     expect(
       declared,
-      `${WIKI_PACKAGE} must be pinned exactly in .pi/npm/package.json, got "${declared}"`,
+      `${WIKI_PACKAGE} must be pinned exactly in package.json, got "${declared}"`,
     ).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
@@ -60,9 +87,38 @@ describe(`${WIKI_PACKAGE} version pin`, () => {
     const installed = readJson(join(INSTALLED_DIR, "package.json")).version;
     expect(
       installed,
-      "Installed wiki package differs from the pin. Run `npm install --prefix .pi/npm`.",
+      "Installed wiki package differs from the pin. Run `npm install`.",
     ).toBe(declared);
   });
+
+  it.each(Object.entries(ALIASED_PEERS))(
+    "aliases the %s peer onto the pinned runtime",
+    (peer, alias) => {
+      const overrides = (ROOT_PACKAGE().overrides ?? {}) as Record<
+        string,
+        string
+      >;
+
+      expect(
+        overrides[peer],
+        `Without this override npm satisfies ${WIKI_PACKAGE}'s wildcard peer by ` +
+          "installing a second, vulnerable agent runtime. See the docblock above.",
+      ).toBe(alias);
+    },
+  );
+
+  it.each(Object.keys(ALIASED_PEERS))(
+    "resolves %s to the aliased package on disk",
+    (peer) => {
+      // The override is only worth anything if npm actually applied it.
+      const resolved = readJson(
+        join(process.cwd(), "node_modules", peer, "package.json"),
+      );
+
+      expect(resolved.name).toMatch(/^@earendil-works\//);
+      expect(resolved.version).toBe("0.84.2");
+    },
+  );
 });
 
 /**
@@ -80,10 +136,7 @@ describe(`${WIKI_PACKAGE} version pin`, () => {
  */
 describe(`${WIKI_PACKAGE} patch`, () => {
   const declared = (
-    readJson(join(PI_NPM_DIR, "package.json")).dependencies as Record<
-      string,
-      string
-    >
+    ROOT_PACKAGE().dependencies as Record<string, string>
   )[WIKI_PACKAGE];
   const patchFile = `${WIKI_PACKAGE.replace("/", "+")}+${declared}.patch`;
   const patchPath = join(process.cwd(), "patches", patchFile);

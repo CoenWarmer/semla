@@ -2,17 +2,17 @@
 /**
  * Audit every dependency tree this repository installs, not just the root one.
  *
- * Semla installs three, and `npm audit` only ever sees the one you run it in.
- * At the time this was written the root tree reported "found 0 vulnerabilities"
- * while the other two held 25 between them, six of them high — including a
- * second, older copy of the pi agent runtime that a wildcard peer dependency had
- * pulled into `.pi/npm`, with an advisory about `auth.json` writes exposing
- * credentials. Nothing in the repository would have told anyone.
+ * `npm audit` only ever sees the tree you run it in. At the time this was
+ * written Semla installed three, the root reported "found 0 vulnerabilities",
+ * and the other two held 25 between them — six high, including a second, older
+ * copy of the pi agent runtime that a wildcard peer dependency had pulled into
+ * `.pi/npm`, with an advisory about `auth.json` writes exposing credentials.
+ * Nothing in the repository would have told anyone.
  *
- * Extension packages now belong in the root package.json (see the
- * extension-dependency decision in AGENTS.md), so `.pi/npm` should shrink over
- * time. Until it is empty, and for as long as semla-otel keeps its own
- * lockfile, an audit that stops at the root is not an audit.
+ * `.pi/npm` is gone: extension packages belong in the root package.json (see
+ * the extension-dependency decision in AGENTS.md), and the last one there has
+ * moved. For as long as semla-otel keeps its own lockfile, an audit that stops
+ * at the root is still not an audit.
  *
  * Usage: `npm run audit:all` — or pass a threshold, e.g. `node
  * scripts/audit-all.mjs moderate`. Exits non-zero if any tree is at or above it.
@@ -24,7 +24,6 @@ import { existsSync } from "node:fs";
 /** Order matters only for reading: root first, then the trees people forget. */
 const TREES = [
   { label: "semla (root)", prefix: "." },
-  { label: "pi extensions", prefix: ".pi/npm" },
   { label: "otel package", prefix: ".pi/packages/semla-otel" },
 ];
 
@@ -93,7 +92,6 @@ for (const tree of TREES) {
 if (breached) {
   console.error(`\nFound vulnerabilities at or above "${threshold}".`);
   console.error("Audit one tree at a time to see details, e.g.:");
-  console.error("  npm audit --prefix .pi/npm");
   process.exit(1);
 }
 

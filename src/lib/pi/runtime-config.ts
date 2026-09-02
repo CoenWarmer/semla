@@ -6,21 +6,40 @@ const hostDevelopmentEnabled =
   process.env.NODE_ENV === "development" &&
   process.env.PI_ALLOW_HOST_DEV === "true";
 
+/**
+ * @zosmaai/pi-llm-wiki, in this repository's own node_modules.
+ *
+ * It used to live in `.pi/npm`: a second dependency tree, with its own
+ * lockfile, that existed for this one package — and that `npm audit` only ever
+ * saw when run there. What it hid was two high-severity advisories against a
+ * *second* agent runtime, 0.73.1, which the package's
+ * `peerDependencies: { "@mariozechner/pi-coding-agent": "*" }` pulled in
+ * against a scope pi has since been renamed away from.
+ *
+ * Two `overrides` in package.json alias that peer, and its TUI sibling, onto
+ * the packages this repository already pins, so the wildcard resolves to
+ * 0.84.2 and the tree is gone. Only two of the package's eighteen imports of
+ * it are values rather than types — `getAgentDir` and `isToolCallEventType` —
+ * and both exist on the renamed package.
+ *
+ * Every path into the package derives from here, because there were six of
+ * them spelled out in three files when this moved.
+ */
+export const WIKI_PACKAGE_DIR = join(
+  process.cwd(),
+  "node_modules/@zosmaai/pi-llm-wiki",
+);
+
 // The wiki extension's pi.extensions field declares "./extensions" (a directory
 // with no index.ts at its root), so the package manager resolves it to a path
 // jiti cannot import. Load the actual entry point directly instead, bypassing
 // the package's pi.extensions declaration entirely.
+//
+// The *sources*, not dist: that is what `patches/` patches, and the dispatcher
+// hook wiki-ingest-bridge.ts depends on exists only there.
 export const WIKI_EXTENSION_PATH = join(
-  process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/index.ts",
-);
-
-// Bridge that intercepts wiki_ingest background synthesis and runs it as Semla
-// dynamic workflows so each source appears in the trace waterfall. Must load
-// AFTER both the workflow extension and the wiki extension.
-export const WIKI_INGEST_BRIDGE_PATH = join(
-  process.cwd(),
-  "src/lib/pi/extensions/wiki-ingest-bridge.ts",
+  WIKI_PACKAGE_DIR,
+  "extensions/llm-wiki/index.ts",
 );
 
 // Semla's own extensions. Anchored to the server's cwd like the wiki paths

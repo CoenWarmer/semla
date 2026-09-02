@@ -70,7 +70,9 @@ export function splitCommands(command: string): string[] {
 
 /**
  * Flags whose value is a separate token, which would otherwise read as a
- * package name. `npm install --prefix .pi/npm` is this repo's own postinstall.
+ * package name. A prefixed install like `npm install --prefix <dir>` is how
+ * this repo installs its own side trees, so the guard must not read one as the
+ * agent trying to add a dependency.
  */
 const VALUE_FLAGS = new Set([
   "--prefix",

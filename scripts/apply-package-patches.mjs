@@ -8,8 +8,8 @@
  * background to synchronous so the agent can act on their result in the same
  * turn.
  *
- * Those edits lived only in `.pi/npm/node_modules` — untracked, since that
- * directory's .gitignore is `*`, and reproducible by nothing. They survived
+ * Those edits lived only in `node_modules` — untracked, and reproducible by
+ * nothing. They survived
  * only because npm does not re-extract a package that already matches the
  * lockfile, so a `npm ci`, a fresh clone, or one cache miss would have removed
  * them and left wiki_ingest silently falling back to inline synthesis. The
@@ -34,10 +34,11 @@ const PATCH_DIR = join(ROOT, "patches");
 
 /**
  * Dependency trees a patched package may be installed in, in search order.
- * `.pi/npm` is a second tree that exists for the wiki package alone; see the
- * extension-dependency decision in AGENTS.md.
+ * There is one, now that `.pi/npm` is gone; `.pi/packages/semla-otel` installs
+ * its own but nothing there is patched. A list rather than a constant so
+ * adding a tree does not mean rewriting the lookup.
  */
-const TREES = ["node_modules", join(".pi", "npm", "node_modules")];
+const TREES = ["node_modules"];
 
 /** `@scope+name+1.2.3.patch` -> package `@scope/name`, pinned at `1.2.3`. */
 const parsePatchName = (file) => {
