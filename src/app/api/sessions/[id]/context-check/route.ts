@@ -338,7 +338,11 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await requireSessionOwner(id);
+    // Polled before a session created by its own first prompt exists. This
+    // handler reads stored inspections and answers with an empty list for a
+    // session that has none, which is the right answer rather than a refusal.
+    // The POST above must keep refusing: it writes a row against the session.
+    await requireSessionOwner(id, undefined, { allowMissing: true });
     const supabase = await createClient();
 
     const { data, error } = await supabase

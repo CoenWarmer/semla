@@ -27,7 +27,10 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await requireSessionOwner(id);
+    // A session created by its own first prompt is polled before it exists;
+    // the missing-record branch below is the answer, and refusing here made it
+    // unreachable.
+    await requireSessionOwner(id, undefined, { allowMissing: true });
 
     const meta = readSessionMeta(id);
     // A session with no record on disk is not an error here — it may simply

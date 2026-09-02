@@ -33,8 +33,13 @@ export async function GET(request: Request) {
     }
 
     // Owning the session is the stronger check, and it is the one that decides
-    // whether these projects may be read at all.
-    await requireSessionOwner(sessionId);
+    // whether these projects may be read at all. A session created by its own
+    // first prompt is asked about before it exists, and the honest answer then
+    // is the tools that are certainly present: it has no project, so it gets
+    // the unanchored set. Refusing instead left the prompt bar reporting no
+    // extension tools at all, and the query is invalidated once the session
+    // gains a project.
+    await requireSessionOwner(sessionId, undefined, { allowMissing: true });
     const links = await sessionProjects(sessionId);
     const projectAnchored = isProjectAnchored(
       resolveSessionCwd(links.map((link) => link.path)),
