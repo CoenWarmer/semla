@@ -319,12 +319,6 @@ export default function extension(pi: ExtensionAPI) {
     // the session header's project path.
     const sessionCwd = resolve(ctx.cwd || process.cwd());
 
-    // Span recorder for this session, if the turn published one. Keyed on the
-    // *pi runtime* session id — the same key wiki-session-repo uses, and for
-    // the same reason: it is the only id both sides can see from here.
-    const sink = getSpanSink(ctx.sessionManager.getSessionId());
-    if (sink) manager.setTelemetry(createWorkflowTelemetry(sink));
-
     if (sessionCwd !== resolve(manager.getCwd())) {
       // Cross-project: the live manager is for the wrong tree. Pause anything
       // still on it, then rebuild against the real session project.
@@ -353,6 +347,20 @@ export default function extension(pi: ExtensionAPI) {
       managerOptions = buildManagerOptions(cwd, storage);
       manager.reconfigureAfterReload(managerOptions);
     }
+
+    // Span recorder for this session, if the turn published one. Keyed on the
+    // *pi runtime* session id — the same key wiki-session-repo uses, and for
+    // the same reason: it is the only id both sides can see from here.
+    //
+    // **After the cwd branches, not before.** A cross-project rebuild above
+    // replaces `manager` outright, and its options come from
+    // `buildManagerOptions`, which knows nothing about telemetry — so setting
+    // it any earlier meant handing a recorder to an instance that was thrown
+    // away a few lines later. That is not a hypothetical: a Semla session
+    // whose cwd is the workspace root does take that branch, and it recorded
+    // nothing at all while looking wired up.
+    const sink = getSpanSink(ctx.sessionManager.getSessionId());
+    if (sink) manager.setTelemetry(createWorkflowTelemetry(sink));
 
     // First registration (and post-rebuild catch-up for target-only names).
     // Handlers load by name from the live storage, so a later same-session
