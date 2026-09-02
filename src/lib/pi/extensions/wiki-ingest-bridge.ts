@@ -41,18 +41,18 @@ import {
   writeSlot,
   type WikiIngestDispatcher,
   type WikiReindexDispatcher,
-} from "../extension-contract.js";
+} from "../extension-contract";
 import {
   collectWikiSubagentTools,
   wikiToolsetKey,
-} from "./wiki-subagent-tools.js";
-import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.js";
-import { readRepoField } from "./wiki-frontmatter.js";
-import { withVaultLock } from "./wiki-vault-lock.js";
+} from "./wiki-subagent-tools";
+import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge";
+import { readRepoField } from "./wiki-frontmatter";
+import { withVaultLock } from "./wiki-vault-lock";
 import {
   groundingReport,
   type GroundingReport,
-} from "./synthesis-grounding.js";
+} from "./synthesis-grounding";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
 // Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a

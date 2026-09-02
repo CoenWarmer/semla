@@ -38,13 +38,13 @@ import {
   WorkflowManager,
 } from "./dynamic-workflows/src/index";
 import type { WorkflowStorage } from "./dynamic-workflows/src/workflow-saved";
-import { wikiToolsetKey } from "./wiki-subagent-tools.js";
+import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
   ACTIVE_WORKFLOW_MANAGER,
   readSlot,
   WORKFLOW_EXTRA_TOOLSETS,
   writeSlot,
-} from "../extension-contract.js";
+} from "../extension-contract";
 
 /**
  * Bound for the read-only session-header probe (first line only). Independent of

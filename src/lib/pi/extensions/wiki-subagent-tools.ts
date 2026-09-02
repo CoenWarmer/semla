@@ -23,8 +23,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { stampRepoFrontmatter } from "./wiki-frontmatter.js";
-import { withVaultLock } from "./wiki-vault-lock.js";
+import { stampRepoFrontmatter } from "./wiki-frontmatter";
+import { withVaultLock } from "./wiki-vault-lock";
 
 /** Toolset tag a workflow passes to reach these tools. */
 export const WIKI_SUBAGENT_TOOLSET = "wiki";

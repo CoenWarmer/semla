@@ -4,7 +4,7 @@ import {
   deliverAnswer,
   waitForAnswer,
   type AskUserAnswers,
-} from "../ask-user-bridge.js";
+} from "../ask-user-bridge";
 
 const OptionSchema = Type.Object({
   value: Type.String(),

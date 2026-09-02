@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { inspectBootstrap, inspectCommand } from "./install-guard.js";
+import { inspectBootstrap, inspectCommand } from "./install-guard";
 
 // Read from the environment rather than runtime-config: this file is loaded by
 // jiti, which does not resolve the "@/" alias.
