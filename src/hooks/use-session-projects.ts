@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { toolsQueryKey } from "@/hooks/use-tools";
 import type { ProjectLink } from "@/lib/pi/session-project-links";
 import { SESSION_STATUS_KEY } from "@/lib/session-status";
 
@@ -26,12 +27,31 @@ export type ProjectChange =
   | { kind: "detach"; path: string };
 
 /**
+ * Everything that has to re-read when a session's project links change.
+ *
+ * The list is the interesting part, so it is one list rather than two that
+ * would drift: the badges and the sidebar chips come from the status poll, the
+ * file tree's roots from the files listing, and the branch state from its own
+ * query.
+ *
+ * The tool list is here because which extensions a session loads depends on
+ * whether it has a project at all — see `requiresProjectAnchor`. Attaching the
+ * first one gains it the code-intelligence tools, and without this the prompt
+ * bar went on showing the shorter list until a reload.
+ */
+export const projectChangeInvalidations = (
+  sessionId: string,
+): readonly (readonly unknown[])[] => [
+  SESSION_STATUS_KEY,
+  ["session-files", sessionId],
+  ["git-status"],
+  toolsQueryKey(sessionId),
+];
+
+/**
  * Attach, re-anchor or detach, and tell everything that reads links to re-read.
  *
- * Shared by the header's picker and the Files sheet, because the list of things
- * to invalidate is the interesting part and two copies of it would drift: the
- * badges and the sidebar chips come from the status poll, the file tree's roots
- * from the files listing, and the branch state from its own query.
+ * Shared by the header's picker and the Files sheet.
  */
 export function useSessionProjectMutation(sessionId: string) {
   const queryClient = useQueryClient();
@@ -56,11 +76,9 @@ export function useSessionProjectMutation(sessionId: string) {
     },
     onSuccess: (projects) => {
       queryClient.setQueryData(sessionProjectsKey(sessionId), projects);
-      void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-      void queryClient.invalidateQueries({
-        queryKey: ["session-files", sessionId],
-      });
-      void queryClient.invalidateQueries({ queryKey: ["git-status"] });
+      for (const queryKey of projectChangeInvalidations(sessionId)) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 }

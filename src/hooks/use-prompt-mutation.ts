@@ -8,6 +8,10 @@ import {
   type SessionMessagesResult,
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
+import {
+  projectChangeInvalidations,
+  sessionProjectsKey,
+} from "@/hooks/use-session-projects";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import {
   clearsDeadStreamLatch,
@@ -493,6 +497,18 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         queryKey: sessionMessagesQueryKey(sessionId),
       });
       trace("onSettled:invalidate-done");
+
+      // A turn can attach a project by writing a file, which for a session that
+      // had none also changes the extension set it loads next time — so the
+      // links and the tool list are both stale now. Not awaited: this block is
+      // on the path that decides when the UI stops showing a running turn.
+      for (const queryKey of projectChangeInvalidations(sessionId)) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+      void queryClient.invalidateQueries({
+        queryKey: sessionProjectsKey(sessionId),
+      });
+
       setListRunning(false);
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });
