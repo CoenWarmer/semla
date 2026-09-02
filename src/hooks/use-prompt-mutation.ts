@@ -7,6 +7,7 @@ import {
   type SessionMessagesResult,
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
+import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
 import {
   projectChangeInvalidations,
@@ -61,6 +62,7 @@ type PiStreamEvent =
   | LiveToolEvent
   | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
@@ -86,6 +88,7 @@ type StreamHandlers = {
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
   onAskUser: (payload: AskUserPayload) => void;
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
+  onSpans: (spans: readonly RecordedSpan[]) => void;
   onCodeMap: (map: CodeMap) => void;
   onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
   onTitleUpdated: (title: string) => void;
@@ -135,6 +138,8 @@ const readPiStream = async (
         handlers.onToolEnd(piEvent);
       } else if (piEvent.type === "ask-user-question") {
         handlers.onAskUser(piEvent.payload);
+      } else if (piEvent.type === "spans") {
+        handlers.onSpans(piEvent.spans);
       } else if (piEvent.type === "workflow-snapshot") {
         handlers.onWorkflowSnapshot(piEvent.snapshot);
       } else if (piEvent.type === "code-map") {
@@ -199,6 +204,17 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // Latches true the first time wiki_init or wiki_capture_source is seen; never
   // resets to false for the lifetime of the hook (i.e. the session page).
   const [wikiActive, setWikiActive] = useState(false);
+  /**
+   * Spans for this session's trace, keyed by id.
+   *
+   * A span arrives twice — once open, once closed — so the later write wins.
+   * Held across turns rather than reset per prompt: one trace covers the
+   * session, and a background workflow's spans keep arriving after the turn
+   * that started it has ended.
+   */
+  const [spansById, setSpansById] = useState<ReadonlyMap<string, RecordedSpan>>(
+    () => new Map(),
+  );
   const wikiActiveRef = useRef(false);
   /**
    * The title the server derived from the first prompt.
@@ -255,6 +271,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       },
       onAskUser: (payload) => setPendingQuestion(payload),
       onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
+      onSpans: (incoming) =>
+        setSpansById((previous) => {
+          const next = new Map(previous);
+          for (const span of incoming) next.set(span.spanId, span);
+          return next;
+        }),
       onCodeMap: (map) => setCodeMap(map),
       onWorkflowStarted: (event) =>
         setWorkflowSnapshot({
@@ -599,6 +621,8 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */
     serverTitle,
+    /** This session's spans, newest state per id. Nothing renders them yet. */
+    spans: spansById,
     streamError,
     streamingText,
     wikiActive,

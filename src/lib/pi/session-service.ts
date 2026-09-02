@@ -75,6 +75,7 @@ import {
   releaseSpanSink,
   retainSpanSink,
 } from "@/lib/pi/telemetry/sink-registry";
+import { createSpanPublisher } from "@/lib/pi/telemetry/span-publisher";
 import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
@@ -102,6 +103,12 @@ import {
 import { clearSessionRepo, setSessionRepos } from "@/lib/pi/wiki-session-repo";
 import { finishedRunMessage } from "@/lib/pi/workflow-delivery-message";
 import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow-run-reader";
+
+/**
+ * Trailing debounce for span flushes. Long enough that a fan-out of ten agents
+ * is one frame, short enough that the panel does not visibly lag the run.
+ */
+const SPAN_FLUSH_MS = 250;
 
 const assertSandboxedRuntime = () => {
   const { hostDevelopmentEnabled, sandboxed } = getPiRuntimeConfig();
@@ -369,7 +376,31 @@ export const runPiPrompt = async ({
    * docs/plans/agent-telemetry.md. The count is logged at turn end so that a
    * real run can be checked to be producing them at all.
    */
-  const spanSink = createSpanSink(semlaSessionId);
+  const spanPublisher = createSpanPublisher();
+
+  /**
+   * Send the client the spans it has not seen.
+   *
+   * Debounced on a trailing edge because a fan-out opens many spans in one
+   * tick, and each would otherwise be its own SSE frame. Flushed once more at
+   * turn end so the last closes are not left behind by the timer.
+   */
+  let spanFlush: ReturnType<typeof setTimeout> | undefined;
+  const flushSpans = () => {
+    const pending = spanPublisher.pending(spanSink.spans());
+    if (pending.length > 0) emit({ spans: pending, type: "spans" });
+  };
+  const scheduleSpanFlush = () => {
+    if (spanFlush) return;
+    spanFlush = setTimeout(() => {
+      spanFlush = undefined;
+      flushSpans();
+    }, SPAN_FLUSH_MS);
+  };
+
+  const spanSink = createSpanSink(semlaSessionId, {
+    onChange: scheduleSpanFlush,
+  });
   retainSpanSink(piRuntimeSessionId, spanSink);
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
@@ -585,6 +616,11 @@ export const runPiPrompt = async ({
     // The recorder the manager holds closes over the sink, so a background run
     // keeps recording after this; only the lookup goes away.
     releaseSpanSink(piRuntimeSessionId);
+    // The timer may hold spans that closed in the last few milliseconds, and
+    // the stream is about to shut. Cancel it and send them synchronously.
+    if (spanFlush) clearTimeout(spanFlush);
+    spanFlush = undefined;
+    flushSpans();
     if (spanSink.counts.recorded > 0) {
       sessionLog(semlaSessionId, "spans recorded", {
         open: spanSink.counts.open,

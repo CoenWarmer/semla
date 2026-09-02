@@ -76,6 +76,12 @@ export type SpanSinkOptions = {
   /** Injectable so tests are not timing-dependent. */
   now?: () => number;
   /**
+   * Called when a span opens or closes — the only moments a reader's view goes
+   * stale. Not on every attribute write, because the recorder sets those at
+   * close. Must not throw; a sink that can fail a turn is worse than no sink.
+   */
+  onChange?: () => void;
+  /**
    * What to do with attributes the schema marks `sensitive`. "keep" today
    * (§8.1); prompts and tool arguments are recorded, and persisted traces
    * contain them.
@@ -171,6 +177,7 @@ export const createSpanSink = (
   const {
     maxSpans = Number.POSITIVE_INFINITY,
     now = () => Date.now(),
+    onChange,
     sensitive = "keep",
     sensitiveKeys = new Set<string>(),
   } = options;
@@ -179,6 +186,20 @@ export const createSpanSink = (
   const recorded: RecordedSpan[] = [];
   const counts: SpanSinkCounts = { dropped: 0, open: 0, recorded: 0 };
   let sequence = 0;
+
+  /**
+   * Swallowing is deliberate: the notification exists so a reader can be told
+   * to look again, and a listener that throws must not become the reason a
+   * turn failed.
+   */
+  const notify = () => {
+    if (!onChange) return;
+    try {
+      onChange();
+    } catch {
+      // Nothing useful to do, and nothing worth failing a turn over.
+    }
+  };
 
   const filterAttributes = (
     spanName: string,
@@ -233,6 +254,8 @@ export const createSpanSink = (
       counts.dropped += 1;
     }
 
+    if (record) notify();
+
     const addEvent = (eventName: string, eventAttributes?: SpanAttributes) => {
       if (!record) return;
       record.events = [
@@ -264,6 +287,7 @@ export const createSpanSink = (
       if (!record || record.endTimeMs !== null) return;
       record.endTimeMs = now();
       counts.open -= 1;
+      notify();
     };
 
     return { addEvent, close, record, setAttributes, setStatus, spanId };

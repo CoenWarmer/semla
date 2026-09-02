@@ -12,6 +12,7 @@ import {
   historyToTurns,
   stampLiveTimestamps,
 } from "@/lib/pi/workflow-snapshot-merge";
+import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 export type PiSessionEvent =
@@ -35,6 +36,12 @@ export type PiSessionEvent =
   | { map: CodeMap; type: "code-map" }
   | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
+  /**
+   * Spans whose state the client has not seen. A delta, not the whole trace —
+   * see span-publisher.ts for why, and for the guarantee that each span
+   * arrives at most twice.
+   */
+  | { spans: readonly RecordedSpan[]; type: "spans" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { message: string; type: "error" }
   | { title: string; type: "title-updated" }
