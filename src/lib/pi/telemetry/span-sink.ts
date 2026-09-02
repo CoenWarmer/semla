@@ -83,8 +83,38 @@ export type SpanSinkOptions = {
   sensitive?: "drop" | "keep";
 };
 
+/**
+ * A span opened and closed explicitly, for instrumentation driven by paired
+ * events rather than by wrapping a call.
+ *
+ * pi's `startSpan` scopes a span to a callback, which is right when the work is
+ * a function. It cannot express the workflow subsystem's shape: a phase begins
+ * at one callback and ends at another, an agent's start and end arrive
+ * separately, and a run outlives the turn that started it. Contorting that into
+ * a callback would mean holding a deferred promise open across events — a leak
+ * waiting to happen — or editing the vendored `agent()` body, which has retries
+ * and four exit paths.
+ *
+ * `close()` is idempotent, because paired events are only as reliable as the
+ * code emitting them.
+ */
+export type OpenSpan = {
+  addEvent: (name: string, attributes?: SpanAttributes) => void;
+  /** Idempotent. */
+  close: (status?: SpanStatus) => void;
+  setAttributes: (attributes: SpanAttributes) => void;
+  readonly spanId: string;
+};
+
 export type SpanSink = TelemetryContext & {
   readonly counts: SpanSinkCounts;
+  /**
+   * Open a span without scoping it to a call. The caller owns closing it; see
+   * `OpenSpan`.
+   */
+  openSpan: (
+    options: SpanOptions & { parentSpanId?: string | null },
+  ) => OpenSpan;
   /** Snapshots in start order. Safe to serialise. */
   spans: () => readonly RecordedSpan[];
   readonly traceId: string;
@@ -165,17 +195,17 @@ export const createSpanSink = (
   };
 
   /**
-   * Start a span under `parentSpanId`, run `callback`, close it.
+   * The one primitive. Everything else is expressed in terms of it, so there
+   * is a single place where recording, the cap and redaction happen.
    *
-   * The recording is deliberately all in the wrapper: `callback` sees a span
-   * object whose methods are no-ops when the span was dropped, so a caller
-   * never has to ask whether it was recorded.
+   * `record` is null for a span the cap refused. The returned handle still
+   * works — its methods no-op — so a caller never has to ask whether the span
+   * was kept.
    */
-  const start = async <T>(
+  const open = (
     parentSpanId: string | null,
     { attributes, name }: SpanOptions,
-    callback: (span: TelemetrySpan) => T | Promise<T>,
-  ): Promise<T> => {
+  ) => {
     const spanId = hex(`${traceId}:${sequence++}`, 16);
     const record: RecordedSpan | null =
       recorded.length < maxSpans
@@ -203,38 +233,59 @@ export const createSpanSink = (
       counts.dropped += 1;
     }
 
-    // Children are started from the span, not from ambient state — so a
-    // dropped span still parents its children correctly, by id.
-    const span: TelemetrySpan = {
-      addEvent: (eventName, eventAttributes) => {
-        if (!record) return;
-        record.events = [
-          ...record.events,
-          {
-            attributes: filterAttributes(name, eventAttributes),
-            name: eventName,
-            timeMs: now(),
-          },
-        ];
-      },
-      setAttributes: (next) => {
-        if (!record) return;
-        record.attributes = {
-          ...record.attributes,
-          ...filterAttributes(name, next),
-        };
-      },
-      setStatus: (status) => {
-        if (record) record.status = status;
-      },
-      startSpan: (childOptions, childCallback) =>
-        start(spanId, childOptions, childCallback),
+    const addEvent = (eventName: string, eventAttributes?: SpanAttributes) => {
+      if (!record) return;
+      record.events = [
+        ...record.events,
+        {
+          attributes: filterAttributes(name, eventAttributes),
+          name: eventName,
+          timeMs: now(),
+        },
+      ];
     };
 
-    const close = () => {
+    const setAttributes = (next: SpanAttributes) => {
+      if (!record) return;
+      record.attributes = {
+        ...record.attributes,
+        ...filterAttributes(name, next),
+      };
+    };
+
+    const setStatus = (status: SpanStatus) => {
+      if (record) record.status = status;
+    };
+
+    const close = (status?: SpanStatus) => {
+      if (status) setStatus(status);
+      // Idempotent: a second close must not double-count `open` or move the
+      // end time, because paired events are only as reliable as their emitter.
       if (!record || record.endTimeMs !== null) return;
       record.endTimeMs = now();
       counts.open -= 1;
+    };
+
+    return { addEvent, close, record, setAttributes, setStatus, spanId };
+  };
+
+  /**
+   * The callback-scoped form pi uses. Children are started from the span, not
+   * from ambient state, so a dropped span still parents its children by id.
+   */
+  const start = async <T>(
+    parentSpanId: string | null,
+    options: SpanOptions,
+    callback: (span: TelemetrySpan) => T | Promise<T>,
+  ): Promise<T> => {
+    const handle = open(parentSpanId, options);
+
+    const span: TelemetrySpan = {
+      addEvent: handle.addEvent,
+      setAttributes: handle.setAttributes,
+      setStatus: handle.setStatus,
+      startSpan: (childOptions, childCallback) =>
+        start(handle.spanId, childOptions, childCallback),
     };
 
     try {
@@ -242,23 +293,30 @@ export const createSpanSink = (
     } catch (error) {
       // Recorded, then rethrown untouched: a span must not swallow the failure
       // it is describing.
-      if (record && record.status.status === "ok") {
-        record.status = {
+      if (handle.record && handle.record.status.status === "ok") {
+        handle.setStatus({
           status: "error",
           error:
             error instanceof Error
               ? { message: error.message, name: error.name }
               : { message: String(error), name: "Error" },
-        };
+        });
       }
       throw error;
     } finally {
-      close();
+      handle.close();
     }
   };
 
   return {
     counts,
+    openSpan: ({ parentSpanId = null, ...spanOptions }) => {
+      const { addEvent, close, setAttributes, spanId } = open(
+        parentSpanId,
+        spanOptions,
+      );
+      return { addEvent, close, setAttributes, spanId };
+    },
     spans: () =>
       recorded.map((span) => ({ ...span, events: [...span.events] })),
     startSpan: (spanOptions, callback) => start(null, spanOptions, callback),
