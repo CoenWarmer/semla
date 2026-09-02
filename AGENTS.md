@@ -24,7 +24,7 @@ root `node_modules`, and declared in `src/lib/pi/extension-manifest.ts`. It is
 **not** declared in `.pi/npm/package.json`, and **not** listed in
 `.pi/settings.json` for pi's own package resolution.
 
-**Why.** `.pi/npm` is a separate dependency tree with its own lockfile, and
+**Why.** `.pi/npm` was a separate dependency tree with its own lockfile, and
 `npm audit` only ever sees the tree it is run in. When this was written the root
 tree reported "found 0 vulnerabilities" while the two sibling trees held 25
 between them, six of them high. Nothing in the repository said so.
@@ -55,18 +55,28 @@ cannot degrade into a session that quietly has no tools.
 3. an entry in `EXTENSION_MANIFEST` declaring the tools it must register;
 4. a contract test pinning the version and asserting the tool set against the
    installed package. `code-intelligence-contract.test.ts` is the worked
-   example. `.pi/npm` is gone, and `pi-npm-tree-removed.test.ts` keeps it
-   gone — a tree there is invisible to `npm audit` run at the root.
+   example. `.pi/` is gone entirely, and `pi-dir-removed.test.ts` keeps it
+   gone; the reasons are in that file's docblock and both are sharp.
 
 Prefer a package's headless or non-interactive profile where it offers one.
 Semla renders no TUI, so settings, footer and slash-command contributions are
 dead weight, and tools that can apply edits should be an explicit choice rather
 than something inherited from an interactive default.
 
-**No exceptions left, and one that took work.** `@zosmaai/pi-llm-wiki` was the
-last package in `.pi/npm`, and that tree is now deleted. Only
-`.pi/packages/semla-otel` still keeps a lockfile of its own, which is why
-`audit:all` still exists.
+**No exceptions left, and `.pi/` is gone.** `@zosmaai/pi-llm-wiki` was the last
+package in `.pi/npm`; `semla-otel` was the last thing in `.pi/packages`, loaded
+by nothing and reachable only through `.pi/settings.json`. There is one
+dependency tree now.
+
+Deleting `.pi/settings.json` was not housekeeping. pi reads a project-scope
+`settings.json` **from its cwd**, and Semla's sessions used to run at the
+workspace root, where there was no such file. Anchoring a session to its own
+project made this repository's own one live, and its `packages` list told pi to
+install and load the wiki a *second* time: nine extensions instead of seven,
+`.pi/npm` recreated from the registry — unpatched, so no ingest dispatcher hook
+— and fourteen tool-name conflicts, with the registration race deciding whether
+`wiki_ingest` worked. Which is the failure `PI_AGENT_DIR` exists to prevent,
+arriving by a path nobody had looked at.
 
 Moving it needed three things that are worth knowing before touching any of it.
 
@@ -233,9 +243,12 @@ because `npm run generate:db-types` rewrites it, so a fix there does not survive
 Suppressions are `// oxlint-disable-next-line <rule>`. oxlint still honours
 `eslint-disable` comments, but nothing in this repository should add one.
 
-`npm run audit:all` audits all three dependency trees, not just the root one.
-It is expected to be red until the exception above is resolved; the point is
-that the number is visible rather than hidden behind a clean root audit.
+`npm run audit:all` audits every dependency tree this repository installs.
+There is one now, so it is close to plain `npm audit` — it survives as the
+single place a second tree would have to be declared, because a tree that is
+not declared there is a tree `npm audit` silently does not see. That is not
+hypothetical: it is how two high-severity advisories sat in `.pi/npm` while the
+root reported none. `pi-dir-removed.test.ts` is the other half.
 
 # Debugging
 

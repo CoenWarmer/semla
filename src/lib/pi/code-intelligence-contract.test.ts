@@ -13,7 +13,8 @@
  *
  *  - the version is pinned exactly, because this is loaded by a path into
  *    node_modules and a floating range lets a release move the file;
- *  - it is *not* declared in `.pi/npm` or `.pi/settings.json`, so the decision
+ *  - it is *not* declared in a second dependency tree or a pi settings file,
+ *    so the decision
  *    recorded in AGENTS.md fails a build rather than eroding quietly.
  *
  * The tool set is checked against the package itself, so a release that renames
@@ -53,15 +54,9 @@ describe(`${PACKAGE} declaration`, () => {
     expect(declared).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  // The tree it used to be declared in is gone entirely; see
-  // pi-npm-tree-removed.test.ts for the invariant that keeps it gone.
-
-  it("is no longer loaded through pi's package resolution", () => {
-    const settings = readJson(join(process.cwd(), ".pi/settings.json"));
-    const packages = (settings.packages ?? []) as string[];
-
-    expect(packages.filter((entry) => entry.includes("supi"))).toEqual([]);
-  });
+  // Neither the tree it used to be declared in nor the settings file that
+  // used to load it exists now; pi-dir-removed.test.ts keeps `.pi/` gone, and
+  // that covers both.
 });
 
 describe(`${PACKAGE} tool set`, () => {

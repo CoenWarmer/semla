@@ -1,6 +1,0 @@
-{
-  "packages": [
-    "./packages/semla-otel",
-    "npm:@zosmaai/pi-llm-wiki"
-  ]
-}

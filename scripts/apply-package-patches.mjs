@@ -34,9 +34,9 @@ const PATCH_DIR = join(ROOT, "patches");
 
 /**
  * Dependency trees a patched package may be installed in, in search order.
- * There is one, now that `.pi/npm` is gone; `.pi/packages/semla-otel` installs
- * its own but nothing there is patched. A list rather than a constant so
- * adding a tree does not mean rewriting the lookup.
+ * There is one: `.pi/npm` is gone and nothing else here installs its own. A
+ * list rather than a constant so adding a tree does not mean rewriting the
+ * lookup.
  */
 const TREES = ["node_modules"];
 
