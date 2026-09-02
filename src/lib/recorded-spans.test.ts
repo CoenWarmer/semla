@@ -239,7 +239,9 @@ describe("recordedSpansToOtelSpans on malformed input", () => {
       "Workflow",
       "Phase",
       "Agent",
-      "pi.harness.tool",
+      // A host tool span with no `pi.tool.name` still reads as a tool rather
+      // than as a schema identifier.
+      "⚙ tool",
     ]);
   });
 });
@@ -300,5 +302,43 @@ describe("timelineSource", () => {
     // The toggle is hidden in that state, but a stale pick must not render an
     // empty timeline.
     expect(timelineSource([], "recorded")).toBe("derived");
+  });
+});
+
+describe("host span labels", () => {
+  const hostSpan = (name: string, attributes: Record<string, string> = {}) => ({
+    attributes,
+    endTimeMs: 5,
+    events: [],
+    name,
+    parentSpanId: null,
+    spanId: name,
+    startTimeMs: 0,
+    status: { status: "ok" as const },
+    traceId: "t",
+  });
+
+  it("names a tool row after the tool", () => {
+    const mapped = recordedSpansToOtelSpans([
+      hostSpan("pi.harness.tool", { "pi.tool.name": "bash" }),
+    ]);
+
+    // The glyph matches the derived timeline's, so switching source does not
+    // change what a tool row looks like.
+    expect(mapped[0]?.name).toBe("⚙ bash");
+    expect(mapped[0]?.resource?.["service.name"]).toBe("tool");
+  });
+
+  it("gives the turn and its run plain names", () => {
+    const mapped = recordedSpansToOtelSpans([
+      hostSpan("pi.harness.run"),
+      hostSpan("pi.harness.turn"),
+    ]);
+
+    expect(mapped.map((s) => s.name)).toEqual(["Prompt", "Turn"]);
+    expect(mapped.map((s) => s.resource?.["service.name"])).toEqual([
+      "session",
+      "session",
+    ]);
   });
 });

@@ -17,6 +17,7 @@ import { queueEntries } from "@/lib/pi/entry-persist-queue";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
 import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session-events";
 import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
+import type { TurnOutcome } from "@/lib/pi/telemetry/host-recorder";
 import {
   finalizeBackgroundRun,
   persistWorkflowSnapshot,
@@ -60,6 +61,7 @@ export const runBackgroundContinuation = async ({
   runId,
   semlaSessionId,
   session,
+  spans,
 }: {
   abortSignal: AbortSignal;
   /** Where the turn's agent ran; run files are keyed by it. See session-cwd.ts. */
@@ -71,6 +73,18 @@ export const runBackgroundContinuation = async ({
   runId: string | undefined;
   semlaSessionId: string;
   session: ContinuableSession;
+  /**
+   * The turn's span, handed over because the run it parents outlives the turn
+   * (plan §8.4). Optional so a caller with no telemetry needs to know nothing
+   * about it.
+   *
+   * `flush` still writes to disk after the stream has closed, which is the
+   * only way a background run's spans reach the next page load.
+   */
+  spans?: {
+    endTurn: (outcome: TurnOutcome) => void;
+    flush: () => Promise<void>;
+  };
 }) => {
   sessionLog(semlaSessionId, "bg continuation started");
   debug.onBgStart();
@@ -227,6 +241,12 @@ export const runBackgroundContinuation = async ({
   } finally {
     if (watchdog) clearInterval(watchdog);
     unsubscribeBg();
+    // The turn span this continuation inherited. Closed here whatever happened
+    // — a dropped stream or a timeout must still close it, or the trace claims
+    // the turn is running forever.
+    spans?.endTurn(supersededByNewPrompt ? "suspended" : "completed");
+    // Reaches disk only; the stream closed when the prompt turn did.
+    if (spans) await spans.flush();
     releaseBackgroundContinuation(semlaSessionId, abortSignal);
     detach(
       semlaSessionId,

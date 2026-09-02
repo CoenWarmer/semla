@@ -42,10 +42,19 @@ describe("session_start hands telemetry to the live manager", () => {
 
   it("looks the sink up by the pi runtime session id", () => {
     // Keyed on the Supabase row id instead, every lookup misses silently —
-    // the mistake wiki-session-repo already made once.
-    expect(source).toContain(
-      "getSpanSink(ctx.sessionManager.getSessionId())",
+    // the mistake wiki-session-repo already made once. Matched on where the
+    // id comes from rather than on one spelling of the call, so extracting it
+    // to a variable is not a failure.
+    const idFrom = /const (\w+) = ctx\.sessionManager\.getSessionId\(\)/.exec(
+      source,
     );
+    expect(idFrom).not.toBeNull();
+
+    const id = idFrom?.[1] ?? "";
+    expect(source).toContain(`getSpanSink(${id})`);
+    // And the turn span must come from the same key, or runs nest under a
+    // turn from a different session.
+    expect(source).toContain(`getTurnSpanId(${id})`);
   });
 });
 

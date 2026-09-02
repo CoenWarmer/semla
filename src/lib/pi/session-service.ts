@@ -76,6 +76,7 @@ import {
   retainSpanSink,
 } from "@/lib/pi/telemetry/sink-registry";
 import { createSpanPublisher } from "@/lib/pi/telemetry/span-publisher";
+import { createHostTelemetry } from "@/lib/pi/telemetry/host-recorder";
 import { appendSpans } from "@/lib/pi/telemetry/span-store";
 import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
@@ -410,7 +411,19 @@ export const runPiPrompt = async ({
   const spanSink = createSpanSink(semlaSessionId, {
     onChange: scheduleSpanFlush,
   });
-  retainSpanSink(piRuntimeSessionId, spanSink);
+  /**
+   * The turn's own spans, opened before extensions load.
+   *
+   * The order matters: the workflow extension reads the turn span id on
+   * `session_start`, which pi fires from inside `createAgentSession` below, so
+   * a turn span opened after that would leave every workflow run rooted
+   * instead of nested (plan §8.4).
+   */
+  const host = createHostTelemetry(spanSink, {
+    piSessionId: piRuntimeSessionId,
+  });
+  host.turnStarted();
+  retainSpanSink(piRuntimeSessionId, spanSink, host.turnSpanId);
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
@@ -550,6 +563,7 @@ export const runPiPrompt = async ({
     attachedThisTurn,
     debug,
     emit,
+    host,
     piRuntimeSessionId,
     semlaSessionId,
     session,
@@ -579,6 +593,11 @@ export const runPiPrompt = async ({
   // Subscribed after the stuck-run recovery above, so the messages it injects
   // cannot be mistaken for this turn's delivery.
   const unsubscribe = session.subscribe(router.onSessionEvent);
+  /**
+   * Why the turn ended, for the run span's outcome. `pi.harness.turn` declares
+   * no end attributes, which is why there is a run span above it at all.
+   */
+  let turnFailure: { code?: string; type?: string } | null = null;
 
   try {
     sessionLog(semlaSessionId, "prompting");
@@ -616,6 +635,10 @@ export const runPiPrompt = async ({
     // more interesting number, and a provider timeout arrives as a throw.
     phase("model-turn");
     debug.onError(msg);
+    turnFailure = {
+      code: msg.slice(0, 200),
+      type: err instanceof Error ? err.name : "Error",
+    };
     throw new Error(msg);
   } finally {
     unsubscribe();
@@ -625,6 +648,28 @@ export const runPiPrompt = async ({
     // The recorder the manager holds closes over the sink, so a background run
     // keeps recording after this; only the lookup goes away.
     releaseSpanSink(piRuntimeSessionId);
+
+    /**
+     * Decided here rather than below, because the turn span's fate depends on
+     * it and the final flush has to happen before `closeSessionStream` — after
+     * that, emitted spans reach nobody. Only the *decision* moves; the branch
+     * that acts on it is unchanged, further down.
+     */
+    const decision = decideContinuation({
+      findUnfinishedRun: () =>
+        unfinishedBackgroundRunId(semlaSessionId, agentCwd),
+      isRunTerminal: (runId) =>
+        isRunTerminal(readWorkflowRun(agentCwd, runId)),
+      state,
+    });
+
+    // A watched turn's span outlives this function: the workflow it parents is
+    // still running, and closing it here would draw a six-minute run hanging
+    // off a turn that ended in seconds (§8.4). The continuation closes it.
+    if (decision.kind !== "watch") {
+      host.turnEnded(turnFailure ? "failed" : "completed", turnFailure ?? undefined);
+    }
+
     // The timer may hold spans that closed in the last few milliseconds, and
     // the stream is about to shut. Cancel it and send them synchronously.
     if (spanFlush) clearTimeout(spanFlush);
@@ -643,14 +688,6 @@ export const runPiPrompt = async ({
     clearSlot(BRIDGE_RUN_STARTED);
     closeSessionStream(semlaSessionId);
     stampWikiRepo(semlaSessionId, turnRepoSlugs(), turnStartedAt);
-
-    const decision = decideContinuation({
-      findUnfinishedRun: () =>
-        unfinishedBackgroundRunId(semlaSessionId, agentCwd),
-      isRunTerminal: (runId) =>
-        isRunTerminal(readWorkflowRun(agentCwd, runId)),
-      state,
-    });
 
     if (decision.kind === "settled") {
       // The workflow outran the prompt turn: its result is already delivered
@@ -687,6 +724,13 @@ export const runPiPrompt = async ({
         runId: decision.runId,
         semlaSessionId,
         session,
+        spans: {
+          endTurn: (outcome) => host.turnEnded(outcome),
+          // The same flush. Its `emit` is a no-op once the stream is closed,
+          // but the append is not — which is how a background run's spans
+          // reach the file the next page load reads.
+          flush: flushSpans,
+        },
       });
     } else {
       sessionLog(semlaSessionId, "session disposed");

@@ -44,7 +44,7 @@ import {
 } from "./dynamic-workflows/src/workflow-settings";
 import { createWorkflowTool } from "./dynamic-workflows/src/workflow-tool";
 import { registerWorkflowModelsCommand } from "./dynamic-workflows/src/workflows-models-command";
-import { getSpanSink } from "../telemetry/sink-registry";
+import { getSpanSink, getTurnSpanId } from "../telemetry/sink-registry";
 import { createWorkflowTelemetry } from "../telemetry/workflow-recorder";
 import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
@@ -359,8 +359,16 @@ export default function extension(pi: ExtensionAPI) {
     // away a few lines later. That is not a hypothetical: a Semla session
     // whose cwd is the workspace root does take that branch, and it recorded
     // nothing at all while looking wired up.
-    const sink = getSpanSink(ctx.sessionManager.getSessionId());
-    if (sink) manager.setTelemetry(createWorkflowTelemetry(sink));
+    const piSessionId = ctx.sessionManager.getSessionId();
+    const sink = getSpanSink(piSessionId);
+    if (sink) {
+      // The turn span, so a run nests under the turn that started it — which
+      // holds even when the run outlives that turn in the background (§8.4).
+      manager.setTelemetry(
+        createWorkflowTelemetry(sink),
+        getTurnSpanId(piSessionId),
+      );
+    }
 
     // First registration (and post-rebuild catch-up for target-only names).
     // Handlers load by name from the live storage, so a later same-session

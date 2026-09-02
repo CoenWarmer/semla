@@ -37,6 +37,7 @@ import {
   type TurnBackgroundState,
 } from "@/lib/pi/turn-background-state";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
+import type { HostTelemetry } from "@/lib/pi/telemetry/host-recorder";
 
 /** Only what the router needs to keep a background run's session alive. */
 type RetainableSession = { dispose(): void };
@@ -70,6 +71,7 @@ export const createTurnEventRouter = ({
   attachedThisTurn,
   debug,
   emit,
+  host,
   piRuntimeSessionId,
   semlaSessionId,
   session,
@@ -85,6 +87,12 @@ export const createTurnEventRouter = ({
   attachedThisTurn: Set<string>;
   debug: SessionDebugWriter;
   emit: EmitSessionEvent;
+  /**
+   * Turn and tool spans. Driven from here because these tool events are
+   * already handled here — nothing extra is observed, and a span cannot drift
+   * out of step with the marker the client is shown for the same call.
+   */
+  host: HostTelemetry;
   /** Pi's own session id, which is the key the wiki bridge reads repos under. */
   piRuntimeSessionId: string;
   semlaSessionId: string;
@@ -147,6 +155,7 @@ export const createTurnEventRouter = ({
     // timeline now, instead of waiting for the entries to be persisted at the
     // end of the turn. The same summary/params the transcript derives keep the
     // live marker labelled identically to the persisted one that replaces it.
+    host.toolStarted(event.toolCallId, { name: event.toolName });
     const summary = summarizeArguments(event.args);
     const params = getParams(event.args);
     emit({
@@ -168,6 +177,7 @@ export const createTurnEventRouter = ({
   ) => {
     sessionLog(semlaSessionId, "tool end", { tool: event.toolName });
     debug.onToolEnd(event.toolName, event.result);
+    host.toolEnded(event.toolCallId, { isError: Boolean(event.isError) });
     emit({
       at: new Date().toISOString(),
       isError: Boolean(event.isError),

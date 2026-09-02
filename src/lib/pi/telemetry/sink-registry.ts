@@ -18,13 +18,24 @@
 
 import type { SpanSink } from "@/lib/pi/telemetry/span-sink";
 
-const sinks = new Map<string, SpanSink>();
+type Retained = {
+  sink: SpanSink;
+  /**
+   * The turn's span, so a workflow run started by this turn nests under it
+   * (plan §8.4). Null for a turn recorded before host spans existed, or one
+   * whose turn span could not be opened.
+   */
+  turnSpanId: string | null;
+};
+
+const sinks = new Map<string, Retained>();
 
 export const retainSpanSink = (
   piRuntimeSessionId: string,
   sink: SpanSink,
+  turnSpanId: string | null = null,
 ): void => {
-  sinks.set(piRuntimeSessionId, sink);
+  sinks.set(piRuntimeSessionId, { sink, turnSpanId });
 };
 
 /**
@@ -33,7 +44,18 @@ export const retainSpanSink = (
  */
 export const getSpanSink = (
   piRuntimeSessionId: string,
-): SpanSink | undefined => sinks.get(piRuntimeSessionId);
+): SpanSink | undefined => sinks.get(piRuntimeSessionId)?.sink;
+
+/**
+ * The turn span to parent this session's workflow runs to.
+ *
+ * Null rather than undefined when there is no turn span, because a run with
+ * no parent is a legitimate root — a background run recovered after a restart
+ * has no turn to nest under.
+ */
+export const getTurnSpanId = (
+  piRuntimeSessionId: string,
+): string | null => sinks.get(piRuntimeSessionId)?.turnSpanId ?? null;
 
 export const releaseSpanSink = (piRuntimeSessionId: string): void => {
   sinks.delete(piRuntimeSessionId);

@@ -21,6 +21,11 @@
 
 import type { OtelSpan } from "react-otel-trace-waterfall";
 import {
+  HARNESS_RUN_SPAN,
+  HARNESS_TOOL_SPAN,
+  HARNESS_TURN_SPAN,
+} from "@/lib/pi/telemetry/host-recorder";
+import {
   WORKFLOW_AGENT_SPAN,
   WORKFLOW_PHASE_SPAN,
   WORKFLOW_RUN_SPAN,
@@ -72,7 +77,8 @@ const serviceOf = (name: string): string => {
   if (name === WORKFLOW_RUN_SPAN || name === WORKFLOW_PHASE_SPAN) {
     return "workflow";
   }
-  if (name.startsWith("pi.harness.tool")) return "tool";
+  if (name === HARNESS_TOOL_SPAN) return "tool";
+  if (name === HARNESS_TURN_SPAN || name === HARNESS_RUN_SPAN) return "session";
   if (name.startsWith("pi.ai.")) return "assistant";
   return "session";
 };
@@ -98,6 +104,16 @@ const labelOf = (span: RecordedSpan): string => {
   if (span.name === WORKFLOW_AGENT_SPAN) {
     return named("semla.workflow.agent.label") ?? "Agent";
   }
+  // Host spans, whose names are pi's schema identifiers for the same reason
+  // ours are: a row reading "pi.harness.tool" tells a reader nothing, and the
+  // tool's name is an attribute. The glyph matches the derived timeline's, so
+  // switching sources does not change what a tool row looks like.
+  if (span.name === HARNESS_TOOL_SPAN) {
+    const tool = named("pi.tool.name");
+    return tool ? `⚙ ${tool}` : "⚙ tool";
+  }
+  if (span.name === HARNESS_TURN_SPAN) return "Turn";
+  if (span.name === HARNESS_RUN_SPAN) return "Prompt";
   return span.name;
 };
 

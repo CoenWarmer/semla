@@ -37,6 +37,8 @@ vi.mock("@/lib/pi/session-project-attach", async (importOriginal) => ({
 
 import type { SessionDebugWriter } from "./debug-writer.ts";
 import type { PiSessionEvent } from "./session-events.ts";
+import { createHostTelemetry } from "./telemetry/host-recorder.ts";
+import { createSpanSink } from "./telemetry/span-sink.ts";
 import { createTurnEventRouter } from "./session-event-router.ts";
 import {
   createTurnBackgroundState,
@@ -52,11 +54,18 @@ const setup = (state: TurnBackgroundState = createTurnBackgroundState()) => {
   const emitted: PiSessionEvent[] = [];
   const attachedThisTurn = new Set<string>();
   const session = { dispose: vi.fn() };
+  // A real sink and recorder, not a stub: the tool spans are derived from the
+  // same events asserted below, and a wiring mistake there records nothing
+  // while every other assertion still passes.
+  const sink = createSpanSink("00000000-0000-4000-8000-00000000e1e1");
+  const host = createHostTelemetry(sink, { piSessionId: "pi-runtime-1" });
+  host.turnStarted();
   const router = createTurnEventRouter({
     agentCwd: "/w/proj",
     attachedThisTurn,
     debug: debugStub(),
     emit: (event) => emitted.push(event),
+    host,
     piRuntimeSessionId: "pi-runtime-1",
     semlaSessionId: "s1",
     session,
@@ -64,7 +73,7 @@ const setup = (state: TurnBackgroundState = createTurnBackgroundState()) => {
     turnRepoSlugs: () => ["semla", ...attachedThisTurn],
   });
 
-  return { attachedThisTurn, emitted, router, session, state };
+  return { attachedThisTurn, emitted, host, router, session, sink, state };
 };
 
 /** The fields the router reads; the SDK's event carries far more. */
@@ -458,5 +467,61 @@ describe("claimBridgeRun", () => {
     expect(router.claimBridgeRun("bridge-run")).toBe(false);
     expect(state.runId).toBe("run-1");
     expect(retainBackgroundSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("host spans", () => {
+  it("records a tool call as a span under the turn", () => {
+    const { host, router, sink } = setup();
+
+    router.onSessionEvent(toolStart());
+    router.onSessionEvent(toolEnd());
+
+    const tool = sink.spans().find((span) => span.name === "pi.harness.tool");
+    expect(tool?.attributes["pi.tool.name"]).toBe("read");
+    expect(tool?.attributes["pi.tool.call_id"]).toBe("call-1");
+    expect(tool?.attributes["pi.tool.is_error"]).toBe(false);
+    expect(tool?.endTimeMs).not.toBeNull();
+    // Nested, so a workflow started inside the turn reads as part of it.
+    expect(tool?.parentSpanId).toBe(host.turnSpanId);
+  });
+
+  it("marks a failed call as an error", () => {
+    const { router, sink } = setup();
+
+    router.onSessionEvent(toolStart());
+    router.onSessionEvent(toolEnd({ isError: true }));
+
+    const tool = sink.spans().find((span) => span.name === "pi.harness.tool");
+    expect(tool?.attributes["pi.tool.is_error"]).toBe(true);
+    expect(tool?.status.status).toBe("error");
+  });
+
+  it("does not open a second span for a repeated end event", () => {
+    const { router, sink } = setup();
+
+    router.onSessionEvent(toolStart());
+    router.onSessionEvent(toolEnd());
+    router.onSessionEvent(toolEnd());
+
+    expect(
+      sink.spans().filter((span) => span.name === "pi.harness.tool"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps concurrent calls apart by call id", () => {
+    const { router, sink } = setup();
+
+    router.onSessionEvent(toolStart({ toolCallId: "a", toolName: "read" }));
+    router.onSessionEvent(toolStart({ toolCallId: "b", toolName: "bash" }));
+    router.onSessionEvent(toolEnd({ toolCallId: "b", toolName: "bash" }));
+
+    const tools = sink.spans().filter((s) => s.name === "pi.harness.tool");
+    expect(tools).toHaveLength(2);
+    // The one that ended is closed; the one still running is not.
+    expect(tools.find((s) => s.attributes["pi.tool.name"] === "bash")?.endTimeMs)
+      .not.toBeNull();
+    expect(tools.find((s) => s.attributes["pi.tool.name"] === "read")?.endTimeMs)
+      .toBeNull();
   });
 });
