@@ -73,3 +73,30 @@ test("the goal rides along with the prompt", () => {
 
   assert.equal(store.consume(SESSION_A)?.goal, "ship it");
 });
+
+/**
+ * A session created by /sessions/new does not exist yet — the id is minted on
+ * the client and navigated to without waiting — so what the arriving page needs
+ * in order to create it travels with the prompt.
+ */
+test("what the session needs to be created rides along with the prompt", () => {
+  const store = createPendingPromptStore();
+
+  store.set(SESSION_A, {
+    ...prompt("hello"),
+    create: { project: "semla", title: "semla" },
+  });
+
+  assert.deepEqual(store.consume(SESSION_A)?.create, {
+    project: "semla",
+    title: "semla",
+  });
+});
+
+// An existing session's prompt carries no creation payload.
+test("an existing session's prompt carries no create payload", () => {
+  const store = createPendingPromptStore();
+  store.set(SESSION_A, prompt("hello"));
+
+  assert.equal(store.consume(SESSION_A)?.create, undefined);
+});

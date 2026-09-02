@@ -1,10 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 
-import { SESSION_STATUS_KEY } from "@/lib/session-status";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { GoalEditor } from "@/components/goal-editor";
 import { usePendingPrompt } from "@/components/pending-prompt-provider";
@@ -22,10 +20,29 @@ export function NewSessionClient({
   project?: string | null;
 }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { set: setPendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(null);
-  const [error, setError] = useState<string>();
+
+  /**
+   * The session's id, minted here rather than by Postgres.
+   *
+   * Waiting for the database to name the session cost two round trips before
+   * anything moved: the POST, and then the RSC fetch for a route whose href was
+   * unknown until it returned. Knowing the id up front makes the destination
+   * prefetchable, so the click itself does no network at all.
+   */
+  const [sessionId] = useState(() => crypto.randomUUID());
+
+  /**
+   * `new=1` tells the session page that a session with no record yet is
+   * expected rather than missing, so this href can be rendered — and therefore
+   * prefetched — before the row exists.
+   */
+  const href = `/sessions/${sessionId}?new=1`;
+
+  useEffect(() => {
+    router.prefetch(href);
+  }, [href, router]);
 
   const handleGoalSave = useCallback(async (next: string | null) => {
     setGoal(next);
@@ -40,37 +57,26 @@ export function NewSessionClient({
       const text = message.text.trim();
       if (!text) return;
 
-      setError(undefined);
-
-      // The session is created here rather than when the project was chosen, so
-      // a card opened and abandoned leaves nothing behind. The project has been
-      // carried in the URL until now.
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(project ? { project, title: project } : {}),
+      // Nothing is awaited here, and nothing is fetched. The session page
+      // submits the prompt once it mounts — the first turn's stream only
+      // reaches the request that starts it — and it creates the session on the
+      // way, which is why `create` rides along. Creating it here instead is
+      // what used to make this click wait.
+      //
+      // Still created with the first prompt rather than when the project was
+      // chosen, so a card opened and abandoned leaves nothing behind. The
+      // project has been carried in the URL until now.
+      setPendingPrompt(sessionId, {
+        create: { project: project ?? null, title: project ?? "New Session" },
+        goal,
+        model,
+        text,
+        tools,
       });
-      const body = await res.json().catch(() => null);
 
-      if (!res.ok || !body?.id) {
-        setError("Could not create a new session. Please try again.");
-        return;
-      }
-
-      // The session page submits this once it mounts: the first turn's stream
-      // only reaches the request that starts it, so it has to be started there.
-      setPendingPrompt(body.id, { goal, model, text, tools });
-
-      // The sidebar polls for sessions; nudge it now so the new one appears as
-      // we navigate rather than whenever the next poll lands. Deliberately not
-      // router.refresh(): that re-renders the route we are about to leave and,
-      // done near a starting stream, can disrupt the SSE reader (see the
-      // deferred refresh in use-prompt-mutation).
-      void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-
-      router.replace(`/sessions/${body.id}`);
+      router.replace(href);
     },
-    [goal, project, queryClient, router, setPendingPrompt],
+    [goal, href, project, router, sessionId, setPendingPrompt],
   );
 
   return (
@@ -89,7 +95,6 @@ export function NewSessionClient({
               />
             }
           />
-          {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
         </div>
       </div>
     </div>

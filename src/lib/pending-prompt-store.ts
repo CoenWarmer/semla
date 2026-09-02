@@ -2,6 +2,16 @@ import type { PromptEditorModel } from "@/components/prompt-editor";
 
 /** The first prompt of a session, handed from /sessions/new to /sessions/[id]. */
 export type PendingPrompt = {
+  /**
+   * Present when the session does not exist yet, and carries what creating it
+   * needs.
+   *
+   * /sessions/new used to POST the session and wait for its id before it could
+   * navigate anywhere — two round trips of nothing happening after a click. It
+   * now mints the id itself and navigates immediately, which leaves creation to
+   * the page that arrives. Absent for a session that already exists.
+   */
+  create?: { project: string | null; title: string };
   goal?: string | null;
   model: PromptEditorModel;
   text: string;

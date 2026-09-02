@@ -8,10 +8,12 @@ import { notFound } from "next/navigation";
 
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ new?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, { new: isNew }] = await Promise.all([params, searchParams]);
 
   const supabase = await createClient();
   const { user } = await requireUser();
@@ -36,7 +38,22 @@ export default async function Page({
     throw new Error(`Unable to load session: ${sessionResult.error.message}`);
   }
 
-  if (!session) {
+  /**
+   * A session whose record does not exist yet, rather than one that never did.
+   *
+   * /sessions/new mints the id and navigates immediately, so this page is
+   * reached — and prefetched — before the row is written; the client creates it
+   * as it submits the first prompt. Without this the prefetch would render a
+   * 404 and cache it, which is the whole reason the navigation could not be
+   * made instant before.
+   *
+   * Narrow on purpose: only an explicit `new=1` gets the shell, so a mistyped
+   * or deleted session is still a 404 rather than an empty page that looks like
+   * it worked.
+   */
+  const pendingCreation = !session && isNew === "1";
+
+  if (!session && !pendingCreation) {
     notFound();
   }
 
@@ -44,11 +61,11 @@ export default async function Page({
     <div className="flex h-full w-full flex-col overflow-hidden">
       <ClientSessionComponent
         defaultTools={[...getPiRuntimeConfig().tools]}
-        goal={session.goal}
+        goal={session?.goal ?? null}
         initialMessagesData={transcript ?? undefined}
-        isRunning={session.is_running ?? false}
+        isRunning={session?.is_running ?? false}
         sessionId={id}
-        title={session.title}
+        title={session?.title ?? null}
       />
     </div>
   );

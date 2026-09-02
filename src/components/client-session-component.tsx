@@ -42,6 +42,8 @@ import {
   type PendingPrompt,
 } from "@/components/pending-prompt-provider";
 import { useQueryClient } from "@tanstack/react-query";
+
+import { SESSION_STATUS_KEY } from "@/lib/session-status";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
@@ -75,6 +77,8 @@ export function ClientSessionComponent({
 
   const { consume: consumePendingPrompt } = usePendingPrompt();
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
+  /** Creating the session failed, so no turn can start. */
+  const [createError, setCreateError] = useState<string>();
 
   const handleStop = useCallback(() => {
     // Fire and forget: the turn ends through the stream closing, and a failed
@@ -231,6 +235,7 @@ export function ClientSessionComponent({
   }, []);
 
   const errorMessage =
+    createError ??
     streamError ??
     (messagesQuery.error instanceof Error
       ? messagesQuery.error.message
@@ -316,12 +321,40 @@ export function ClientSessionComponent({
 
     const timer = setTimeout(() => {
       submittedForRef.current = sessionId;
-      if (pending.goal) {
-        setGoal(pending.goal);
-        void handleGoalSave(pending.goal);
-      }
-      // Rejections surface through the mutation's onError as streamError.
-      promptMutation.mutateAsync(pending).catch(() => {});
+
+      void (async () => {
+        // The session may not exist yet: /sessions/new mints the id and
+        // navigates without waiting, so creating the record is the first thing
+        // this page does. Awaited, because a prompt cannot be sent to a session
+        // that has no record — but after navigation, so the wait is spent on a
+        // page that is already on screen rather than on the one being left.
+        if (pending.create) {
+          const response = await fetch("/api/sessions", {
+            body: JSON.stringify({ id: sessionId, ...pending.create }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          }).catch(() => null);
+
+          if (!response?.ok) {
+            setCreateError(
+              "Could not create this session. Reload to try again.",
+            );
+            submittedForRef.current = null;
+            return;
+          }
+
+          // The sidebar polls; nudge it so the new session appears now rather
+          // than whenever the next poll lands.
+          void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
+        }
+
+        if (pending.goal) {
+          setGoal(pending.goal);
+          void handleGoalSave(pending.goal);
+        }
+        // Rejections surface through the mutation's onError as streamError.
+        promptMutation.mutateAsync(pending).catch(() => {});
+      })();
     }, 0);
 
     return () => clearTimeout(timer);

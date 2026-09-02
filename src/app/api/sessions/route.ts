@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { parseRequestedSessionId } from "@/lib/pi/session-id";
 import { writeSessionMeta } from "@/lib/pi/session-meta";
 import { mirrorSessionProjects } from "@/lib/pi/session-project-mirror";
 import { attachProject } from "@/lib/pi/session-project-links";
@@ -31,9 +32,18 @@ export async function POST(request: Request) {
       ? body.project.trim()
       : null;
 
+    // The client may mint the id so /sessions/new can navigate before this
+    // request is sent; see session-id.ts for why it is validated. An id already
+    // in use fails the insert, which is the right answer for a collision.
+    const requestedId = parseRequestedSessionId(body?.id);
+
     const { data, error } = await supabase
       .from("sessions")
-      .insert({ title, user_id: user.id })
+      .insert(
+        requestedId
+          ? { id: requestedId, title, user_id: user.id }
+          : { title, user_id: user.id },
+      )
       .select("id")
       .single();
 
