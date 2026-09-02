@@ -215,6 +215,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   const [spansById, setSpansById] = useState<ReadonlyMap<string, RecordedSpan>>(
     () => new Map(),
   );
+  /**
+   * The same spans as an array, memoised so the timeline is not handed a new
+   * one on every unrelated re-render of the page.
+   */
+  const spans = useMemo(() => [...spansById.values()], [spansById]);
   const wikiActiveRef = useRef(false);
   /**
    * The title the server derived from the first prompt.
@@ -621,8 +626,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */
     serverTitle,
-    /** This session's spans, newest state per id. Nothing renders them yet. */
-    spans: spansById,
+    /**
+     * This session's recorded spans, in the order they opened — which is what
+     * the Map already holds, since re-writing a key on close keeps its
+     * position.
+     */
+    spans,
     streamError,
     streamingText,
     wikiActive,

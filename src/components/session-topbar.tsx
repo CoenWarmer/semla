@@ -7,6 +7,7 @@ import type {
   SessionMessage,
   SessionToolCall,
 } from "@/hooks/use-session-messages";
+import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
@@ -35,6 +36,8 @@ interface SessionTopbarProps {
   onAgentClick: (agentId: number, runId: string) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
+  /** Recorded spans, passed through to the timeline. */
+  spans?: readonly RecordedSpan[];
   toolCalls?: SessionToolCall[];
   workflowRuns?: WorkflowRun[];
 }
@@ -72,6 +75,7 @@ export function SessionTopbar({
   onAgentClick,
   sessionRunning,
   snapshot,
+  spans,
   toolCalls,
   workflowRuns,
 }: SessionTopbarProps) {
@@ -180,6 +184,7 @@ export function SessionTopbar({
             sessionId={sessionId}
             sessionRunning={sessionRunning}
             snapshot={snapshot}
+            spans={spans}
             toolCalls={toolCalls}
             workflowRuns={workflowRuns}
           />

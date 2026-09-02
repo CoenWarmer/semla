@@ -73,6 +73,7 @@ export function ClientSessionComponent({
     streamError,
     streamingText,
     wikiActive,
+    spans,
     workflowSnapshot,
   } = usePromptMutation(sessionId, isRunning);
 
@@ -388,6 +389,7 @@ export function ClientSessionComponent({
               persistedWorkflowSnapshot ??
               sessionAgentSnapshot)
         }
+        spans={spans}
         toolCalls={toolCalls}
         workflowRuns={workflowRunsQuery.data}
       />

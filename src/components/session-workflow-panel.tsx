@@ -34,6 +34,11 @@ import type {
   SpanNode,
 } from "react-otel-trace-waterfall";
 import { numberAttr, stringAttr } from "react-otel-trace-waterfall";
+import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
+import {
+  recordedSpansToOtelSpans,
+  timelineSource,
+} from "@/lib/recorded-spans";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";
@@ -707,6 +712,7 @@ export function SessionWorkflowPanel({
   sessionId,
   sessionRunning,
   snapshot,
+  spans,
   timelineMode,
   onTimelineModeChange,
   toolCalls,
@@ -717,6 +723,8 @@ export function SessionWorkflowPanel({
   sessionId?: string;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
+  /** Spans recorded as the work ran. Empty until a turn has produced any. */
+  spans?: readonly RecordedSpan[];
   /** Controlled timeline mode. Omit to let the panel manage it internally. */
   timelineMode?: TimelineMode;
   /** Fired when the internal mode changes (only relevant when timelineMode is uncontrolled). */
@@ -728,6 +736,20 @@ export function SessionWorkflowPanel({
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
   const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null);
   const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  /**
+   * Which timeline the panel is drawing: the spans recorded as the work ran,
+   * or the ones derived from app state. Null means follow the default, which
+   * is what makes the choice flip on its own as recording grows to cover more
+   * (see `coversHostSession`) without stranding a user who picked one.
+   */
+  const [spanSource, setSpanSource] = useState<"derived" | "recorded" | null>(
+    null,
+  );
+  const recorded = spans ?? [];
+  const hasRecorded = recorded.length > 0;
+  const effectiveSource = timelineSource(recorded, spanSource);
+  const showingRecorded = effectiveSource === "recorded";
 
   // Timeline mode — controlled if prop is provided, otherwise internal.
   const [internalTimelineMode, setInternalTimelineMode] =
@@ -777,7 +799,10 @@ export function SessionWorkflowPanel({
 
   const hasActiveAgents =
     (snapshot?.runningCount ?? 0) > 0 ||
-    (snapshot?.agents ?? []).some((a) => a.status === "queued");
+    (snapshot?.agents ?? []).some((a) => a.status === "queued") ||
+    // An open recorded span is work still running, and it is drawn up to
+    // `liveNow` — so the clock has to keep ticking for its bar to grow.
+    (showingRecorded && recorded.some((span) => span.endTimeMs === null));
 
   useEffect(() => {
     if (!hasActiveAgents) return;
@@ -949,6 +974,36 @@ export function SessionWorkflowPanel({
                 {snapshot.runningCount} running
               </span>
             )}
+            {viewMode === "timeline" && hasRecorded && (
+              <div className="flex items-center gap-1 rounded border border-border/50 p-0.5">
+                <button
+                  aria-label="Show spans recorded as the work ran"
+                  aria-pressed={showingRecorded}
+                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                    showingRecorded
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setSpanSource("recorded")}
+                  title="Measured timings, from spans recorded during the run"
+                >
+                  Recorded
+                </button>
+                <button
+                  aria-label="Show spans derived from session state"
+                  aria-pressed={!showingRecorded}
+                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                    showingRecorded
+                      ? "text-muted-foreground hover:text-foreground"
+                      : "bg-muted text-foreground"
+                  }`}
+                  onClick={() => setSpanSource("derived")}
+                  title="Timings inferred from the snapshot and the transcript"
+                >
+                  Derived
+                </button>
+              </div>
+            )}
             {viewMode === "timeline" && (
               <div className="flex items-center gap-1 rounded border border-border/50 p-0.5">
                 <button
@@ -1001,19 +1056,27 @@ export function SessionWorkflowPanel({
             <>
               <style>{SHIMMER_STYLE}</style>
               <TraceWaterfall
-                resetKey={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}`}
-                spans={workflowSnapshotToSpans(snapshot, messages ?? [], {
-                  now: liveNow,
-                  sessionRunning,
-                  toolCalls,
-                  // flatMap rather than filter+map so the null snapshots are
-                  // narrowed out for the type checker, not just at runtime.
-                  additionalSnapshots: workflowRuns?.flatMap((r) =>
-                    r.run_id !== snapshot.runId && r.snapshot?.runId
-                      ? [r.snapshot]
-                      : [],
-                  ),
-                })}
+                // The source is in the key: the two trees share no span ids,
+                // so switching is a different trace and the view has to
+                // re-fit rather than hold a viewport onto spans that are gone.
+                resetKey={`${sessionId ?? ""}-${snapshot.runId ?? "no-run"}-${effectiveSource}`}
+                spans={
+                  showingRecorded
+                    ? recordedSpansToOtelSpans(recorded, { now: liveNow })
+                    : workflowSnapshotToSpans(snapshot, messages ?? [], {
+                        now: liveNow,
+                        sessionRunning,
+                        toolCalls,
+                        // flatMap rather than filter+map so the null snapshots
+                        // are narrowed out for the type checker, not just at
+                        // runtime.
+                        additionalSnapshots: workflowRuns?.flatMap((r) =>
+                          r.run_id !== snapshot.runId && r.snapshot?.runId
+                            ? [r.snapshot]
+                            : [],
+                        ),
+                      })
+                }
                 height={240}
                 theme={TIMELINE_THEME}
                 liveMode={liveActive}
