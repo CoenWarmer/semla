@@ -26,7 +26,7 @@ The core design principle is that every agent run should be inspectable, repeata
 | Framework | Next.js (App Router, Node.js runtime) |
 | Auth & persistence | Supabase (Postgres + Auth) |
 | Agent runtime | `@earendil-works/pi-coding-agent` |
-| Code intelligence | TypeScript compiler API; `@mrclrchtr/supi-code-intelligence` (LSP + tree-sitter) |
+| Code intelligence | TypeScript 7 (`typescript/unstable` API and its native LSP); `@mrclrchtr/supi-code-intelligence` (LSP + tree-sitter) |
 | UI | Tailwind CSS, base-ui, shadcn components |
 | State | TanStack Query |
 | Workflow graph | React Flow (`@xyflow/react`) |
@@ -42,14 +42,21 @@ The core design principle is that every agent run should be inspectable, repeata
 - A Supabase project with the sessions, user_settings, and workflow tables provisioned
 - An API key for the model provider (Anthropic, or any provider supported by the pi runtime)
 
-Language servers are **not** a separate prerequisite. `typescript-language-server`
-is a devDependency and `npm install` is enough: Semla prepends `node_modules/.bin`
-to the agent's PATH at boot, so the version code intelligence uses is the one this
-repository pins rather than whatever is installed on the machine. Adding another
-language means adding its server as a devDependency and a line in
-`src/lib/pi/language-servers.ts`. Without a server, semantic navigation reports
-itself unavailable and falls back to structural evidence — the boot log says which
-servers resolved, so a thin answer is traceable to a cause.
+Language servers are **not** a separate prerequisite. TypeScript is served by
+TypeScript 7, which answers LSP from the compiler binary itself, so `npm install`
+is enough: Semla prepends `scripts/language-servers` and `node_modules/.bin` to
+the agent's PATH at boot, and the version code intelligence uses is the one this
+repository pins rather than whatever is installed on the machine.
+
+There is no `typescript-language-server` package any more. TypeScript 7 ships no
+tsserver, and supi looks for that binary by name, so
+`scripts/language-servers/typescript-language-server` is a small shim that execs
+`tsc --lsp -stdio`. Adding another language means adding its server as a
+devDependency and a line in `src/lib/pi/language-servers.ts`.
+
+Without a server, semantic navigation reports itself unavailable and falls back
+to structural evidence — the boot log says which servers resolved, so a thin
+answer is traceable to a cause.
 
 ### Install dependencies
 

@@ -101,6 +101,48 @@ mark those `turbopackIgnore`. And a dynamic import of a `.ts` file only resolves
 when the importing module was itself loaded by jiti, so reach for a package's
 `dist` build, not its source.
 
+## TypeScript 7, and what it costs
+
+**Decision.** This repository is on TypeScript 7 — the native compiler — as its
+only TypeScript. `tsc` type-checks the project in about a second where TS 5 took
+five. Nothing is pinned to 5.x alongside it.
+
+**Why it is not just a version bump.** TS 7 removed the JS compiler API. The
+`typescript` package exports `tsc` and a version string; `ts.createProgram`,
+`ts.forEachChild`, `ts.SymbolFlags` and the rest are gone. In their place is a
+new API under `typescript/unstable/*`, and it is a different thing rather than a
+rename:
+
+- `typescript/unstable/sync` gives `API`, `Project`, `Program`, `Checker`,
+  `Symbol`. A program is a **subprocess**, not an object — `new API()` spawns the
+  native compiler and every node, symbol and type is a handle into it.
+- `typescript/unstable/ast` has the node types; `typescript/unstable/ast/is` has
+  the predicates. `forEachChild` is a method on a node, not a free function.
+- A symbol's `declarations` are `NodeHandle`s. Each has to be `resolve(project)`d
+  before it can be read, and that is a round-trip.
+- There is no `getNameOfDeclaration`. `declarations.ts` has a local replacement.
+
+`src/lib/code-map/` is the only consumer and is written against that API. Two
+things there are load-bearing. Disposal is one: an entry dropped from the program
+cache without `release()` leaks a running compiler, and the panel rebuilds every
+time a node is expanded. The other is that `unwrapDeclaration` takes a `Node`
+rather than a branded `Declaration` — deliberately, so callers resolving a handle
+do not have to assert a brand to satisfy a function that only ever used
+predicates.
+
+**The language server.** TS 7 ships no tsserver, so `typescript-language-server`
+is uninstalled and cannot be reinstated — it has nothing to drive. TS 7 serves
+LSP from the compiler binary as `tsc --lsp -stdio`, and supi spawns
+`typescript-language-server --stdio` by name on PATH. The translation is
+`scripts/language-servers/typescript-language-server`, a shim on a PATH entry
+this repository controls; see the docblock in `src/lib/pi/language-servers.ts`
+for why a shim rather than supi's own config. Note the single dash in `-stdio`:
+`--stdio` is accepted and then exits without answering `initialize`.
+
+**What still works.** `next build` builds, and the LSP advertises
+`diagnosticProvider`, which typescript-language-server 5.3.0 did not — supi's own
+capability notes list it as missing there.
+
 # Validate your changes
 
 Run tsc, lint and test to make sure your changes are valid.
