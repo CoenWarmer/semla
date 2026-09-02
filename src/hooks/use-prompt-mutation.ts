@@ -7,6 +7,7 @@ import {
   type SessionMessagesResult,
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
+import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
 import {
   projectChangeInvalidations,
   sessionProjectsKey,
@@ -199,7 +200,6 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // resets to false for the lifetime of the hook (i.e. the session page).
   const [wikiActive, setWikiActive] = useState(false);
   const wikiActiveRef = useRef(false);
-  // A ref, not state. This is written from inside the SSE reader loop and read
   /**
    * The title the server derived from the first prompt.
    *
@@ -214,6 +214,19 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
    * new-session case, and the only case this event fires in.
    */
   const [serverTitle, setServerTitle] = useState<string | null>(null);
+
+  /** See streamed-answer-handoff.ts for why the order here matters. */
+  const handOffToTranscript = useCallback(
+    () =>
+      handOffStreamedAnswer({
+        clearStreamed: () => setStreamingText(""),
+        loadTranscript: () =>
+          queryClient.invalidateQueries({
+            queryKey: sessionMessagesQueryKey(sessionId),
+          }),
+      }),
+    [queryClient, sessionId],
+  );
   const reconnectAbortRef = useRef<AbortController | null>(null);
   // Set when a reattach is told this session has no stream. The status poll is a
   // cache and goes on saying "running" for a few seconds after a turn ends, so
@@ -349,12 +362,9 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         // Non-fatal — settle and refetch below.
       } finally {
         setIsReconnecting(false);
-        setStreamingText("");
         setActiveTool(undefined);
         setPendingQuestion(null);
-        await queryClient.invalidateQueries({
-          queryKey: sessionMessagesQueryKey(sessionId),
-        });
+        await handOffToTranscript();
       }
     };
 
@@ -501,13 +511,10 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     },
     onSettled: async () => {
       trace("onSettled:start");
-      setStreamingText("");
       setActiveTool(undefined);
       setPendingQuestion(null);
       trace("onSettled:invalidate-begin");
-      await queryClient.invalidateQueries({
-        queryKey: sessionMessagesQueryKey(sessionId),
-      });
+      await handOffToTranscript();
       trace("onSettled:invalidate-done");
 
       // A turn can attach a project by writing a file, which for a session that
