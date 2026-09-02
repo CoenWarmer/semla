@@ -63,32 +63,3 @@ describe("WIKI_EXTENSION_PATH", () => {
   });
 });
 
-/**
- * The extension loader caches compiled factories process-wide, and nothing in
- * Semla ever invalidates them — so before this flag existed, editing one of
- * Semla's own pi extensions did nothing until the dev server was restarted.
- * Turbopack cannot cover it: jiti loads those files outside Next's module graph.
- */
-describe("REFRESH_EXTENSIONS_PER_SESSION", () => {
-  const load = async (nodeEnv: string) => {
-    vi.resetModules();
-    vi.stubEnv("NODE_ENV", nodeEnv);
-    const mod = await import("./runtime-config.ts");
-    return mod.REFRESH_EXTENSIONS_PER_SESSION;
-  };
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  it("is on in development, so an extension edit is picked up", async () => {
-    expect(await load("development")).toBe(true);
-  });
-
-  // The second reload costs a full extension compile on every prompt, and the
-  // files cannot change under a running production process anyway.
-  it("is off in production", async () => {
-    expect(await load("production")).toBe(false);
-  });
-});

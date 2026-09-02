@@ -86,27 +86,6 @@ export const WIKI_HOME = (() => {
   return dir;
 })();
 
-/**
- * Reload the extension set twice when opening a session, so edits to Semla's
- * own pi extensions take effect without restarting the server.
- *
- * The extension loader caches compiled factories process-wide, keyed on cwd and
- * a generation counter that only a cache clear moves. Every Semla session runs
- * at the same cwd, so the first session in a process compiles the extensions
- * and every later one reuses those factories. Turbopack cannot help: these
- * files are loaded by jiti, outside Next's module graph, so nothing watches or
- * invalidates them and an edit does nothing until the process dies.
- *
- * DefaultResourceLoader.reload() clears that cache, but only on a loader that
- * has already loaded once — and Semla builds a fresh loader per session, so the
- * single pass never clears anything. A second pass does.
- *
- * Off in production, where the files cannot change under a running process and
- * the extra pass would just be latency on every prompt.
- */
-export const REFRESH_EXTENSIONS_PER_SESSION =
-  process.env.NODE_ENV !== "production";
-
 export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
   ?? (hostDevelopmentEnabled ? process.cwd() : "/workspace");
 /**
