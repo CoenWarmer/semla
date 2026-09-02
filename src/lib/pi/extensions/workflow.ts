@@ -15,29 +15,35 @@ import {
   WORKFLOW_EXTENSION_VERSION,
   type WorkflowReloadRuntime,
 } from "./dynamic-workflows/src/extension-reload";
+import { registerBuiltinWorkflows } from "./dynamic-workflows/src/builtin-commands";
 import {
   createEffortState,
-  createWebTools,
-  createWorkflowControlTool,
-  createWorkflowStorage,
-  createWorkflowTool,
   type EffortState,
+  registerEffortCommand,
+} from "./dynamic-workflows/src/effort-command";
+import { registerAllSavedWorkflows } from "./dynamic-workflows/src/saved-commands";
+import {
   installResultDelivery,
   installTaskPanel,
-  installWorkflowKeywordArming,
-  loadWorkflowSettings,
-  registerAllSavedWorkflows,
-  registerBuiltinWorkflows,
-  registerEffortCommand,
-  registerWorkflowCommands,
-  registerWorkflowModelsCommand,
   resumeResultDelivery,
-  saveWorkflowSettingsForCwd,
   suspendResultDelivery,
-  UsageLimitScheduler,
-  WorkflowManager,
-} from "./dynamic-workflows/src/index";
-import type { WorkflowStorage } from "./dynamic-workflows/src/workflow-saved";
+} from "./dynamic-workflows/src/task-panel";
+import { UsageLimitScheduler } from "./dynamic-workflows/src/usage-limit-scheduler";
+import { createWebTools } from "./dynamic-workflows/src/web-tools";
+import { registerWorkflowCommands } from "./dynamic-workflows/src/workflow-commands";
+import { createWorkflowControlTool } from "./dynamic-workflows/src/workflow-control-tool";
+import { installWorkflowKeywordArming } from "./dynamic-workflows/src/workflow-editor";
+import { WorkflowManager } from "./dynamic-workflows/src/workflow-manager";
+import {
+  createWorkflowStorage,
+  type WorkflowStorage,
+} from "./dynamic-workflows/src/workflow-saved";
+import {
+  loadWorkflowSettings,
+  saveWorkflowSettingsForCwd,
+} from "./dynamic-workflows/src/workflow-settings";
+import { createWorkflowTool } from "./dynamic-workflows/src/workflow-tool";
+import { registerWorkflowModelsCommand } from "./dynamic-workflows/src/workflows-models-command";
 import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
   ACTIVE_WORKFLOW_MANAGER,
