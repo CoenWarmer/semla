@@ -1,4 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
+import { sumMessageUsageByPiSession } from "@/lib/pi/message-usage";
 import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
 import { createServerTiming } from "@/lib/server-timing";
 import { createAdminClient } from "@/lib/supabase-admin";
@@ -7,14 +8,6 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 type RunUsage = { tokenUsage?: { cost?: number; total?: number } };
-
-// Only the usage subtree of each assistant message, not the whole entry. The
-// payload column holds the full pi entry — message text, tool results and all —
-// and summing cost in JS meant transferring every byte of it: 2.9MB across 694
-// rows, of which 359 were non-assistant rows discarded on arrival. Postgres
-// extracts the subtree and applies the role filter instead, for 84KB.
-const MESSAGE_USAGE_COLUMN = "usage:payload->entry->message->usage";
-const MESSAGE_ROLE_PATH = "payload->entry->message->>role";
 
 export async function GET() {
   const timing = createServerTiming();
@@ -134,25 +127,16 @@ export async function GET() {
       const piSessionIds = (piSessions ?? []).map((s) => s.id);
 
       if (piSessionIds.length > 0) {
-        const { data: entries, error: entriesError } = await timing.phase(
-          "db-entries",
-          () =>
-            admin
-              .from("pi_session_entries")
-              .select(MESSAGE_USAGE_COLUMN)
-              .in("pi_session_id", piSessionIds)
-              .eq("event_type", "message")
-              .filter(MESSAGE_ROLE_PATH, "eq", "assistant"),
+        // Shared with the sidebar, which had its own copy of this and the
+        // same missing paging: both reported 1,000 entries' worth of usage as
+        // a total. See message-usage.ts.
+        const byPiSession = await timing.phase("db-entries", () =>
+          sumMessageUsageByPiSession(admin, piSessionIds),
         );
 
-        if (entriesError) throw new Error(entriesError.message);
-
-        for (const entry of entries ?? []) {
-          const usage = (entry as { usage?: unknown }).usage as
-            | { cost?: { total?: number }; totalTokens?: number }
-            | null;
-          msgCost += usage?.cost?.total ?? 0;
-          msgTokens += usage?.totalTokens ?? 0;
+        for (const usage of byPiSession.values()) {
+          msgCost += usage.cost;
+          msgTokens += usage.tokens;
         }
       }
     }

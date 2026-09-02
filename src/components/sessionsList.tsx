@@ -1,11 +1,21 @@
 import { SessionsListClient } from "@/components/sessions-list-client";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { createClient } from "@/lib/supabase/server";
+import { sumMessageUsageByPiSession } from "@/lib/pi/message-usage";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
+/**
+ * Per-session token and cost totals, keyed by Semla session id.
+ *
+ * The summing lives in message-usage.ts, shared with /api/stats/usage. This
+ * used to select the whole `payload` column and add it up here, which shipped
+ * 3.6 MB on every render of the root layout and — because PostgREST caps a
+ * response at 1,000 rows — reported totals computed from about a fifth of the
+ * entries.
+ */
 async function getSessionTokenUsage(
   supabase: SupabaseClient<Database>,
   sessionIds: string[],
@@ -19,35 +29,20 @@ async function getSessionTokenUsage(
 
   if (!piSessions?.length) return new Map();
 
-  const piIdToSemlaId = new Map(
-    piSessions.map((ps) => [ps.id, ps.semla_session_id]),
+  const byPiSession = await sumMessageUsageByPiSession(
+    supabase,
+    piSessions.map((piSession) => piSession.id),
   );
 
-  const { data: entries } = await supabase
-    .from("pi_session_entries")
-    .select("pi_session_id, payload")
-    .in("pi_session_id", [...piIdToSemlaId.keys()])
-    .eq("event_type", "message");
-
   const usageMap = new Map<string, { tokens: number; cost: number }>();
-  for (const entry of entries ?? []) {
-    const semlaId = piIdToSemlaId.get(entry.pi_session_id);
-    if (!semlaId) continue;
-    const payload = entry.payload as Record<string, unknown>;
-    const msg = (payload?.entry as Record<string, unknown>)?.message as
-      | Record<string, unknown>
-      | undefined;
-    const usage = msg?.usage as Record<string, unknown> | undefined;
-    if (!usage) continue;
-    const tokens = Number(usage.totalTokens ?? 0);
-    const cost = Number(
-      (usage.cost as Record<string, unknown> | undefined)?.total ?? 0,
-    );
-    if (!tokens && !cost) continue;
-    const prev = usageMap.get(semlaId) ?? { tokens: 0, cost: 0 };
-    usageMap.set(semlaId, {
-      tokens: prev.tokens + tokens,
-      cost: prev.cost + cost,
+  for (const { id, semla_session_id } of piSessions) {
+    const usage = byPiSession.get(id);
+    if (!usage || (!usage.tokens && !usage.cost)) continue;
+
+    const previous = usageMap.get(semla_session_id) ?? { cost: 0, tokens: 0 };
+    usageMap.set(semla_session_id, {
+      cost: previous.cost + usage.cost,
+      tokens: previous.tokens + usage.tokens,
     });
   }
 
