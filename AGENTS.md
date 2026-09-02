@@ -116,13 +116,26 @@ this repository actually relies on. `reactCompiler` is on in `next.config.ts`, s
 tell you a component has fallen out of the compiler's reach. oxlint reports the
 same violations at the same sites eslint-config-next did.
 
-Two things to know before changing the config. Severities are pinned by name for
-the `jsx-a11y` and `nextjs` rules, because oxlint files those under `correctness`
-(error) while eslint-config-next raised them as warnings; the explicit `"warn"`
-entries keep the compiler rules the only errors, so a real one is not buried.
-And oxlint carries no type information, so a rule needing types — anything
-`@typescript-eslint` offered on the type-aware side — is not enabled here; tsc is
-what covers that ground. `oxlint --type-aware` exists but is not wired up.
+Severities are pinned by name for the `jsx-a11y` and `nextjs` rules, because
+oxlint files those under `correctness` (error) while eslint-config-next raised
+them as warnings; the explicit `"warn"` entries keep the compiler rules the only
+errors, so a real one is not buried.
+
+**The lint is type-aware.** `--type-aware` is on in the `lint` script, which is
+why `oxlint-tsgolint` is a devDependency — without it oxlint exits with "Failed
+to find tsgolint executable". It costs about a second (~0.9s to ~1.9s for the
+whole repository) and buys the rules that need a checker: `no-floating-promises`,
+`await-thenable`, `no-base-to-string`, `unbound-method`,
+`require-array-sort-compare`. For a harness whose product is traceability, those
+are the interesting ones — a floating promise is work that silently did not
+happen, and `no-base-to-string` caught an `[object Object]` on its way into a
+model prompt as a source title.
+
+Two limits are encoded in the config. `**/*.mjs` has the type-aware rules turned
+off, because `tsconfig.json` includes only `src/**`: those scripts are outside
+the type graph, every value in them is `any`, and the findings describe that
+rather than the code. And `src/types/database.types.ts` is ignored outright
+because `npm run generate:db-types` rewrites it, so a fix there does not survive.
 
 Suppressions are `// oxlint-disable-next-line <rule>`. oxlint still honours
 `eslint-disable` comments, but nothing in this repository should add one.
