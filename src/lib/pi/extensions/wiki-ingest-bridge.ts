@@ -171,19 +171,28 @@ function buildVaultPaths(): WikiVaultPaths {
 }
 
 // ── Dynamic import for pi-llm-wiki runtime functions ─────────────────────────
-// Paths are computed strings so tsc does not attempt to resolve them as modules.
+//
+// The package's *compiled* output, not its TypeScript source. These are plain
+// `await import()` calls, and a dynamic import of a .ts file only resolves when
+// the importing module was itself loaded by jiti — which stopped being true when
+// this extension became a statically imported factory. The dist build is ESM
+// JavaScript, so Node loads it directly.
+//
+// Paths stay computed strings so tsc does not follow them: the package does not
+// type-check under this project's tsconfig, and allowJs would pull the compiled
+// output in too. wiki-package-contract.test.ts is the compensating check.
 
 const INGEST_WORKER_PATH = join(
   process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/ingest-worker.ts",
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/ingest-worker.js",
 );
 const METADATA_PATH = join(
   process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/metadata.ts",
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/metadata.js",
 );
 const EMBEDDINGS_PATH = join(
   process.cwd(),
-  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/extensions/llm-wiki/lib/embeddings.ts",
+  ".pi/npm/node_modules/@zosmaai/pi-llm-wiki/dist/extensions/llm-wiki/lib/embeddings.js",
 );
 
 /**
