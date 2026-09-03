@@ -7,9 +7,10 @@ changed lines and characters coloured in place. The operator reads, edits if
 they want to, stages the hunks they accept, and commits. The commit is the
 operator's, not the agent's.
 
-**Status:** designed, not started. Written 2026-09-03. Three questions were put
-to the user and answered; each is recorded in §3 with the reasoning, not just
-the verdict.
+**Status:** built 2026-09-03, phases 0–7 complete. Three questions were put to
+the user and answered; each is recorded in §3 with the reasoning, not just the
+verdict. What the build changed about the plan is in §13 — read that before
+trusting §5 or §6, which describe the intent rather than the result.
 
 ---
 
@@ -487,3 +488,77 @@ Not in this plan, deliberately:
 - **Multi-user review.** Semla is single-user; this inherits that.
 - **Branch creation on approve.** Committing onto the current branch is what
   was asked for. Branch policy is `git-actions.ts`'s territory.
+
+---
+
+## 13. What the build changed
+
+Seven things came out differently. Each is here because the plan is wrong
+without it, not as a changelog.
+
+**Monaco runs with no web workers at all.** §5 said to bundle them locally.
+That does not survive the toolchain: Turbopack resolves
+`new Worker(new URL("./x.ts", import.meta.url))` as a static *asset* reference
+and emits the TypeScript file verbatim into `.next/static/media`, so the
+browser fetches a `.ts` and fails. Monaco's own default fetches from a CDN,
+which this application will not depend on to render itself. Nothing here needs
+one — workers serve diagnostics, completion, formatting and `DiffEditor`'s diff
+computation, and this panel colours from hunks git already produced. Every
+feature that would reach for one is switched off explicitly (`links`,
+`colorDecorators`, `wordBasedSuggestions`, and the JSON mode reduced to
+`tokens: true`), and `getWorker` throws a message naming the reason. The spike
+in phase 0 is what found this, which is what it was for.
+
+**Character spans are computed in TypeScript, not by `git diff --word-diff`.**
+§5 preferred the server for having one authority. A pure function over two
+strings *is* server-side, and it is exhaustively testable without a
+subprocess — where the word-diff route needs its porcelain output mapped back
+to column offsets, which is the part that goes wrong. `review-char-spans.ts`
+does a common prefix/suffix trim and then a token-level LCS over what is left,
+bounded at 400 tokens so a pair of minified lines degrades to one coarse span
+rather than churning.
+
+**`gitRaw` had to be added to `git.ts`.** Both existing helpers trim their
+output, which silently corrupts `git status --porcelain`: its first column is a
+space when the index is clean, so `" D gone.txt"` arrives as `"D gone.txt"`,
+every field shifts by one, and the first entry is reported with a truncated
+path and its two status codes inverted. The parser tests could not see this —
+they never went through the helper — and it surfaced only against a real
+repository. `review-git-integration.test.ts` exists for that class of bug.
+
+**`gitInput` had to be added too.** `git apply` reads its patch from stdin and
+`execFile` cannot supply one. Writing the patch to a temp file would have reused
+`gitResult` unchanged and was rejected: a patch is the exact content of the
+operator's staging decision, and putting it on disk means a crash leaves it
+there.
+
+**Untracked files are diffed with `--no-index` against /dev/null.** §6 proposed
+`git add -N`. That writes to the index during what the operator asked to be a
+read, and a panel that mutates the repository to render itself is the wrong
+shape. `--no-index` produces the same `new file mode` diff with no side
+effects. It implies `--exit-code`, so stdout has to be read even when git exits
+non-zero.
+
+**Hunks are presented in two groups, staged and not, rather than one list with
+checkboxes.** The underlying diffs really are two — staging selects from the
+worktree against the index, unstaging from the index against HEAD — and their
+hunks are numbered independently. A single spanning list would have a checkbox
+that meant different things depending on the row.
+
+**`git commit --only` is not used.** §3.2's sketch mentioned it. The panel
+stages explicitly, hunk by hunk, and `--only -- paths` re-stages whole files,
+which would quietly discard the operator's selection.
+
+### Still open
+
+- Removed lines are a wedge in the glyph margin with the count on hover, not
+  rendered inline. Showing the departed content in place needs Monaco view
+  zones; the marker is honest but terse.
+- No file-to-file keyboard navigation. Escape closes and Cmd-S saves.
+- The changed-file cap (`CHANGED_FILE_CAP`, 200) reports how many it omitted
+  but offers no way to see them.
+- Nothing has driven the panel in a browser. The routes are verified end to end
+  against a live server — including a hunk staged and unstaged through the HTTP
+  route, restoring the tree exactly — but that Monaco paints, and that the
+  decorations land where `review-decorations.test.ts` says they should, is
+  inferred from the build rather than observed.
