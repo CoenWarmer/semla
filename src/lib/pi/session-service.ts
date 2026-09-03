@@ -78,6 +78,10 @@ import {
 import { createSpanPublisher } from "@/lib/pi/telemetry/span-publisher";
 import { AGENT_TELEMETRY_SCHEMAS } from "@mariozechner/pi-agent-core";
 
+import {
+  stampConversationUsage,
+  sumEntryUsage,
+} from "@/lib/pi/session-usage-store";
 import { createHostTelemetry } from "@/lib/pi/telemetry/host-recorder";
 import { SEMLA_TELEMETRY_SCHEMA } from "@/lib/pi/telemetry/schema";
 import { sensitiveAttributeKeys } from "@/lib/pi/telemetry/span-sink";
@@ -641,6 +645,9 @@ export const runPiPrompt = async ({
       entries as PiSessionEntry[],
     );
     debug.onEntriesQueued(queued, entries.length);
+    // Disk is what the badges read, and these entries are already in memory —
+    // cumulative for the session, so a set rather than an add.
+    stampConversationUsage(semlaSessionId, sumEntryUsage(entries));
     debug.onPromptComplete(entries.length, state.hasBackgroundWorkflow);
     if (persistedEntries.length === 0) {
       const title = generateTitle(text);

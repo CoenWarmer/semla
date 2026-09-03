@@ -39,3 +39,44 @@ export const addUsage = (
     }),
     NO_USAGE,
   );
+
+/**
+ * A session's usage as recorded on disk.
+ *
+ * Split, and the runs keyed by id, so a stamp is idempotent: a run's snapshot
+ * is persisted many times as it progresses, and adding each one to a running
+ * total would count the same run over and over. Writing it under its id makes
+ * the last write the truth.
+ */
+export type SessionUsageRecord = {
+  conversation: SessionUsage;
+  /** Per workflow run id. */
+  runs: Record<string, SessionUsage>;
+  /**
+   * Workflow usage recovered from the backup for a session that predates
+   * per-run stamping.
+   *
+   * A field of its own rather than a reserved key in `runs`, because it is not
+   * a run: the aggregate the mirror can answer has no per-run breakdown. It
+   * cannot double count either — those runs are finished, so nothing will
+   * stamp them again, and a later run is added under its own id.
+   */
+  priorRuns?: SessionUsage;
+};
+
+export const EMPTY_USAGE_RECORD: SessionUsageRecord = {
+  conversation: NO_USAGE,
+  runs: {},
+};
+
+/** The number both the sidebar and the top bar show. */
+export const sessionUsageTotal = (
+  record: SessionUsageRecord | undefined,
+): SessionUsage =>
+  record
+    ? addUsage(
+        record.conversation,
+        record.priorRuns,
+        ...Object.values(record.runs),
+      )
+    : NO_USAGE;

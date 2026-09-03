@@ -2,8 +2,18 @@ import { SessionsListClient } from "@/components/sessions-list-client";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { createClient } from "@/lib/supabase/server";
 import { sumMessageUsageByPiSession } from "@/lib/pi/message-usage";
+import {
+  adoptBackfilledUsage,
+  readSessionUsage,
+} from "@/lib/pi/session-usage-store";
 import { sumWorkflowUsageBySession } from "@/lib/pi/workflow-usage";
-import { addUsage, type SessionUsage } from "@/lib/session-usage";
+import {
+  addUsage,
+  NO_USAGE,
+  sessionUsageTotal,
+  type SessionUsage,
+  type SessionUsageRecord,
+} from "@/lib/session-usage";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -12,52 +22,67 @@ import type { Database } from "@/types/database.types";
 /**
  * Per-session token and cost totals, keyed by Semla session id.
  *
- * The summing lives in message-usage.ts, shared with /api/stats/usage. This
- * used to select the whole `payload` column and add it up here, which shipped
- * 3.6 MB on every render of the root layout and — because PostgREST caps a
- * response at 1,000 rows — reported totals computed from about a fifth of the
- * entries.
+ * Read from disk, where the totals are stamped as they are spent — the mirror
+ * was both slower and behind, since entries are persisted through a queue and
+ * this list therefore trailed a turn that had already finished.
+ *
+ * Postgres is still consulted, but only as the backup it is: a session last
+ * written before the stamp existed has no total on disk, and the run files
+ * cannot supply the workflow half retroactively because a run records its
+ * usage but not its session. Those are summed once from the mirror and written
+ * to disk, so it happens per session rather than per render.
  */
 async function getSessionTokenUsage(
   supabase: SupabaseClient<Database>,
-  sessionIds: string[],
-): Promise<Map<string, { tokens: number; cost: number }>> {
-  if (sessionIds.length === 0) return new Map();
+  sessionIds: readonly string[],
+): Promise<Map<string, SessionUsage>> {
+  const totals = new Map<string, SessionUsage>();
+  const unstamped: string[] = [];
+
+  for (const id of sessionIds) {
+    const record = readSessionUsage(id);
+    if (record) totals.set(id, sessionUsageTotal(record));
+    else unstamped.push(id);
+  }
+
+  if (unstamped.length === 0) return totals;
 
   const { data: piSessions } = await supabase
     .from("pi_sessions")
     .select("id, semla_session_id")
-    .in("semla_session_id", sessionIds);
-
-  if (!piSessions?.length) return new Map();
+    .in("semla_session_id", unstamped);
 
   const byPiSession = await sumMessageUsageByPiSession(
     supabase,
-    piSessions.map((piSession) => piSession.id),
+    (piSessions ?? []).map((piSession) => piSession.id),
   );
+  const byWorkflow = await sumWorkflowUsageBySession(supabase, unstamped);
 
-  // The subagent half. Absent here, a session that spent most of its budget
-  // in a workflow reported the small number — which is what the top bar and
-  // this list disagreed about.
-  const byWorkflow = await sumWorkflowUsageBySession(supabase, sessionIds);
-
-  const usageMap = new Map<string, SessionUsage>();
-  for (const { id, semla_session_id } of piSessions) {
-    const total = addUsage(
-      usageMap.get(semla_session_id),
-      byPiSession.get(id),
-      // Only once per Semla session, however many pi_sessions it has: the
-      // workflow total is already keyed by the Semla id.
-      usageMap.has(semla_session_id)
-        ? undefined
-        : byWorkflow.get(semla_session_id),
+  const conversationBySession = new Map<string, SessionUsage>();
+  for (const { id, semla_session_id } of piSessions ?? []) {
+    conversationBySession.set(
+      semla_session_id,
+      addUsage(conversationBySession.get(semla_session_id), byPiSession.get(id)),
     );
-
-    if (!total.tokens && !total.cost) continue;
-    usageMap.set(semla_session_id, total);
   }
 
-  return usageMap;
+  for (const id of unstamped) {
+    const record: SessionUsageRecord = {
+      conversation: conversationBySession.get(id) ?? NO_USAGE,
+      priorRuns: byWorkflow.get(id) ?? NO_USAGE,
+      runs: {},
+    };
+
+    const total = sessionUsageTotal(record);
+    if (!total.tokens && !total.cost) continue;
+
+    // Written so the next render reads disk. Best-effort inside: a total that
+    // could not be stamped is recomputed next time, not lost.
+    adoptBackfilledUsage(id, record);
+    totals.set(id, total);
+  }
+
+  return totals;
 }
 
 export async function SessionsList() {

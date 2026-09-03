@@ -14,6 +14,7 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
 import { retainBackgroundSession } from "@/lib/pi/background-sessions";
 import { detach, sessionLog } from "@/lib/pi/session-log";
+import { stampRunUsage } from "@/lib/pi/session-usage-store";
 import {
   asWorkflowSnapshot,
   getBackgroundWorkflowRunId,
@@ -129,6 +130,16 @@ export const createTurnEventRouter = ({
     if (!parsed) return undefined;
     const enriched = liveSnapshot(parsed, runId);
     debug.onWorkflowSnapshot(enriched, origin);
+    // The only place a run is known to belong to a session: a run file records
+    // its tokenUsage but not its session, so nothing on disk maps the two.
+    // Stamped here rather than swept later, and keyed by run id so the
+    // repeated snapshots of one run do not count it repeatedly.
+    if (enriched.runId && enriched.tokenUsage) {
+      stampRunUsage(semlaSessionId, enriched.runId, {
+        cost: enriched.tokenUsage.cost ?? 0,
+        tokens: enriched.tokenUsage.total ?? 0,
+      });
+    }
     detach(
       semlaSessionId,
       label,

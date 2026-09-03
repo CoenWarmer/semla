@@ -19,6 +19,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync }
 import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import type { SessionUsageRecord } from "@/lib/session-usage";
 
 /**
  * One project a session works in.
@@ -53,6 +54,16 @@ export interface SessionMeta {
   createdAt: string;
   /** Who the session belongs to. Authorisation still consults Postgres. */
   userId: string | null;
+  /**
+   * What the session has spent, stamped as it is spent.
+   *
+   * Here because disk is the primary source and Postgres is the backup, and
+   * because the run files cannot answer this: a run records its `tokenUsage`
+   * but not the session that started it, so nothing on disk maps runs to
+   * sessions except this. Absent on a session last written before it existed;
+   * `session-usage-store.ts` backfills those from the mirror once.
+   */
+  usage?: SessionUsageRecord;
 }
 
 const metaPath = (id: string, dir: string) => join(dir, `${id}.json`);
