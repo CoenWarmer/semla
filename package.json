@@ -19,6 +19,7 @@
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "^0.84.2",
+    "@mariozechner/pi-agent-core": "npm:@earendil-works/pi-agent-core@0.84.2",
     "@mrclrchtr/supi-code-intelligence": "6.0.0",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
@@ -35,7 +36,6 @@
     "@tanstack/react-query": "^5.101.4",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "@mariozechner/pi-agent-core": "npm:@earendil-works/pi-agent-core@0.84.2",
     "@xyflow/react": "^12.11.3",
     "@zosmaai/pi-llm-wiki": "0.11.5",
     "ai": "^7.0.66",
@@ -60,7 +60,6 @@
     "react-markdown": "^10.1.0",
     "react-otel-trace-waterfall": "https://registry.npmjs.org/react-otel-trace-waterfall/-/react-otel-trace-waterfall-0.9.4.tgz",
     "remark-gfm": "^4.0.1",
-    "shadcn": "^4.18.0",
     "shiki": "^4.4.3",
     "sigma": "^3.0.3",
     "streamdown": "^2.5.0",
@@ -73,7 +72,8 @@
   "overrides": {
     "linkify-it": ">=5.0.0",
     "@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@0.84.2",
-    "@mariozechner/pi-tui": "npm:@earendil-works/pi-tui@0.84.2"
+    "@mariozechner/pi-tui": "npm:@earendil-works/pi-tui@0.84.2",
+    "fast-uri": "^3.1.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -83,6 +83,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
+    "shadcn": "^4.18.0",
     "tailwindcss": "^4",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
