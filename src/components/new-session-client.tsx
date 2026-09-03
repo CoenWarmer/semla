@@ -88,10 +88,15 @@ export function NewSessionClient({
             onSubmit={handleSubmit}
             goalEditor={
               <GoalEditor
+                /* Inline, as on a session page. The editor renders this in its
+                   tool row now, where the bordered block variant is a
+                   full-width box with a three-row textarea among small
+                   buttons — and `autoFocus` opened it on arrival, so the row
+                   was mostly goal. */
                 autoFocus={!goal?.trim()}
                 goal={goal}
                 onSave={handleGoalSave}
-                variant="block"
+                variant="inline"
               />
             }
           />
