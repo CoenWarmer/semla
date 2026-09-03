@@ -1,8 +1,13 @@
 "use client";
 
-import { ChevronDownIcon, ChevronUpIcon, TerminalIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronsUpDownIcon,
+  ChevronUpIcon,
+  TerminalIcon,
+} from "lucide-react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 
 import { useBottomPanelHost } from "@/components/bottom-panel";
 import { cn } from "@/lib/utils";
@@ -44,7 +49,15 @@ const CONSOLE_PANEL = "console";
  * push the conversation around while you read it.
  */
 export function AppConsole() {
-  const { open, setBarSlot, setPanelSlot, toggle } = useBottomPanelHost();
+  const {
+    height,
+    open,
+    resize,
+    setBarSlot,
+    setPanelSlot,
+    toggle,
+    toggleExpanded,
+  } = useBottomPanelHost();
   const consoleOpen = open === CONSOLE_PANEL;
   // Mounted once opened and then left mounted, so collapsing the bar does not
   // tear down the emulator and reconnect on every toggle.
@@ -55,10 +68,56 @@ export function AppConsole() {
     setEverOpened(true);
   };
 
+  /**
+   * Where the drag started, so a move can be measured against it.
+   *
+   * Pointer capture rather than window listeners: the handle keeps receiving
+   * moves once it has the pointer, even as the cursor leaves it — which is the
+   * normal case when dragging fast — and there is nothing to add or remove on
+   * mount, so no effect and nothing to leak.
+   */
+  const drag = useRef<{ height: number; y: number } | null>(null);
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { height, y: event.clientY };
+  };
+
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = drag.current;
+    if (!start) return;
+    // Upwards is taller: the panel grows from its top edge.
+    resize(start.height + (start.y - event.clientY));
+  };
+
+  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+    drag.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   return (
     <div className="shrink-0 border-t border-border/40 bg-background">
+      {/*
+        The handle sits above whichever panel is open, so both are resizable
+        by the same grip rather than each growing one of its own.
+      */}
+      {open && (
+        <div
+          aria-label="Resize panel"
+          className="h-1 cursor-ns-resize bg-border/40 transition-colors hover:bg-primary/40"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          role="separator"
+        />
+      )}
+
       {everOpened && (
-        <div className={cn("h-72 border-b", consoleOpen ? "block" : "hidden")}>
+        <div
+          className={cn("border-b", consoleOpen ? "block" : "hidden")}
+          style={{ height }}
+        >
           <AppTerminal />
         </div>
       )}
@@ -69,11 +128,9 @@ export function AppConsole() {
         it does not have to know about the bar's layout.
       */}
       <div
-        className={cn(
-          "h-72 border-b",
-          open && !consoleOpen ? "block" : "hidden",
-        )}
+        className={cn("border-b", open && !consoleOpen ? "block" : "hidden")}
         ref={setPanelSlot}
+        style={{ height }}
       />
 
       <div className={cn("flex items-center gap-2 px-2 text-xs", BAR_HEIGHT)}>
@@ -94,6 +151,22 @@ export function AppConsole() {
 
         {/* Buttons the current page contributes, beside the console's own. */}
         <div className="flex items-center gap-2" ref={setBarSlot} />
+
+        {/*
+          One control for whichever panel is open, because the height is
+          shared. Pushed right so it does not sit between the panel buttons.
+        */}
+        {open && (
+          <button
+            className="ml-auto flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
+            onClick={toggleExpanded}
+            title="Expand the panel, or return it to its usual height"
+            type="button"
+          >
+            <ChevronsUpDownIcon className="size-3" />
+            Expand
+          </button>
+        )}
       </div>
     </div>
   );

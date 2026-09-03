@@ -26,15 +26,58 @@ import {
  * conversation reading through a letterbox, and the bar is a place to glance
  * at one thing.
  */
+/** What a panel opens at, and the floor a drag cannot go below. */
+export const DEFAULT_PANEL_HEIGHT = 288;
+const MIN_PANEL_HEIGHT = 96;
+/** What "expand" means, and the ceiling a drag stops at. */
+const EXPANDED_FRACTION = 0.8;
+const MAX_FRACTION = 0.9;
+
+/**
+ * A height a drag is allowed to produce.
+ *
+ * Clamped against the viewport rather than a constant, because dragging a
+ * panel taller than the window leaves the bar — and the handle that would undo
+ * it — off the bottom of the screen.
+ */
+export const clampPanelHeight = (height: number, viewport: number): number =>
+  Math.round(
+    Math.min(Math.max(height, MIN_PANEL_HEIGHT), viewport * MAX_FRACTION),
+  );
+
+export const expandedPanelHeight = (viewport: number): number =>
+  Math.round(viewport * EXPANDED_FRACTION);
+
+/**
+ * What the expand button does next.
+ *
+ * A toggle rather than a one-way switch, so the same button collapses it
+ * again. "Already expanded" is a tolerance rather than equality: a drag lands
+ * on whole pixels and a viewport fraction rarely does, so an exact test would
+ * leave the button doing nothing at heights that look expanded.
+ */
+export const nextPanelHeight = (current: number, viewport: number): number => {
+  const expanded = expandedPanelHeight(viewport);
+  return Math.abs(current - expanded) <= 2
+    ? clampPanelHeight(DEFAULT_PANEL_HEIGHT, viewport)
+    : clampPanelHeight(expanded, viewport);
+};
+
 export type BottomPanelContext = {
   /** Element to render extra bar buttons into, once the bar has mounted. */
   barSlot: HTMLElement | null;
+  /** Height of the open panel, in pixels. Shared, because the slot is. */
+  height: number;
   /** Id of the open panel, or null when the bar is collapsed. */
   open: string | null;
   /** Element to render the open panel's content into. */
   panelSlot: HTMLElement | null;
+  /** Drag the panel to a height, clamped to the viewport. */
+  resize: (height: number) => void;
   /** Open this panel, or collapse the bar if it is already open. */
   toggle: (id: string) => void;
+  /** Expand to 80% of the viewport, or back to the default height. */
+  toggleExpanded: () => void;
 };
 
 const Context = createContext<BottomPanelContext | null>(null);
@@ -46,14 +89,35 @@ export function BottomPanelProvider({ children }: { children: ReactNode }) {
   // for good reason — a mount that sets state starts a second render.
   const [barSlot, setBarSlot] = useState<HTMLElement | null>(null);
   const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null);
+  const [height, setHeight] = useState(DEFAULT_PANEL_HEIGHT);
 
   const toggle = useCallback((id: string) => {
     setOpen((current) => (current === id ? null : id));
   }, []);
 
+  // `window` is read inside the handlers, never during render — this provider
+  // renders on the server too.
+  const resize = useCallback((next: number) => {
+    setHeight(clampPanelHeight(next, window.innerHeight));
+  }, []);
+
+  const toggleExpanded = useCallback(() => {
+    setHeight((current) => nextPanelHeight(current, window.innerHeight));
+  }, []);
+
   const value = useMemo(
-    () => ({ barSlot, open, panelSlot, setBarSlot, setPanelSlot, toggle }),
-    [barSlot, open, panelSlot, toggle],
+    () => ({
+      barSlot,
+      height,
+      open,
+      panelSlot,
+      resize,
+      setBarSlot,
+      setPanelSlot,
+      toggle,
+      toggleExpanded,
+    }),
+    [barSlot, height, open, panelSlot, resize, toggle, toggleExpanded],
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
