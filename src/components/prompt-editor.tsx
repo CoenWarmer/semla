@@ -22,14 +22,8 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
-  PromptInputActionAddScreenshot,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputButton,
-  PromptInputFooter,
   PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -43,7 +37,7 @@ import {
   useUserSettings,
 } from "@/hooks/use-user-settings";
 
-import { CheckIcon, GlobeIcon, WrenchIcon } from "lucide-react";
+import { CheckIcon, WrenchIcon } from "lucide-react";
 import {
   memo,
   ReactNode,
@@ -347,6 +341,118 @@ export function PromptEditor({
           {configurationError.message}
         </p>
       )}
+
+      <PromptInputTools>
+        {/*
+          Bounded and truncating rather than `flex-1`: a long goal would
+          otherwise push the attachment, search and tool buttons across
+          the row, and their position should not depend on how much
+          someone typed.
+        */}
+        {goalEditor && <div className="flex grow min-w-0">{goalEditor}</div>}
+        <div className="relative" ref={toolPickerRef}>
+          <PromptInputButton
+            aria-expanded={toolPickerOpen}
+            aria-haspopup="listbox"
+            onClick={() => setToolPickerOpen((open) => !open)}
+          >
+            <WrenchIcon size={16} />
+            <span>{tools.length + extensionTools.length} tools</span>
+          </PromptInputButton>
+          {toolPickerOpen && (
+            <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
+              <input
+                aria-label="Search tools"
+                className="mb-1 h-8 w-full rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
+                onChange={(event) => setToolQuery(event.target.value)}
+                placeholder="Search tools..."
+                value={toolQuery}
+              />
+              <div className="max-h-56 overflow-y-auto" role="listbox">
+                {matchingToggleableTools.map((tool) => {
+                  const selected = tools.includes(tool);
+
+                  return (
+                    <button
+                      aria-selected={selected}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      key={tool}
+                      onClick={() => toggleTool(tool)}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="flex size-4 items-center justify-center">
+                        {selected && <CheckIcon className="size-4" />}
+                      </span>
+                      {tool}
+                    </button>
+                  );
+                })}
+                {matchingExtensionTools.length > 0 && (
+                  <>
+                    <p className="mt-1 px-2 py-1 text-xs font-medium text-muted-foreground">
+                      Extensions (always active)
+                    </p>
+                    {matchingExtensionTools.map((tool) => (
+                      <div
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm opacity-60"
+                        key={tool}
+                      >
+                        <span className="flex size-4 items-center justify-center">
+                          <CheckIcon className="size-4" />
+                        </span>
+                        {tool}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {matchingToggleableTools.length === 0 &&
+                  matchingExtensionTools.length === 0 && (
+                    <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                      No tools found.
+                    </p>
+                  )}
+              </div>
+            </div>
+          )}
+        </div>
+        <ModelSelector
+          onOpenChange={setModelSelectorOpen}
+          open={modelSelectorOpen}
+        >
+          <ModelSelectorTrigger render={<PromptInputButton />}>
+            {selectedModelData && (
+              <ModelSelectorLogo provider={selectedModelData.provider} />
+            )}
+            <ModelSelectorName>
+              {selectedModelData?.name ?? "Select model"}
+            </ModelSelectorName>
+          </ModelSelectorTrigger>
+          <ModelSelectorContent>
+            <ModelSelectorInput placeholder="Search models..." />
+            <ModelSelectorList>
+              <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+              {[...new Set(models.map((candidate) => candidate.provider))].map(
+                (provider) => (
+                  <ModelSelectorGroup heading={provider} key={provider}>
+                    {models
+                      .filter((candidate) => candidate.provider === provider)
+                      .map((m) => (
+                        <ModelItem
+                          key={`${m.provider}:${m.modelId}`}
+                          m={m}
+                          onSelect={handleModelSelect}
+                          selectedModel={selectedModelKey}
+                        />
+                      ))}
+                  </ModelSelectorGroup>
+                ),
+              )}
+            </ModelSelectorList>
+          </ModelSelectorContent>
+        </ModelSelector>
+      </PromptInputTools>
+
       <PromptInputProvider>
         <PromptInput
           globalDrop
@@ -355,141 +461,25 @@ export function PromptEditor({
           overflowVisible
         >
           <PromptInputAttachmentsDisplay />
-          <PromptInputBody>
-            <PromptInputTextarea />
-          </PromptInputBody>
-
-          <PromptInputFooter>
-            <PromptInputTools>
+          <PromptInputBody className="flex w-full">
+            <div className="flex grow">
               {/*
-                Bounded and truncating rather than `flex-1`: a long goal would
-                otherwise push the attachment, search and tool buttons across
-                the row, and their position should not depend on how much
-                someone typed.
+                Shorter than the component's own `min-h-16`, passed here
+                rather than edited into `ai-elements/`: that directory is
+                vendored, so a re-vendor would revert it with nothing in the
+                diff to notice. The component merges `className`, and
+                tailwind-merge lets the later `min-h` win.
               */}
-              {goalEditor && (
-                <div className="min-w-0 max-w-64">{goalEditor}</div>
-              )}
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                  <PromptInputActionAddScreenshot />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <PromptInputButton>
-                <GlobeIcon size={16} />
-                <span>Search</span>
-              </PromptInputButton>
-              <div className="relative" ref={toolPickerRef}>
-                <PromptInputButton
-                  aria-expanded={toolPickerOpen}
-                  aria-haspopup="listbox"
-                  onClick={() => setToolPickerOpen((open) => !open)}
-                >
-                  <WrenchIcon size={16} />
-                  <span>{tools.length + extensionTools.length} tools</span>
-                </PromptInputButton>
-                {toolPickerOpen && (
-                  <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
-                    <input
-                      aria-label="Search tools"
-                      className="mb-1 h-8 w-full rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
-                      onChange={(event) => setToolQuery(event.target.value)}
-                      placeholder="Search tools..."
-                      value={toolQuery}
-                    />
-                    <div className="max-h-56 overflow-y-auto" role="listbox">
-                      {matchingToggleableTools.map((tool) => {
-                        const selected = tools.includes(tool);
-
-                        return (
-                          <button
-                            aria-selected={selected}
-                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                            key={tool}
-                            onClick={() => toggleTool(tool)}
-                            role="option"
-                            type="button"
-                          >
-                            <span className="flex size-4 items-center justify-center">
-                              {selected && <CheckIcon className="size-4" />}
-                            </span>
-                            {tool}
-                          </button>
-                        );
-                      })}
-                      {matchingExtensionTools.length > 0 && (
-                        <>
-                          <p className="mt-1 px-2 py-1 text-xs font-medium text-muted-foreground">
-                            Extensions (always active)
-                          </p>
-                          {matchingExtensionTools.map((tool) => (
-                            <div
-                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm opacity-60"
-                              key={tool}
-                            >
-                              <span className="flex size-4 items-center justify-center">
-                                <CheckIcon className="size-4" />
-                              </span>
-                              {tool}
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      {matchingToggleableTools.length === 0 &&
-                        matchingExtensionTools.length === 0 && (
-                          <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                            No tools found.
-                          </p>
-                        )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <ModelSelector
-                onOpenChange={setModelSelectorOpen}
-                open={modelSelectorOpen}
-              >
-                <ModelSelectorTrigger render={<PromptInputButton />}>
-                  {selectedModelData && (
-                    <ModelSelectorLogo provider={selectedModelData.provider} />
-                  )}
-                  <ModelSelectorName>
-                    {selectedModelData?.name ?? "Select model"}
-                  </ModelSelectorName>
-                </ModelSelectorTrigger>
-                <ModelSelectorContent>
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {[
-                      ...new Set(models.map((candidate) => candidate.provider)),
-                    ].map((provider) => (
-                      <ModelSelectorGroup heading={provider} key={provider}>
-                        {models
-                          .filter(
-                            (candidate) => candidate.provider === provider,
-                          )
-                          .map((m) => (
-                            <ModelItem
-                              key={`${m.provider}:${m.modelId}`}
-                              m={m}
-                              onSelect={handleModelSelect}
-                              selectedModel={selectedModelKey}
-                            />
-                          ))}
-                      </ModelSelectorGroup>
-                    ))}
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
-            </PromptInputTools>
-            <PromptInputSubmit
-              onStop={onStop}
-              status={isRunning ? "streaming" : status}
-            />
-          </PromptInputFooter>
+              <PromptInputTextarea className="min-h-8" />
+            </div>
+            <div className="flex p-3 items-center">
+              <PromptInputSubmit
+                size="icon-xs"
+                onStop={onStop}
+                status={isRunning ? "streaming" : status}
+              />
+            </div>
+          </PromptInputBody>
         </PromptInput>
       </PromptInputProvider>
     </div>
