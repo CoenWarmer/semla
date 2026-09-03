@@ -52,6 +52,38 @@ export async function git(
   }
 }
 
+/**
+ * Run a git command and return stdout exactly as git wrote it, or null.
+ *
+ * `git` and `gitResult` both trim, which is right for the single-value reads
+ * they were written for and wrong for a format whose first character carries
+ * meaning. `git status --porcelain` is one: its first column is a space
+ * whenever the index matches HEAD, so trimming turns " D gone.txt" into
+ * "D gone.txt", every field shifts by one, and the first entry comes back with
+ * a truncated path and its two status codes inverted. That bug is invisible in
+ * a parser test — the fixture never went through here — and showed up only
+ * against a real repository.
+ *
+ * Failure still collapses to null, for the reasons `git` gives.
+ */
+export async function gitRaw(
+  cwd: string,
+  args: string[],
+  { timeout = 2000, network = false }: GitOptions = {},
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      encoding: "utf8",
+      timeout,
+      env: network ? { ...process.env, ...NON_INTERACTIVE_ENV } : process.env,
+    });
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
 export interface GitResult {
   ok: boolean;
   stdout: string;
