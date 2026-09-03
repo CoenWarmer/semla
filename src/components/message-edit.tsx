@@ -85,25 +85,17 @@ export function EditableUserMessage({
     }
   };
 
+  // Just the field. `MessageContent` is already a flex column with a gap, so
+  // there is nothing for a wrapper to do.
   const editor = (
-    <div className="flex w-full flex-col gap-2">
-      <textarea
-        autoFocus
-        className="w-full resize-none bg-transparent text-sm outline-none"
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={handleKeyDown}
-        ref={textareaRef}
-        value={draft}
-      />
-      {/*
-        The hint stays, and matters more now that the buttons are gone: Esc is
-        the only way to abandon an edit, and it is no longer sitting beside a
-        Cancel button that said so.
-      */}
-      <span className="text-muted-foreground text-xs">
-        Replaces the reply below · ⌘↵ or ✓ to run · Esc to cancel
-      </span>
-    </div>
+    <textarea
+      autoFocus
+      className="w-full resize-none bg-transparent text-sm outline-none"
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={handleKeyDown}
+      ref={textareaRef}
+      value={draft}
+    />
   );
 
   const versions = message.versions ?? [];
