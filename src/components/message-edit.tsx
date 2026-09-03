@@ -26,6 +26,7 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import type { SessionMessage } from "@/hooks/use-session-messages";
+import { CopyMessageButton } from "@/components/message-copy";
 import { cn } from "@/lib/utils";
 
 interface EditableUserMessageProps {
@@ -126,8 +127,10 @@ export function EditableUserMessage({
       <div className="group/message flex items-center justify-end gap-2">
         {/*
           Left of the bubble, because a user message is right-aligned — this
-          is the gutter between it and the conversation.
+          is the gutter between it and the conversation. Copy first, so edit
+          stays nearest the bubble it edits.
         */}
+        {!editing && <CopyMessageButton text={message.text} />}
         <button
           className={cn(
             "shrink-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:cursor-not-allowed",

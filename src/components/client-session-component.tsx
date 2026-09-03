@@ -24,6 +24,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { SessionActivityLine } from "@/components/session-activity-line";
 import { AskUserDialog } from "./ask-user-dialog";
+import { CopyMessageButton } from "./message-copy";
 import { EditableUserMessage } from "./message-edit";
 import { SessionStepsStrip } from "./session-steps-strip";
 import { GoalEditor } from "./goal-editor";
@@ -447,9 +448,20 @@ export function ClientSessionComponent({
                       id={item.message.id}
                       key={item.message.id}
                     >
-                      <MessageContent>
-                        <MessageResponse>{item.message.text}</MessageResponse>
-                      </MessageContent>
+                      {/*
+                        An assistant reply is left-aligned, so its gutter is on
+                        the right — the mirror of the user row in
+                        message-edit.tsx, which puts its buttons on the left.
+                      */}
+                      <div className="group/message flex items-start gap-2">
+                        <MessageContent>
+                          <MessageResponse>{item.message.text}</MessageResponse>
+                        </MessageContent>
+                        <CopyMessageButton
+                          className="mt-1"
+                          text={item.message.text}
+                        />
+                      </div>
                     </Message>
                   )
                 ),
