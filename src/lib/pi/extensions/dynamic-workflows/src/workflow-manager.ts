@@ -541,8 +541,19 @@ export class WorkflowManager extends EventEmitter {
     this.toolsets = options.toolsets;
     this.defaultToolset = options.defaultToolset;
     this.excludeSubagentTools = options.excludeSubagentTools;
+    // Both halves of the recorder are set by `setTelemetry`, not by a reload:
+    // the host has them and every caller of this method does not. Assigning
+    // `turnSpanId` unconditionally here is what unparented every workflow run
+    // in a real session — `session_start` calls this *after* setTelemetry, to
+    // point subagents at the session's wiki toolset, so recording survived
+    // (telemetry being guarded) while the link to the turn span did not, and
+    // a trace full of correct spans simply had the runs at its root.
+    //
+    // Left alone unless supplied, which stops the call order mattering. It has
+    // mattered three times in this file now; the docblock at the wiki-toolset
+    // call site is the same trap costing `toolsets`.
     if (options.telemetry) this.telemetry = options.telemetry;
-    this.turnSpanId = options.turnSpanId;
+    if (options.turnSpanId !== undefined) this.turnSpanId = options.turnSpanId;
     this.persistAgentSessions = options.persistAgentSessions ?? false;
   }
 

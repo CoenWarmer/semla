@@ -90,4 +90,30 @@ return { ok: true };
       "semla.workflow.run",
     );
   }, 300_000);
+
+  it("still parents the run to the turn span", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "semla-reload-parent-"));
+    await mkdir(join(cwd, ".git"), { recursive: true });
+
+    const sink = createSpanSink("00000000-0000-4000-8000-00000000ab1f");
+    const manager = new WorkflowManager({ cwd, agent: mockAgent });
+    manager.setTelemetry(createWorkflowTelemetry(sink), "turn-span-1");
+
+    // The reload that actually happens: session_start calls this after
+    // setTelemetry, to point subagents at the session's wiki toolset. It
+    // passes no turnSpanId, and assigning that unconditionally is what left
+    // every workflow run in a real session rooted instead of nested — spans
+    // recorded, so nothing looked wrong.
+    manager.reconfigureAfterReload({ loadSavedWorkflow: () => undefined });
+
+    await manager.runSync(`
+export const meta = { name: 'reparent', description: 'd', phases: [{ title: 'One' }] };
+phase('One');
+await agent('a', { label: 'solo' });
+return { ok: true };
+`);
+
+    const run = sink.spans().find((span) => span.name === "semla.workflow.run");
+    expect(run?.parentSpanId).toBe("turn-span-1");
+  }, 300_000);
 });

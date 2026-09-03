@@ -42,6 +42,13 @@ const buildTrace = async () => {
   const manager = new WorkflowManager({ cwd, agent: mockAgent });
   manager.setTelemetry(createWorkflowTelemetry(sink), host.turnSpanId);
 
+  // session_start does this *after* setTelemetry, to point subagents at the
+  // session's wiki toolset. Included because leaving it out is exactly why an
+  // earlier version of this test passed while every run in a real session was
+  // recorded at the root: `reconfigureAfterReload` replaces options wholesale,
+  // and the parent link went with them.
+  manager.reconfigureAfterReload({ loadSavedWorkflow: () => undefined });
+
   host.toolStarted("call-1", { name: "workflow" });
   await manager.runSync(SCRIPT);
   host.toolEnded("call-1", { isError: false });
