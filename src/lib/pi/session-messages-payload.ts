@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { modelContextWindow } from "@/lib/pi/context-composition";
+import { readSessionMeta } from "@/lib/pi/session-meta";
 import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
 import { getTranscript, type SessionToolCall, type SessionTranscriptEntry } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
@@ -47,18 +48,25 @@ export async function buildSessionMessages(
   // session the bar was asked to draw.
   let contextWindow: number | null = null;
   try {
-    const admin = createAdminClient();
-    const { data: piSession } = await admin
-      .from("pi_sessions")
-      .select("model_id, model_provider")
-      .eq("semla_session_id", sessionId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Disk first: the model is stamped into the session's meta when its pi
+    // session is ensured, so the common case costs no query. Postgres answers
+    // only for a session last written before that stamp existed.
+    const stamped = readSessionMeta(sessionId)?.model;
+    const fromDatabase = stamped
+      ? null
+      : (
+          await createAdminClient()
+            .from("pi_sessions")
+            .select("model_id, model_provider")
+            .eq("semla_session_id", sessionId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ).data;
 
     contextWindow = await modelContextWindow(
-      piSession?.model_provider ?? defaultModel?.provider,
-      piSession?.model_id ?? defaultModel?.modelId,
+      stamped?.provider ?? fromDatabase?.model_provider ?? defaultModel?.provider,
+      stamped?.modelId ?? fromDatabase?.model_id ?? defaultModel?.modelId,
     );
   } catch {
     // Non-fatal — the bar shows proportions and says the window is unknown.

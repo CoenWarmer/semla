@@ -188,6 +188,20 @@ export const ensurePiSession = async (
     throw new Error(`Unable to initialize Pi session: ${error.message}`);
   }
 
+  // Also on disk, which is what reads it: sizing a session's context window
+  // used to cost a pi_sessions query on every page load. Best-effort — a
+  // missing stamp falls back to the model a turn would use.
+  try {
+    writeSessionMeta(semlaSessionId, {
+      model: {
+        modelId: configuredModel.modelId,
+        provider: configuredModel.provider,
+      },
+    });
+  } catch {
+    // A context-window bar is not worth failing a turn over.
+  }
+
   return data;
 };
 

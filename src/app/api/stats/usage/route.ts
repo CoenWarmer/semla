@@ -1,14 +1,29 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { sumMessageUsageByPiSession } from "@/lib/pi/message-usage";
-import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
+import { listSessionMeta } from "@/lib/pi/session-meta";
+import {
+  sessionUsageTotals,
+  totalUsage,
+} from "@/lib/pi/session-usage-totals";
 import { createServerTiming } from "@/lib/server-timing";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-type RunUsage = { tokenUsage?: { cost?: number; total?: number } };
-
+/**
+ * What this user has spent, across every session.
+ *
+ * Disk answers this now. The totals are stamped into each session's meta as
+ * they are spent, so the whole route is a directory read and a sum — where it
+ * used to be four Postgres queries, a read of every workflow run file, and a
+ * paged scan of every assistant entry.
+ *
+ * It also had the bug the sidebar and the top bar had, and had it worst: a
+ * session with any workflow run was filtered *out* of the message sum, so
+ * every such session contributed its subagents and none of its conversation.
+ * `sessionUsageTotals` is now the single place that decides, and it adds the
+ * two rather than choosing between them.
+ */
 export async function GET() {
   const timing = createServerTiming();
   const withTiming = (body: unknown, status = 200) =>
@@ -22,9 +37,7 @@ export async function GET() {
 
     // The proxy (src/proxy.ts) already verified this request's JWT, and the
     // project signs with ES256, so getClaims() verifies locally against a
-    // cached JWKS instead of making an auth.getUser() round-trip. The user id
-    // still scopes every query below: this route uses the admin client, which
-    // bypasses RLS, so the `user_id` filter is doing real work here.
+    // cached JWKS instead of making an auth.getUser() round-trip.
     const { data: claimsData } = await timing.phase("auth", () =>
       supabase.auth.getClaims(),
     );
@@ -34,117 +47,29 @@ export async function GET() {
       return withTiming({ error: "Authentication required." }, 401);
     }
 
+    // Disk records answer first, the same way the sidebar builds its list.
+    // Postgres is asked only for sessions that have no record on disk — ones
+    // that predate them — because a total that silently omitted those would
+    // be wrong in the direction nobody notices.
+    const onDisk = await timing.phase("disk-sessions", async () =>
+      listSessionMeta().filter((meta) => meta.userId === userId),
+    );
+    const ids = new Set(onDisk.map((meta) => meta.id));
+
     const admin = createAdminClient();
+    const { data: rows, error } = await timing.phase("db-sessions", () =>
+      admin.from("sessions").select("id").eq("user_id", userId),
+    );
+    if (error) throw new Error(error.message);
+    for (const row of rows ?? []) ids.add(row.id);
 
-    // All sessions for this user
-    const { data: sessions, error: sessionsError } = await timing.phase(
-      "db-sessions",
-      () => admin.from("sessions").select("id").eq("user_id", userId),
+    if (ids.size === 0) return withTiming({ cost: 0, tokens: 0 });
+
+    const totals = await timing.phase("usage", () =>
+      sessionUsageTotals(admin, [...ids]),
     );
 
-    if (sessionsError) throw new Error(sessionsError.message);
-    const sessionIds = (sessions ?? []).map((s) => s.id);
-    if (sessionIds.length === 0) return withTiming({ cost: 0, tokens: 0 });
-
-    // All workflow runs for those sessions. `snapshot` is deliberately not
-    // selected: the on-disk run file overrides it below, so fetching it up
-    // front shipped 1.75MB of JSONB per request only to discard it. Runs with
-    // no file on disk fall back to a second, targeted query.
-    const { data: runs, error: runsError } = await timing.phase("db-runs", () =>
-      admin
-        .from("workflow_runs")
-        .select("run_id,semla_session_id")
-        .in("semla_session_id", sessionIds),
-    );
-
-    if (runsError) throw new Error(runsError.message);
-
-    const runRows = runs ?? [];
-    const sessionIdsWithRuns = new Set(
-      runRows.map((run) => run.semla_session_id),
-    );
-
-    const fromDisk = await timing.phase("disk", () =>
-      runRows.map((run) => ({
-        runId: run.run_id,
-        usage: snapshotFromRunFile(run.run_id) as RunUsage | null,
-      })),
-    );
-
-    const missing = fromDisk
-      .filter((entry) => !entry.usage)
-      .map((entry) => entry.runId);
-
-    if (missing.length > 0) {
-      const { data: storedRows, error: storedError } = await timing.phase(
-        "db-snapshots",
-        () =>
-          admin
-            .from("workflow_runs")
-            .select("run_id,snapshot")
-            .in("run_id", missing),
-      );
-
-      if (storedError) throw new Error(storedError.message);
-
-      const stored = new Map(
-        (storedRows ?? []).map((row) => [
-          row.run_id,
-          row.snapshot as RunUsage | null,
-        ]),
-      );
-      for (const entry of fromDisk) {
-        entry.usage ??= stored.get(entry.runId) ?? null;
-      }
-    }
-
-    let runCost = 0;
-    let runTokens = 0;
-    for (const { usage } of fromDisk) {
-      runCost += usage?.tokenUsage?.cost ?? 0;
-      runTokens += usage?.tokenUsage?.total ?? 0;
-    }
-
-    // For sessions with no workflow runs, sum per-message costs
-    const pureSessionIds = sessionIds.filter(
-      (id) => !sessionIdsWithRuns.has(id),
-    );
-    let msgCost = 0;
-    let msgTokens = 0;
-
-    if (pureSessionIds.length > 0) {
-      // Resolve pi_session IDs for those sessions
-      const { data: piSessions, error: piError } = await timing.phase(
-        "db-pi-sessions",
-        () =>
-          admin
-            .from("pi_sessions")
-            .select("id")
-            .in("semla_session_id", pureSessionIds),
-      );
-
-      if (piError) throw new Error(piError.message);
-      const piSessionIds = (piSessions ?? []).map((s) => s.id);
-
-      if (piSessionIds.length > 0) {
-        // Shared with the sidebar, which had its own copy of this and the
-        // same missing paging: both reported 1,000 entries' worth of usage as
-        // a total. See message-usage.ts.
-        const byPiSession = await timing.phase("db-entries", () =>
-          sumMessageUsageByPiSession(admin, piSessionIds),
-        );
-
-        for (const usage of byPiSession.values()) {
-          msgCost += usage.cost;
-          msgTokens += usage.tokens;
-        }
-      }
-    }
-
-    return withTiming({
-      cost: runCost + msgCost,
-      tokens: runTokens + msgTokens,
-    });
+    return withTiming(totalUsage(totals));
   } catch (error) {
     return handleRouteError(error, "Unable to compute usage stats.");
   }

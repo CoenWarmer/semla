@@ -64,6 +64,14 @@ export interface SessionMeta {
    * `session-usage-store.ts` backfills those from the mirror once.
    */
   usage?: SessionUsageRecord;
+  /**
+   * The model this session last ran with.
+   *
+   * Recorded so sizing the context window does not need a query. Absent for a
+   * session that has never been prompted, and for one last written before this
+   * field existed — both fall back to the model a turn would use.
+   */
+  model?: { modelId: string; provider: string };
 }
 
 const metaPath = (id: string, dir: string) => join(dir, `${id}.json`);
