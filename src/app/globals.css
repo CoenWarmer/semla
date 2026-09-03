@@ -198,6 +198,11 @@ div.react-sigma {
  * it tip *toward* the viewer — in CSS the y-axis points down, so a positive
  * rotateX would swing the top away instead.
  *
+ * It rises as it tips. The translate has to carry that on its own: the hinge
+ * pins the bottom edge, so the rotation swings the top and leaves the bottom
+ * where it is — which reads as a tilt, not as an entrance. The 32px is what
+ * makes it arrive from below.
+ *
  * The perspective lives in the transform rather than on a parent, because the
  * panel is position:fixed and has no parent to put it on.
  *
@@ -211,7 +216,7 @@ div.react-sigma {
 @keyframes semla-review-enter {
   from {
     opacity: 0;
-    transform: perspective(1400px) rotateX(-14deg) translateY(8px);
+    transform: perspective(1400px) rotateX(-14deg) translateY(32px);
   }
   to {
     opacity: 1;
