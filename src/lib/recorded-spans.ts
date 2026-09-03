@@ -20,6 +20,7 @@
  */
 
 import type { OtelSpan } from "react-otel-trace-waterfall";
+import { makeSpanId } from "react-otel-trace-waterfall";
 import {
   HARNESS_RUN_SPAN,
   HARNESS_TOOL_SPAN,
@@ -131,6 +132,50 @@ const statusOf = (span: RecordedSpan): string | undefined => {
   return span.status.status === "error" ? "error" : undefined;
 };
 
+/**
+ * The row every prompt hangs from.
+ *
+ * Each prompt is its own `pi.harness.run`, and pi's schema declares that span
+ * as a root — correctly, since a turn is not inside anything pi knows about.
+ * That leaves a three-prompt session drawing three top-level bars with nothing
+ * tying them together.
+ *
+ * Synthesised here rather than recorded, and the distinction matters. A real
+ * session span would have to stay open across turns, which means one span id
+ * shared by every turn's sink, a start time each turn would have to read back
+ * off disk to preserve, and an end time that is never actually known — a
+ * session ends when someone stops using it. All of that to hold a bar whose
+ * bounds are just the extent of its children.
+ *
+ * So it carries no timing of its own: `startTimeMs` and `endTimeMs` are the
+ * min and max of the spans below it. Nothing is inferred — this is an
+ * envelope over measured spans, not a measurement — which is why it does not
+ * violate §8.5's rule against mixing the two.
+ *
+ * The id is derived from the trace so it is the same row across re-renders,
+ * and a selection or a collapsed state survives new spans arriving.
+ */
+const SESSION_ROW = "Session";
+
+const sessionRow = (
+  children: readonly MsSpan[],
+  traceId: string,
+): MsSpan => ({
+  attributes: {
+    // The count is the useful part of a row that has no timing of its own.
+    "semla.session.prompts": children.filter((span) => span.name === "Prompt")
+      .length,
+  },
+  endTimeMs: Math.max(...children.map((span) => span.endTimeMs)),
+  kind: "INTERNAL",
+  name: SESSION_ROW,
+  resource: { "service.name": "session" },
+  spanId: makeSpanId(`semla-session-${traceId}`),
+  startTimeMs: Math.min(...children.map((span) => span.startTimeMs)),
+  status: { code: "OK" },
+  traceId,
+});
+
 export const recordedSpansToOtelSpans = (
   spans: readonly RecordedSpan[],
   options?: { now?: number },
@@ -161,7 +206,7 @@ export const recordedSpansToOtelSpans = (
     return undefined;
   };
 
-  return spans.map((span) => {
+  const mapped: MsSpan[] = spans.map((span): MsSpan => {
     const status = statusOf(span);
     const runId = runIdOf(span);
     const agentId = span.attributes["semla.workflow.agent.id"];
@@ -200,6 +245,25 @@ export const recordedSpansToOtelSpans = (
       traceId: span.traceId,
     };
   });
+
+  if (mapped.length === 0) return [];
+
+  // Whatever had no parent in the recorded set is a prompt (or a background
+  // run recovered with its turn gone), and those are what the session row
+  // holds.
+  const roots = mapped.filter((span) => span.parentSpanId === undefined);
+  if (roots.length === 0) return mapped;
+
+  const row = sessionRow(roots, mapped[0]?.traceId ?? "");
+
+  return [
+    row,
+    ...mapped.map((span) =>
+      span.parentSpanId === undefined
+        ? { ...span, parentSpanId: row.spanId }
+        : span,
+    ),
+  ];
 };
 
 /**

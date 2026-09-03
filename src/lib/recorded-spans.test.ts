@@ -17,6 +17,15 @@ import {
 const SESSION = "00000000-0000-4000-8000-00000000f00d";
 
 /**
+ * Just the mapped recorded spans. The session row is synthesised on top and
+ * has its own tests; a test about what the recorder produced should not have
+ * to look past it.
+ */
+const withoutSessionRow = <T extends { name: string }>(
+  spans: readonly T[],
+): T[] => spans.filter((span) => span.name !== "Session");
+
+/**
  * The mapper is tested against what the recorder actually produces rather than
  * hand-written spans. A fixture would keep passing after a schema attribute
  * was renamed, which is the one change most likely to break a label.
@@ -53,9 +62,9 @@ describe("recordedSpansToOtelSpans", () => {
     const clock = { ms: 1_000 };
     const { sink } = recordRun(clock);
 
-    const names = recordedSpansToOtelSpans(sink.spans(), { now: clock.ms }).map(
-      (span) => span.name,
-    );
+    const names = withoutSessionRow(
+      recordedSpansToOtelSpans(sink.spans(), { now: clock.ms }),
+    ).map((span) => span.name);
 
     // Every recorded name is a schema identifier — all three agents would read
     // "semla.workflow.agent" without the attribute lookup.
@@ -79,7 +88,9 @@ describe("recordedSpansToOtelSpans", () => {
       return span?.parentSpanId ? byId.get(span.parentSpanId)?.name : null;
     };
 
-    expect(parentNameOf("review-changes")).toBe(null);
+    // A workflow run with no turn above it in the recorded set is adopted by
+    // the session row, which is the point of that row.
+    expect(parentNameOf("review-changes")).toBe("Session");
     expect(parentNameOf("Review")).toBe("review-changes");
     expect(parentNameOf("review:bugs")).toBe("Review");
     expect(parentNameOf("review:perf")).toBe("Review");
@@ -133,9 +144,9 @@ describe("recordedSpansToOtelSpans", () => {
     const clock = { ms: 1_000 };
     const { sink } = recordRun(clock);
 
-    const services = recordedSpansToOtelSpans(sink.spans(), { now: clock.ms }).map(
-      (span) => span.resource?.["service.name"],
-    );
+    const services = withoutSessionRow(
+      recordedSpansToOtelSpans(sink.spans(), { now: clock.ms }),
+    ).map((span) => span.resource?.["service.name"]);
 
     expect(services).toEqual(["workflow", "workflow", "agent", "agent"]);
   });
@@ -146,11 +157,13 @@ describe("recordedSpansToOtelSpans", () => {
     const recorded = sink.spans();
 
     const mapped = recordedSpansToOtelSpans(recorded, { now: clock.ms });
+    const real = withoutSessionRow(mapped);
 
-    expect(mapped.map((span) => span.spanId)).toEqual(
+    expect(real.map((span) => span.spanId)).toEqual(
       recorded.map((span) => span.spanId),
     );
     expect(new Set(mapped.map((span) => span.spanId)).size).toBe(mapped.length);
+    // The session row belongs to the same trace, so nothing splits.
     expect(new Set(mapped.map((span) => span.traceId)).size).toBe(1);
   });
 
@@ -192,11 +205,15 @@ describe("recordedSpansToOtelSpans on malformed input", () => {
     const mapped = recordedSpansToOtelSpans([
       span({ parentSpanId: "missing", spanId: "orphan" }),
     ]);
+    const orphan = mapped.find((s) => s.spanId === "orphan");
 
     // Left pointing at a parent that is not in the set, the whole subtree
-    // would be dropped from the tree the library builds.
-    expect(mapped[0]?.parentSpanId).toBeUndefined();
-    expect(mapped).toHaveLength(1);
+    // would be dropped from the tree the library builds. Re-rooted, it is
+    // then adopted by the session row like any other root.
+    expect(orphan?.parentSpanId).toBe(
+      mapped.find((s) => s.name === "Session")?.spanId,
+    );
+    expect(withoutSessionRow(mapped)).toHaveLength(1);
   });
 
   it("does not hang on a parent cycle", () => {
@@ -205,8 +222,8 @@ describe("recordedSpansToOtelSpans on malformed input", () => {
       span({ parentSpanId: "a", spanId: "b" }),
     ]);
 
-    expect(mapped).toHaveLength(2);
-    expect(mapped[0]?.attributes?.["pi.run_id"]).toBeUndefined();
+    expect(withoutSessionRow(mapped)).toHaveLength(2);
+    expect(withoutSessionRow(mapped)[0]?.attributes?.["pi.run_id"]).toBeUndefined();
   });
 
   it("flattens array attributes and drops undefined ones", () => {
@@ -222,9 +239,10 @@ describe("recordedSpansToOtelSpans on malformed input", () => {
 
     // The waterfall's attribute type has no array form; joining beats dropping
     // for the tool and model lists these usually are.
-    expect(mapped[0]?.attributes?.["semla.list"]).toBe("a, b");
-    expect(mapped[0]?.attributes).not.toHaveProperty("semla.missing");
-    expect(mapped[0]?.attributes?.["semla.number"]).toBe(1);
+    const [only] = withoutSessionRow(mapped);
+    expect(only?.attributes?.["semla.list"]).toBe("a, b");
+    expect(only?.attributes).not.toHaveProperty("semla.missing");
+    expect(only?.attributes?.["semla.number"]).toBe(1);
   });
 
   it("falls back to the span name when the label attribute is missing", () => {
@@ -235,7 +253,7 @@ describe("recordedSpansToOtelSpans on malformed input", () => {
       span({ name: "pi.harness.tool", spanId: "d" }),
     ]);
 
-    expect(mapped.map((s) => s.name)).toEqual([
+    expect(withoutSessionRow(mapped).map((s) => s.name)).toEqual([
       "Workflow",
       "Phase",
       "Agent",
@@ -325,8 +343,9 @@ describe("host span labels", () => {
 
     // The glyph matches the derived timeline's, so switching source does not
     // change what a tool row looks like.
-    expect(mapped[0]?.name).toBe("⚙ bash");
-    expect(mapped[0]?.resource?.["service.name"]).toBe("tool");
+    const [tool] = withoutSessionRow(mapped);
+    expect(tool?.name).toBe("⚙ bash");
+    expect(tool?.resource?.["service.name"]).toBe("tool");
   });
 
   it("gives the turn and its run plain names", () => {
@@ -335,10 +354,98 @@ describe("host span labels", () => {
       hostSpan("pi.harness.turn"),
     ]);
 
-    expect(mapped.map((s) => s.name)).toEqual(["Prompt", "Turn"]);
-    expect(mapped.map((s) => s.resource?.["service.name"])).toEqual([
-      "session",
-      "session",
+    expect(withoutSessionRow(mapped).map((s) => s.name)).toEqual([
+      "Prompt",
+      "Turn",
     ]);
+    expect(
+      withoutSessionRow(mapped).map((s) => s.resource?.["service.name"]),
+    ).toEqual(["session", "session"]);
+  });
+});
+
+describe("the session row", () => {
+  const at = (start: number, end: number | null, over: Partial<RecordedSpan> = {}): RecordedSpan => ({
+    attributes: {},
+    endTimeMs: end,
+    events: [],
+    name: "pi.harness.run",
+    parentSpanId: null,
+    spanId: `${start}`,
+    startTimeMs: start,
+    status: { status: "ok" },
+    traceId: "trace-1",
+    ...over,
+  });
+
+  it("holds every prompt in one row", () => {
+    const mapped = recordedSpansToOtelSpans([at(100, 200), at(500, 900)]);
+    const row = mapped.find((span) => span.name === "Session");
+
+    expect(row).toBeDefined();
+    expect(row?.parentSpanId).toBeUndefined();
+    // Both prompts, which were separate roots, now hang from it.
+    expect(
+      mapped.filter((span) => span.parentSpanId === row?.spanId),
+    ).toHaveLength(2);
+  });
+
+  it("spans the extent of what it holds, and nothing more", () => {
+    const row = recordedSpansToOtelSpans([at(100, 200), at(500, 900)]).find(
+      (span) => span.name === "Session",
+    );
+
+    // An envelope over measured spans, not a measurement of its own — which
+    // is why it does not breach §8.5's rule against mixing the two.
+    expect(row?.startTimeMs).toBe(100);
+    expect(row?.endTimeMs).toBe(900);
+  });
+
+  it("counts the prompts it holds", () => {
+    const row = recordedSpansToOtelSpans([at(1, 2), at(3, 4), at(5, 6)]).find(
+      (span) => span.name === "Session",
+    );
+
+    expect(row?.attributes?.["semla.session.prompts"]).toBe(3);
+  });
+
+  it("reaches to now while a prompt is still running", () => {
+    const row = recordedSpansToOtelSpans([at(100, null)], { now: 7_000 }).find(
+      (span) => span.name === "Session",
+    );
+
+    expect(row?.endTimeMs).toBe(7_000);
+  });
+
+  it("keeps a stable id across renders", () => {
+    // A new id each render would drop the reader's selection and collapse
+    // state every time a span arrived.
+    const first = recordedSpansToOtelSpans([at(1, 2)]);
+    const second = recordedSpansToOtelSpans([at(1, 2), at(3, 4)]);
+
+    expect(second.find((s) => s.name === "Session")?.spanId).toBe(
+      first.find((s) => s.name === "Session")?.spanId,
+    );
+  });
+
+  it("does not adopt a span that already has a parent", () => {
+    const mapped = recordedSpansToOtelSpans([
+      at(100, 900),
+      at(150, 800, { name: "pi.harness.turn", parentSpanId: "100", spanId: "t" }),
+    ]);
+
+    const turn = mapped.find((span) => span.name === "Turn");
+    expect(turn?.parentSpanId).toBe("100");
+  });
+
+  it("adds nothing for an empty trace", () => {
+    expect(recordedSpansToOtelSpans([])).toEqual([]);
+  });
+
+  it("leaves the tree single-rooted", async () => {
+    const { buildSpanTree } = await import("react-otel-trace-waterfall");
+    const mapped = recordedSpansToOtelSpans([at(100, 200), at(500, 900)]);
+
+    expect(buildSpanTree([...mapped])).toHaveLength(1);
   });
 });
