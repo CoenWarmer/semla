@@ -10,6 +10,7 @@ import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { createWorkflowTelemetry } from "@/lib/pi/telemetry/workflow-recorder";
 import {
   coversHostSession,
+  foldSingleTurnRuns,
   recordedSpansToOtelSpans,
   timelineSource,
 } from "@/lib/recorded-spans";
@@ -429,9 +430,12 @@ describe("the session row", () => {
   });
 
   it("does not adopt a span that already has a parent", () => {
+    // Two children, so the run does not fold — the point here is the session
+    // row leaving an existing parent alone.
     const mapped = recordedSpansToOtelSpans([
       at(100, 900),
       at(150, 800, { name: "pi.harness.turn", parentSpanId: "100", spanId: "t" }),
+      at(150, 800, { name: "pi.harness.tool", parentSpanId: "100", spanId: "x" }),
     ]);
 
     const turn = mapped.find((span) => span.name === "Turn");
@@ -447,5 +451,128 @@ describe("the session row", () => {
     const mapped = recordedSpansToOtelSpans([at(100, 200), at(500, 900)]);
 
     expect(buildSpanTree([...mapped])).toHaveLength(1);
+  });
+});
+
+describe("foldSingleTurnRuns", () => {
+  const sp = (over: Partial<RecordedSpan> & { spanId: string }): RecordedSpan => ({
+    attributes: {},
+    endTimeMs: 100,
+    events: [],
+    name: "pi.harness.run",
+    parentSpanId: null,
+    startTimeMs: 0,
+    status: { status: "ok" },
+    traceId: "t",
+    ...over,
+  });
+
+  const run = (over: Partial<RecordedSpan> = {}) =>
+    sp({ attributes: { "pi.operation.outcome": "completed" }, spanId: "r", ...over });
+  const turn = (over: Partial<RecordedSpan> = {}) =>
+    sp({
+      attributes: { "pi.turn.id": "turn-1" },
+      name: "pi.harness.turn",
+      parentSpanId: "r",
+      spanId: "t",
+      ...over,
+    });
+
+  it("drops the turn and keeps the run", () => {
+    const folded = foldSingleTurnRuns([run(), turn()]);
+
+    expect(folded.map((s) => s.name)).toEqual(["pi.harness.run"]);
+  });
+
+  it("keeps the run's bounds, so no time is hidden", () => {
+    const folded = foldSingleTurnRuns([
+      run({ endTimeMs: 2_613 }),
+      turn({ endTimeMs: 2_612 }),
+    ]);
+
+    // Whatever the run measured is what the row shows. There is no tolerance
+    // to tune, which is why the condition is structural rather than numeric.
+    expect(folded[0]?.startTimeMs).toBe(0);
+    expect(folded[0]?.endTimeMs).toBe(2_613);
+  });
+
+  it("carries both spans' attributes", () => {
+    const folded = foldSingleTurnRuns([run(), turn()]);
+
+    expect(folded[0]?.attributes).toMatchObject({
+      "pi.operation.outcome": "completed",
+      "pi.turn.id": "turn-1",
+    });
+  });
+
+  it("lifts the turn's children onto the run", () => {
+    const folded = foldSingleTurnRuns([
+      run(),
+      turn(),
+      sp({ name: "pi.harness.tool", parentSpanId: "t", spanId: "tool" }),
+      sp({ name: "semla.workflow.run", parentSpanId: "t", spanId: "wf" }),
+    ]);
+
+    // Left pointing at the removed turn, both subtrees would fall out of the
+    // tree entirely.
+    expect(
+      folded.filter((s) => s.parentSpanId === "r").map((s) => s.spanId).sort(),
+    ).toEqual(["tool", "wf"]);
+    expect(folded.some((s) => s.parentSpanId === "t")).toBe(false);
+  });
+
+  it("takes an error from either span", () => {
+    const fromTurn = foldSingleTurnRuns([
+      run(),
+      turn({ status: { status: "error", error: { message: "x", name: "TurnFailed" } } }),
+    ]);
+    expect(fromTurn[0]?.status.status).toBe("error");
+
+    const fromRun = foldSingleTurnRuns([
+      run({ status: { status: "error", error: { message: "x", name: "RunFailed" } } }),
+      turn(),
+    ]);
+    expect(fromRun[0]?.status.status).toBe("error");
+  });
+
+  it("leaves a run that holds more than its turn alone", () => {
+    // The shape step 7 introduces, by letting pi emit these itself: a run is
+    // an operation that can carry compaction and more than one turn.
+    const spans = [
+      run(),
+      turn(),
+      sp({ name: "pi.harness.compaction", parentSpanId: "r", spanId: "c" }),
+    ];
+
+    expect(foldSingleTurnRuns(spans)).toHaveLength(3);
+    expect(foldSingleTurnRuns(spans).map((s) => s.name)).toContain(
+      "pi.harness.turn",
+    );
+  });
+
+  it("leaves a run with two turns alone", () => {
+    const spans = [run(), turn(), turn({ spanId: "t2" })];
+    expect(foldSingleTurnRuns(spans)).toHaveLength(3);
+  });
+
+  it("leaves a run with no turn alone", () => {
+    const spans = [run()];
+    expect(foldSingleTurnRuns(spans)).toHaveLength(1);
+  });
+
+  it("folds each prompt of a multi-prompt session", () => {
+    const folded = foldSingleTurnRuns([
+      run({ spanId: "r1" }),
+      turn({ parentSpanId: "r1", spanId: "t1" }),
+      run({ spanId: "r2" }),
+      turn({ parentSpanId: "r2", spanId: "t2" }),
+    ]);
+
+    expect(folded.map((s) => s.spanId)).toEqual(["r1", "r2"]);
+  });
+
+  it("returns the input untouched when there is nothing to fold", () => {
+    const spans = [sp({ name: "semla.workflow.run", spanId: "w" })];
+    expect(foldSingleTurnRuns(spans)).toEqual(spans);
   });
 });

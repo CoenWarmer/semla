@@ -123,7 +123,11 @@ describe("a turn that ran a workflow", () => {
     expect(mapped.every((span) => !span.name.startsWith("pi."))).toBe(true);
     expect(mapped.every((span) => !span.name.startsWith("semla."))).toBe(true);
     expect(mapped.map((span) => span.name)).toEqual(
-      expect.arrayContaining(["Prompt", "Turn", "⚙ workflow", "triage", "Look", "scan"]),
+      expect.arrayContaining(["Prompt", "⚙ workflow", "triage", "Look", "scan"]),
     );
+    // The turn is folded into the Prompt row: this run holds nothing but that
+    // one turn, so the two spans were one duration drawn twice. Both are still
+    // on disk; see foldSingleTurnRuns.
+    expect(mapped.map((span) => span.name)).not.toContain("Turn");
   });
 });

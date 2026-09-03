@@ -176,11 +176,92 @@ const sessionRow = (
   traceId,
 });
 
-export const recordedSpansToOtelSpans = (
+/**
+ * Fold a run and its turn into one span when the run holds nothing else.
+ *
+ * In Semla one prompt is one `runPiPrompt` is one turn: both spans open
+ * together before extensions load and close together in the same `finally`,
+ * with no work belonging to one and not the other. Measured on a real session
+ * they came out 8796/8796, 9021/9021 and 2613/2612 — the last differing by the
+ * one millisecond between two sequential `Date.now()` calls in `turnEnded`.
+ * Two rows, one duration.
+ *
+ * The run cannot simply be dropped instead. `pi.harness.turn` declares no end
+ * attributes at all, so `pi.operation.outcome` and `pi.error.*` have nowhere
+ * else to live, and a failed prompt would become a row that merely stops.
+ * Pi also declares the turn's parent as the run. Both spans stay on disk,
+ * conformant; this is only how they are drawn.
+ *
+ * **Conditional on the run holding exactly one turn and nothing else**, which
+ * is what makes it safe rather than a guess. Pi's own runs are operations that
+ * can carry compaction, checkpoints and more than one turn — the shape step 7
+ * would introduce by letting pi emit these itself. A run like that has other
+ * children, so it does not fold and the structure reappears the moment it
+ * starts meaning something.
+ *
+ * The folded row keeps the *run's* bounds, not the turn's. There is no
+ * tolerance to tune and no time can be hidden: whatever the run measured is
+ * still what the row shows.
+ */
+export const foldSingleTurnRuns = (
   spans: readonly RecordedSpan[],
+): RecordedSpan[] => {
+  const children = new Map<string, RecordedSpan[]>();
+  for (const span of spans) {
+    if (!span.parentSpanId) continue;
+    const siblings = children.get(span.parentSpanId);
+    if (siblings) siblings.push(span);
+    else children.set(span.parentSpanId, [span]);
+  }
+
+  /** run span id -> the turn it absorbs. */
+  const folded = new Map<string, RecordedSpan>();
+  for (const span of spans) {
+    if (span.name !== HARNESS_RUN_SPAN) continue;
+    const kids = children.get(span.spanId) ?? [];
+    if (kids.length === 1 && kids[0]?.name === HARNESS_TURN_SPAN) {
+      folded.set(span.spanId, kids[0]);
+    }
+  }
+
+  if (folded.size === 0) return [...spans];
+
+  const absorbed = new Map(
+    [...folded].map(([runId, turn]) => [turn.spanId, runId]),
+  );
+
+  return spans.flatMap((span) => {
+    // The turn itself is gone; its children move up to the run.
+    if (absorbed.has(span.spanId)) return [];
+
+    const turn = folded.get(span.spanId);
+    if (turn) {
+      return [
+        {
+          ...span,
+          // Turn first, so the run's own keys win a collision — they share
+          // `pi.operation.id`, and the outcome belongs to the run.
+          attributes: { ...turn.attributes, ...span.attributes },
+          // An error on either is an error on the row that replaces both.
+          status: span.status.status === "error" ? span.status : turn.status,
+        },
+      ];
+    }
+
+    const movedUp = span.parentSpanId
+      ? absorbed.get(span.parentSpanId)
+      : undefined;
+    return [movedUp ? { ...span, parentSpanId: movedUp } : span];
+  });
+};
+
+export const recordedSpansToOtelSpans = (
+  recorded: readonly RecordedSpan[],
   options?: { now?: number },
 ): MsSpan[] => {
   const now = options?.now ?? Date.now();
+  // Before anything reads parents: folding rewrites them.
+  const spans = foldSingleTurnRuns(recorded);
   const byId = new Map(spans.map((span) => [span.spanId, span]));
 
   /**
