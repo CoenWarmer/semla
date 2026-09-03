@@ -260,6 +260,25 @@ export const createTurnEventRouter = ({
       sessionLog(semlaSessionId, "workflow result delivered inside prompt turn");
     }
 
+    // A model round trip, which is what step 7 of the plan wanted from
+    // `pi.ai.request` — a span pi declares but never emits. Only the
+    // assistant's own messages: a tool result is appended as a message too,
+    // and it is not a round trip.
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      host.stepStarted();
+    }
+
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      const usage = (
+        event.message as { usage?: { cost?: { total?: number }; totalTokens?: number } }
+      ).usage;
+      host.stepEnded(
+        usage
+          ? { cost: usage.cost?.total ?? 0, tokens: usage.totalTokens ?? 0 }
+          : undefined,
+      );
+    }
+
     if (event.type === "message_update") {
       const update = event.assistantMessageEvent;
 

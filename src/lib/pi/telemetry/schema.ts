@@ -35,6 +35,7 @@ import { defineTelemetrySchema } from "@mariozechner/pi-agent-core";
  * touch it.
  */
 export const HARNESS_RUN_SPAN_NAME = "pi.harness.run";
+export const HARNESS_STEP_SPAN_NAME = "pi.harness.step";
 
 export const WORKFLOW_RUN_SPAN = "semla.workflow.run";
 export const WORKFLOW_PHASE_SPAN = "semla.workflow.phase";
@@ -67,6 +68,28 @@ export const SEMLA_TELEMETRY_SCHEMA = defineTelemetrySchema({
       // attributes and status, and restating them here would be a second
       // source of truth for something we do not define.
       endAttributes: {},
+      status: { default: "ok", errorWhen: "pi's own declaration decides" },
+    },
+
+    [HARNESS_STEP_SPAN_NAME]: {
+      description:
+        "Semla's additions to pi's step span: one model round trip inside a " +
+        "turn, and what it cost.",
+      parents: { kind: "any" },
+      startAttributes: {},
+      endAttributes: {
+        "gen_ai.usage.total_tokens": {
+          description:
+            "Tokens this round trip consumed, as the assistant message " +
+            "reported them.",
+          type: "number",
+        },
+        "gen_ai.usage.cost": {
+          description: "Cost in USD for this round trip.",
+          type: "number",
+        },
+      },
+      // pi's own declaration owns this span's status and start attributes.
       status: { default: "ok", errorWhen: "pi's own declaration decides" },
     },
 

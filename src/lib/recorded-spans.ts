@@ -23,6 +23,7 @@ import type { OtelSpan } from "react-otel-trace-waterfall";
 import { makeSpanId } from "react-otel-trace-waterfall";
 import {
   HARNESS_RUN_SPAN,
+  HARNESS_STEP_SPAN,
   HARNESS_TOOL_SPAN,
   HARNESS_TURN_SPAN,
 } from "@/lib/pi/telemetry/host-recorder";
@@ -79,6 +80,7 @@ const serviceOf = (name: string): string => {
     return "workflow";
   }
   if (name === HARNESS_TOOL_SPAN) return "tool";
+  if (name === HARNESS_STEP_SPAN) return "assistant";
   if (name === HARNESS_TURN_SPAN || name === HARNESS_RUN_SPAN) return "session";
   if (name.startsWith("pi.ai.")) return "assistant";
   return "session";
@@ -136,6 +138,12 @@ const labelOf = (span: RecordedSpan): string => {
   if (span.name === HARNESS_TOOL_SPAN) {
     const tool = named("pi.tool.name");
     return tool ? `⚙ ${tool}` : "⚙ tool";
+  }
+  if (span.name === HARNESS_STEP_SPAN) {
+    // Numbered, because a turn's round trips are otherwise indistinguishable
+    // rows and their order is the interesting part.
+    const attempt = span.attributes["pi.step.attempt"];
+    return typeof attempt === "number" ? `↔ model #${attempt + 1}` : "↔ model";
   }
   if (span.name === HARNESS_TURN_SPAN) return "Turn";
   if (span.name === HARNESS_RUN_SPAN) {

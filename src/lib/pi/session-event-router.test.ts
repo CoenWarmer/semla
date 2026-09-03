@@ -525,3 +525,51 @@ describe("host spans", () => {
       .toBeNull();
   });
 });
+
+describe("model round trip spans", () => {
+  const msg = (type: string, role: string, usage?: unknown) =>
+    event({ message: { role, ...(usage ? { usage } : {}) }, type });
+
+  it("spans an assistant message from start to end", () => {
+    const { host, router, sink } = setup();
+
+    router.onSessionEvent(msg("message_start", "assistant"));
+    router.onSessionEvent(
+      msg("message_end", "assistant", {
+        cost: { total: 0.02 },
+        totalTokens: 1_200,
+      }),
+    );
+
+    const step = sink.spans().find((s) => s.name === "pi.harness.step");
+    expect(step?.parentSpanId).toBe(host.turnSpanId);
+    expect(step?.attributes["gen_ai.usage.total_tokens"]).toBe(1_200);
+    expect(step?.attributes["gen_ai.usage.cost"]).toBe(0.02);
+    expect(step?.endTimeMs).not.toBeNull();
+  });
+
+  it("ignores messages that are not the assistant's", () => {
+    const { router, sink } = setup();
+
+    // A tool result is appended as a message too, and it is not a round trip.
+    router.onSessionEvent(msg("message_start", "toolResult"));
+    router.onSessionEvent(msg("message_start", "user"));
+
+    expect(sink.spans().filter((s) => s.name === "pi.harness.step")).toHaveLength(
+      0,
+    );
+  });
+
+  it("records one span per round trip in a multi-step turn", () => {
+    const { router, sink } = setup();
+
+    for (let i = 0; i < 3; i += 1) {
+      router.onSessionEvent(msg("message_start", "assistant"));
+      router.onSessionEvent(msg("message_end", "assistant"));
+    }
+
+    expect(sink.spans().filter((s) => s.name === "pi.harness.step")).toHaveLength(
+      3,
+    );
+  });
+});

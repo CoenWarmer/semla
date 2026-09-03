@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createHostTelemetry,
   HARNESS_RUN_SPAN,
+  HARNESS_STEP_SPAN,
   HARNESS_TOOL_SPAN,
   HARNESS_TURN_SPAN,
 } from "@/lib/pi/telemetry/host-recorder";
@@ -238,5 +239,91 @@ describe("the prompt excerpt", () => {
     expect(run?.attributes).not.toHaveProperty("semla.prompt.excerpt");
     // Everything else still recorded: redaction must not cost the span.
     expect(run?.attributes["pi.session.id"]).toBe("pi-runtime-1");
+  });
+});
+
+describe("model round trips", () => {
+  it("records one span per round trip, under the turn", () => {
+    const { clock, host, sink } = setup();
+    host.turnStarted();
+    host.stepStarted();
+    clock.ms += 800;
+    host.stepEnded({ cost: 0.01, tokens: 1_200 });
+
+    const step = named(sink, HARNESS_STEP_SPAN);
+    expect(step?.parentSpanId).toBe(host.turnSpanId);
+    expect(step?.endTimeMs).toBe(1_800);
+    expect(step?.attributes["pi.step.kind"]).toBe("assistant");
+    expect(step?.attributes["pi.step.outcome"]).toBe("succeeded");
+    expect(step?.attributes["gen_ai.usage.total_tokens"]).toBe(1_200);
+    expect(step?.attributes["gen_ai.usage.cost"]).toBe(0.01);
+  });
+
+  it("numbers the attempts so their order is readable", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    for (let i = 0; i < 3; i += 1) {
+      host.stepStarted();
+      host.stepEnded();
+    }
+
+    expect(
+      sink
+        .spans()
+        .filter((s) => s.name === HARNESS_STEP_SPAN)
+        .map((s) => s.attributes["pi.step.attempt"]),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("records a round trip that reported no usage", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    host.stepStarted();
+    host.stepEnded();
+
+    const step = named(sink, HARNESS_STEP_SPAN);
+    expect(step?.attributes).not.toHaveProperty("gen_ai.usage.total_tokens");
+    expect(step?.endTimeMs).not.toBeNull();
+  });
+
+  it("ignores a round trip before the turn opened", () => {
+    const { host, sink } = setup();
+    host.stepStarted();
+
+    expect(sink.spans()).toHaveLength(0);
+  });
+
+  it("closes a round trip superseded without an end", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    host.stepStarted();
+    host.stepStarted();
+
+    const steps = sink.spans().filter((s) => s.name === HARNESS_STEP_SPAN);
+    // Two spans, and the abandoned one closed rather than leaked. (The run
+    // and turn are still open too, so `counts.open` is not the check here.)
+    expect(steps).toHaveLength(2);
+    expect(steps[0]?.status.status).toBe("error");
+    expect(steps[0]?.endTimeMs).not.toBeNull();
+    expect(steps[1]?.endTimeMs).toBeNull();
+  });
+
+  it("closes an open round trip when the turn ends", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    host.stepStarted();
+    host.turnEnded("aborted");
+
+    // Left open, the trace would claim the model is still answering.
+    expect(named(sink, HARNESS_STEP_SPAN)?.endTimeMs).not.toBeNull();
+    expect(sink.counts.open).toBe(0);
+  });
+
+  it("ignores an end with no round trip in flight", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    host.stepEnded({ cost: 1, tokens: 1 });
+
+    expect(named(sink, HARNESS_STEP_SPAN)).toBeUndefined();
   });
 });

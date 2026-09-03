@@ -27,6 +27,7 @@ import type { OpenSpan, SpanSink } from "@/lib/pi/telemetry/span-sink";
 export const HARNESS_RUN_SPAN = "pi.harness.run";
 export const HARNESS_TURN_SPAN = "pi.harness.turn";
 export const HARNESS_TOOL_SPAN = "pi.harness.tool";
+export const HARNESS_STEP_SPAN = "pi.harness.step";
 
 /** Pi's own vocabulary. `run` is the only value its schema allows. */
 const OPERATION_KIND = "run";
@@ -54,6 +55,22 @@ export type HostTelemetry = {
    * does (plan §8.4). Null before `turnStarted`.
    */
   readonly turnSpanId: string | null;
+  /**
+   * A model round trip finished. `usage` is what the assistant message
+   * reported, when it reported any.
+   */
+  stepEnded: (usage?: { cost: number; tokens: number }) => void;
+  /**
+   * A model round trip began.
+   *
+   * This is what step 7 of the plan wanted from `pi.ai.request`, arrived at
+   * differently: that span is declared in pi's schema but nothing in either
+   * package ever calls `startAiSpan`, so forwarding a telemetry context into
+   * `createAgentSession` would have produced no spans at all. The events are
+   * already here, so the round trip is derived from them like everything else
+   * in layer 2a.
+   */
+  stepStarted: () => void;
   toolEnded: (callId: string, result: { isError?: boolean }) => void;
   toolStarted: (callId: string, tool: { name: string }) => void;
   /**
@@ -72,6 +89,8 @@ export type HostTelemetry = {
 /** A no-op, for a code path with no sink. */
 export const NO_HOST_TELEMETRY: HostTelemetry = {
   turnSpanId: null,
+  stepEnded: () => {},
+  stepStarted: () => {},
   toolEnded: () => {},
   toolStarted: () => {},
   turnEnded: () => {},
@@ -88,6 +107,12 @@ export const createHostTelemetry = (
 
   let run: OpenSpan | null = null;
   let turn: OpenSpan | null = null;
+  /**
+   * The model round trip in flight. One at a time: the agent loop waits for a
+   * message to finish before starting the next.
+   */
+  let step: OpenSpan | null = null;
+  let stepAttempt = 0;
 
   return {
     get turnSpanId() {
@@ -121,6 +146,51 @@ export const createHostTelemetry = (
         name: HARNESS_TURN_SPAN,
         parentSpanId: run.spanId,
       });
+    },
+
+    stepStarted: () => {
+      // No turn means nothing to hang from, and re-rooting would draw the
+      // round trip as a sibling of the turn it belongs to.
+      if (!turn) return;
+      // A `message_start` without an intervening end is a round trip nobody
+      // closed. Close it rather than leaking, and let the new one open.
+      step?.close({
+        status: "error",
+        error: { message: "superseded", name: "StepAbandoned" },
+      });
+
+      step = sink.openSpan({
+        attributes: {
+          "pi.lane.name": LANE,
+          "pi.operation.id": operationId,
+          // Compaction and branch summaries are the other kinds pi declares;
+          // this path only ever sees the assistant's own turns.
+          "pi.step.attempt": stepAttempt++,
+          "pi.step.kind": "assistant",
+        },
+        name: HARNESS_STEP_SPAN,
+        parentSpanId: turn.spanId,
+      });
+    },
+
+    stepEnded: (usage) => {
+      if (!step) return;
+
+      step.setAttributes({
+        "pi.step.outcome": "succeeded",
+        // pi's schema records no usage on a step, and inventing keys in its
+        // namespace is what the sink's redaction lookup cannot see. These are
+        // the OTel gen_ai names the derived timeline already uses for an
+        // agent, declared in Semla's own schema.
+        ...(usage
+          ? {
+              "gen_ai.usage.cost": usage.cost,
+              "gen_ai.usage.total_tokens": usage.tokens,
+            }
+          : {}),
+      });
+      step.close({ status: "ok" });
+      step = null;
     },
 
     toolStarted: (callId, { name }) => {
@@ -171,6 +241,13 @@ export const createHostTelemetry = (
         });
       }
       tools.clear();
+
+      // A round trip still open when the turn ends never reported back.
+      step?.close({
+        status: "error",
+        error: { message: "turn ended first", name: "StepAbandoned" },
+      });
+      step = null;
 
       turn?.close(
         outcome === "completed"
