@@ -1,20 +1,16 @@
 import { SessionsListClient } from "@/components/sessions-list-client";
+import { requireUser } from "@/lib/api-helpers";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { createClient } from "@/lib/supabase/server";
 import { sessionUsageTotals } from "@/lib/pi/session-usage-totals";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
 
 export async function SessionsList() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
+  // Through the shared helper, not a bare auth.getUser(): bound to loopback
+  // there is nobody to authenticate, and asking Supabase who it is answered
+  // null there, which emptied the sidebar even though sessions existed on disk
+  // and in Postgres. Every other route already reads the user this way.
+  const { supabase, user } = await requireUser();
 
   const { data: dbRows, error } = await supabase
     .from("sessions")
