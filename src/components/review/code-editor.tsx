@@ -85,6 +85,11 @@ export interface CodeEditorProps {
   onChange?: (value: string) => void;
   /** Cmd/Ctrl-S. The panel decides what saving means. */
   onSave?: () => void;
+  /**
+   * A line to scroll into view, with a counter so that asking for the same
+   * line twice is two requests rather than an unchanged prop.
+   */
+  reveal?: { line: number; nonce: number } | null;
 }
 
 export default function CodeEditor({
@@ -93,6 +98,7 @@ export default function CodeEditor({
   onSave,
   path,
   readOnly = false,
+  reveal = null,
   theme = "dark",
   value,
 }: CodeEditorProps) {
@@ -234,6 +240,15 @@ export default function CodeEditor({
 
     editor.revealLineNearTop(line, monaco.editor.ScrollType.Immediate);
   }, [hunks, path]);
+
+  // Asked for a specific line — a hunk row was clicked.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !reveal) return;
+
+    editor.revealLineNearTop(reveal.line, monaco.editor.ScrollType.Smooth);
+    editor.setPosition({ column: 1, lineNumber: reveal.line });
+  }, [reveal]);
 
   return <div className="h-full w-full" ref={hostRef} />;
 }

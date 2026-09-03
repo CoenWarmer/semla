@@ -17,109 +17,56 @@
  */
 
 import { XIcon } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { CONSOLE_BAR_HEIGHT, useBottomPanel } from "@/components/bottom-panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  useFileContent,
+  useCommitReview,
   useReview,
-  useReviewHunks,
+  useSaveFile,
+  useStageHunks,
+  useUncommit,
+  useUncommitPlan,
   workspacePath,
 } from "@/hooks/use-review";
-import { isEmptyReview, totalChangedFiles, totalTurnCommits } from "@/lib/review-types";
+import { isEmptyReview, totalChangedFiles } from "@/lib/review-types";
 import type { SessionReview } from "@/lib/review-types";
+import { cn } from "@/lib/utils";
 
 import {
   ReviewChangedFiles,
   type FileSelection,
 } from "./review-changed-files";
-import { ReviewEditor } from "./review-editor";
-import { splitPath } from "./review-file-display";
+import { ReviewCommitBar } from "./review-commit-bar";
+import { ReviewEditorPane } from "./review-editor-pane";
+import { ReviewTurnCommits } from "./review-turn-commits";
 
 const SIDEBAR_WIDTH = 300;
 
 /** The frame the panel is specified to sit in. */
 const INSET = { left: 20, right: 20, top: 40 } as const;
 
+/** A draft is keyed by repository and path: two projects can hold one name. */
+const draftKey = (selection: FileSelection) =>
+  `${selection.project}/${selection.path}`;
+
 /**
  * The first thing worth showing: the anchor project's first changed file.
  *
- * Derived during render rather than pushed into state by an effect. Selecting
- * a default in an effect is the `react/set-state-in-effect` error this
+ * Derived during render rather than pushed into state by an effect. Choosing a
+ * default in an effect is the `react/set-state-in-effect` error this
  * repository treats as fatal, and it also flashes an empty pane for a frame.
  */
-function defaultSelection(review: SessionReview | undefined): FileSelection | null {
+function defaultSelection(
+  review: SessionReview | undefined,
+): FileSelection | null {
   for (const project of review?.projects ?? []) {
     const first = project.changedFiles[0];
     if (first) return { path: first.path, project: project.path };
   }
   return null;
-}
-
-function EditorPane({
-  selection,
-  sessionId,
-}: {
-  selection: FileSelection;
-  sessionId: string;
-}) {
-  const hunks = useReviewHunks(sessionId, selection.project, selection.path);
-  const content = useFileContent(
-    sessionId,
-    workspacePath(selection.project, selection.path),
-  );
-
-  const status = hunks.data?.file.status;
-
-  // A deleted file has no content to open. Saying so is the whole answer:
-  // there is nothing to edit and the hunks are all removals.
-  if (status === "deleted") {
-    return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        <p>
-          <span className="font-mono">{selection.path}</span> was deleted in
-          this turn. There is nothing left to open.
-        </p>
-      </div>
-    );
-  }
-
-  if (hunks.data?.full?.binary) {
-    return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        <p>
-          <span className="font-mono">{selection.path}</span> is binary. git
-          reports it changed but cannot say how.
-        </p>
-      </div>
-    );
-  }
-
-  if (content.isPending || hunks.isPending) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner />
-      </div>
-    );
-  }
-
-  if (content.isError) {
-    return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-destructive">
-        <p>Unable to read {selection.path}.</p>
-      </div>
-    );
-  }
-
-  return (
-    <ReviewEditor
-      hunks={hunks.data?.full?.hunks ?? []}
-      path={selection.path}
-      value={content.data?.content ?? ""}
-    />
-  );
 }
 
 export function ReviewPanel({
@@ -130,15 +77,101 @@ export function ReviewPanel({
   sessionId: string;
 }) {
   const review = useReview(sessionId);
-  const [chosen, setChosen] = useState<FileSelection | null>(null);
   const panel = useBottomPanel();
 
-  const selection = chosen ?? defaultSelection(review.data);
-  const bottom = (panel?.open ? panel.height : 0) + CONSOLE_BAR_HEIGHT;
+  const [chosen, setChosen] = useState<FileSelection | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
+    null,
+  );
 
+  const stage = useStageHunks(sessionId);
+  const commit = useCommitReview(sessionId);
+  const save = useSaveFile(sessionId);
+  const uncommit = useUncommit(sessionId);
+
+  const selection = chosen ?? defaultSelection(review.data);
+  const projects = review.data?.projects ?? [];
+  const activeProject =
+    projects.find((project) => project.path === selection?.project) ??
+    projects[0];
+
+  // Only asked for when there is something to ask about: the plan costs an
+  // ancestry check, an upstream lookup and two rev-lists.
+  const uncommitPlan = useUncommitPlan(
+    sessionId,
+    activeProject?.path ?? null,
+    (activeProject?.turnCommits.length ?? 0) > 0,
+  );
+
+  const bottom = (panel?.open ? panel.height : 0) + CONSOLE_BAR_HEIGHT;
   const changed = review.data ? totalChangedFiles(review.data) : 0;
-  const commits = review.data ? totalTurnCommits(review.data) : 0;
-  const anchor = review.data?.projects[0];
+  const unsavedCount = Object.keys(drafts).length;
+  const busy =
+    stage.isPending || commit.isPending || save.isPending || uncommit.isPending;
+
+  // Escape closes, which is what every overlay in the app does. Registered on
+  // the document because the editor swallows keys inside itself.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const onStage = useCallback(
+    (hunks: number[], direction: "stage" | "unstage") => {
+      if (!selection) return;
+      stage.mutate(
+        { direction, hunks, path: selection.path, project: selection.project },
+        { onSuccess: (data) => setResult(data.ok ? null : data) },
+      );
+    },
+    [selection, stage],
+  );
+
+  const onSave = useCallback(
+    (content: string, sha: string | undefined) => {
+      if (!selection) return;
+      const key = draftKey(selection);
+
+      save.mutate(
+        { content, path: workspacePath(selection.project, selection.path), sha },
+        {
+          onError: (error) =>
+            setResult({ message: error.message, ok: false }),
+          onSuccess: () => {
+            setResult(null);
+            setDrafts((previous) => {
+              const next = { ...previous };
+              delete next[key];
+              return next;
+            });
+          },
+        },
+      );
+    },
+    [save, selection],
+  );
+
+  const onCommit = useCallback(() => {
+    if (!activeProject) return;
+    commit.mutate(
+      { message, project: activeProject.path },
+      {
+        onSuccess: (data) => {
+          setResult(
+            data.ok
+              ? { message: `Committed ${data.sha?.slice(0, 7) ?? ""}`, ok: true }
+              : data,
+          );
+          if (data.ok) setMessage("");
+        },
+      },
+    );
+  }, [activeProject, commit, message]);
 
   return (
     <div
@@ -150,25 +183,58 @@ export function ReviewPanel({
       <header className="flex shrink-0 items-center gap-3 border-b px-3 py-2">
         <h2 className="text-sm font-medium">Review</h2>
 
-        {anchor ? (
-          <span className="text-xs text-muted-foreground">{anchor.name}</span>
-        ) : null}
-
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground tabular-nums">
           {changed} changed {changed === 1 ? "file" : "files"}
-          {commits > 0
-            ? `, ${commits} commit${commits === 1 ? "" : "s"} this turn`
-            : ""}
         </span>
+
+        {/* A session can work in several repositories, and a commit is always
+            against exactly one of them — so which is a choice, not a guess. */}
+        {projects.length > 1 ? (
+          <div className="flex items-center gap-1">
+            {projects.map((project) => (
+              <button
+                className={cn(
+                  "rounded px-2 py-0.5 text-xs transition-colors",
+                  project.path === activeProject?.path
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                key={project.path}
+                onClick={() =>
+                  setChosen(
+                    project.changedFiles[0]
+                      ? {
+                          path: project.changedFiles[0].path,
+                          project: project.path,
+                        }
+                      : null,
+                  )
+                }
+                type="button"
+              >
+                {project.name}
+              </button>
+            ))}
+          </div>
+        ) : activeProject ? (
+          <span className="text-xs text-muted-foreground">
+            {activeProject.name}
+          </span>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-2">
           {selection ? (
-            <span className="font-mono text-xs text-muted-foreground">
-              {splitPath(selection.path).name}
+            <span className="max-w-md truncate font-mono text-xs text-muted-foreground">
+              {selection.path}
             </span>
           ) : null}
 
-          <Button aria-label="Close review" onClick={onClose} size="icon" variant="ghost">
+          <Button
+            aria-label="Close review"
+            onClick={onClose}
+            size="icon"
+            variant="ghost"
+          >
             <XIcon className="size-4" />
           </Button>
         </div>
@@ -176,7 +242,7 @@ export function ReviewPanel({
 
       <div className="flex min-h-0 flex-1">
         <aside
-          className="flex shrink-0 flex-col overflow-y-auto border-r py-2"
+          className="flex shrink-0 flex-col gap-2 overflow-y-auto border-r py-2"
           style={{ width: SIDEBAR_WIDTH }}
         >
           {review.isPending ? (
@@ -184,17 +250,52 @@ export function ReviewPanel({
               <Spinner />
             </div>
           ) : (
-            <ReviewChangedFiles
-              onSelect={setChosen}
-              projects={review.data?.projects ?? []}
-              selected={selection}
-            />
+            <>
+              <ReviewChangedFiles
+                onSelect={setChosen}
+                projects={projects}
+                selected={selection}
+              />
+
+              {activeProject ? (
+                <ReviewTurnCommits
+                  busy={busy}
+                  onUncommit={(target) =>
+                    uncommit.mutate(
+                      { project: activeProject.path, target },
+                      { onSuccess: (data) => setResult(data) },
+                    )
+                  }
+                  plan={uncommitPlan.data}
+                  project={activeProject}
+                />
+              ) : null}
+            </>
           )}
         </aside>
 
         <main className="min-w-0 flex-1">
           {selection ? (
-            <EditorPane selection={selection} sessionId={sessionId} />
+            <ReviewEditorPane
+              busy={busy}
+              draft={drafts[draftKey(selection)] ?? null}
+              onDraftChange={(content, dirty) =>
+                setDrafts((previous) => {
+                  const key = draftKey(selection);
+                  if (!dirty) {
+                    if (!(key in previous)) return previous;
+                    const next = { ...previous };
+                    delete next[key];
+                    return next;
+                  }
+                  return { ...previous, [key]: content };
+                })
+              }
+              onSave={onSave}
+              onStage={onStage}
+              selection={selection}
+              sessionId={sessionId}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {review.data && isEmptyReview(review.data)
@@ -204,6 +305,16 @@ export function ReviewPanel({
           )}
         </main>
       </div>
+
+      <ReviewCommitBar
+        busy={commit.isPending}
+        message={message}
+        onCommit={onCommit}
+        onMessageChange={setMessage}
+        project={activeProject}
+        result={result}
+        unsavedCount={unsavedCount}
+      />
     </div>
   );
 }
