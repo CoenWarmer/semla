@@ -432,23 +432,26 @@ export function ClientSessionComponent({
                 item.kind === "steps" ? (
                   <SessionStepsStrip items={item.items} key={item.id} />
                 ) : (
-                  <Message
-                    from={item.message.role}
-                    id={item.message.id}
-                    key={item.message.id}
-                  >
-                    <MessageContent>
-                      {item.message.role === "user" ? (
-                        <EditableUserMessage
-                          disabled={isActive}
-                          message={item.message}
-                          onSubmit={handleEditPrompt}
-                        />
-                      ) : (
+                  item.message.role === "user" ? (
+                    // Renders its own Message and bubble, so the edit button
+                    // can sit beside the bubble rather than inside it.
+                    <EditableUserMessage
+                      disabled={isActive}
+                      key={item.message.id}
+                      message={item.message}
+                      onSubmit={handleEditPrompt}
+                    />
+                  ) : (
+                    <Message
+                      from={item.message.role}
+                      id={item.message.id}
+                      key={item.message.id}
+                    >
+                      <MessageContent>
                         <MessageResponse>{item.message.text}</MessageResponse>
-                      )}
-                    </MessageContent>
-                  </Message>
+                      </MessageContent>
+                    </Message>
+                  )
                 ),
               )
             )}

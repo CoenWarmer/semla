@@ -20,7 +20,11 @@
 import { CheckIcon, PencilIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { MessageResponse } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 
@@ -81,10 +85,9 @@ export function EditableUserMessage({
     }
   };
 
-  if (editing) {
-    return (
-      <div className="flex w-full flex-col gap-2">
-        <textarea
+  const editor = (
+    <div className="flex w-full flex-col gap-2">
+      <textarea
           autoFocus
           className="w-full resize-none bg-transparent text-sm outline-none"
           onChange={(event) => setDraft(event.target.value)}
@@ -101,51 +104,71 @@ export function EditableUserMessage({
             <XIcon />
             Cancel
           </Button>
-          <span className="text-muted-foreground text-xs">
-            Replaces the reply below · ⌘↵ to run · Esc to cancel
-          </span>
-        </div>
+        <span className="text-muted-foreground text-xs">
+          Replaces the reply below · ⌘↵ to run · Esc to cancel
+        </span>
       </div>
-    );
-  }
+    </div>
+  );
 
   const versions = message.versions ?? [];
 
   return (
-    <div className="group/message flex w-full flex-col gap-1">
-      <MessageResponse>{message.text}</MessageResponse>
-
-      <div className="flex items-center gap-2">
-        <button
-          className="text-muted-foreground text-xs opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/message:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
-          disabled={disabled}
-          onClick={start}
-          title={
-            disabled
-              ? "Wait for the current turn to finish"
-              : "Edit this prompt and run it again"
-          }
-          type="button"
-        >
-          <PencilIcon className="mr-1 inline size-3" />
-          Edit
-        </button>
-
-        {versions.length > 0 && (
+    // The message owns its own bubble, which is what lets the edit button sit
+    // beside it: the button used to be inside `MessageContent`, and nothing
+    // rendered from in there can escape it.
+    <Message from="user" id={message.id}>
+      <div className="group/message flex items-center justify-end gap-2">
+        {/*
+          Left of the bubble, because a user message is right-aligned — this
+          is the gutter between it and the conversation.
+        */}
+        {!editing && (
           <button
-            className="text-muted-foreground text-xs hover:text-foreground transition-colors"
-            onClick={() => setShowVersions((open) => !open)}
+            className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/message:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
+            disabled={disabled}
+            onClick={start}
+            title={
+              disabled
+                ? "Wait for the current turn to finish"
+                : "Edit this prompt and run it again"
+            }
             type="button"
           >
-            edited · {versions.length + 1} versions {showVersions ? "▴" : "▾"}
+            <PencilIcon className="size-3.5" />
+            <span className="sr-only">Edit this prompt</span>
           </button>
         )}
+
+        {/*
+          `ml-auto` is cancelled at the same variant it is set on. Left alone
+          it pushes the bubble to the far end of this row and strands the
+          button against the opposite edge; the row's `justify-end` already
+          does the aligning.
+        */}
+        <MessageContent className="group-[.is-user]:ml-0">
+          {editing ? editor : <MessageResponse>{message.text}</MessageResponse>}
+
+          {/* Stays in the bubble: it is about this message, not an action. */}
+          {!editing && versions.length > 0 && (
+            <button
+              className="self-start text-muted-foreground text-xs hover:text-foreground transition-colors"
+              onClick={() => setShowVersions((open) => !open)}
+              type="button"
+            >
+              edited · {versions.length + 1} versions {showVersions ? "▴" : "▾"}
+            </button>
+          )}
+        </MessageContent>
       </div>
 
       {showVersions && versions.length > 0 && (
         <div className="mt-1 flex flex-col gap-2 rounded border border-border/40 bg-muted/30 p-2">
           {versions.map((version, index) => (
-            <div className="flex flex-col gap-0.5" key={`${index}-${version.slice(0, 24)}`}>
+            <div
+              className="flex flex-col gap-0.5"
+              key={`${index}-${version.slice(0, 24)}`}
+            >
               <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
                 v{index + 1}
               </span>
@@ -162,6 +185,6 @@ export function EditableUserMessage({
           </div>
         </div>
       )}
-    </div>
+    </Message>
   );
 }
