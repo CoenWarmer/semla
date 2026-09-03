@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 
 import { useBottomPanel } from "@/components/bottom-panel";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
-import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
+import type {
+  SessionMessage,
+  SessionToolCall,
+} from "@/hooks/use-session-messages";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
@@ -97,7 +100,7 @@ export function SessionAgentsPanel({
         createPortal(
           // Not `overflow-auto`: the panel scrolls its own span rows, so the
           // header stays put while they move under it.
-          <div className="h-full overflow-hidden p-3">
+          <div className="h-full overflow-hidden">
             <SessionWorkflowPanel
               messages={messages}
               onAgentClick={onAgentClick}

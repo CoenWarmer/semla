@@ -708,6 +708,8 @@ export type TimelineMode = "fit" | "follow";
 
 /** Before the row area has been measured, and if it ever measures zero. */
 const DEFAULT_ROWS_HEIGHT = 240;
+/** A floor, so a very short panel still shows a row rather than none. */
+const MIN_ROWS_HEIGHT = 48;
 
 export function SessionWorkflowPanel({
   messages,
@@ -758,11 +760,40 @@ export function SessionWorkflowPanel({
   const measureRows = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
 
-    const observer = new ResizeObserver((entries) => {
-      const measured = Math.round(entries[0]?.contentRect.height ?? 0);
+    const observer = new ResizeObserver(() => {
+      const available = element.clientHeight;
       // Zero while the panel is collapsed or mid-transition; keeping the last
       // good height stops the rows collapsing and re-expanding.
-      if (measured > 0) setRowsHeight(measured);
+      if (available <= 0) return;
+
+      // The scroller is not the whole component: the waterfall draws its time
+      // axis above it, inside the same wrapper. Given the full box height the
+      // scroller therefore pushed the wrapper past the bottom of the box,
+      // which is clipped — so the last rows could not be reached however far
+      // you scrolled.
+      //
+      // Measured rather than subtracting a constant for the axis: it is a
+      // number belonging to a library that is free to change it, and the
+      // difference between the wrapper and the scroller is that number
+      // whatever it is.
+      //
+      // Found from the scroller upwards, not from this box downwards: the
+      // timeline branch renders a `<style>` element first, so
+      // `firstElementChild` is that — zero-height, which would make the
+      // difference negative and the rows taller than the panel rather than
+      // shorter.
+      const scroller = element.querySelector('[role="treegrid"]');
+      let wrapper = scroller;
+      while (wrapper?.parentElement && wrapper.parentElement !== element) {
+        wrapper = wrapper.parentElement;
+      }
+
+      const chrome =
+        wrapper instanceof HTMLElement && scroller instanceof HTMLElement
+          ? Math.max(0, wrapper.offsetHeight - scroller.offsetHeight)
+          : 0;
+
+      setRowsHeight(Math.max(MIN_ROWS_HEIGHT, available - chrome));
     });
 
     observer.observe(element);
