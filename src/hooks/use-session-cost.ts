@@ -1,10 +1,9 @@
+import { addUsage, type SessionUsage } from "@/lib/session-usage";
+
 import { useSessionMessages } from "./use-session-messages";
 import { useWorkflowRuns } from "./use-workflow-runs";
 
-export type SessionCost = {
-  cost: number;
-  tokens: number;
-};
+export type SessionCost = SessionUsage;
 
 export function useSessionCost(sessionId: string): SessionCost {
   const runsQuery = useWorkflowRuns(sessionId);
@@ -30,8 +29,12 @@ export function useSessionCost(sessionId: string): SessionCost {
     0,
   );
 
-  return {
-    cost: runCost > 0 ? runCost : msgCost,
-    tokens: runTokens > 0 ? runTokens : msgTokens,
-  };
+  // Summed, not chosen. The either/or this replaces reported the workflows
+  // and discarded the conversation for any session that had run one — which
+  // is why this disagreed with the sidebar by an order of magnitude. See
+  // session-usage.ts for why the two sets cannot double count.
+  return addUsage(
+    { cost: runCost, tokens: runTokens },
+    { cost: msgCost, tokens: msgTokens },
+  );
 }

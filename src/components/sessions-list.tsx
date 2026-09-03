@@ -2,6 +2,8 @@ import { SessionsListClient } from "@/components/sessions-list-client";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { createClient } from "@/lib/supabase/server";
 import { sumMessageUsageByPiSession } from "@/lib/pi/message-usage";
+import { sumWorkflowUsageBySession } from "@/lib/pi/workflow-usage";
+import { addUsage, type SessionUsage } from "@/lib/session-usage";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -34,16 +36,25 @@ async function getSessionTokenUsage(
     piSessions.map((piSession) => piSession.id),
   );
 
-  const usageMap = new Map<string, { tokens: number; cost: number }>();
-  for (const { id, semla_session_id } of piSessions) {
-    const usage = byPiSession.get(id);
-    if (!usage || (!usage.tokens && !usage.cost)) continue;
+  // The subagent half. Absent here, a session that spent most of its budget
+  // in a workflow reported the small number — which is what the top bar and
+  // this list disagreed about.
+  const byWorkflow = await sumWorkflowUsageBySession(supabase, sessionIds);
 
-    const previous = usageMap.get(semla_session_id) ?? { cost: 0, tokens: 0 };
-    usageMap.set(semla_session_id, {
-      cost: previous.cost + usage.cost,
-      tokens: previous.tokens + usage.tokens,
-    });
+  const usageMap = new Map<string, SessionUsage>();
+  for (const { id, semla_session_id } of piSessions) {
+    const total = addUsage(
+      usageMap.get(semla_session_id),
+      byPiSession.get(id),
+      // Only once per Semla session, however many pi_sessions it has: the
+      // workflow total is already keyed by the Semla id.
+      usageMap.has(semla_session_id)
+        ? undefined
+        : byWorkflow.get(semla_session_id),
+    );
+
+    if (!total.tokens && !total.cost) continue;
+    usageMap.set(semla_session_id, total);
   }
 
   return usageMap;
