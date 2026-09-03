@@ -706,6 +706,9 @@ function SpanDetailDrawer({
 
 export type TimelineMode = "fit" | "follow";
 
+/** Before the row area has been measured, and if it ever measures zero. */
+const DEFAULT_ROWS_HEIGHT = 240;
+
 export function SessionWorkflowPanel({
   messages,
   onAgentClick,
@@ -736,6 +739,35 @@ export function SessionWorkflowPanel({
   const [viewMode, setViewMode] = useState<"graph" | "timeline">("timeline");
   const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null);
   const [liveNow, setLiveNow] = useState(() => Date.now());
+  /**
+   * The row area's height in pixels, measured.
+   *
+   * The waterfall puts this straight onto the element that scrolls its rows,
+   * and its own wrappers are flex columns with no height of their own — so a
+   * percentage resolves against an indefinite height, the scroller grows to
+   * fit its content, and nothing scrolls at all. It has to be a number.
+   *
+   * Measured through a callback ref rather than an effect: React 19 runs the
+   * function a ref returns as cleanup, so the observer is attached and
+   * disconnected with the element and `react/set-state-in-effect` — an error
+   * in this repository — never comes into it. No feedback loop either: the
+   * box is `flex-1` inside a fixed-height parent, so its height is set by the
+   * panel rather than by what is drawn in it.
+   */
+  const [rowsHeight, setRowsHeight] = useState(DEFAULT_ROWS_HEIGHT);
+  const measureRows = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const measured = Math.round(entries[0]?.contentRect.height ?? 0);
+      // Zero while the panel is collapsed or mid-transition; keeping the last
+      // good height stops the rows collapsing and re-expanding.
+      if (measured > 0) setRowsHeight(measured);
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   /**
    * Which timeline the panel is drawing: the spans recorded as the work ran,
@@ -1055,7 +1087,7 @@ export function SessionWorkflowPanel({
             </button>
           </div>
         </div>
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0" ref={measureRows}>
           {viewMode === "timeline" ? (
             <>
               <style>{SHIMMER_STYLE}</style>
@@ -1081,10 +1113,10 @@ export function SessionWorkflowPanel({
                         ),
                       })
                 }
-                // Fills the row area, so expanding the panel shows more
-                // spans instead of more empty panel. The waterfall scrolls
-                // its own rows once they exceed this.
-                height="100%"
+                // Measured, not a percentage — see `rowsHeight`. Fills the
+                // row area, so expanding the panel shows more spans instead
+                // of more empty panel.
+                height={rowsHeight}
                 theme={TIMELINE_THEME}
                 liveMode={liveActive}
                 onLiveModeChange={handleLiveModeChange}
