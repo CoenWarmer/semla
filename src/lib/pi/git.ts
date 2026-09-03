@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -118,4 +118,67 @@ export async function gitResult(
       stderr: (shell.stderr ?? shell.message ?? "git failed").trim(),
     };
   }
+}
+
+/**
+ * Run a git command with something on its stdin, and keep the outcome.
+ *
+ * `execFile` has no way to supply stdin, so this is the one helper built on
+ * `spawn`. It exists for `git apply`, which reads a patch from `-`.
+ *
+ * Writing the patch to a temporary file and passing the path would have reused
+ * `gitResult` unchanged, and was rejected: a patch is the exact content of the
+ * operator's staging decision, and putting it on disk means a crash can leave
+ * it there, in a temp directory, readable. Piping it keeps it in memory for
+ * the life of the subprocess.
+ *
+ * stderr is captured rather than inherited: `git apply`'s refusal is the
+ * useful part, and it only ever writes it there.
+ */
+export async function gitInput(
+  cwd: string,
+  args: string[],
+  input: string,
+  { timeout = 10_000 }: Pick<GitOptions, "timeout"> = {},
+): Promise<GitResult> {
+  return new Promise((resolve) => {
+    const child = spawn("git", args, { cwd });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const finish = (result: GitResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish({ ok: false, stderr: "git timed out", stdout: "" });
+    }, timeout);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.on("data", (chunk: string) => (stderr += chunk));
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      finish({ ok: false, stderr: error.message, stdout: "" });
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      finish({ ok: code === 0, stderr: stderr.trim(), stdout: stdout.trim() });
+    });
+
+    // A patch larger than the pipe buffer makes this write asynchronous, so
+    // the error has to be handled or it surfaces as an unhandled EPIPE.
+    child.stdin.on("error", () => {
+      /* The close handler already reports why git rejected it. */
+    });
+    child.stdin.end(input);
+  });
 }

@@ -15,6 +15,7 @@ import {
   sessionSpansKey,
 } from "@/lib/session-spans";
 import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
+import { reviewQueryKey } from "@/hooks/use-review";
 import {
   projectChangeInvalidations,
   sessionProjectsKey,
@@ -582,6 +583,16 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       }
       void queryClient.invalidateQueries({
         queryKey: sessionProjectsKey(sessionId),
+      });
+
+      // What the turn changed on disk is only knowable now it has stopped.
+      // This read is what decides whether the review panel opens itself, and
+      // it is one request rather than a `PiSessionEvent` variant: the client
+      // already knows the turn ended, so an event would carry nothing it
+      // lacks, and every variant added to session-events.ts is another shape
+      // the router, the persist queue and the recovery path must agree on.
+      void queryClient.invalidateQueries({
+        queryKey: reviewQueryKey(sessionId),
       });
 
       setListRunning(false);

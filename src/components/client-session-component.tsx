@@ -13,9 +13,10 @@ import {
 } from "@/components/ai-elements/message";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
-import { useReview } from "@/hooks/use-review";
+import { useDismissReview, useReview } from "@/hooks/use-review";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { mergeToolCalls } from "@/lib/live-tool-calls";
+import { shouldOpenReview } from "@/lib/review-open";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,
@@ -248,14 +249,32 @@ export function ClientSessionComponent({
   const estimatedTokens =
     streamingText.length > 0 ? Math.round(streamingText.length / 4) : null;
 
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewManuallyOpened, setReviewManuallyOpened] = useState(false);
   // The badge is worth a request even with the panel shut: it is how the
   // operator learns there is something to review without being interrupted.
   const reviewQuery = useReview(sessionId);
+  const dismissReview = useDismissReview(sessionId);
   const reviewChangedCount = (reviewQuery.data?.projects ?? []).reduce(
     (sum, project) => sum + project.changedFiles.length,
     0,
   );
+
+  // Derived, never set from an effect. `react/set-state-in-effect` is an
+  // error in this repository, and the panel is genuinely open *because of* the
+  // state rather than because something once happened to it.
+  const reviewOpen = shouldOpenReview({
+    manuallyOpened: reviewManuallyOpened,
+    review: reviewQuery.data,
+    sessionRunning: isActive,
+  });
+
+  // Closing is also dismissing. Without recording the state as seen, the next
+  // refetch would find it unreviewed and open the panel straight back up.
+  const closeReview = useCallback(() => {
+    setReviewManuallyOpened(false);
+    const seen = reviewQuery.data?.fingerprint;
+    if (seen) dismissReview.mutate(seen);
+  }, [dismissReview, reviewQuery.data?.fingerprint]);
   const [selectedAgent, setSelectedAgent] = useState<{
     agentId: number;
     runId: string;
@@ -391,7 +410,9 @@ export function ClientSessionComponent({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
-        onReviewClick={() => setReviewOpen((open) => !open)}
+        onReviewClick={() =>
+          reviewOpen ? closeReview() : setReviewManuallyOpened(true)
+        }
         reviewCount={reviewChangedCount}
         reviewOpen={reviewOpen}
         title={shownTitle}
@@ -427,7 +448,7 @@ export function ClientSessionComponent({
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
         {reviewOpen && (
-          <ReviewPanel onClose={() => setReviewOpen(false)} sessionId={sessionId} />
+          <ReviewPanel onClose={closeReview} sessionId={sessionId} />
         )}
 
         <AgentTranscriptDrawer

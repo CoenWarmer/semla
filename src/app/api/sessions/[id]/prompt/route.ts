@@ -6,6 +6,7 @@ import {
 } from "@/lib/pi/session-create";
 import { parseRequestedSessionId } from "@/lib/pi/session-id";
 import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
+import { recordTurnStart } from "@/lib/pi/review-service";
 import { runPiPrompt } from "@/lib/pi/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
@@ -130,6 +131,24 @@ export async function POST(
     id,
     userId,
   );
+
+  /**
+   * Mark where each project stands before the agent can touch anything.
+   *
+   * Awaited rather than fired off, because the whole value of the mark is that
+   * it predates the turn's first write — a mark taken concurrently with the
+   * agent's opening `edit` would record that edit as pre-existing and the
+   * review panel would not mention it.
+   *
+   * Wrapped because it must never cost the turn. Without a mark the panel
+   * still works; it simply cannot attribute a change to this turn, so nothing
+   * opens by itself and the operator opens it by hand.
+   */
+  try {
+    await recordTurnStart(id);
+  } catch (error) {
+    console.error("[api:sessions/prompt] Unable to mark the turn start:", error);
+  }
 
   const stream = new ReadableStream({
     start(controller) {
