@@ -37,6 +37,8 @@ import {
 } from "@/hooks/use-user-settings";
 
 import { CheckIcon, WrenchIcon } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 import {
   memo,
   ReactNode,
@@ -334,7 +336,12 @@ export function PromptEditor({
     modelsError ?? userSettingsError ?? updateUserSettingsError;
 
   return (
-    <div className="flex w-full flex-col gap-2">
+    // `group` so the controls above the box can react to focus *inside* it:
+    // they are siblings of the form, and no selector reaches sideways.
+    // `group-focus-within` rather than `group-has-[textarea:focus]`, which
+    // Tailwind accepted and then emitted no rule for — the class was in the
+    // markup and nothing in the stylesheet.
+    <div className="group flex w-full flex-col gap-2">
       {configurationError && (
         <p className="mb-2 text-sm text-destructive" role="alert">
           {configurationError.message}
@@ -349,7 +356,16 @@ export function PromptEditor({
           someone typed.
         */}
         {goalEditor && <div className="flex grow min-w-0">{goalEditor}</div>}
-        <div className="relative" ref={toolPickerRef}>
+        <div
+          className={cn(
+            "flex items-center gap-1 transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",
+            // Held visible while either menu is open: they hang off these
+            // buttons, so fading the buttons out from under an open menu
+            // would take the menu with them.
+            toolPickerOpen || modelSelectorOpen ? "opacity-80" : "opacity-0",
+          )}
+        >
+          <div className="relative" ref={toolPickerRef}>
           <PromptInputButton
             aria-expanded={toolPickerOpen}
             aria-haspopup="listbox"
@@ -448,8 +464,9 @@ export function PromptEditor({
                 ),
               )}
             </ModelSelectorList>
-          </ModelSelectorContent>
-        </ModelSelector>
+            </ModelSelectorContent>
+          </ModelSelector>
+        </div>
       </PromptInputTools>
 
       <PromptInputProvider>
