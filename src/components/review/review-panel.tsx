@@ -184,7 +184,7 @@ export function ReviewPanel({
   return (
     <div
       aria-label="Review changes"
-      className="fixed z-40 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+      className="semla-review-enter fixed z-40 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
       role="dialog"
       style={{ bottom, left: INSET.left, right: INSET.right, top: INSET.top }}
     >
