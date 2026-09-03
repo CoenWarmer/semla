@@ -20,7 +20,6 @@
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "^0.84.2",
     "@mariozechner/pi-agent-core": "npm:@earendil-works/pi-agent-core@0.84.2",
-    "@monaco-editor/react": "4.7.0",
     "@mrclrchtr/supi-code-intelligence": "6.0.0",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
