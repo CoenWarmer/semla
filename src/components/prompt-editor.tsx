@@ -153,6 +153,13 @@ interface PromptEditorProps {
     tools: string[],
   ) => Promise<void> | void;
   defaultTools: string[];
+  /**
+   * The session's goal control, rendered in the footer's tool row.
+   *
+   * A slot rather than a `goal` prop and a save callback, so this editor knows
+   * nothing about goals or the route that stores them — it renders what it is
+   * handed, beside its own buttons.
+   */
   goalEditor?: ReactNode;
   /**
    * The session has a turn in flight. Driven by the parent rather than the
@@ -349,11 +356,20 @@ export function PromptEditor({
         >
           <PromptInputAttachmentsDisplay />
           <PromptInputBody>
-            {goalEditor}
             <PromptInputTextarea />
           </PromptInputBody>
+
           <PromptInputFooter>
             <PromptInputTools>
+              {/*
+                Bounded and truncating rather than `flex-1`: a long goal would
+                otherwise push the attachment, search and tool buttons across
+                the row, and their position should not depend on how much
+                someone typed.
+              */}
+              {goalEditor && (
+                <div className="min-w-0 max-w-64">{goalEditor}</div>
+              )}
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger />
                 <PromptInputActionMenuContent>

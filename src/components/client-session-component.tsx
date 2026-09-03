@@ -106,20 +106,24 @@ export function ClientSessionComponent({
     );
   }, [sessionId]);
 
-  const handleGoalSave = useCallback(async (next: string | null) => {
-    setGoal(next);
-    await fetch(`/api/sessions/${sessionId}`, {
-      body: JSON.stringify({ goal: next ?? "" }),
-      headers: { "Content-Type": "application/json" },
-      method: "PATCH",
-    });
-  }, [sessionId]);
+  const handleGoalSave = useCallback(
+    async (next: string | null) => {
+      setGoal(next);
+      await fetch(`/api/sessions/${sessionId}`, {
+        body: JSON.stringify({ goal: next ?? "" }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+    },
+    [sessionId],
+  );
 
   const queryClient = useQueryClient();
   // The server's view counts too: a turn continues in the background after the
   // stream closes, and a dropped stream leaves this page with no local sign of
   // work that is still going.
-  const isActive = promptMutation.isPending || isReconnecting || serverIsRunning;
+  const isActive =
+    promptMutation.isPending || isReconnecting || serverIsRunning;
   // Paused mid-turn: the server has no rows for a turn until it ends, so an
   // unbidden refetch would replace the optimistic prompt with a list without it.
   const messagesQuery = useSessionMessages(
@@ -474,10 +478,10 @@ export function ClientSessionComponent({
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
                 <p className="font-medium">This session was never created.</p>
                 <p className="mt-1 text-muted-foreground">
-                  Its first prompt is what brings a session into being, and
-                  that prompt never reached the server — most likely the page
-                  was reloaded before it was sent. Prompts typed here cannot
-                  create it, so they will keep failing.
+                  Its first prompt is what brings a session into being, and that
+                  prompt never reached the server — most likely the page was
+                  reloaded before it was sent. Prompts typed here cannot create
+                  it, so they will keep failing.
                 </p>
                 <Link
                   className="mt-3 inline-block underline hover:no-underline"
@@ -515,10 +519,13 @@ export function ClientSessionComponent({
             defaultTools={defaultTools}
             goalEditor={
               <GoalEditor
+                /* Compact: it sits in the footer's tool row now, beside the
+                   attachment and tool buttons, where the bordered block
+                   variant was a full-width box among small controls. */
+                variant="inline"
                 autoFocus={!goal?.trim()}
                 goal={goal}
                 onSave={handleGoalSave}
-                variant="block"
               />
             }
             /* Same signal as SessionActivityLine above. */
