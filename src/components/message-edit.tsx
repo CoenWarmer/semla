@@ -89,8 +89,10 @@ export function EditableUserMessage({
    * measuring anything — which is why the effect that used to set
    * `scrollHeight` on every keystroke is gone.
    *
-   * `cols={1}` so the field's own intrinsic width contributes nothing; without
-   * it the twenty-character floor is still there for short prompts.
+   * `cols={1}` and `rows={1}` so the field's own intrinsic size contributes
+   * nothing. Both defaults are floors in the shared cell: `cols` is 20
+   * characters, and `rows` is *two lines* — which is where the bubble's extra
+   * 40px of height came from, whatever the message actually said.
    */
   const editor = (
     <div className="grid">
@@ -108,6 +110,7 @@ export function EditableUserMessage({
         cols={1}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={handleKeyDown}
+        rows={1}
         value={draft}
       />
     </div>
