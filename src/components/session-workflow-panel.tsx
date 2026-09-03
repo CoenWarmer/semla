@@ -949,9 +949,13 @@ export function SessionWorkflowPanel({
   }
 
   return (
-    <div className="relative h-[200px]">
+    // Fills whatever the bottom bar was dragged to, rather than a fixed height
+    // inside a scrolling box: the header is meant to stay put while the spans
+    // move under it, and a panel that scrolls as a whole takes the controls
+    // with it.
+    <div className="relative h-full">
       <section
-        className="flex flex-col overflow-hidden rounded-lg border bg-sidebar transition-[height] duration-200"
+        className="flex h-full flex-col overflow-hidden rounded-lg border bg-sidebar"
         style={{
           zIndex: 50,
         }}
@@ -1077,7 +1081,10 @@ export function SessionWorkflowPanel({
                         ),
                       })
                 }
-                height={240}
+                // Fills the row area, so expanding the panel shows more
+                // spans instead of more empty panel. The waterfall scrolls
+                // its own rows once they exceed this.
+                height="100%"
                 theme={TIMELINE_THEME}
                 liveMode={liveActive}
                 onLiveModeChange={handleLiveModeChange}

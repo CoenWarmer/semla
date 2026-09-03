@@ -95,7 +95,9 @@ export function SessionAgentsPanel({
       {open &&
         bar.panelSlot &&
         createPortal(
-          <div className="h-full overflow-auto p-3">
+          // Not `overflow-auto`: the panel scrolls its own span rows, so the
+          // header stays put while they move under it.
+          <div className="h-full overflow-hidden p-3">
             <SessionWorkflowPanel
               messages={messages}
               onAgentClick={onAgentClick}
