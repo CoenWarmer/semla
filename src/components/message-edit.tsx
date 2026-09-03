@@ -17,7 +17,7 @@
  * file supplies a handler and nothing else.
  */
 
-import { CheckIcon, PencilIcon, XIcon } from "lucide-react";
+import { CheckIcon, PencilIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -25,8 +25,8 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { Button } from "@/components/ui/button";
 import type { SessionMessage } from "@/hooks/use-session-messages";
+import { cn } from "@/lib/utils";
 
 interface EditableUserMessageProps {
   message: SessionMessage;
@@ -88,26 +88,21 @@ export function EditableUserMessage({
   const editor = (
     <div className="flex w-full flex-col gap-2">
       <textarea
-          autoFocus
-          className="w-full resize-none bg-transparent text-sm outline-none"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          ref={textareaRef}
-          value={draft}
-        />
-        <div className="flex items-center gap-2">
-          <Button onClick={save} size="sm" variant="secondary">
-            <CheckIcon />
-            Save &amp; run
-          </Button>
-          <Button onClick={cancel} size="sm" variant="ghost">
-            <XIcon />
-            Cancel
-          </Button>
-        <span className="text-muted-foreground text-xs">
-          Replaces the reply below · ⌘↵ to run · Esc to cancel
-        </span>
-      </div>
+        autoFocus
+        className="w-full resize-none bg-transparent text-sm outline-none"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={handleKeyDown}
+        ref={textareaRef}
+        value={draft}
+      />
+      {/*
+        The hint stays, and matters more now that the buttons are gone: Esc is
+        the only way to abandon an edit, and it is no longer sitting beside a
+        Cancel button that said so.
+      */}
+      <span className="text-muted-foreground text-xs">
+        Replaces the reply below · ⌘↵ or ✓ to run · Esc to cancel
+      </span>
     </div>
   );
 
@@ -123,22 +118,36 @@ export function EditableUserMessage({
           Left of the bubble, because a user message is right-aligned — this
           is the gutter between it and the conversation.
         */}
-        {!editing && (
-          <button
-            className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/message:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
-            disabled={disabled}
-            onClick={start}
-            title={
-              disabled
-                ? "Wait for the current turn to finish"
+        <button
+          className={cn(
+            "shrink-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:cursor-not-allowed",
+            editing
+              ? // Visible, and visible even when disabled: it is the only way
+                // to commit an edit, and hiding it would strand someone in a
+                // textarea with nothing to press.
+                "text-foreground opacity-100 disabled:opacity-40"
+              : "text-muted-foreground opacity-0 group-hover/message:opacity-100 disabled:opacity-0",
+          )}
+          disabled={disabled}
+          onClick={editing ? save : start}
+          title={
+            disabled
+              ? "Wait for the current turn to finish"
+              : editing
+                ? "Save and run this prompt"
                 : "Edit this prompt and run it again"
-            }
-            type="button"
-          >
+          }
+          type="button"
+        >
+          {editing ? (
+            <CheckIcon className="size-3.5" />
+          ) : (
             <PencilIcon className="size-3.5" />
-            <span className="sr-only">Edit this prompt</span>
-          </button>
-        )}
+          )}
+          <span className="sr-only">
+            {editing ? "Save and run this prompt" : "Edit this prompt"}
+          </span>
+        </button>
 
         {/*
           `ml-auto` is cancelled at the same variant it is set on. Left alone
