@@ -141,3 +141,50 @@ div.react-sigma {
   position: relative;
   background: transparent;
 }
+/*
+ * Review decorations.
+ *
+ * Monaco cannot read CSS variables for its theme, but a decoration is an
+ * ordinary DOM node carrying a class name — so these are styled here like
+ * anything else and follow the app's theme for free. Only the editor's own
+ * chrome is restated in hex, in monaco-setup.ts.
+ *
+ * Green for added and red for removed, which is what every review tool means
+ * by those colours; the alpha is kept low so syntax highlighting stays
+ * readable through the wash rather than competing with it.
+ */
+.semla-review-added-line {
+  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 12%, transparent);
+}
+
+.semla-review-added-span {
+  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 28%, transparent);
+  border-radius: 2px;
+}
+
+.semla-review-added-gutter {
+  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 55%, transparent);
+  margin-left: 3px;
+  width: 2px !important;
+}
+
+/*
+ * A removal has no line left to tint, so it is a wedge in the glyph margin
+ * pointing at the gap where the lines used to be. The count is on hover.
+ */
+.semla-review-removed-marker::before {
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--destructive);
+  border-top: 4px solid transparent;
+  content: "";
+  display: block;
+  margin-top: 5px;
+}
+
+.dark .semla-review-added-line {
+  background-color: color-mix(in oklch, oklch(0.7 0.15 150) 14%, transparent);
+}
+
+.dark .semla-review-added-span {
+  background-color: color-mix(in oklch, oklch(0.7 0.15 150) 30%, transparent);
+}

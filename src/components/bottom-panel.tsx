@@ -26,6 +26,17 @@ import {
  * conversation reading through a letterbox, and the bar is a place to glance
  * at one thing.
  */
+/**
+ * The collapsed bar's own height, in pixels.
+ *
+ * A number rather than a Tailwind class because two callers need it in
+ * arithmetic: the bar renders itself this tall, and anything laid out above the
+ * bar — the review overlay — has to stop here rather than paint underneath the
+ * controls. Two sources for one measurement is how an overlay ends up covering
+ * the button that would dismiss it.
+ */
+export const CONSOLE_BAR_HEIGHT = 24;
+
 /** What a panel opens at, and the floor a drag cannot go below. */
 export const DEFAULT_PANEL_HEIGHT = 288;
 const MIN_PANEL_HEIGHT = 96;

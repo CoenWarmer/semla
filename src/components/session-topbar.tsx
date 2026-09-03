@@ -12,7 +12,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
-import { NetworkIcon, ScanSearchIcon } from "lucide-react";
+import { GitCompareIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
@@ -22,6 +22,12 @@ import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
+  /** Open the review overlay. Absent when the session cannot be reviewed. */
+  onReviewClick?: () => void;
+  /** Changed files waiting to be reviewed, for the button's badge. */
+  reviewCount?: number;
+  /** The review overlay is open, so the button reads as active. */
+  reviewOpen?: boolean;
   title: string | null;
   /** Latest map the code_map tool drew in this session, if any. */
   codeMap?: CodeMap;
@@ -79,6 +85,9 @@ export function SessionTopbar({
   spans,
   toolCalls,
   workflowRuns,
+  onReviewClick,
+  reviewCount = 0,
+  reviewOpen = false,
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
@@ -129,6 +138,24 @@ export function SessionTopbar({
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
+          {/* Review — always offered, so a dismissed panel is never a dead end */}
+          {onReviewClick && (
+            <Button
+              onClick={onReviewClick}
+              size="sm"
+              title="Review the changes in this session's projects"
+              variant={reviewOpen ? "secondary" : "ghost"}
+            >
+              <GitCompareIcon />
+              Review
+              {reviewCount > 0 && (
+                <span className="rounded bg-primary/15 px-1 text-[10px] font-medium tabular-nums">
+                  {reviewCount}
+                </span>
+              )}
+            </Button>
+          )}
+
           {/* Code map — only offered once there is one to show */}
           {codeMap && (
             <Button

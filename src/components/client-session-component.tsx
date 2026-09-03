@@ -13,6 +13,7 @@ import {
 } from "@/components/ai-elements/message";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
+import { useReview } from "@/hooks/use-review";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { mergeToolCalls } from "@/lib/live-tool-calls";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
@@ -22,6 +23,7 @@ import {
 } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
+import { ReviewPanel } from "./review/review-panel";
 import { SessionActivityLine } from "@/components/session-activity-line";
 import { AskUserDialog } from "./ask-user-dialog";
 import { CopyMessageButton } from "./message-copy";
@@ -246,6 +248,14 @@ export function ClientSessionComponent({
   const estimatedTokens =
     streamingText.length > 0 ? Math.round(streamingText.length / 4) : null;
 
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // The badge is worth a request even with the panel shut: it is how the
+  // operator learns there is something to review without being interrupted.
+  const reviewQuery = useReview(sessionId);
+  const reviewChangedCount = (reviewQuery.data?.projects ?? []).reduce(
+    (sum, project) => sum + project.changedFiles.length,
+    0,
+  );
   const [selectedAgent, setSelectedAgent] = useState<{
     agentId: number;
     runId: string;
@@ -381,6 +391,9 @@ export function ClientSessionComponent({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
+        onReviewClick={() => setReviewOpen((open) => !open)}
+        reviewCount={reviewChangedCount}
+        reviewOpen={reviewOpen}
         title={shownTitle}
         codeMap={codeMap}
         contextWindow={messagesQuery.data?.contextWindow ?? null}
@@ -413,6 +426,10 @@ export function ClientSessionComponent({
         workflowRuns={workflowRunsQuery.data}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
+        {reviewOpen && (
+          <ReviewPanel onClose={() => setReviewOpen(false)} sessionId={sessionId} />
+        )}
+
         <AgentTranscriptDrawer
           agentId={selectedAgent?.agentId ?? null}
           onClose={() => setSelectedAgent(null)}

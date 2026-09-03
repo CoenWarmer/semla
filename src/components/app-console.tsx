@@ -9,7 +9,10 @@ import {
 import dynamic from "next/dynamic";
 import { useRef, useState, type PointerEvent } from "react";
 
-import { useBottomPanelHost } from "@/components/bottom-panel";
+import {
+  CONSOLE_BAR_HEIGHT,
+  useBottomPanelHost,
+} from "@/components/bottom-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,9 +33,6 @@ const AppTerminal = dynamic(
     ssr: false,
   },
 );
-
-/** Collapsed height. Enough for the button and nothing more. */
-const BAR_HEIGHT = "h-6";
 
 /** The console's id in the shared bar. See bottom-panel.tsx. */
 const CONSOLE_PANEL = "console";
@@ -136,7 +136,10 @@ export function AppConsole() {
         style={{ height }}
       />
 
-      <div className={cn("flex items-center gap-2 px-2 text-xs", BAR_HEIGHT)}>
+      <div
+        className="flex items-center gap-2 px-2 text-xs"
+        style={{ height: CONSOLE_BAR_HEIGHT }}
+      >
         <button
           aria-expanded={consoleOpen}
           className="flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
