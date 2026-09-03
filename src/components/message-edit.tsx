@@ -18,7 +18,7 @@
  */
 
 import { CheckIcon, PencilIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   Message,
@@ -43,16 +43,6 @@ export function EditableUserMessage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
   const [showVersions, setShowVersions] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Grow to fit rather than scrolling a three-line box: a prompt being corrected
-  // is usually being read in full first.
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!editing || !textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [draft, editing]);
 
   const start = () => {
     setDraft(message.text);
@@ -85,17 +75,42 @@ export function EditableUserMessage({
     }
   };
 
-  // Just the field. `MessageContent` is already a flex column with a gap, so
-  // there is nothing for a wrapper to do.
+  /**
+   * The field, sized by a copy of its own text.
+   *
+   * The bubble is `w-fit`, so its width comes from its child's *intrinsic*
+   * width — and a textarea's is its `cols`, which defaults to 20 regardless of
+   * what is in it. So a long prompt collapsed to twenty characters the moment
+   * it went into edit mode.
+   *
+   * Both elements occupy one grid cell: the invisible copy wraps exactly as
+   * the message does and gives the cell its size, and the field fills it. That
+   * makes editing the same shape as reading, and it grows as you type without
+   * measuring anything — which is why the effect that used to set
+   * `scrollHeight` on every keystroke is gone.
+   *
+   * `cols={1}` so the field's own intrinsic width contributes nothing; without
+   * it the twenty-character floor is still there for short prompts.
+   */
   const editor = (
-    <textarea
-      autoFocus
-      className="w-full resize-none bg-transparent text-sm outline-none"
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={handleKeyDown}
-      ref={textareaRef}
-      value={draft}
-    />
+    <div className="grid">
+      <div
+        aria-hidden
+        className="invisible whitespace-pre-wrap text-sm [grid-area:1/1]"
+      >
+        {/* A trailing newline collapses, leaving the last line unaccounted
+            for and the field one row short. */}
+        {draft.endsWith("\n") ? `${draft} ` : draft}
+      </div>
+      <textarea
+        autoFocus
+        className="w-full resize-none overflow-hidden bg-transparent text-sm outline-none [grid-area:1/1]"
+        cols={1}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={handleKeyDown}
+        value={draft}
+      />
+    </div>
   );
 
   const versions = message.versions ?? [];
