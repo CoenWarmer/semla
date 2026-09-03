@@ -7,12 +7,16 @@
  * this is also what `/api/stats/usage` was doing, filtering to sessions with
  * no runs before summing messages at all.
  *
- * Disk first. The totals are stamped into each session's meta as they are
- * spent, so the common path is a `readFileSync` per session and no query.
- * Postgres is read only for a session written before the stamp existed —
- * whose workflow half cannot be recovered from disk, because a run file
- * records its usage but not its session — and that result is written to disk,
- * so it happens once per session rather than once per render.
+ * Disk first, and from the right place on disk for each half. The
+ * conversation is stamped into the session's meta as it is spent, so it costs
+ * a `readFileSync` and no query. The workflow half comes from the run files,
+ * because the `workflow_runs` snapshot column is only kept current for
+ * foreground runs — trusting it made this disagree with the header by one
+ * agent's worth of tokens.
+ *
+ * Postgres answers only for a session with neither: no stamp and no run index,
+ * meaning one written before they existed. That result is written to disk, so
+ * it happens once per session rather than once per render.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -23,6 +27,7 @@ import {
   readSessionUsage,
 } from "@/lib/pi/session-usage-store";
 import { sumWorkflowUsageBySession } from "@/lib/pi/workflow-usage";
+import { workflowUsageFromDisk } from "@/lib/pi/workflow-usage-disk";
 import type { Database } from "@/types/database.types";
 import {
   addUsage,
@@ -41,8 +46,27 @@ export async function sessionUsageTotals(
 
   for (const id of sessionIds) {
     const record = readSessionUsage(id);
-    if (record) totals.set(id, sessionUsageTotal(record));
-    else unstamped.push(id);
+    // The run files, not the stamp, and not the mirror. A run's snapshot in
+    // Postgres is only kept current for foreground runs, so a background run
+    // is recorded there as it stood partway through — 5,361 tokens against
+    // the run file's 9,052 on the session that exposed this.
+    const workflow = workflowUsageFromDisk(id);
+
+    if (record) {
+      totals.set(
+        id,
+        addUsage(
+          record.conversation,
+          // `priorRuns` only when disk has no index for this session: it was
+          // recovered from the mirror, and where the index exists the run
+          // files are both fresher and complete.
+          workflow.indexed ? workflow.usage : record.priorRuns,
+        ),
+      );
+      continue;
+    }
+
+    unstamped.push(id);
   }
 
   if (unstamped.length === 0) return totals;
@@ -67,10 +91,14 @@ export async function sessionUsageTotals(
   }
 
   for (const id of unstamped) {
+    const workflow = workflowUsageFromDisk(id);
     const record: SessionUsageRecord = {
       conversation: conversationBySession.get(id) ?? NO_USAGE,
-      priorRuns: byWorkflow.get(id) ?? NO_USAGE,
-      runs: {},
+      // Disk when it has the runs; the mirror only for a session with no
+      // index, which is one that predates it.
+      priorRuns: workflow.indexed
+        ? workflow.usage
+        : (byWorkflow.get(id) ?? NO_USAGE),
     };
 
     const total = sessionUsageTotal(record);

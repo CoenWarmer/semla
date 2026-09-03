@@ -7,11 +7,16 @@
  * behind, because entries are persisted through a queue and the sidebar
  * therefore trailed a turn that had already finished.
  *
- * **Stamped as it is spent, because it cannot be derived later.** A workflow
- * run file records its own `tokenUsage` but not the session that started it,
- * so nothing on disk maps runs to sessions. The one place that mapping exists
- * is the turn itself, as it persists each snapshot — which is why the stamp
- * happens there rather than in a sweep that could run afterwards.
+ * **Only the conversation half.** The workflow half is not stamped: it is read
+ * from the run files, which `workflow-run-index.ts` maps to a session, and
+ * which are authoritative where the `workflow_runs` snapshot column is not —
+ * that column is kept current only for foreground runs.
+ *
+ * An earlier version stamped runs here too, on the belief that disk had no
+ * session-to-run mapping at all. It has one; a *run file* simply carries no
+ * session id, which is not the same thing. That stamp also built a total out
+ * of snapshots persisted mid-run, which is the staleness the run files avoid:
+ * one real run reported 9,052 tokens in its file against 5,361 in Postgres.
  *
  * Every write is best-effort. A total that failed to update is a wrong number
  * on a badge; a turn that failed because of one is a lost conversation.
@@ -95,37 +100,6 @@ export const stampConversationUsage = (
   const meta = dir ? readSessionMeta(sessionId, dir) : readSessionMeta(sessionId);
   if (!meta) return;
   write(sessionId, { ...withUsage(meta), conversation }, dir);
-};
-
-/**
- * Replace one run's usage.
- *
- * Keyed by run id rather than added, because a run's snapshot is persisted
- * repeatedly as it progresses — adding each one would count the run once per
- * update.
- */
-export const stampRunUsage = (
-  sessionId: string,
-  runId: string,
-  usage: SessionUsage,
-  dir?: string,
-): void => {
-  const meta = dir ? readSessionMeta(sessionId, dir) : readSessionMeta(sessionId);
-  if (!meta) return;
-
-  const current = withUsage(meta);
-  const existing = current.runs[runId];
-  // Snapshots arrive often and mostly unchanged; skip a rewrite that would
-  // change nothing.
-  if (existing?.cost === usage.cost && existing?.tokens === usage.tokens) {
-    return;
-  }
-
-  write(
-    sessionId,
-    { ...current, runs: { ...current.runs, [runId]: usage } },
-    dir,
-  );
 };
 
 /**

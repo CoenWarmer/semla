@@ -50,33 +50,24 @@ export const addUsage = (
  */
 export type SessionUsageRecord = {
   conversation: SessionUsage;
-  /** Per workflow run id. */
-  runs: Record<string, SessionUsage>;
   /**
-   * Workflow usage recovered from the backup for a session that predates
-   * per-run stamping.
+   * The workflow half, and only for a session with no run index on disk.
    *
-   * A field of its own rather than a reserved key in `runs`, because it is not
-   * a run: the aggregate the mirror can answer has no per-run breakdown. It
-   * cannot double count either — those runs are finished, so nothing will
-   * stamp them again, and a later run is added under its own id.
+   * Where the index exists the run files answer this, and they are both
+   * fresher and complete: the `workflow_runs` snapshot column is kept current
+   * only for foreground runs, so a background run is recorded there as it
+   * stood partway through. This field is the recovered aggregate for sessions
+   * that predate the index, which is the one case disk cannot answer.
    */
   priorRuns?: SessionUsage;
 };
 
 export const EMPTY_USAGE_RECORD: SessionUsageRecord = {
   conversation: NO_USAGE,
-  runs: {},
 };
 
 /** The number both the sidebar and the top bar show. */
 export const sessionUsageTotal = (
   record: SessionUsageRecord | undefined,
 ): SessionUsage =>
-  record
-    ? addUsage(
-        record.conversation,
-        record.priorRuns,
-        ...Object.values(record.runs),
-      )
-    : NO_USAGE;
+  record ? addUsage(record.conversation, record.priorRuns) : NO_USAGE;
