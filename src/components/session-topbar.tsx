@@ -162,10 +162,8 @@ export function SessionTopbar({
 
       {/* Panel area */}
       <SessionAgentsPanel
-        agentCount={agentCount}
         messages={messages}
         onAgentClick={onAgentClick}
-        runningCount={runningCount}
         sessionId={sessionId}
         sessionRunning={sessionRunning}
         sessionTitle={title}

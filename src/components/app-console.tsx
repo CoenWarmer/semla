@@ -102,14 +102,17 @@ export function AppConsole() {
         by the same grip rather than each growing one of its own.
       */}
       {open && (
-        <div
+        <hr
           aria-label="Resize panel"
-          className="h-1 cursor-ns-resize bg-border/40 transition-colors hover:bg-primary/40"
+          aria-orientation="horizontal"
+          // `hr` rather than a div with role="separator": it is the native tag
+          // for that role, which is what a splitter between two panes is.
+          // Margins reset because a rule has generous ones by default.
+          className="my-0 h-1 cursor-ns-resize border-0 bg-border/40 transition-colors hover:bg-primary/40"
+          onPointerCancel={endDrag}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          role="separator"
         />
       )}
 

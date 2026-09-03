@@ -1,9 +1,10 @@
 "use client";
 
-import { BotIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { useBottomPanel } from "@/components/bottom-panel";
+import { countSessionAgents } from "@/lib/session-agent-counts";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type {
   SessionMessage,
@@ -16,6 +17,9 @@ import { SessionWorkflowPanel } from "./session-workflow-panel";
 
 /** This panel's id in the shared bottom bar. See bottom-panel.tsx. */
 const AGENTS_PANEL = "agents";
+
+const agentsLabel = (count: number) =>
+  `${count} ${count === 1 ? "agent" : "agents"}`;
 
 /**
  * The agent timeline, in the bottom bar beside the console.
@@ -33,10 +37,8 @@ const AGENTS_PANEL = "agents";
  * the bar no reason to know what a workflow is.
  */
 export function SessionAgentsPanel({
-  agentCount,
   messages,
   onAgentClick,
-  runningCount,
   sessionId,
   sessionRunning,
   sessionTitle,
@@ -46,10 +48,8 @@ export function SessionAgentsPanel({
   toolCalls,
   workflowRuns,
 }: {
-  agentCount: number;
   messages?: SessionMessage[];
   onAgentClick?: (agentId: number, runId: string) => void;
-  runningCount: number;
   sessionId?: string;
   sessionRunning?: boolean;
   /** Passed through so the timeline is named for what it draws. */
@@ -62,6 +62,11 @@ export function SessionAgentsPanel({
   workflowRuns?: WorkflowRun[];
 }) {
   const bar = useBottomPanel();
+  const counts = countSessionAgents({
+    sessionRunning,
+    snapshot,
+    workflowRuns,
+  });
 
   // Null outside the app frame, and the slots are null until the bar mounts.
   // Both mean "render nothing extra" rather than "throw".
@@ -75,14 +80,34 @@ export function SessionAgentsPanel({
         createPortal(
           <button
             aria-expanded={open}
-            className="flex items-center gap-1.5 rounded px-1 tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+            className="flex items-center gap-2 rounded px-1 tabular-nums text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => bar.toggle(AGENTS_PANEL)}
             title="Show agent timeline"
             type="button"
           >
-            <BotIcon className="size-3" />
-            {runningCount > 0 ? `${runningCount} running · ` : ""}
-            {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
+            {/*
+              Hidden at zero rather than shown as "0 agents", which beside a
+              live green dot reads as a claim that something is running.
+            */}
+            {counts.running > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                />
+                {agentsLabel(counts.running)}
+              </span>
+            )}
+
+            <span className="flex items-center gap-1.5">
+              {/* Hollow: used by the session, not working now. */}
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 rounded-full border border-current"
+              />
+              {agentsLabel(counts.idle)}
+            </span>
+
             {open ? (
               <ChevronDownIcon className="size-3" />
             ) : (
