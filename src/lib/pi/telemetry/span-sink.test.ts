@@ -398,3 +398,46 @@ describe("the cap", () => {
     expect(sink.counts).toMatchObject({ dropped: 2, recorded: 1 });
   });
 });
+
+describe("span ids across turns", () => {
+  const SESSION = "00000000-0000-4000-8000-00000000c0de";
+
+  it("are disjoint between two sinks for the same session", () => {
+    // One sink per turn. Derived from the session id and a counter alone, a
+    // session's second turn minted the same ids as its first, and everything
+    // downstream folds by id — so the earlier turn was silently overwritten
+    // in the persisted trace and in the panel.
+    const first = createSpanSink(SESSION, { now: () => 1 });
+    const second = createSpanSink(SESSION, { now: () => 2 });
+
+    first.openSpan({ name: "pi.harness.turn" });
+    first.openSpan({ name: "pi.harness.tool" });
+    second.openSpan({ name: "pi.harness.turn" });
+    second.openSpan({ name: "pi.harness.tool" });
+
+    const ids = [...first.spans(), ...second.spans()].map((s) => s.spanId);
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  it("still put both turns in the same trace", () => {
+    const first = createSpanSink(SESSION);
+    const second = createSpanSink(SESSION);
+
+    // The stable half: one session is one trace, across turns and reloads.
+    expect(second.traceId).toBe(first.traceId);
+  });
+
+  it("are unique within a sink", () => {
+    const sink = createSpanSink(SESSION);
+    for (let i = 0; i < 200; i += 1) sink.openSpan({ name: "n" });
+
+    expect(new Set(sink.spans().map((s) => s.spanId)).size).toBe(200);
+  });
+
+  it("are 16 hex characters, as OTel wants", () => {
+    const sink = createSpanSink(SESSION);
+    sink.openSpan({ name: "n" });
+
+    expect(sink.spans()[0]?.spanId).toMatch(/^[0-9a-f]{16}$/);
+  });
+});

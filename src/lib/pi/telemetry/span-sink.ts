@@ -24,7 +24,7 @@
  * arrives with the number already in it (§8.3).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import type {
   SpanAttributes,
@@ -183,6 +183,19 @@ export const createSpanSink = (
   } = options;
 
   const traceId = traceIdForSession(sessionId);
+  /**
+   * Unique to this sink, and the reason span ids are not derived from the
+   * session id alone.
+   *
+   * The *trace* id must be stable across turns and reloads — that is what
+   * makes a session one trace, and why it is derived. A span id must be unique
+   * *within* that trace, and deriving it from `traceId` and a counter alone
+   * meant every turn restarted at the same ids: a session's third turn minted
+   * the same ids as its first, so the persisted file and the client's map —
+   * both of which fold by id, deliberately, because a span is written twice —
+   * silently kept only the newest turn and dropped the rest.
+   */
+  const instance = randomBytes(8).toString("hex");
   const recorded: RecordedSpan[] = [];
   const counts: SpanSinkCounts = { dropped: 0, open: 0, recorded: 0 };
   let sequence = 0;
@@ -227,7 +240,7 @@ export const createSpanSink = (
     parentSpanId: string | null,
     { attributes, name }: SpanOptions,
   ) => {
-    const spanId = hex(`${traceId}:${sequence++}`, 16);
+    const spanId = hex(`${traceId}:${instance}:${sequence++}`, 16);
     const record: RecordedSpan | null =
       recorded.length < maxSpans
         ? {
