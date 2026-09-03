@@ -93,8 +93,15 @@ export class SymbolNotFoundError extends Error {
   }
 }
 
-/** Every callable declaration in a file, with the label each answers to. */
-function callableDeclarations(source: SourceFile): Array<{
+/**
+ * Every callable declaration in a file, with the label each answers to.
+ *
+ * Exported for `enclosing.ts`, which asks the same question of a file from the
+ * other direction: not "where is the symbol called X" but "which declaration
+ * is line 40 inside". One walk, so the two can never disagree about what
+ * counts as a callable.
+ */
+export function callableDeclarations(source: SourceFile): Array<{
   label: string;
   node: Node;
 }> {

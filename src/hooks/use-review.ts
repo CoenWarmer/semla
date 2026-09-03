@@ -308,3 +308,69 @@ export function useUncommit(sessionId: string) {
     },
   });
 }
+
+export interface EnclosingSymbol {
+  symbol: string;
+  name: string;
+  container: string | null;
+  startLine: number;
+  endLine: number;
+}
+
+export interface SymbolAtLine {
+  symbol: EnclosingSymbol | null;
+  error?: string;
+}
+
+/**
+ * Which function a line is inside.
+ *
+ * A mutation rather than a query: it is asked in response to a right-click at
+ * a particular line, not kept warm for a position nobody has chosen yet.
+ */
+export function useSymbolAtLine(sessionId: string) {
+  return useMutation({
+    mutationFn: async (request: {
+      project: string;
+      path: string;
+      line: number;
+    }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/review/symbol`, {
+        body: JSON.stringify(request),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      return (await res.json()) as SymbolAtLine;
+    },
+  });
+}
+
+export interface CodeMapAtLine {
+  map: import("@/lib/code-map/types").CodeMap | null;
+  symbol?: EnclosingSymbol;
+  error?: string;
+}
+
+/**
+ * The call graph around the function at a line.
+ *
+ * One request that resolves the symbol and builds the map together. Splitting
+ * them would be a race: the operator can edit between the two calls, and the
+ * second would map a function the first found at a line that has since moved.
+ */
+export function useCodeMapAtLine(sessionId: string) {
+  return useMutation({
+    mutationFn: async (request: {
+      project: string;
+      path: string;
+      line: number;
+    }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/review/code-map`, {
+        body: JSON.stringify(request),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      return (await res.json()) as CodeMapAtLine;
+    },
+  });
+}

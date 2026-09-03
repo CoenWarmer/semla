@@ -327,6 +327,34 @@ export function ClientSessionComponent({
     [],
   );
 
+  /**
+   * Answer a question asked from the review panel.
+   *
+   * The overlay is hidden rather than dismissed: the answer arrives in the
+   * conversation underneath it, which cannot be read through a panel, but the
+   * operator has not said they are finished reviewing — so no fingerprint is
+   * recorded and the Review button still carries its count.
+   *
+   * Uses the prompt bar's own model and tool selection, exactly as an edited
+   * message does.
+   */
+  const handleExplain = useCallback(
+    (prompt: string) => {
+      const selection = selectionRef.current;
+      if (!selection) return;
+
+      setReviewManuallyOpened(false);
+      promptMutation
+        .mutateAsync({
+          model: selection.model,
+          text: prompt,
+          tools: selection.tools,
+        })
+        .catch(() => {});
+    },
+    [promptMutation],
+  );
+
   const handleEditPrompt = useCallback(
     (entryId: string, text: string) => {
       const selection = selectionRef.current;
@@ -448,7 +476,11 @@ export function ClientSessionComponent({
       />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
         {reviewOpen && (
-          <ReviewPanel onClose={closeReview} sessionId={sessionId} />
+          <ReviewPanel
+            onClose={closeReview}
+            onExplain={handleExplain}
+            sessionId={sessionId}
+          />
         )}
 
         <AgentTranscriptDrawer

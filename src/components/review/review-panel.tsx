@@ -71,9 +71,16 @@ function defaultSelection(
 
 export function ReviewPanel({
   onClose,
+  onExplain,
   sessionId,
 }: {
   onClose: () => void;
+  /**
+   * Ask the agent something. Routed up rather than handled here: the session
+   * component owns the prompt mutation, and a second one in this panel would
+   * be a second turn-runner in the same session.
+   */
+  onExplain: (prompt: string) => void;
   sessionId: string;
 }) {
   const review = useReview(sessionId);
@@ -279,6 +286,7 @@ export function ReviewPanel({
             <ReviewEditorPane
               busy={busy}
               draft={drafts[draftKey(selection)] ?? null}
+              onExplain={onExplain}
               onDraftChange={(content, dirty) =>
                 setDrafts((previous) => {
                   const key = draftKey(selection);

@@ -90,12 +90,21 @@ export interface CodeEditorProps {
    * line twice is two requests rather than an unchanged prop.
    */
   reveal?: { line: number; nonce: number } | null;
+  /**
+   * Right-click actions. Both are handed a one-based line and nothing else:
+   * naming the function it falls inside needs the type checker, which lives on
+   * the server, so the menu asks a question rather than answering one.
+   */
+  onExplainLine?: (line: number) => void;
+  onVisualizeLine?: (line: number) => void;
 }
 
 export default function CodeEditor({
   hunks,
   onChange,
+  onExplainLine,
   onSave,
+  onVisualizeLine,
   path,
   readOnly = false,
   reveal = null,
@@ -117,10 +126,14 @@ export default function CodeEditor({
   // not tear down and rebuild the editor.
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
+  const onExplainRef = useRef(onExplainLine);
+  const onVisualizeRef = useRef(onVisualizeLine);
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
-  }, [onChange, onSave]);
+    onExplainRef.current = onExplainLine;
+    onVisualizeRef.current = onVisualizeLine;
+  }, [onChange, onExplainLine, onSave, onVisualizeLine]);
 
   // Create once. An entry dropped without dispose leaks the editor and every
   // model it holds, and this panel is opened and closed all day.
@@ -166,8 +179,48 @@ export default function CodeEditor({
       () => onSaveRef.current?.(),
     );
 
+    /**
+     * Right-click actions.
+     *
+     * Registered once, against the refs above, so a parent re-render does not
+     * re-register them — `addAction` returns a disposable and adding the same
+     * id twice leaves two entries in the menu.
+     *
+     * The line comes from `getPosition` rather than from the mouse event:
+     * Monaco moves the cursor to the right-clicked token before opening the
+     * menu, so the cursor *is* where the operator clicked, and reading it
+     * keeps the actions working from the keyboard too.
+     *
+     * They sit in the "navigation" group, which is where Go to Definition
+     * would be. There is no language service here, so that group is otherwise
+     * empty and these land at the top of the menu.
+     */
+    const explain = editor.addAction({
+      contextMenuGroupId: "navigation",
+      contextMenuOrder: 1.1,
+      id: "semla.explainFunction",
+      label: "Explain function",
+      run: (instance) => {
+        const line = instance.getPosition()?.lineNumber;
+        if (line) onExplainRef.current?.(line);
+      },
+    });
+
+    const visualize = editor.addAction({
+      contextMenuGroupId: "navigation",
+      contextMenuOrder: 1.2,
+      id: "semla.visualizeFunction",
+      label: "Visualize function",
+      run: (instance) => {
+        const line = instance.getPosition()?.lineNumber;
+        if (line) onVisualizeRef.current?.(line);
+      },
+    });
+
     return () => {
       changeSubscription.dispose();
+      explain.dispose();
+      visualize.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
       modelsRef.current.clear();

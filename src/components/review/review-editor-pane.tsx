@@ -9,15 +9,21 @@
  * edits in it.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  useCodeMapAtLine,
   useFileContent,
   useReviewHunks,
+  useSymbolAtLine,
   workspacePath,
+  type CodeMapAtLine,
 } from "@/hooks/use-review";
+import { explainFunctionPrompt } from "@/lib/review-prompts";
+
+import { ReviewCodeMap } from "./review-code-map";
 
 import type { FileSelection } from "./review-changed-files";
 import { ReviewEditor } from "./review-editor";
@@ -38,6 +44,7 @@ export function ReviewEditorPane({
   busy,
   draft,
   onDraftChange,
+  onExplain,
   onSave,
   onStage,
   selection,
@@ -46,6 +53,12 @@ export function ReviewEditorPane({
   busy: boolean;
   /** The operator's unsaved content for this file, or null if untouched. */
   draft: string | null;
+  /**
+   * Send a prompt into the session. The panel does not own the prompt
+   * machinery — the session component does — so "Explain function" builds the
+   * text here and hands it up.
+   */
+  onExplain: (prompt: string) => void;
   /**
    * `dirty` is false when the content is back to what is on disk, so the
    * panel can forget the draft — typing an edit and undoing it should not
@@ -75,8 +88,89 @@ export function ReviewEditorPane({
     null,
   );
 
+  /** The code map the operator asked for, or null when none is open. */
+  const [codeMap, setCodeMap] = useState<CodeMapAtLine | null>(null);
+
+  /**
+   * Why a context-menu action did nothing.
+   *
+   * Both actions can legitimately come up empty — a line in an import block is
+   * inside no function, and a Markdown or JSON file is not in the TypeScript
+   * project at all. A menu item that silently does nothing reads as a bug, so
+   * the reason is shown.
+   */
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const symbolAt = useSymbolAtLine(sessionId);
+  const codeMapAt = useCodeMapAtLine(sessionId);
+
   const status = hunks.data?.file.status;
   const unchanged = hunks.data === null;
+
+  /**
+   * Explain: resolve the function, then ask the agent about it.
+   *
+   * Resolution has to happen first because the browser has no language
+   * service — a right-click knows a line and nothing more. Sending a prompt
+   * about "line 40" would make the agent do the resolving, less reliably and
+   * a model round trip later.
+   */
+  const explainAt = useCallback(
+    (line: number) => {
+      symbolAt.mutate(
+        { line, path: selection.path, project: selection.project },
+        {
+          onError: () => setNotice("Unable to resolve that line."),
+          onSuccess: (result) => {
+            if (!result.symbol) {
+              setNotice(
+                result.error ??
+                  "That line is not inside a function Semla can resolve.",
+              );
+              return;
+            }
+            setNotice(null);
+            onExplain(
+              explainFunctionPrompt({
+                changed: !unchanged,
+                endLine: result.symbol.endLine,
+                path: selection.path,
+                project: selection.project,
+                startLine: result.symbol.startLine,
+                symbol: result.symbol.symbol,
+              }),
+            );
+          },
+        },
+      );
+    },
+    [onExplain, selection.path, selection.project, symbolAt, unchanged],
+  );
+
+  const visualizeAt = useCallback(
+    (line: number) => {
+      codeMapAt.mutate(
+        { line, path: selection.path, project: selection.project },
+        {
+          onError: () => setNotice("Unable to build a call graph for that line."),
+          onSuccess: (result) => {
+            // An error with no map is a fact about the file, not a failure to
+            // report as one: show it inline rather than opening an empty panel.
+            if (!result.map) {
+              setNotice(
+                result.error ??
+                  "That line is not inside a function Semla can resolve.",
+              );
+              return;
+            }
+            setNotice(null);
+            setCodeMap(result);
+          },
+        },
+      );
+    },
+    [codeMapAt, selection.path, selection.project],
+  );
 
   if (status === "deleted") {
     return (
@@ -116,6 +210,29 @@ export function ReviewEditorPane({
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
+        {notice ? (
+          <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {notice}
+            </span>
+            <Button
+              aria-label="Dismiss"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => setNotice(null)}
+              size="sm"
+              variant="ghost"
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+
+        {symbolAt.isPending ? (
+          <div className="shrink-0 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+            Resolving the function&hellip;
+          </div>
+        ) : null}
+
         {dirty ? (
           <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
             <span className="text-xs text-muted-foreground">
@@ -133,10 +250,22 @@ export function ReviewEditorPane({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1">
+          {/* Over the editor rather than instead of it: the model holds the
+              operator's unsaved edits, and unmounting it would drop them. */}
+          {codeMap || codeMapAt.isPending ? (
+            <ReviewCodeMap
+              onClose={() => setCodeMap(null)}
+              pending={codeMapAt.isPending}
+              result={codeMap}
+            />
+          ) : null}
+
           <ReviewEditor
             hunks={hunks.data?.full?.hunks ?? []}
             onChange={(next) => onDraftChange(next, next !== onDisk)}
+            onExplainLine={explainAt}
+            onVisualizeLine={visualizeAt}
             reveal={reveal}
             onSave={() => onSave(draft ?? onDisk, content.data?.sha)}
             path={selection.path}
