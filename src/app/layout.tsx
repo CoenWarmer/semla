@@ -6,6 +6,7 @@ import { QueryProvider } from "@/components/query-provider";
 import { PendingPromptProvider } from "@/components/pending-prompt-provider";
 import { HeaderActions } from "@/components/header-actions";
 import { AppConsole } from "@/components/app-console";
+import { BottomPanelProvider } from "@/components/bottom-panel";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -51,6 +52,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <QueryProvider>
           <PendingPromptProvider>
             <TooltipProvider>
+              {/* Above both the frame and the page: the bar lives in one and
+                  its panels are rendered by the other. */}
+              <BottomPanelProvider>
               <SidebarProvider className="flex-1 min-h-0">
                 <AppSidebar />
                 <main className="flex w-full flex-col">
@@ -68,6 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   <AppConsole />
                 </main>
               </SidebarProvider>
+              </BottomPanelProvider>
             </TooltipProvider>
           </PendingPromptProvider>
         </QueryProvider>

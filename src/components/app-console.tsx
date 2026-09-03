@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronUpIcon, TerminalIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 
+import { useBottomPanelHost } from "@/components/bottom-panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +29,9 @@ const AppTerminal = dynamic(
 /** Collapsed height. Enough for the button and nothing more. */
 const BAR_HEIGHT = "h-6";
 
+/** The console's id in the shared bar. See bottom-panel.tsx. */
+const CONSOLE_PANEL = "console";
+
 /**
  * The strip along the foot of the app, and the shell inside it.
  *
@@ -40,39 +44,56 @@ const BAR_HEIGHT = "h-6";
  * push the conversation around while you read it.
  */
 export function AppConsole() {
-  const [open, setOpen] = useState(false);
+  const { open, setBarSlot, setPanelSlot, toggle } = useBottomPanelHost();
+  const consoleOpen = open === CONSOLE_PANEL;
   // Mounted once opened and then left mounted, so collapsing the bar does not
   // tear down the emulator and reconnect on every toggle.
   const [everOpened, setEverOpened] = useState(false);
 
-  const toggle = () => {
-    setOpen((current) => !current);
+  const toggleConsole = () => {
+    toggle(CONSOLE_PANEL);
     setEverOpened(true);
   };
 
   return (
     <div className="shrink-0 border-t border-border/40 bg-background">
       {everOpened && (
-        <div className={cn("h-72 border-b", open ? "block" : "hidden")}>
+        <div className={cn("h-72 border-b", consoleOpen ? "block" : "hidden")}>
           <AppTerminal />
         </div>
       )}
 
+      {/*
+        Where a page's own panel renders. Always in the tree, and given the
+        panel height only when something is open, so the page portalling into
+        it does not have to know about the bar's layout.
+      */}
+      <div
+        className={cn(
+          "h-72 border-b",
+          open && !consoleOpen ? "block" : "hidden",
+        )}
+        ref={setPanelSlot}
+      />
+
       <div className={cn("flex items-center gap-2 px-2 text-xs", BAR_HEIGHT)}>
         <button
-          aria-expanded={open}
+          aria-expanded={consoleOpen}
           className="flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
-          onClick={toggle}
+          onClick={toggleConsole}
           type="button"
         >
           <TerminalIcon className="size-3" />
           Console
-          {open ? (
+          {consoleOpen ? (
             <ChevronDownIcon className="size-3" />
           ) : (
             <ChevronUpIcon className="size-3" />
           )}
         </button>
+
+        {/* Buttons the current page contributes, beside the console's own. */}
+        <div className="flex items-center gap-2" ref={setBarSlot} />
       </div>
     </div>
   );

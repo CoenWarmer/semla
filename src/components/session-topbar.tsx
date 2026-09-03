@@ -12,12 +12,12 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
-import { BotIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
+import { NetworkIcon, ScanSearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
-import { SessionWorkflowPanel } from "./session-workflow-panel";
+import { SessionAgentsPanel } from "./session-agents-panel";
 import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
@@ -42,7 +42,8 @@ interface SessionTopbarProps {
   workflowRuns?: WorkflowRun[];
 }
 
-type PanelMode = "agents" | "codemap" | "inspector" | null;
+/** The panels the title bar still owns. "agents" moved to the bottom bar. */
+type PanelMode = "codemap" | "inspector" | null;
 
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
   const { data: inspections } = useContextInspections(sessionId);
@@ -128,19 +129,6 @@ export function SessionTopbar({
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2">
-          {/* Agent count — clicking opens the workflow panel */}
-          {showAgentCount && (
-            <button
-              className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:bg-muted transition-colors"
-              onClick={() => togglePanel("agents")}
-              title="Show agent timeline"
-            >
-              <BotIcon className="size-3.5 shrink-0" />
-              {runningCount > 0 ? `${runningCount} running · ` : ""}
-              {agentCount + 1} {agentCount === 1 ? "agent" : "agents"}
-            </button>
-          )}
-
           {/* Code map — only offered once there is one to show */}
           {codeMap && (
             <Button
@@ -173,23 +161,19 @@ export function SessionTopbar({
       <SessionContextWindowBar composition={composition} />
 
       {/* Panel area */}
-      {panelMode === "agents" && (
-        <div
-          className="shrink-0 border-b border-border/40 overflow-auto p-3"
-          style={{ height: 360 }}
-        >
-          <SessionWorkflowPanel
-            messages={messages}
-            onAgentClick={onAgentClick}
-            sessionId={sessionId}
-            sessionRunning={sessionRunning}
-            snapshot={snapshot}
-            spans={spans}
-            toolCalls={toolCalls}
-            workflowRuns={workflowRuns}
-          />
-        </div>
-      )}
+      <SessionAgentsPanel
+        agentCount={agentCount}
+        messages={messages}
+        onAgentClick={onAgentClick}
+        runningCount={runningCount}
+        sessionId={sessionId}
+        sessionRunning={sessionRunning}
+        show={showAgentCount}
+        snapshot={snapshot}
+        spans={spans}
+        toolCalls={toolCalls}
+        workflowRuns={workflowRuns}
+      />
 
       {panelMode === "codemap" && (
         <div
