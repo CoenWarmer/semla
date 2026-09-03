@@ -9,6 +9,18 @@
  * actually reviewed in keeps a panel that opens on demand from dragging all of
  * that behind it.
  *
+ * **Contributions then have to be named too, and that is easy to miss.**
+ * `editor.api.js` is the API surface and almost nothing else: it registers a
+ * single contrib (`format`) and no others. Everything one thinks of as "the
+ * editor" — the right-click menu, find, comment toggling, line operations,
+ * bracket matching, folding — is a separate contribution module that
+ * `editor.main.js` imports and `editor.api.js` does not. The symptom is not an
+ * error. The editor renders, takes typing, and simply has no context menu, so
+ * `addAction` registers an action into a menu that was never built. The list
+ * below is the set a surface for reading and editing code needs; anything
+ * requiring a language service or the web worker this panel runs without is
+ * left out on purpose, and named as such.
+ *
  * **It runs without web workers, and that is a choice rather than an
  * oversight.** Monaco's default `MonacoEnvironment` fetches workers from a CDN
  * path derived at runtime, which this application will not depend on to render
@@ -38,6 +50,38 @@
  */
 
 import * as monaco from "monaco-editor/editor/editor.api.js";
+
+// Editor contributions. `editor.api.js` ships none of these; without the first
+// one there is no context menu for `addAction` to add to.
+import "monaco-editor/editor/browser/coreCommands.js";
+import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu.js";
+// Cut/Copy/Paste are themselves a contrib. Without it the context menu holds
+// only Semla's two items, which reads as a broken menu rather than a short one.
+import "monaco-editor/editor/contrib/clipboard/browser/clipboard.js";
+import "monaco-editor/editor/contrib/find/browser/findController.js";
+import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching.js";
+import "monaco-editor/editor/contrib/folding/browser/folding.js";
+import "monaco-editor/editor/contrib/comment/browser/comment.js";
+import "monaco-editor/editor/contrib/linesOperations/browser/linesOperations.js";
+import "monaco-editor/editor/contrib/wordOperations/browser/wordOperations.js";
+import "monaco-editor/editor/contrib/multicursor/browser/multicursor.js";
+import "monaco-editor/editor/contrib/smartSelect/browser/smartSelect.js";
+import "monaco-editor/editor/contrib/cursorUndo/browser/cursorUndo.js";
+import "monaco-editor/editor/contrib/indentation/browser/indentation.js";
+// The codicon font and its styles, as a module rather than as the raw .css
+// editor.main.js imports: the package's `exports` map rewrites every subpath
+// to a `.js` file, so a stylesheet cannot be reached through the package name
+// at all. The context menu renders codicons for submenus and checkmarks.
+import "monaco-editor/features/codicon/register.js";
+
+/*
+ * Left out deliberately, each because it needs something this panel does not
+ * have: suggest, hover, parameterHints, inlayHints, codeAction, rename,
+ * gotoSymbol, codelens, colorPicker, linkedEditing and stickyScroll all want a
+ * language service; unicodeHighlighter and wordHighlighter want the editor web
+ * worker. Adding one of those means answering monaco-setup's worker question
+ * first — `getWorker` below throws a message saying so.
+ */
 
 // The languages this repository and its neighbours are written in. Each is a
 // Monarch tokenizer that runs on the main thread; adding one is a line.
