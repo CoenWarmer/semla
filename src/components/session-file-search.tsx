@@ -23,7 +23,20 @@ type SearchResponse = {
  * in a fraction of the time it takes to sweep every repository on the machine,
  * and a single request would make the fast answer wait for the slow one.
  */
-function useFileSearch(sessionId: string, query: string, scope: Scope, enabled = true) {
+/**
+ * Ranked matches for a query, within one scope.
+ *
+ * Exported for the review panel's tree filter, which wants the same ranking
+ * and the same caching but only the project scope and its own presentation —
+ * duplicating the query key here would give two components two caches of the
+ * same answer.
+ */
+export function useFileSearch(
+  sessionId: string,
+  query: string,
+  scope: Scope,
+  enabled = true,
+) {
   return useQuery({
     enabled: enabled && query.length > 0,
     queryKey: ["session-file-search", sessionId, scope, query],
