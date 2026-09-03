@@ -93,6 +93,24 @@ export function ReviewPanel({
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
     null,
   );
+  /**
+   * A line for the editor to scroll to.
+   *
+   * Owned here rather than in the pane because two things ask for it: a hunk
+   * row, and a content-search hit in the sidebar — and the second also changes
+   * which file is open, so the request has to outlive the pane it lands in.
+   */
+  const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(
+    null,
+  );
+
+  // The counter is what makes asking for the same line twice two requests
+  // rather than one unchanged prop.
+  const revealLine = useCallback(
+    (line: number) =>
+      setReveal((previous) => ({ line, nonce: (previous?.nonce ?? 0) + 1 })),
+    [],
+  );
 
   const stage = useStageHunks(sessionId);
   const commit = useCommitReview(sessionId);
@@ -290,9 +308,10 @@ export function ReviewPanel({
                   </p>
                   <ReviewFileTree
                     key={activeProject.path}
-                    onSelectPath={(path) =>
-                      setChosen({ path, project: activeProject.path })
-                    }
+                    onSelectPath={(path, line) => {
+                      setChosen({ path, project: activeProject.path });
+                      if (line) revealLine(line);
+                    }}
                     project={activeProject}
                     projects={projects}
                     selectedPath={
@@ -326,8 +345,10 @@ export function ReviewPanel({
                   return { ...previous, [key]: content };
                 })
               }
+              onReveal={revealLine}
               onSave={onSave}
               onStage={onStage}
+              reveal={reveal}
               selection={selection}
               sessionId={sessionId}
             />

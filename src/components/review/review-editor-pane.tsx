@@ -45,8 +45,10 @@ export function ReviewEditorPane({
   draft,
   onDraftChange,
   onExplain,
+  onReveal,
   onSave,
   onStage,
+  reveal,
   selection,
   sessionId,
 }: {
@@ -59,6 +61,17 @@ export function ReviewEditorPane({
    * text here and hands it up.
    */
   onExplain: (prompt: string) => void;
+  /**
+   * A line the editor should scroll to, with a counter beside it. The counter
+   * is the point: asking for the same line twice has to work, and a bare
+   * number would be an unchanged prop the second time.
+   *
+   * Owned by the panel rather than here, because two things ask for it — a
+   * hunk row in this pane, and a content-search hit in the sidebar, which also
+   * changes which file is open.
+   */
+  reveal: { line: number; nonce: number } | null;
+  onReveal: (line: number) => void;
   /**
    * `dirty` is false when the content is back to what is on disk, so the
    * panel can forget the draft — typing an edit and undoing it should not
@@ -74,18 +87,6 @@ export function ReviewEditorPane({
   const content = useFileContent(
     sessionId,
     workspacePath(selection.project, selection.path),
-  );
-
-  /**
-   * A line the editor should scroll to, with a counter beside it.
-   *
-   * The counter is the point: clicking the same hunk twice has to work, and a
-   * bare line number would be an unchanged prop the second time. Passed as
-   * data rather than reached for through a ref, because the editor is behind a
-   * dynamic import and a plain prop crosses that boundary without ceremony.
-   */
-  const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(
-    null,
   );
 
   /** The code map the operator asked for, or null when none is open. */
@@ -283,9 +284,7 @@ export function ReviewEditorPane({
       >
         <ReviewHunkList
           busy={busy}
-          onReveal={(line) =>
-            setReveal((previous) => ({ line, nonce: (previous?.nonce ?? 0) + 1 }))
-          }
+          onReveal={onReveal}
           onStage={onStage}
           staged={hunks.data?.staged ?? null}
           unstaged={hunks.data?.unstaged ?? null}

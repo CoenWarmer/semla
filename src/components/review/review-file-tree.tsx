@@ -18,6 +18,7 @@ import { SearchIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useFileSearch } from "@/components/session-file-search";
+import { useContentSearch, type ContentMatch } from "@/hooks/use-review";
 import {
   SessionFileTree,
   useSessionFiles,
@@ -71,22 +72,43 @@ function markFor(index: ChangeIndex, entry: FileEntry): FileTreeMark | null {
  * question the operator actually asked, which is "where is the file called
  * roughly this".
  */
+function SectionHeading({ count, label }: { count: number; label: string }) {
+  return (
+    <div className="flex items-baseline gap-2 px-2 pb-0.5 pt-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <span className="text-[10px] text-muted-foreground tabular-nums">
+        {count}
+      </span>
+    </div>
+  );
+}
+
 function FilterResults({
+  content,
+  contentPending,
   index,
   onSelectPath,
   paths,
   pending,
   prefix,
   selectedPath,
+  truncated,
 }: {
+  content: readonly ContentMatch[];
+  contentPending: boolean;
   index: ChangeIndex;
-  onSelectPath: (path: string) => void;
+  onSelectPath: (path: string, line?: number) => void;
   paths: readonly string[];
   pending: boolean;
   prefix: string;
   selectedPath: string | null;
+  truncated: boolean;
 }) {
-  if (pending && paths.length === 0) {
+  const nothingYet = pending && contentPending && paths.length === 0;
+
+  if (nothingYet) {
     return (
       <div className="flex justify-center py-3">
         <Spinner className="size-3" />
@@ -94,16 +116,19 @@ function FilterResults({
     );
   }
 
-  if (paths.length === 0) {
+  if (paths.length === 0 && content.length === 0 && !pending && !contentPending) {
     return (
       <p className="px-2 py-2 text-[11px] text-muted-foreground">
-        No files match.
+        Nothing matches, in a name or in a file.
       </p>
     );
   }
 
   return (
     <div className="flex flex-col">
+      {paths.length > 0 ? (
+        <SectionHeading count={paths.length} label="Files" />
+      ) : null}
       {paths.map((full) => {
         const relative = full.slice(prefix.length);
         const { dir, name } = splitPath(relative);
@@ -142,6 +167,54 @@ function FilterResults({
           </button>
         );
       })}
+
+      {/* Contents second: a name match is usually the answer, and it arrives
+          from a much cheaper request. */}
+      {content.length > 0 ? (
+        <SectionHeading count={content.length} label="In files" />
+      ) : null}
+
+      {contentPending && content.length === 0 ? (
+        <div className="flex justify-center py-2">
+          <Spinner className="size-3" />
+        </div>
+      ) : null}
+
+      {content.map((match) => (
+        <button
+          className="flex w-full flex-col items-start gap-0.5 rounded px-2 py-1 text-left transition-colors hover:bg-accent/50"
+          key={`${match.path}:${match.line}`}
+          onClick={() => onSelectPath(match.path, match.line)}
+          title={`${match.path}:${match.line}`}
+          type="button"
+        >
+          <span className="flex w-full items-baseline gap-1.5">
+            {/* Name first, directory after and dimmed — the same order the
+                Files rows use. Two hits in different route.ts files are
+                otherwise the same row twice. */}
+            <span className="min-w-0 flex-1 truncate text-[11px]">
+              <span>{splitPath(match.path).name}</span>
+              {splitPath(match.path).dir ? (
+                <span className="pl-1.5 text-muted-foreground">
+                  {splitPath(match.path).dir}
+                </span>
+              ) : null}
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+              {match.line}
+            </span>
+          </span>
+          <span className="w-full truncate font-mono text-[11px]">
+            {match.text}
+          </span>
+        </button>
+      ))}
+
+      {truncated ? (
+        <p className="px-2 py-1 text-[10px] text-muted-foreground">
+          More matches than shown — narrow the search.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -153,8 +226,8 @@ export function ReviewFileTree({
   selectedPath,
   sessionId,
 }: {
-  /** Project-relative path of the file chosen. */
-  onSelectPath: (path: string) => void;
+  /** Project-relative path of the file chosen, and a line to jump to. */
+  onSelectPath: (path: string, line?: number) => void;
   project: ProjectReview;
   /** Every project, so the index covers a session working in several. */
   projects: readonly ProjectReview[];
@@ -191,6 +264,11 @@ export function ReviewFileTree({
     .map((match) => match.path)
     .filter((path) => path.startsWith(prefix));
 
+  // Contents are a separate request: they sweep the files rather than the file
+  // list, so folding them in would hold the names behind them.
+  const contentSearch = useContentSearch(sessionId, project.path, debounced);
+  const contentMatches = contentSearch.data?.matches ?? [];
+
   /**
    * `node_modules` is left out of the review tree.
    *
@@ -212,6 +290,9 @@ export function ReviewFileTree({
    */
   const body = debounced ? (
     <FilterResults
+      content={contentMatches}
+      contentPending={contentSearch.isFetching}
+      truncated={contentSearch.data?.truncated ?? false}
       index={index}
       onSelectPath={onSelectPath}
       paths={matches}

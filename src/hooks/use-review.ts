@@ -374,3 +374,42 @@ export function useCodeMapAtLine(sessionId: string) {
     },
   });
 }
+
+export interface ContentMatch {
+  path: string;
+  line: number;
+  text: string;
+}
+
+/**
+ * Lines in the project containing the query.
+ *
+ * Its own query rather than part of the name search: content takes longer to
+ * sweep than names, and sharing one request would hold the names — which
+ * usually answer the question on their own — behind it.
+ */
+export function useContentSearch(
+  sessionId: string,
+  project: string | null,
+  query: string,
+) {
+  return useQuery({
+    enabled: Boolean(project) && query.length >= 3,
+    queryFn: async () => {
+      const params = new URLSearchParams({ project: project!, q: query });
+      const res = await fetch(
+        `/api/sessions/${sessionId}/review/grep?${params}`,
+      );
+      if (!res.ok) throw new Error(`grep ${res.status}`);
+      return res.json() as Promise<{
+        matches: ContentMatch[];
+        truncated: boolean;
+      }>;
+    },
+    // Keeps the previous hits on screen while the next sweep runs, so the list
+    // does not blank on every keystroke.
+    placeholderData: (previous) => previous,
+    queryKey: ["review", sessionId, "grep", project, query] as const,
+    staleTime: 30_000,
+  });
+}
