@@ -39,6 +39,7 @@ export function SessionAgentsPanel({
   runningCount,
   sessionId,
   sessionRunning,
+  sessionTitle,
   show,
   snapshot,
   spans,
@@ -51,6 +52,8 @@ export function SessionAgentsPanel({
   runningCount: number;
   sessionId?: string;
   sessionRunning?: boolean;
+  /** Passed through so the timeline is named for what it draws. */
+  sessionTitle?: string | null;
   /** Whether this session has anything to show a timeline for. */
   show: boolean;
   snapshot?: WorkflowSnapshot;
@@ -106,6 +109,7 @@ export function SessionAgentsPanel({
               onAgentClick={onAgentClick}
               sessionId={sessionId}
               sessionRunning={sessionRunning}
+              sessionTitle={sessionTitle}
               snapshot={snapshot}
               spans={spans}
               toolCalls={toolCalls}

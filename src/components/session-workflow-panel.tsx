@@ -716,6 +716,7 @@ export function SessionWorkflowPanel({
   onAgentClick,
   sessionId,
   sessionRunning,
+  sessionTitle,
   snapshot,
   spans,
   timelineMode,
@@ -727,6 +728,8 @@ export function SessionWorkflowPanel({
   onAgentClick?: (agentId: number, runId: string) => void;
   sessionId?: string;
   sessionRunning?: boolean;
+  /** The session's own title, which is what the timeline is a timeline of. */
+  sessionTitle?: string | null;
   snapshot?: WorkflowSnapshot;
   /** Spans recorded as the work ran. Empty until a turn has produced any. */
   spans?: readonly RecordedSpan[];
@@ -809,6 +812,14 @@ export function SessionWorkflowPanel({
   const [spanSource, setSpanSource] = useState<"derived" | "recorded" | null>(
     null,
   );
+  /**
+   * Prompts in the session, from the transcript rather than from the spans:
+   * the count has to read the same in both timelines, and the derived one has
+   * no spans to count.
+   */
+  const promptCount = (messages ?? []).filter(
+    (message) => message.role === "user",
+  ).length;
   const recorded = spans ?? [];
   const hasRecorded = recorded.length > 0;
   const effectiveSource = timelineSource(recorded, spanSource);
@@ -1024,17 +1035,43 @@ export function SessionWorkflowPanel({
         }}
       >
         <div className="flex-none flex items-center justify-between border-b bg-card px-4 py-3">
-          <div className="flex items-center min-w-0">
-            <h2 className="font-medium mr-4 truncate">{snapshot.name}</h2>
-            <p className="text-muted-foreground text-sm shrink-0">
-              {snapshot.doneCount}/{snapshot.agentCount} agents complete
-              {snapshot.tokenUsage?.total ? " · " : ""}
-              <TokenUsage
-                cost={snapshot.tokenUsage?.cost}
-                tokens={snapshot.tokenUsage?.total}
-              />
-            </p>
-          </div>
+          {/*
+            The timeline draws the whole session — every prompt, and every run
+            inside the prompt that started it — so it is named for the session.
+            It used to be named for `snapshot.name`, which is the *most recent
+            workflow run*: a session with two workflows was titled after
+            whichever ran last, and one with none was titled "Session" by a
+            synthetic snapshot, which was the only case telling the truth.
+            The graph below is genuinely per-run and keeps that heading.
+          */}
+          {viewMode === "timeline" ? (
+            <div className="flex items-center min-w-0">
+              <h2 className="font-medium mr-4 truncate">
+                {sessionTitle?.trim() || "Session trace"}
+              </h2>
+              <p className="text-muted-foreground text-sm shrink-0">
+                {promptCount} {promptCount === 1 ? "prompt" : "prompts"}
+                {/*
+                  No token badge here. The header used to carry one run's
+                  usage directly under a title bar carrying the session's,
+                  which put two different numbers for "what this cost" on one
+                  screen. A run's own usage is on its row and in its drawer.
+                */}
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center min-w-0">
+              <h2 className="font-medium mr-4 truncate">{snapshot.name}</h2>
+              <p className="text-muted-foreground text-sm shrink-0">
+                {snapshot.doneCount}/{snapshot.agentCount} agents complete
+                {snapshot.tokenUsage?.total ? " · " : ""}
+                <TokenUsage
+                  cost={snapshot.tokenUsage?.cost}
+                  tokens={snapshot.tokenUsage?.total}
+                />
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-3 shrink-0">
             {snapshot.runningCount > 0 && (
               <span className="text-primary text-sm">

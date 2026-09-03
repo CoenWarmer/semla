@@ -168,6 +168,7 @@ export function SessionTopbar({
         runningCount={runningCount}
         sessionId={sessionId}
         sessionRunning={sessionRunning}
+        sessionTitle={title}
         show={showAgentCount}
         snapshot={snapshot}
         spans={spans}
