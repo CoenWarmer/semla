@@ -33,6 +33,19 @@ const OPERATION_KIND = "run";
 /** Pi models concurrent work as lanes; a Semla turn is always the main one. */
 const LANE = "main";
 
+/**
+ * How much of the prompt to record.
+ *
+ * Enough to label a row and to read in the detail drawer, and bounded because
+ * the transcript already holds the whole prompt — the span file is appended to
+ * twice per span and should not become a second copy of the conversation. The
+ * panel shows far less than this; keeping the excerpt wider than the label
+ * means the label can be widened without re-recording anything.
+ *
+ * The same bound `workflow-spans.ts` already uses for a subagent's prompt.
+ */
+const PROMPT_EXCERPT_CHARS = 200;
+
 export type TurnOutcome = "aborted" | "completed" | "failed" | "suspended";
 
 export type HostTelemetry = {
@@ -53,7 +66,7 @@ export type HostTelemetry = {
     outcome: TurnOutcome,
     error?: { code?: string; type?: string },
   ) => void;
-  turnStarted: () => void;
+  turnStarted: (prompt?: { text: string }) => void;
 };
 
 /** A no-op, for a code path with no sink. */
@@ -81,9 +94,11 @@ export const createHostTelemetry = (
       return turn?.spanId ?? null;
     },
 
-    turnStarted: () => {
+    turnStarted: (prompt) => {
       // Idempotent, so a retried start cannot open a second pair.
       if (run) return;
+
+      const excerpt = prompt?.text.slice(0, PROMPT_EXCERPT_CHARS);
 
       run = sink.openSpan({
         attributes: {
@@ -92,6 +107,7 @@ export const createHostTelemetry = (
           "pi.operation.kind": OPERATION_KIND,
           "pi.operation.recovery": false,
           "pi.session.id": piSessionId,
+          ...(excerpt ? { "semla.prompt.excerpt": excerpt } : {}),
         },
         name: HARNESS_RUN_SPAN,
       });

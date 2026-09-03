@@ -21,6 +21,21 @@
 
 import { defineTelemetrySchema } from "@mariozechner/pi-agent-core";
 
+/**
+ * Pi's own run span, redeclared here because Semla puts one attribute of its
+ * own on it.
+ *
+ * Not a second definition of pi's span — `HARNESS_TELEMETRY_SCHEMA` is still
+ * the authority on `pi.harness.run` — but the place our additions to it are
+ * declared. Declaring them matters for one concrete reason:
+ * `sensitiveAttributeKeys` builds its key set by walking the schemas, so an
+ * attribute that appears in none of them is one redaction can never find. A
+ * prompt excerpt written straight onto the span with no declaration would sit
+ * in every persisted trace with the `sensitive: "drop"` switch unable to
+ * touch it.
+ */
+export const HARNESS_RUN_SPAN_NAME = "pi.harness.run";
+
 export const WORKFLOW_RUN_SPAN = "semla.workflow.run";
 export const WORKFLOW_PHASE_SPAN = "semla.workflow.phase";
 export const WORKFLOW_AGENT_SPAN = "semla.workflow.agent";
@@ -28,6 +43,33 @@ export const WORKFLOW_AGENT_SPAN = "semla.workflow.agent";
 export const SEMLA_TELEMETRY_SCHEMA = defineTelemetrySchema({
   version: 1,
   spans: {
+    [HARNESS_RUN_SPAN_NAME]: {
+      description:
+        "Semla's additions to pi's run span. One prompt is one run here, so " +
+        "this is the row a reader identifies a prompt by.",
+      parents: { kind: "any" },
+      startAttributes: {
+        "semla.prompt.excerpt": {
+          description:
+            "The beginning of the prompt that started this run, bounded — " +
+            "the transcript holds the whole thing. Recorded so the row can be " +
+            "labelled by what was asked; how much of it is shown is the " +
+            "panel's decision, not this one's.",
+          type: "string",
+          required: false,
+          // User text, so the same treatment as a subagent's prompt: kept
+          // today per §8.1, and droppable by config rather than by edit.
+          sensitive: true,
+          cardinality: "high",
+        },
+      },
+      // Empty rather than absent: pi's own declaration owns this span's end
+      // attributes and status, and restating them here would be a second
+      // source of truth for something we do not define.
+      endAttributes: {},
+      status: { default: "ok", errorWhen: "pi's own declaration decides" },
+    },
+
     [WORKFLOW_RUN_SPAN]: {
       description:
         "One workflow run. Nests under the turn that started it, including " +

@@ -176,3 +176,67 @@ describe("turnEnded", () => {
     expect(sink.spans()).toHaveLength(0);
   });
 });
+
+describe("the prompt excerpt", () => {
+  it("records the start of the prompt on the run span", () => {
+    const { host, sink } = setup();
+    host.turnStarted({ text: "Give me a list of cute animals" });
+
+    expect(
+      named(sink, HARNESS_RUN_SPAN)?.attributes["semla.prompt.excerpt"],
+    ).toBe("Give me a list of cute animals");
+  });
+
+  it("bounds it, because the transcript already holds the whole prompt", () => {
+    const { host, sink } = setup();
+    host.turnStarted({ text: "x".repeat(5_000) });
+
+    const excerpt = named(sink, HARNESS_RUN_SPAN)?.attributes[
+      "semla.prompt.excerpt"
+    ];
+    // The span file is appended to twice per span and must not become a
+    // second copy of the conversation.
+    expect(String(excerpt)).toHaveLength(200);
+  });
+
+  it("records nothing when no prompt is given", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+
+    expect(
+      named(sink, HARNESS_RUN_SPAN)?.attributes,
+    ).not.toHaveProperty("semla.prompt.excerpt");
+  });
+
+  it("is declared, so redaction can find it", async () => {
+    const { SEMLA_TELEMETRY_SCHEMA } = await import("@/lib/pi/telemetry/schema");
+    const { sensitiveAttributeKeys } = await import(
+      "@/lib/pi/telemetry/span-sink"
+    );
+
+    // An attribute in no schema is one `sensitive: "drop"` can never find, so
+    // it would sit in every persisted trace with the switch unable to touch it.
+    expect(sensitiveAttributeKeys([SEMLA_TELEMETRY_SCHEMA])).toContain(
+      "pi.harness.run/semla.prompt.excerpt",
+    );
+  });
+
+  it("is dropped when the sink is told to", async () => {
+    const { createSpanSink, sensitiveAttributeKeys } = await import(
+      "@/lib/pi/telemetry/span-sink"
+    );
+    const { SEMLA_TELEMETRY_SCHEMA } = await import("@/lib/pi/telemetry/schema");
+
+    const sink = createSpanSink(SESSION, {
+      sensitive: "drop",
+      sensitiveKeys: sensitiveAttributeKeys([SEMLA_TELEMETRY_SCHEMA]),
+    });
+    const host = createHostTelemetry(sink, { piSessionId: "pi-runtime-1" });
+    host.turnStarted({ text: "something private" });
+
+    const run = sink.spans().find((s) => s.name === HARNESS_RUN_SPAN);
+    expect(run?.attributes).not.toHaveProperty("semla.prompt.excerpt");
+    // Everything else still recorded: redaction must not cost the span.
+    expect(run?.attributes["pi.session.id"]).toBe("pi-runtime-1");
+  });
+});

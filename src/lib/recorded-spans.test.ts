@@ -576,3 +576,77 @@ describe("foldSingleTurnRuns", () => {
     expect(foldSingleTurnRuns(spans)).toEqual(spans);
   });
 });
+
+describe("prompt row labels", () => {
+  const promptRow = (excerpt?: string): RecordedSpan => ({
+    attributes: excerpt === undefined ? {} : { "semla.prompt.excerpt": excerpt },
+    endTimeMs: 10,
+    events: [],
+    name: "pi.harness.run",
+    parentSpanId: null,
+    spanId: "r",
+    startTimeMs: 0,
+    status: { status: "ok" },
+    traceId: "t",
+  });
+
+  const labelOf = (excerpt?: string) =>
+    withoutSessionRow(recordedSpansToOtelSpans([promptRow(excerpt)]))[0]?.name;
+
+  it("shows the start of what was asked", () => {
+    expect(labelOf("Give me a list of cute animals")).toBe("Give me a ...");
+  });
+
+  it("does not truncate a prompt that already fits", () => {
+    expect(labelOf("hi there")).toBe("hi there");
+    // Exactly at the limit: nothing was cut, so nothing claims it was.
+    expect(labelOf("0123456789")).toBe("0123456789");
+    expect(labelOf("01234567890")).toBe("0123456789...");
+  });
+
+  it("collapses whitespace before truncating", () => {
+    // A label has one line to live on, and a prompt can open with a newline
+    // or wrap inside the first ten characters.
+    expect(labelOf("\n\nGive   me\na list")).toBe("Give me a ...");
+  });
+
+  it("falls back for a prompt recorded before excerpts existed", () => {
+    expect(labelOf()).toBe("Prompt");
+    expect(labelOf("")).toBe("Prompt");
+    expect(labelOf("   \n ")).toBe("Prompt");
+  });
+
+  it("survives the fold, which is where the label is read", () => {
+    // The excerpt is on the run span and the turn is folded into it; a label
+    // read after a merge that dropped attributes would silently go generic.
+    const mapped = recordedSpansToOtelSpans([
+      promptRow("Give me a list of cute animals"),
+      {
+        attributes: { "pi.turn.id": "turn-1" },
+        endTimeMs: 10,
+        events: [],
+        name: "pi.harness.turn",
+        parentSpanId: "r",
+        spanId: "t",
+        startTimeMs: 0,
+        status: { status: "ok" },
+        traceId: "t",
+      },
+    ]);
+
+    expect(withoutSessionRow(mapped).map((s) => s.name)).toEqual([
+      "Give me a ...",
+    ]);
+  });
+
+  it("keeps the full excerpt on the span for the detail drawer", () => {
+    const long = "Give me a list of cute animals and rank them by consensus";
+    const [row] = withoutSessionRow(
+      recordedSpansToOtelSpans([promptRow(long)]),
+    );
+
+    // The label is 10 characters; the record is not, which is the whole point
+    // of splitting where each decision lives.
+    expect(row?.attributes?.["semla.prompt.excerpt"]).toBe(long);
+  });
+});

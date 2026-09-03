@@ -297,8 +297,14 @@ describe("sensitive attributes", () => {
     );
   });
 
-  it("marks nothing else in Semla's own schema", () => {
-    expect(sensitiveKeys.size).toBe(1);
+  it("is exactly the user text Semla records", () => {
+    // Pinned rather than counted, so adding an attribute that carries user
+    // content without marking it sensitive fails here instead of quietly
+    // landing in every persisted trace.
+    expect([...sensitiveKeys].sort()).toEqual([
+      "pi.harness.run/semla.prompt.excerpt",
+      "semla.workflow.agent/semla.workflow.agent.prompt",
+    ]);
   });
 
   it("keeps them by default", async () => {

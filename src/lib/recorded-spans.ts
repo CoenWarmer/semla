@@ -84,6 +84,30 @@ const serviceOf = (name: string): string => {
   return "session";
 };
 
+/** How much of the prompt a row shows. Presentation, not record. */
+const PROMPT_LABEL_CHARS = 10;
+
+/**
+ * A prompt row's label: the start of what was asked.
+ *
+ * The excerpt on the span is wider than this (see PROMPT_EXCERPT_CHARS), which
+ * is the point of splitting the two — how much to show is a display decision
+ * and can change without re-recording anything.
+ *
+ * Whitespace is collapsed first: a prompt that opens with a newline, or wraps
+ * within the first ten characters, would otherwise put a line break in a label
+ * that has one line to live on.
+ */
+const promptLabel = (excerpt: string | null): string => {
+  const text = excerpt?.replace(/\s+/g, " ").trim();
+  // No excerpt at all is a prompt recorded before this existed.
+  if (!text) return "Prompt";
+
+  return text.length > PROMPT_LABEL_CHARS
+    ? `${text.slice(0, PROMPT_LABEL_CHARS)}...`
+    : text;
+};
+
 /**
  * The row label. A span name is a schema identifier — every agent in a run is
  * `semla.workflow.agent` — so the label comes from the attribute that
@@ -114,7 +138,9 @@ const labelOf = (span: RecordedSpan): string => {
     return tool ? `⚙ ${tool}` : "⚙ tool";
   }
   if (span.name === HARNESS_TURN_SPAN) return "Turn";
-  if (span.name === HARNESS_RUN_SPAN) return "Prompt";
+  if (span.name === HARNESS_RUN_SPAN) {
+    return promptLabel(named("semla.prompt.excerpt"));
+  }
   return span.name;
 };
 

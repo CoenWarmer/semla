@@ -76,7 +76,11 @@ import {
   retainSpanSink,
 } from "@/lib/pi/telemetry/sink-registry";
 import { createSpanPublisher } from "@/lib/pi/telemetry/span-publisher";
+import { AGENT_TELEMETRY_SCHEMAS } from "@mariozechner/pi-agent-core";
+
 import { createHostTelemetry } from "@/lib/pi/telemetry/host-recorder";
+import { SEMLA_TELEMETRY_SCHEMA } from "@/lib/pi/telemetry/schema";
+import { sensitiveAttributeKeys } from "@/lib/pi/telemetry/span-sink";
 import { appendSpans } from "@/lib/pi/telemetry/span-store";
 import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import type { EmitSessionEvent, PiSessionEvent } from "@/lib/pi/session-events";
@@ -111,6 +115,18 @@ import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow-run-reader";
  * is one frame, short enough that the panel does not visibly lag the run.
  */
 const SPAN_FLUSH_MS = 250;
+
+/**
+ * Every attribute any schema in play marks sensitive — ours and pi's.
+ *
+ * Built from the schemas rather than listed, so pi marking a new attribute
+ * sensitive in a release is respected without a change here. Computed once:
+ * it is static for the process.
+ */
+const SENSITIVE_SPAN_ATTRIBUTES = sensitiveAttributeKeys([
+  SEMLA_TELEMETRY_SCHEMA,
+  ...AGENT_TELEMETRY_SCHEMAS,
+]);
 
 const assertSandboxedRuntime = () => {
   const { hostDevelopmentEnabled, sandboxed } = getPiRuntimeConfig();
@@ -410,6 +426,12 @@ export const runPiPrompt = async ({
 
   const spanSink = createSpanSink(semlaSessionId, {
     onChange: scheduleSpanFlush,
+    // Kept, per §8.1 — a persisted trace contains the prompt excerpt and a
+    // subagent's prompt. Passed anyway so the switch is real: redaction finds
+    // an attribute by looking it up in the schemas, and a key set that was
+    // never built would make `sensitive: "drop"` silently redact nothing.
+    sensitive: "keep",
+    sensitiveKeys: SENSITIVE_SPAN_ATTRIBUTES,
   });
   /**
    * The turn's own spans, opened before extensions load.
@@ -422,7 +444,7 @@ export const runPiPrompt = async ({
   const host = createHostTelemetry(spanSink, {
     piSessionId: piRuntimeSessionId,
   });
-  host.turnStarted();
+  host.turnStarted({ text });
   retainSpanSink(piRuntimeSessionId, spanSink, host.turnSpanId);
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
