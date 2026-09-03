@@ -22,7 +22,6 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
   PromptInput,
-  PromptInputBody,
   PromptInputButton,
   PromptInputProvider,
   PromptInputSubmit,
@@ -461,25 +460,30 @@ export function PromptEditor({
           overflowVisible
         >
           <PromptInputAttachmentsDisplay />
-          <PromptInputBody className="flex w-full">
-            <div className="flex grow">
-              {/*
-                Shorter than the component's own `min-h-16`, passed here
-                rather than edited into `ai-elements/`: that directory is
-                vendored, so a re-vendor would revert it with nothing in the
-                diff to notice. The component merges `className`, and
-                tailwind-merge lets the later `min-h` win.
-              */}
-              <PromptInputTextarea className="min-h-8" />
-            </div>
-            <div className="flex p-3 items-center">
-              <PromptInputSubmit
-                size="icon-xs"
-                onStop={onStop}
-                status={isRunning ? "streaming" : status}
-              />
-            </div>
-          </PromptInputBody>
+          {/*
+            A direct child of the InputGroup, and it has to be. That group is
+            `h-9` and only becomes `h-auto` through `has-[>textarea]` — a
+            direct-child selector — or through a `data-align=block-end` addon,
+            which is what `PromptInputFooter` was. With the textarea one div
+            further down, the box stayed two lines tall while
+            `field-sizing-content` grew the field, and `items-center` spilled
+            the text out of both ends.
+          */}
+          {/*
+            Shorter than the component's own `min-h-16`, passed here rather
+            than edited into `ai-elements/`: that directory is vendored, so a
+            re-vendor would revert it with nothing in the diff to notice. The
+            component merges `className`, and tailwind-merge lets the later
+            `min-h` win.
+          */}
+          <PromptInputTextarea className="min-h-8" />
+          <div className="flex items-center p-3">
+            <PromptInputSubmit
+              onStop={onStop}
+              size="icon-xs"
+              status={isRunning ? "streaming" : status}
+            />
+          </div>
         </PromptInput>
       </PromptInputProvider>
     </div>
