@@ -102,7 +102,29 @@ export const NO_WORKFLOW_TELEMETRY: WorkflowTelemetry = {
   runStarted: () => {},
 };
 
-export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
+/**
+ * Where a run hangs from.
+ *
+ * A foreground run belongs inside the `workflow` tool call that started it —
+ * measured on a real session the run was 12ms shorter than the call, plainly
+ * within it — and drawing them as siblings said they merely happened at the
+ * same time.
+ *
+ * A background run does not: the tool call returns as soon as the run is
+ * dispatched, so nesting a six-minute run inside a 200ms call would be a
+ * worse lie than the sibling was. Those keep the turn as their parent, which
+ * is what §8.4 settled.
+ */
+export type WorkflowRunParent = (run: {
+  background: boolean;
+  /** The parent the manager proposes — the turn span. */
+  fallback: string | null | undefined;
+}) => string | null | undefined;
+
+export const createWorkflowTelemetry = (
+  sink: SpanSink,
+  resolveParent?: WorkflowRunParent,
+): WorkflowTelemetry => {
   const runs = new Map<string, RunState>();
 
   const closePhase = (state: RunState) => {
@@ -138,7 +160,9 @@ export const createWorkflowTelemetry = (sink: SpanSink): WorkflowTelemetry => {
             "semla.workflow.run_id": runId,
           },
           name: WORKFLOW_RUN_SPAN,
-          parentSpanId,
+          parentSpanId: resolveParent
+            ? resolveParent({ background, fallback: parentSpanId })
+            : parentSpanId,
         }),
       });
     },

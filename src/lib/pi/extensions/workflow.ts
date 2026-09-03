@@ -44,7 +44,11 @@ import {
 } from "./dynamic-workflows/src/workflow-settings";
 import { createWorkflowTool } from "./dynamic-workflows/src/workflow-tool";
 import { registerWorkflowModelsCommand } from "./dynamic-workflows/src/workflows-models-command";
-import { getSpanSink, getTurnSpanId } from "../telemetry/sink-registry";
+import {
+  getHostTelemetry,
+  getSpanSink,
+  getTurnSpanId,
+} from "../telemetry/sink-registry";
 import { createWorkflowTelemetry } from "../telemetry/workflow-recorder";
 import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
@@ -365,7 +369,15 @@ export default function extension(pi: ExtensionAPI) {
       // The turn span, so a run nests under the turn that started it — which
       // holds even when the run outlives that turn in the background (§8.4).
       manager.setTelemetry(
-        createWorkflowTelemetry(sink),
+        createWorkflowTelemetry(sink, ({ background, fallback }) => {
+          // Foreground: inside the tool call that started it. Background: the
+          // turn, because the call returns long before the run does.
+          if (background) return fallback;
+          return (
+            getHostTelemetry(piSessionId)?.activeToolSpanId(workflowTool.name) ??
+            fallback
+          );
+        }),
         getTurnSpanId(piSessionId),
       );
     }

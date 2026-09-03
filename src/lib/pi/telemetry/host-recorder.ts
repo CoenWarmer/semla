@@ -56,6 +56,16 @@ export type HostTelemetry = {
    */
   readonly turnSpanId: string | null;
   /**
+   * The open span for a tool call by that name, if one is in flight.
+   *
+   * Exists so a foreground workflow run can nest inside the `workflow` tool
+   * call that started it rather than beside it. Resolved from a real id at the
+   * moment the run starts — matching a run to a tool call by whose interval
+   * contains whose would be inference, and with two concurrent calls it would
+   * pick wrong.
+   */
+  activeToolSpanId: (name: string) => string | null;
+  /**
    * A model round trip finished. `usage` is what the assistant message
    * reported, when it reported any.
    */
@@ -89,6 +99,7 @@ export type HostTelemetry = {
 /** A no-op, for a code path with no sink. */
 export const NO_HOST_TELEMETRY: HostTelemetry = {
   turnSpanId: null,
+  activeToolSpanId: () => null,
   stepEnded: () => {},
   stepStarted: () => {},
   toolEnded: () => {},
@@ -104,6 +115,8 @@ export const createHostTelemetry = (
   const operationId = randomUUID();
   const turnId = randomUUID();
   const tools = new Map<string, OpenSpan>();
+  /** Tool name per open call id, so a span can be found by name. */
+  const toolNames = new Map<string, string>();
 
   let run: OpenSpan | null = null;
   let turn: OpenSpan | null = null;
@@ -146,6 +159,13 @@ export const createHostTelemetry = (
         name: HARNESS_TURN_SPAN,
         parentSpanId: run.spanId,
       });
+    },
+
+    activeToolSpanId: (name) => {
+      for (const [callId, toolName] of toolNames) {
+        if (toolName === name) return tools.get(callId)?.spanId ?? null;
+      }
+      return null;
     },
 
     stepStarted: () => {
@@ -198,6 +218,7 @@ export const createHostTelemetry = (
       // and re-rooting it would draw it as a sibling of the turn.
       if (!turn) return;
 
+      toolNames.set(callId, name);
       tools.set(
         callId,
         sink.openSpan({
@@ -228,6 +249,7 @@ export const createHostTelemetry = (
           : { status: "ok" },
       );
       tools.delete(callId);
+      toolNames.delete(callId);
     },
 
     turnEnded: (outcome, error) => {
@@ -241,6 +263,7 @@ export const createHostTelemetry = (
         });
       }
       tools.clear();
+      toolNames.clear();
 
       // A round trip still open when the turn ends never reported back.
       step?.close({

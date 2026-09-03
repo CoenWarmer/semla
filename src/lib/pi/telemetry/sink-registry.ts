@@ -16,9 +16,19 @@
  * `piRuntimeSessionId` there.
  */
 
+import {
+  NO_HOST_TELEMETRY,
+  type HostTelemetry,
+} from "@/lib/pi/telemetry/host-recorder";
 import type { SpanSink } from "@/lib/pi/telemetry/span-sink";
 
 type Retained = {
+  /**
+   * The turn's own recorder, so a workflow run can ask which tool call is in
+   * flight and nest inside it. Read live rather than captured: the answer
+   * changes with every tool call.
+   */
+  host: HostTelemetry;
   sink: SpanSink;
   /**
    * The turn's span, so a workflow run started by this turn nests under it
@@ -33,9 +43,9 @@ const sinks = new Map<string, Retained>();
 export const retainSpanSink = (
   piRuntimeSessionId: string,
   sink: SpanSink,
-  turnSpanId: string | null = null,
+  host: HostTelemetry = NO_HOST_TELEMETRY,
 ): void => {
-  sinks.set(piRuntimeSessionId, { sink, turnSpanId });
+  sinks.set(piRuntimeSessionId, { host, sink, turnSpanId: host.turnSpanId });
 };
 
 /**
@@ -56,6 +66,11 @@ export const getSpanSink = (
 export const getTurnSpanId = (
   piRuntimeSessionId: string,
 ): string | null => sinks.get(piRuntimeSessionId)?.turnSpanId ?? null;
+
+/** The turn's recorder, for anything that needs to ask it a live question. */
+export const getHostTelemetry = (
+  piRuntimeSessionId: string,
+): HostTelemetry | undefined => sinks.get(piRuntimeSessionId)?.host;
 
 export const releaseSpanSink = (piRuntimeSessionId: string): void => {
   sinks.delete(piRuntimeSessionId);

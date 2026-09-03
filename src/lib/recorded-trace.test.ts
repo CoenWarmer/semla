@@ -40,7 +40,14 @@ const buildTrace = async () => {
   host.turnStarted();
 
   const manager = new WorkflowManager({ cwd, agent: mockAgent });
-  manager.setTelemetry(createWorkflowTelemetry(sink), host.turnSpanId);
+  // The resolver session_start supplies, so this asserts the shape production
+  // produces rather than the no-resolver fallback.
+  manager.setTelemetry(
+    createWorkflowTelemetry(sink, ({ background, fallback }) =>
+      background ? fallback : host.activeToolSpanId("workflow") ?? fallback,
+    ),
+    host.turnSpanId,
+  );
 
   // session_start does this *after* setTelemetry, to point subagents at the
   // session's wiki toolset. Included because leaving it out is exactly why an
@@ -60,7 +67,7 @@ const buildTrace = async () => {
 
 describe("a turn that ran a workflow", () => {
   it("nests the whole run under the turn", async () => {
-    const { host, sink } = await buildTrace();
+    const { sink } = await buildTrace();
 
     const byId = new Map(sink.spans().map((span) => [span.spanId, span]));
     const ancestors = (spanId: string): string[] => {
@@ -80,17 +87,16 @@ describe("a turn that ran a workflow", () => {
       .find((span) => span.attributes["semla.workflow.agent.label"] === "scan");
     expect(agent).toBeDefined();
 
-    // §8.4: one trace tells the whole causal story.
+    // §8.4: one trace tells the whole causal story — and the run sits inside
+    // the tool call that started it, not beside it.
     expect(ancestors(agent!.spanId)).toEqual([
       "semla.workflow.agent",
       "semla.workflow.phase",
       "semla.workflow.run",
+      "pi.harness.tool",
       "pi.harness.turn",
       "pi.harness.run",
     ]);
-    expect(
-      sink.spans().find((s) => s.name === "semla.workflow.run")?.parentSpanId,
-    ).toBe(host.turnSpanId);
   });
 
   it("leaves nothing open", async () => {

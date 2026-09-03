@@ -341,3 +341,53 @@ describe("attributes", () => {
     });
   });
 });
+
+describe("where a run hangs from", () => {
+  const sinkFor = () => createSpanSink("00000000-0000-4000-8000-00000000aa01");
+
+  it("uses the resolver's answer for a foreground run", () => {
+    const sink = sinkFor();
+    const telemetry = createWorkflowTelemetry(sink, ({ background, fallback }) =>
+      background ? fallback : "tool-span-1",
+    );
+
+    telemetry.runStarted("r", {
+      background: false,
+      name: "wf",
+      parentSpanId: "turn-span-1",
+    });
+
+    // Inside the tool call that started it, not beside it.
+    expect(sink.spans()[0]?.parentSpanId).toBe("tool-span-1");
+  });
+
+  it("keeps a background run under the turn", () => {
+    const sink = sinkFor();
+    const telemetry = createWorkflowTelemetry(sink, ({ background, fallback }) =>
+      background ? fallback : "tool-span-1",
+    );
+
+    telemetry.runStarted("r", {
+      background: true,
+      name: "wf",
+      parentSpanId: "turn-span-1",
+    });
+
+    // The tool call returns as soon as the run is dispatched, so nesting a
+    // long run inside it would be a worse lie than the sibling was.
+    expect(sink.spans()[0]?.parentSpanId).toBe("turn-span-1");
+  });
+
+  it("falls back to the manager's parent with no resolver", () => {
+    const sink = sinkFor();
+    const telemetry = createWorkflowTelemetry(sink);
+
+    telemetry.runStarted("r", {
+      background: false,
+      name: "wf",
+      parentSpanId: "turn-span-1",
+    });
+
+    expect(sink.spans()[0]?.parentSpanId).toBe("turn-span-1");
+  });
+});

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   createPendingPromptStore,
@@ -99,4 +99,128 @@ test("an existing session's prompt carries no create payload", () => {
   store.set(SESSION_A, prompt("hello"));
 
   assert.equal(store.consume(SESSION_A)?.create, undefined);
+});
+
+/**
+ * The slot used to live only in React state, and the prompt it holds is the
+ * only submit carrying the `create` payload the prompt route needs. A hard
+ * load between minting the session id and submitting therefore left a session
+ * that was never created and could not be, answering 404 to every prompt typed
+ * into it. Diagnosed from a real one: session 52266fad had no file on disk and
+ * no debug artifact, and the route answered "Session not found." to a probe.
+ */
+describe("surviving a reload", () => {
+  const fakeStorage = () => {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      removeItem: (k: string) => void map.delete(k),
+      setItem: (k: string, v: string) => void map.set(k, v),
+      get size() {
+        return map.size;
+      },
+    };
+  };
+
+  const withStorage = (storage: unknown) => {
+    vi.stubGlobal("window", { sessionStorage: storage });
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const prompt = (text = "hello"): PendingPrompt => ({
+    create: { project: null, title: "t" },
+    model: { modelId: "m", provider: "p" } as PendingPrompt["model"],
+    text,
+    tools: [],
+  });
+
+  test("hands the prompt to a store built after a reload", () => {
+    const storage = fakeStorage();
+    withStorage(storage);
+
+    createPendingPromptStore().set("s1", prompt());
+    // A reload discards the React tree, so the page arrives with a new store.
+    const afterReload = createPendingPromptStore();
+
+    expect(afterReload.consume("s1")?.text).toBe("hello");
+  });
+
+  test("carries the create payload, which is the whole point", () => {
+    withStorage(fakeStorage());
+
+    createPendingPromptStore().set("s1", prompt());
+
+    // Without this the session is never created and the page is a dead end.
+    expect(createPendingPromptStore().consume("s1")?.create).toEqual({
+      project: null,
+      title: "t",
+    });
+  });
+
+  test("clears storage once consumed, so the prompt is submitted once", () => {
+    const storage = fakeStorage();
+    withStorage(storage);
+
+    const store = createPendingPromptStore();
+    store.set("s1", prompt());
+    store.consume("s1");
+
+    expect(storage.size).toBe(0);
+    expect(createPendingPromptStore().consume("s1")).toBeNull();
+  });
+
+  test("never replays into another session", () => {
+    withStorage(fakeStorage());
+    createPendingPromptStore().set("s1", prompt());
+
+    expect(createPendingPromptStore().consume("s2")).toBeNull();
+  });
+
+  test("ignores a stored value that is not a prompt", () => {
+    const storage = fakeStorage();
+    storage.setItem("semla.pending-prompt", '{"sessionId":"s1"}');
+    withStorage(storage);
+
+    // Anything could have written that key.
+    expect(createPendingPromptStore().consume("s1")).toBeNull();
+  });
+
+  test("ignores unparseable storage", () => {
+    const storage = fakeStorage();
+    storage.setItem("semla.pending-prompt", "not json");
+    withStorage(storage);
+
+    expect(createPendingPromptStore().consume("s1")).toBeNull();
+  });
+
+  test("still works when storage throws", () => {
+    withStorage({
+      getItem: () => {
+        throw new Error("denied");
+      },
+      removeItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    });
+
+    // Private mode, or a full quota: the in-memory slot must still carry the
+    // soft navigation this is mainly for.
+    const store = createPendingPromptStore();
+    store.set("s1", prompt());
+    expect(store.consume("s1")?.text).toBe("hello");
+  });
+
+  test("works with no window at all", () => {
+    vi.stubGlobal("window", undefined);
+
+    const store = createPendingPromptStore();
+    store.set("s1", prompt());
+    expect(store.consume("s1")?.text).toBe("hello");
+  });
 });

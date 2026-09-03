@@ -327,3 +327,41 @@ describe("model round trips", () => {
     expect(named(sink, HARNESS_STEP_SPAN)).toBeUndefined();
   });
 });
+
+describe("activeToolSpanId", () => {
+  it("names the span of a call in flight", () => {
+    const { host, sink } = setup();
+    host.turnStarted();
+    host.toolStarted("call-1", { name: "workflow" });
+
+    const tool = named(sink, HARNESS_TOOL_SPAN);
+    expect(host.activeToolSpanId("workflow")).toBe(tool?.spanId);
+  });
+
+  it("forgets a call that has ended", () => {
+    const { host } = setup();
+    host.turnStarted();
+    host.toolStarted("call-1", { name: "workflow" });
+    host.toolEnded("call-1", { isError: false });
+
+    // A run dispatched after the call returned must not nest inside it.
+    expect(host.activeToolSpanId("workflow")).toBeNull();
+  });
+
+  it("is null for a tool that is not running", () => {
+    const { host } = setup();
+    host.turnStarted();
+    host.toolStarted("call-1", { name: "read" });
+
+    expect(host.activeToolSpanId("workflow")).toBeNull();
+  });
+
+  it("forgets everything when the turn ends", () => {
+    const { host } = setup();
+    host.turnStarted();
+    host.toolStarted("call-1", { name: "workflow" });
+    host.turnEnded("completed");
+
+    expect(host.activeToolSpanId("workflow")).toBeNull();
+  });
+});

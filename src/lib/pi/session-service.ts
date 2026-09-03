@@ -449,7 +449,7 @@ export const runPiPrompt = async ({
     piSessionId: piRuntimeSessionId,
   });
   host.turnStarted({ text });
-  retainSpanSink(piRuntimeSessionId, spanSink, host.turnSpanId);
+  retainSpanSink(piRuntimeSessionId, spanSink, host);
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
