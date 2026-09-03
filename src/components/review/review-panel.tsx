@@ -41,6 +41,7 @@ import {
 } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
 import { ReviewEditorPane } from "./review-editor-pane";
+import { ReviewFileTree } from "./review-file-tree";
 import { ReviewTurnCommits } from "./review-turn-commits";
 
 const SIDEBAR_WIDTH = 300;
@@ -276,6 +277,32 @@ export function ReviewPanel({
                   plan={uncommitPlan.data}
                   project={activeProject}
                 />
+              ) : null}
+
+              {/* The whole project, so the changed files above have somewhere
+                  to sit. Keyed by project so switching repositories re-opens
+                  the tree on the new one's changes rather than keeping the
+                  old one's expansion. */}
+              {activeProject ? (
+                <div className="flex min-h-0 flex-col border-t pt-2">
+                  <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {activeProject.name}
+                  </p>
+                  <ReviewFileTree
+                    key={activeProject.path}
+                    onSelectPath={(path) =>
+                      setChosen({ path, project: activeProject.path })
+                    }
+                    project={activeProject}
+                    projects={projects}
+                    selectedPath={
+                      selection?.project === activeProject.path
+                        ? selection.path
+                        : null
+                    }
+                    sessionId={sessionId}
+                  />
+                </div>
               ) : null}
             </>
           )}
