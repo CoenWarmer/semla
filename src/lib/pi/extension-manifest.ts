@@ -31,6 +31,7 @@ import {
 } from "@/lib/pi/extension-contract";
 import {
   CODE_INTELLIGENCE_EXTENSION_PATH,
+  MCP_EXTENSION_PATH,
   PI_TOOLS,
   WIKI_EXTENSION_PATH,
 } from "@/lib/pi/runtime-config";
@@ -49,7 +50,8 @@ export type ExtensionId =
   | "code-intelligence"
   | "install-guard"
   | "wiki"
-  | "wiki-ingest-bridge";
+  | "wiki-ingest-bridge"
+  | "mcp";
 
 /**
  * How Pi gets hold of an extension.
@@ -237,6 +239,19 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [WIKI_INGEST_DISPATCHER, WIKI_REINDEX_DISPATCHER],
     remedy:
       "This bridge is imported directly; a failure here is a code problem in src/lib/pi/extensions/wiki-ingest-bridge.ts.",
+  },
+  {
+    id: "mcp",
+    source: { kind: "path", path: MCP_EXTENSION_PATH },
+    requires: [],
+    // The gateway tool is the thing whose absence means the extension silently
+    // did nothing; mcpScript can be turned off by configuration, so a session
+    // must not refuse to boot over its absence — see mcp-package-contract.test.ts.
+    providesTools: ["mcp"],
+    optionalTools: ["mcpScript"],
+    providesSlots: [],
+    remedy:
+      "Run `npm install` — pi-mcp-adapter is declared in this repo's package.json and loaded from root node_modules.",
   },
 ] as const;
 

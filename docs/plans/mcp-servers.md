@@ -4,9 +4,22 @@
 trackers, whatever the operator configures — without the agent's context being
 consumed by hundreds of tool definitions it will not use.
 
-**Status:** designed and spiked 2026-09-04, not implemented. §2 records what the
-spike actually did and found; the recommendation in §3 rests on it rather than
-on the package's documentation, which is wrong about the one thing that mattered.
+**Status:** designed and spiked 2026-09-04; Phase 1 (§6) implemented. §2 records
+what the spike actually did and found; the recommendation in §3 rests on it
+rather than on the package's documentation, which is wrong about the one thing
+that mattered.
+
+**Phase 1 note:** pinned to `pi-mcp-adapter@2.29.0`, not the then-latest
+2.32.1 — this sandbox's npm refuses anything published after 2026-08-28 (see
+§7), so 2.32.1 (published 2026-09-01) is unreachable here. Re-check that cap
+before bumping the pin. The peer-dependency and native-dependency checks in §3
+held exactly as spiked: `@modelcontextprotocol/client@2.0.0`, peers resolving
+to the pinned `@earendil-works` runtime with no `@mariozechner` peer to alias
+away, and `@napi-rs/keyring` installing via optional dependencies with no
+postinstall script. Landed as `MCP_PACKAGE_DIR`/`MCP_EXTENSION_PATH` in
+`runtime-config.ts`, a `kind: "path"` manifest entry (`providesTools: ["mcp"]`,
+`optionalTools: ["mcpScript"]`), and
+`src/lib/pi/extensions/mcp-package-contract.test.ts`. Phases 2–4 remain open.
 
 ---
 

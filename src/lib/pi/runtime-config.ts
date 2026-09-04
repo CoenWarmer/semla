@@ -42,6 +42,31 @@ export const WIKI_EXTENSION_PATH = join(
   "extensions/llm-wiki/index.ts",
 );
 
+/**
+ * pi-mcp-adapter, in this repository's own node_modules.
+ *
+ * Registers one `mcp` gateway tool that discovers and calls MCP servers on
+ * demand, rather than registering every configured server's tools at startup —
+ * the design this repository would have had to arrive at anyway for a harness
+ * that watches its context composition closely. See docs/plans/mcp-servers.md
+ * for the spike this pin rests on: the package's README says it "must be
+ * installed through pi", which is not so — it declares `pi.extensions:
+ * ["./index.ts"]`, a plain path, and `export default createMcpAdapter()` is
+ * exactly the shape Pi's own path loader calls. Taking the documented route
+ * would have recreated `.pi/npm`, the failure AGENTS.md spends a page on.
+ *
+ * Its peer dependencies point at the `@earendil-works` scope pi actually uses
+ * now, unlike `@zosmaai/pi-llm-wiki`'s wildcard peer against the abandoned
+ * `@mariozechner` scope — so there is no second agent runtime to alias away
+ * here, and mcp-package-contract.test.ts asserts that stays true.
+ */
+export const MCP_PACKAGE_DIR = join(
+  process.cwd(),
+  "node_modules/pi-mcp-adapter",
+);
+
+export const MCP_EXTENSION_PATH = join(MCP_PACKAGE_DIR, "index.ts");
+
 // Semla's own extensions. Anchored to the server's cwd like the wiki paths
 // above: PI_WORKSPACE_ROOT is the repo the agent operates *on*, not the repo
 // these files live in.
