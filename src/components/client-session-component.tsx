@@ -24,6 +24,7 @@ import {
 } from "@/hooks/use-workflow-runs";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
+import { useElementTarget } from "./element-target-provider";
 import { ReviewPanel } from "./review/review-panel";
 import { SessionActivityLine } from "@/components/session-activity-line";
 import { AskUserDialog } from "./ask-user-dialog";
@@ -259,22 +260,35 @@ export function ClientSessionComponent({
     0,
   );
 
+  /**
+   * A source location the element picker resolved, waiting to be opened.
+   *
+   * Read from context rather than a prop: the picker lives in `HeaderActions`,
+   * a sibling of this component under the root layout rather than an ancestor,
+   * so nothing here can receive it as one. See element-target-provider.tsx.
+   */
+  const elementTarget = useElementTarget();
+
   // Derived, never set from an effect. `react/set-state-in-effect` is an
   // error in this repository, and the panel is genuinely open *because of* the
-  // state rather than because something once happened to it.
-  const reviewOpen = shouldOpenReview({
-    manuallyOpened: reviewManuallyOpened,
-    review: reviewQuery.data,
-    sessionRunning: isActive,
-  });
+  // state rather than because something once happened to it. A picked element
+  // opens the panel exactly like the manual button does, just from a
+  // different origin for the "the operator asked for this" signal.
+  const reviewOpen =
+    shouldOpenReview({
+      manuallyOpened: reviewManuallyOpened,
+      review: reviewQuery.data,
+      sessionRunning: isActive,
+    }) || elementTarget.target !== null;
 
   // Closing is also dismissing. Without recording the state as seen, the next
   // refetch would find it unreviewed and open the panel straight back up.
   const closeReview = useCallback(() => {
     setReviewManuallyOpened(false);
+    elementTarget.clear();
     const seen = reviewQuery.data?.fingerprint;
     if (seen) dismissReview.mutate(seen);
-  }, [dismissReview, reviewQuery.data?.fingerprint]);
+  }, [dismissReview, elementTarget, reviewQuery.data?.fingerprint]);
   const [selectedAgent, setSelectedAgent] = useState<{
     agentId: number;
     runId: string;
@@ -477,6 +491,12 @@ export function ClientSessionComponent({
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
         {reviewOpen && (
           <ReviewPanel
+            // Remounts the panel for each new pick, which is what makes
+            // `initialTarget` apply again — see its doc comment on
+            // ReviewPanel. A plain open/close toggle has no such key because
+            // there is only ever one "open" to render.
+            key={elementTarget.target?.nonce ?? "manual"}
+            initialTarget={elementTarget.target}
             onClose={closeReview}
             onExplain={handleExplain}
             sessionId={sessionId}

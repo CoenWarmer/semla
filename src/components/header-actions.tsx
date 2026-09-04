@@ -17,6 +17,7 @@ import {
 import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { ElementPicker } from "./element-picker";
 import { GitStatusBadge } from "./git-status-badge";
 import { SessionFilesPanel } from "./session-files-panel";
 import { SessionProjectPicker } from "./session-project-picker";
@@ -92,6 +93,13 @@ export function HeaderActions() {
           Files
         </Button>
       )}
+
+      {/*
+        Only where there is a session to open the Review panel on. The picker
+        itself no-ops outside development, so this is about relevance rather
+        than a second gate.
+      */}
+      {sessionId && <ElementPicker sessionId={sessionId} />}
 
       <div className="flex grow items-center justify-center gap-3 px-4">
         {sessionId && <SessionProjectBadges sessionId={sessionId} />}

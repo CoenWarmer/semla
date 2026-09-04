@@ -71,10 +71,22 @@ function defaultSelection(
 }
 
 export function ReviewPanel({
+  initialTarget,
   onClose,
   onExplain,
   sessionId,
 }: {
+  /**
+   * Open on this file and line rather than the anchor project's first change.
+   *
+   * Consulted only for the panel's *initial* state — see the `key` this is
+   * meant to be paired with on the caller's side (`ClientSessionComponent`),
+   * which remounts the panel when a new target arrives so this is read again
+   * rather than only once ever. Reading it in an effect instead would mean
+   * setting state from that effect, which is the `react/set-state-in-effect`
+   * error this repository treats as fatal.
+   */
+  initialTarget?: { project: string; path: string; line: number } | null;
   onClose: () => void;
   /**
    * Ask the agent something. Routed up rather than handled here: the session
@@ -87,7 +99,11 @@ export function ReviewPanel({
   const review = useReview(sessionId);
   const panel = useBottomPanel();
 
-  const [chosen, setChosen] = useState<FileSelection | null>(null);
+  const [chosen, setChosen] = useState<FileSelection | null>(() =>
+    initialTarget
+      ? { path: initialTarget.path, project: initialTarget.project }
+      : null,
+  );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
@@ -101,7 +117,7 @@ export function ReviewPanel({
    * which file is open, so the request has to outlive the pane it lands in.
    */
   const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(
-    null,
+    () => (initialTarget ? { line: initialTarget.line, nonce: 1 } : null),
   );
 
   // The counter is what makes asking for the same line twice two requests

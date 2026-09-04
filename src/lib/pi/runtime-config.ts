@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
@@ -107,6 +107,21 @@ export const WIKI_HOME = (() => {
 
 export const PI_WORKSPACE_ROOT = process.env.PI_WORKSPACE_ROOT
   ?? (hostDevelopmentEnabled ? process.cwd() : "/workspace");
+
+/**
+ * Semla's own checkout, as a path relative to `PI_WORKSPACE_ROOT`.
+ *
+ * Null when Semla is not running from inside the workspace root at all —
+ * `/workspace` in the sandboxed default, or a `PI_WORKSPACE_ROOT` pointed
+ * somewhere that does not contain this checkout. The element picker (see
+ * `element-picker.tsx`) uses this to attach Semla's own repository as a
+ * session project; without a relative path there is nothing to attach.
+ */
+export const SEMLA_PROJECT_PATH: string | null = (() => {
+  const rel = relative(PI_WORKSPACE_ROOT, process.cwd());
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+  return rel.split(sep).join("/");
+})();
 /**
  * Pi session transcripts, one .jsonl per Semla session.
  *

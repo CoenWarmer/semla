@@ -7,6 +7,7 @@ import { PendingPromptProvider } from "@/components/pending-prompt-provider";
 import { HeaderActions } from "@/components/header-actions";
 import { AppConsole } from "@/components/app-console";
 import { BottomPanelProvider } from "@/components/bottom-panel";
+import { ElementTargetProvider } from "@/components/element-target-provider";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -51,29 +52,31 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="h-full flex flex-col">
         <QueryProvider>
           <PendingPromptProvider>
-            <TooltipProvider>
-              {/* Above both the frame and the page: the bar lives in one and
-                  its panels are rendered by the other. */}
-              <BottomPanelProvider>
-              <SidebarProvider className="flex-1 min-h-0">
-                <AppSidebar />
-                <main className="flex w-full flex-col">
-                  {/* Named group: controls that only appear on hover key off
-                      the header as a whole, not off whatever sits nearest. */}
-                  <header className="group/header flex h-11 shrink-0 items-center gap-1 border-b border-border/40 px-2">
-                    <SidebarTrigger />
-                    <HeaderActions />
-                  </header>
-                  <div className="flex-1 min-h-0 overflow-y-auto">
-                    {children}
-                  </div>
-                  {/* Bottom of the frame, outside the scroll container, so it
-                      stays put rather than scrolling away with the page. */}
-                  <AppConsole />
-                </main>
-              </SidebarProvider>
-              </BottomPanelProvider>
-            </TooltipProvider>
+            <ElementTargetProvider>
+              <TooltipProvider>
+                {/* Above both the frame and the page: the bar lives in one and
+                    its panels are rendered by the other. */}
+                <BottomPanelProvider>
+                  <SidebarProvider className="flex-1 min-h-0">
+                    <AppSidebar />
+                    <main className="flex w-full flex-col">
+                      {/* Named group: controls that only appear on hover key off
+                          the header as a whole, not off whatever sits nearest. */}
+                      <header className="group/header flex h-11 shrink-0 items-center gap-1 border-b border-border/40 px-2">
+                        <SidebarTrigger />
+                        <HeaderActions />
+                      </header>
+                      <div className="flex-1 min-h-0 overflow-y-auto">
+                        {children}
+                      </div>
+                      {/* Bottom of the frame, outside the scroll container, so it
+                          stays put rather than scrolling away with the page. */}
+                      <AppConsole />
+                    </main>
+                  </SidebarProvider>
+                </BottomPanelProvider>
+              </TooltipProvider>
+            </ElementTargetProvider>
           </PendingPromptProvider>
         </QueryProvider>
       </body>
