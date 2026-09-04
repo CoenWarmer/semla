@@ -1,5 +1,6 @@
 import { isAbsolute, join, relative, sep } from "node:path";
 
+import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const hostDevelopmentEnabled =
@@ -185,6 +186,7 @@ export const PI_SESSION_DIR =
 // credentials agree rather than reading from two different places. It holds
 // only auth.json and models-store.json — never settings.json or npm/, which is
 // what would bring the host's packages back.
+export { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 export { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
 export const PI_TOOLS = [
   "read",
@@ -207,6 +209,10 @@ export const getPiRuntimeConfig = () => ({
 
 export const getPiCredentialProviders = async (): Promise<string[]> => {
   try {
+    // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+    // instrumentation.ts's register() never ran would otherwise resolve
+    // ModelRuntime against the host's ~/.pi/agent instead of Semla's own.
+    ensurePiAgentDirIsolated();
     const runtime = await ModelRuntime.create({ refreshOnCreate: false });
     const credentials = await runtime.listCredentials();
 

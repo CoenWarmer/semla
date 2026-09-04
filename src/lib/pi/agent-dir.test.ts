@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  ensurePiAgentDirIsolated,
   isolatePiAgentDir,
   PI_AGENT_DIR_ENV,
   SEEDED_FILES,
@@ -91,5 +92,46 @@ describe("isolatePiAgentDir", () => {
     // injects with setRuntimeApiKey.
     expect(seeded).toEqual([]);
     expect(existsSync(dir)).toBe(true);
+  });
+});
+
+/**
+ * The safety net for a process where instrumentation.ts's register() never
+ * ran — observed live: a route reading PI_CODING_AGENT_DIR mid-request found
+ * it genuinely unset, well after boot, with no thrown error anywhere to say
+ * so. Every call site that reads it (or constructs a ModelRuntime) without
+ * going through runtime-config can call this instead of isolatePiAgentDir()
+ * directly and not have to trust that ordering.
+ */
+describe("ensurePiAgentDirIsolated", () => {
+  it("sets the env var even if isolatePiAgentDir() was never called in this process", () => {
+    delete process.env[PI_AGENT_DIR_ENV];
+
+    ensurePiAgentDirIsolated();
+
+    expect(process.env[PI_AGENT_DIR_ENV]).toBeTruthy();
+  });
+
+  it("does not clobber an env var another call already set correctly", () => {
+    const dir = target();
+    process.env[PI_AGENT_DIR_ENV] = dir;
+
+    ensurePiAgentDirIsolated();
+
+    expect(process.env[PI_AGENT_DIR_ENV]).toBe(dir);
+  });
+
+  it("re-isolates if the env var is cleared out from under it", () => {
+    ensurePiAgentDirIsolated();
+    const first = process.env[PI_AGENT_DIR_ENV];
+    expect(first).toBeTruthy();
+
+    // Simulates the exact failure observed live: the var reads back unset
+    // mid-process, well after any call that should have set it.
+    delete process.env[PI_AGENT_DIR_ENV];
+
+    ensurePiAgentDirIsolated();
+
+    expect(process.env[PI_AGENT_DIR_ENV]).toBe(first);
   });
 });

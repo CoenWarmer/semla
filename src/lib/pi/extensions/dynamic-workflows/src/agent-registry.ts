@@ -25,6 +25,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
 import { AGENTS_DIR } from "./config.ts";
 
 export interface AgentDefinition {
@@ -143,6 +144,10 @@ export function loadAgentRegistry(
   // matching the convention used by pi-coding-agent's built-in agent discovery
   // and the official subagent extension example. Reading getAgentDir() also
   // honors the PI_CODING_AGENT_DIR env override.
+  // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+  // instrumentation.ts's register() never ran would otherwise resolve
+  // getAgentDir() below against the host's ~/.pi/agent instead of Semla's own.
+  ensurePiAgentDirIsolated();
   const userDir = opts?.userDir ?? join(getAgentDir(), "agents");
   // Deprecated: this repo's docs used to point users at ~/.pi/agents/ before
   // pi-coding-agent's convention (~/.pi/agent/agents/) was known. Keep scanning

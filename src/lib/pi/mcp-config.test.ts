@@ -185,3 +185,59 @@ describe("getMcpConfigSummary misplaced-server detection", () => {
     expect(summary.hint).toBeNull();
   });
 });
+
+/**
+ * Observed live: a long-running server process where PI_CODING_AGENT_DIR was
+ * genuinely unset at request time — instrumentation.ts's register() is
+ * documented to run once before any request, and normally does, but this
+ * process answered every request with zero servers for a file that plainly
+ * declared one, and process.env.PI_CODING_AGENT_DIR read back empty. Whether
+ * that was a Turbopack dev-restart skipping register() or something else was
+ * never pinned down; what matters here is that getMcpConfigSummary() must not
+ * depend on register() having run. MCP_CONFIG_PATH is computed once at import
+ * time and stays correct regardless (it defaults to the same directory), but
+ * pi-mcp-adapter's own getAgentDir() — called live, inside loadMcpConfig —
+ * reads the env var fresh and needs it actually set to agree.
+ */
+describe("getMcpConfigSummary without a prior isolatePiAgentDir() call", () => {
+  const previousMode = process.env[MCP_CONFIG_MODE_ENV];
+  const previousAgentDir = process.env[PI_AGENT_DIR_ENV];
+
+  afterEach(() => {
+    if (previousMode === undefined) delete process.env[MCP_CONFIG_MODE_ENV];
+    else process.env[MCP_CONFIG_MODE_ENV] = previousMode;
+    if (previousAgentDir === undefined) delete process.env[PI_AGENT_DIR_ENV];
+    else process.env[PI_AGENT_DIR_ENV] = previousAgentDir;
+  });
+
+  it("still finds the pinned file's servers when PI_CODING_AGENT_DIR was never set", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "semla-mcp-no-isolate-"));
+    writeFileSync(
+      join(agentDir, "mcp.json"),
+      JSON.stringify({
+        mcpServers: { "brave-devtools": { command: "npx", args: ["-y", "brave-mcp@latest"] } },
+      }),
+      "utf8",
+    );
+
+    // Set it only long enough for MCP_CONFIG_PATH to compute against this temp
+    // dir at import time, then delete it — reproducing a process where
+    // isolatePiAgentDir() never ran before this call, not one where it ran
+    // against the wrong directory.
+    process.env[PI_AGENT_DIR_ENV] = agentDir;
+    vi.resetModules();
+    const mod = await import("./mcp-config.ts");
+    delete process.env[PI_AGENT_DIR_ENV];
+
+    expect(process.env[PI_AGENT_DIR_ENV]).toBeUndefined();
+
+    const summary = await mod.getMcpConfigSummary();
+
+    expect(summary.enabledServers).toEqual(["brave-devtools"]);
+    expect(summary.servers).toEqual(["brave-devtools"]);
+    // The call above must have set it as a side effect, for the same reason
+    // isolatePiAgentDir() sets it in instrumentation.ts — later reads in the
+    // same process (a ModelRuntime, another mcp-config call) need it too.
+    expect(process.env[PI_AGENT_DIR_ENV]).toBe(agentDir);
+  });
+});

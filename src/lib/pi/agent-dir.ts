@@ -85,3 +85,33 @@ export function isolatePiAgentDir(
 
   return { dir, seeded };
 }
+
+let isolated = false;
+
+/**
+ * `isolatePiAgentDir()`, but safe to call from anywhere that is about to read
+ * `PI_CODING_AGENT_DIR` or construct a `ModelRuntime`, not only from
+ * `instrumentation.ts`.
+ *
+ * `instrumentation.ts`'s `register()` is documented to run once before any
+ * request is served, and normally does — but a live session hit a case where
+ * it evidently had not: `process.env.PI_CODING_AGENT_DIR` was genuinely unset
+ * mid-request, and a route reading a directory-dependent value silently
+ * resolved against the host's `~/.pi/agent` instead of Semla's own. The
+ * leading suspect is a Turbopack dev-mode server restart that skipped
+ * `register()`; it was never pinned down further, and does not need to be —
+ * every caller that actually depends on this being set can now guarantee it
+ * for itself instead of trusting a boot hook it has no way to verify ran.
+ *
+ * Memoized per process rather than re-run on every call: `isolatePiAgentDir()`
+ * is already cheap (one `mkdirSync`, two `existsSync` checks), but a route hit
+ * on every request has no reason to repeat even that once the env var is
+ * known to be set. Reset if the env var is ever cleared out from under this
+ * module — which only happens in tests, where `vi.resetModules()` already
+ * gives a fresh copy of this flag too.
+ */
+export function ensurePiAgentDirIsolated(): void {
+  if (isolated && process.env[PI_AGENT_DIR_ENV]) return;
+  isolatePiAgentDir();
+  isolated = true;
+}

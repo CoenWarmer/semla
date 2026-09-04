@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { mkdir } from "node:fs/promises";
 
+import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 import { registerNotifier } from "@/lib/pi/ask-user-bridge";
 import { runBackgroundContinuation } from "@/lib/pi/background-continuation";
 import {
@@ -149,6 +150,10 @@ const getConfiguredModel = async ({
   modelId: string;
   provider: string;
 }) => {
+  // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+  // instrumentation.ts's register() never ran would otherwise resolve
+  // ModelRuntime against the host's ~/.pi/agent instead of Semla's own.
+  ensurePiAgentDirIsolated();
   const runtime = await ModelRuntime.create({ refreshOnCreate: false });
 
   // Workflow subagents resolve their own model through this runtime, and that

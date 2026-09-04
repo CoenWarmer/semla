@@ -40,7 +40,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
+import { ensurePiAgentDirIsolated, PI_AGENT_DIR } from "@/lib/pi/agent-dir";
 import { MCP_PACKAGE_DIR } from "@/lib/pi/runtime-config";
 
 /** Environment variable pi-mcp-adapter reads to select its config mode. */
@@ -153,6 +153,17 @@ export interface McpConfigSummary {
  * covers for a tool that failed to register at all.
  */
 export async function getMcpConfigSummary(): Promise<McpConfigSummary> {
+  // Defensive, not redundant: instrumentation.ts's register() is documented
+  // to run once before the server accepts any request, and normally it does
+  // — but this call site was observed live returning zero servers for a
+  // config file that plainly declared one, with process.env.PI_CODING_AGENT_DIR
+  // genuinely unset. Something about that server process never ran register()
+  // (a Turbopack dev restart is the leading suspect, unconfirmed). Rather than
+  // trust that ordering, ensure it here too — see ensurePiAgentDirIsolated()'s
+  // own docblock, which is what makes pi-mcp-adapter's own getAgentDir()
+  // (called live, inside loadMcpConfig below) resolve to the same directory
+  // MCP_CONFIG_PATH was computed against.
+  ensurePiAgentDirIsolated();
   const { path: configPath } = isolateMcpConfigMode();
 
   // `loadMcpConfig` never throws on bad JSON: readValidatedConfig inside the

@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
 import { Check, Convert } from "typebox/value";
+import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
 import { type AgentHistoryEntry, compactAgentHistory } from "./agent-history.ts";
 import { applyToolPolicy } from "./agent-registry.ts";
 import {
@@ -274,6 +275,10 @@ let fallbackRegistry: ModelRegistry | undefined;
 
 function ensureFallbackRegistry(): Promise<ModelRegistry> {
   if (!fallbackRuntimePromise) {
+    // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+    // instrumentation.ts's register() never ran would otherwise resolve
+    // getAgentDir() below against the host's ~/.pi/agent instead of Semla's own.
+    ensurePiAgentDirIsolated();
     const dir = getAgentDir();
     // Same auth.json/models.json createAgentSession uses by default, so a model
     // resolved here carries valid credentials.
@@ -887,6 +892,10 @@ export class WorkflowAgent {
       }
     }
 
+    // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+    // instrumentation.ts's register() never ran would otherwise resolve
+    // getAgentDir() below against the host's ~/.pi/agent instead of Semla's own.
+    ensurePiAgentDirIsolated();
     const agentDir = getAgentDir();
     // The runtime behind the resolved registry, handed to the subagent session
     // below so it shares the host session's exact catalog and auth.

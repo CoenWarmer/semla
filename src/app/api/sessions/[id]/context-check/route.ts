@@ -5,6 +5,7 @@ import {
   contextWindowUsage,
   latestInputTokens,
 } from "@/lib/context-composition";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 import { getTranscript } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase/server";
@@ -226,6 +227,10 @@ export async function POST(
     let contextWindowFraction: number | null = null;
 
     if (piSession?.model_id && piSession?.model_provider) {
+      // Defensive: see ensurePiAgentDirIsolated()'s docblock — a process where
+      // instrumentation.ts's register() never ran would otherwise resolve
+      // ModelRuntime against the host's ~/.pi/agent instead of Semla's own.
+      ensurePiAgentDirIsolated();
       const modelRuntime = await ModelRuntime.create({ refreshOnCreate: false });
       const apiKey = process.env.PI_MODEL_API_KEY;
       if (apiKey) {
