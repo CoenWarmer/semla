@@ -24,6 +24,7 @@ import type {
   MethodDeclaration,
   Node,
 } from "typescript/unstable/ast";
+import type { NodeHandle, Project } from "typescript/unstable/sync";
 import {
   isArrowFunction,
   isClassDeclaration,
@@ -88,6 +89,43 @@ export function unwrapDeclaration(node: Node): Node {
   if (isExportAssignment(node) && node.expression) return node.expression;
 
   return node;
+}
+
+/**
+ * Prefer the declaration that has a body.
+ *
+ * Overloaded functions declare each signature separately; only the last carries
+ * an implementation, and that is the one whose line a reader wants. A component
+ * exported as `export default function Foo() {}` and re-imported elsewhere is
+ * the same case in different clothes — several declarations, one with a body.
+ *
+ * Under TS 7 a symbol carries `NodeHandle`s rather than nodes, so each one has
+ * to be resolved against the project that produced it before it can be asked
+ * whether it has a body. Resolution is a round-trip, so this stops at the first
+ * declaration that does — the fallback keeps whichever resolved first, which is
+ * the pure-signature case where there is no implementation to prefer.
+ */
+export function pickDeclaration(
+  handles: readonly NodeHandle[],
+  project: Project,
+): Node | undefined {
+  let first: Node | undefined;
+
+  for (const handle of handles) {
+    const declaration = handle.resolve(project);
+    if (!declaration) continue;
+    first ??= declaration;
+
+    const unwrapped = unwrapDeclaration(declaration);
+    if (
+      "body" in unwrapped &&
+      (unwrapped as { body?: unknown }).body !== undefined
+    ) {
+      return declaration;
+    }
+  }
+
+  return first;
 }
 
 function kindOf(node: Node): CodeMapNodeKind {
