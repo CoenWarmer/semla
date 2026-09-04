@@ -250,6 +250,48 @@ not declared there is a tree `npm audit` silently does not see. That is not
 hypothetical: it is how two high-severity advisories sat in `.pi/npm` while the
 root reported none. `pi-dir-removed.test.ts` is the other half.
 
+## Do not reach for `git stash` to get a clean tree
+
+**Decision.** Run `npm run tsc`, `npm run lint` and `npm test` against the tree
+as it is. Do not `git stash` to isolate your own changes, and do not
+`git checkout -- <file>` to start a file again.
+
+**Why.** Both were tried in one session on 2026-09-04, to get a clean baseline
+for lint and a build. They cost thirteen minutes and a slice of a
+thirteen-dollar run, and produced nothing that was not already there.
+
+`git stash` looks local and reversible and is neither.
+
+- It rewrites the entire working tree. Every file you have edited disappears
+  and comes back, and in this repository those files are live modules in the
+  graph of the `next dev` the operator is watching — so Turbopack rebuilds the
+  application underneath the session you are running inside. `git stash;
+  npm run build; git stash pop` at 13:50 is why the operator asked "are you
+  still running?" thirteen seconds later.
+- Subagents share this working tree. A stash takes their in-flight edits with
+  it, and they have no way to find out why.
+- The stash stack is shared and long-lived, and an entry on it carries no sign
+  of whose it is. `stash@{0}` here is `WIP on main: 5074e4a Tweaks`, from a
+  fortnight before that session. The agent found it, took it for its own, and
+  spent nine minutes reconciling a stranger's changes against its own — running
+  `git checkout --` on two files repeatedly and re-deriving work it had already
+  written correctly.
+
+`git checkout -- <file>` discards work with no undo and no record. There is no
+reflog for the working tree.
+
+**What to do instead.** Nothing. tsc, lint and test do not care that the tree is
+dirty. If lint output is noisy, filter it — `npm run lint 2>&1 | grep <path>` —
+rather than removing the changes you are not interested in. A worktree is not
+the alternative either: a fresh one has no `node_modules`, so tsc and lint pass
+there without having checked anything.
+
+**`npm run build` is a caution, not a prohibition.** It shares `.next/` with a
+running `next dev`, so the two can disturb each other. In practice it is
+survivable and worth doing — a build is what catches the errors `tsc` cannot,
+such as a bundler emitting a worker entry as a static asset. Just do not
+combine it with a stash.
+
 # Debugging
 
 There are conversation artifacts stored in .semla-debug. You can use those to investigate issues.
