@@ -4,12 +4,11 @@
 trackers, whatever the operator configures — without the agent's context being
 consumed by hundreds of tool definitions it will not use.
 
-**Status:** designed and spiked 2026-09-04; Phases 1 and 2 (§6) implemented.
-§2 records what the spike actually did and found; the recommendation in §3
-rests on it rather than on the package's documentation, which is wrong about
-the one thing that mattered — and §5's own original proposal turned out to be
-wrong about a second thing, corrected during implementation and noted inline
-below.
+**Status:** designed and spiked 2026-09-04; Phases 1–3 (§6) implemented. §2
+records what the spike actually did and found; the recommendation in §3 rests
+on it rather than on the package's documentation, which is wrong about the one
+thing that mattered — and §5's own original proposal turned out to be wrong
+about a second thing, corrected during implementation and noted inline below.
 
 **Phase 1 note:** pinned to `pi-mcp-adapter@2.29.0`, not the then-latest
 2.32.1 — this sandbox's npm refuses anything published after 2026-08-28 (see
@@ -236,10 +235,26 @@ config source lands inside `~/.semla/agent/mcp.json`.
 `src/lib/pi/mcp-config.test.ts` proves the pinned mode collapses the package's
 own `getConfigDiscoveryPaths()` to exactly that path.
 
-**3 — Make it visible.** The panel already advertises `EXTENSION_TOOLS`. Decide
-whether `mcp` joins `PI_TOOLS` so it can be toggled per turn, and surface which
-servers are connected — a gateway tool that silently has no servers is the same
-class of failure `extension-health` exists for.
+**3 — Make it visible.** Done. `mcp` was **not** added to `PI_TOOLS`: it stays
+an always-active extension tool, and the prompt editor already renders
+extension tools — `mcp` included, no code change needed — under "Extensions
+(always active)" in its tool picker, non-toggleable, which is consistent with
+§4's framing that `PI_TOOLS` is specifically the *toggleable* set.
+
+Connection status (connected / needs-auth / failed) is only known inside a
+running session — the package publishes it as an event on that session's own
+`ExtensionAPI` instance, not anywhere a route handler can reach without one
+running. What a route handler *can* read cheaply is the pinned config file
+itself: `getMcpConfigSummary()` in `src/lib/pi/mcp-config.ts` deep-imports
+`pi-mcp-adapter`'s compiled `dist/config.js` for the exported `loadMcpConfig`
+— a pure file read with no connection attempted — and reports server names and
+count. `getExtensionHealth()` (now async) surfaces this as `mcp:
+McpConfigSummary | null`, and the settings page's extension health card renders
+it: an unreadable file is shown as an error, zero configured servers as a
+neutral "None configured" (an operator who has not written an `mcp.json` yet is
+a valid, inert state — not a degradation), and N servers as their names.
+`src/lib/pi/mcp-config-summary-contract.test.ts` is the compensating check for
+the deep import, in the mould of `WIKI_PACKAGE_DEEP_IMPORTS`.
 
 **4 — Document it.** Where `mcp.json` lives, and what putting a server in it
 grants the agent.

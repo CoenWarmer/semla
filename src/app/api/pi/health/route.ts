@@ -11,7 +11,7 @@ export async function GET() {
   try {
     await requireUser();
 
-    const health = getExtensionHealth();
+    const health = await getExtensionHealth();
 
     return Response.json(health, { status: health.ok ? 200 : 503 });
   } catch (error) {

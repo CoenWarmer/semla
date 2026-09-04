@@ -25,6 +25,7 @@ import {
   resolveExtensionLoadOrder,
   type ExtensionLoadReport,
 } from "@/lib/pi/extension-manifest";
+import { getMcpConfigSummary, type McpConfigSummary } from "@/lib/pi/mcp-config";
 
 export type ExtensionHealth = {
   contractVersion: number;
@@ -48,6 +49,14 @@ export type ExtensionHealth = {
     duplicatePaths: string[];
     unexpectedErrors: string[];
   } | null;
+  /**
+   * Whether the mcp extension has any server configured, independent of
+   * whether any of them connect — a gateway tool with an empty config is the
+   * same class of failure as one that never registered, just invisible to
+   * the load report because the extension itself loaded fine. Null when the
+   * mcp extension is not in the manifest at all.
+   */
+  mcp: McpConfigSummary | null;
   /** False when anything is known to be wrong right now. */
   ok: boolean;
 };
@@ -61,7 +70,7 @@ export function recordExtensionLoad(report: ExtensionLoadReport): void {
   });
 }
 
-export function getExtensionHealth(): ExtensionHealth {
+export async function getExtensionHealth(): Promise<ExtensionHealth> {
   const problems: string[] = [];
 
   for (const check of [assertManifestIsCoherent, assertExtensionPathsExist]) {
@@ -83,6 +92,10 @@ export function getExtensionHealth(): ExtensionHealth {
 
   const snapshot = readSlot(EXTENSION_HEALTH);
   const report = (snapshot?.report ?? null) as ExtensionLoadReport | null;
+
+  const mcp = EXTENSION_MANIFEST.some((spec) => spec.id === "mcp")
+    ? await getMcpConfigSummary()
+    : null;
 
   const lastLoad = snapshot && report
     ? {
@@ -107,7 +120,10 @@ export function getExtensionHealth(): ExtensionHealth {
     })),
     installation: { ok: problems.length === 0, problems },
     lastLoad,
+    mcp,
     // A session that has not run yet is not a failure — it is just unobserved.
+    // An mcp extension with no configured servers is not a failure either — an
+    // operator who has not written an mcp.json yet is a valid, if inert, state.
     ok: problems.length === 0 && (lastLoad?.ok ?? true),
   };
 }

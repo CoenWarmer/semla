@@ -40,6 +40,7 @@
 import { join } from "node:path";
 
 import { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
+import { MCP_PACKAGE_DIR } from "@/lib/pi/runtime-config";
 
 /** Environment variable pi-mcp-adapter reads to select its config mode. */
 export const MCP_CONFIG_MODE_ENV = "PI_MCP_CONFIG_MODE";
@@ -78,4 +79,85 @@ export function isolateMcpConfigMode(
   const mode = options.mode ?? process.env[MCP_CONFIG_MODE_ENV] ?? MCP_EXCLUSIVE_CONFIG_MODE;
   process.env[MCP_CONFIG_MODE_ENV] = mode;
   return { mode, path: MCP_CONFIG_PATH };
+}
+
+// ── Static server summary ───────────────────────────────────────────────────
+
+/**
+ * `dist/config.js` inside the package, deep-imported for one function:
+ * `loadMcpConfig`, a pure read of the config file(s) with no network I/O and
+ * no server connection attempted. Unlike the extension entry point
+ * (MCP_EXTENSION_PATH), this is the *compiled* output, not the TypeScript
+ * source — a plain `import()` can load it with no jiti involved, because
+ * Node only refuses to strip types, not to run already-compiled JS. That
+ * matters here specifically: this call happens from the health endpoint on
+ * every request, not once at extension load, so it should not carry jiti's
+ * compile cost.
+ *
+ * A deep import into a third-party package's internals is exactly the kind of
+ * thing runtime-config.ts's WIKI_PACKAGE_DIR docblock warns needs a
+ * compensating check — a release that renames or moves this file breaks the
+ * summary silently otherwise. mcp-config-summary-contract.test.ts is that
+ * check, in the mould of wiki-ingest-bridge's WIKI_PACKAGE_DEEP_IMPORTS.
+ */
+const MCP_CONFIG_MODULE_PATH = join(MCP_PACKAGE_DIR, "dist/config.js");
+
+export const MCP_CONFIG_DEEP_IMPORT = {
+  path: MCP_CONFIG_MODULE_PATH,
+  exports: ["loadMcpConfig"],
+} as const;
+
+interface McpServerEntrySummary {
+  disabled?: boolean;
+}
+
+interface LoadedMcpConfigModule {
+  loadMcpConfig: (
+    overridePath?: string,
+    cwd?: string,
+  ) => { mcpServers: Record<string, McpServerEntrySummary> };
+}
+
+export interface McpConfigSummary {
+  /** Where the pinned exclusive-mode file lives, whether or not it exists. */
+  configPath: string;
+  /** Names of every server the file declares, enabled or not. */
+  servers: string[];
+  /** Subset of `servers` not marked `disabled: true`. */
+  enabledServers: string[];
+  /** Set when the config could not be read at all — a malformed file, say. */
+  error: string | null;
+}
+
+/**
+ * A static read of the pinned config: how many servers it declares, with no
+ * connection attempted. Connection status (connected / needs-auth / failed) is
+ * only known inside a running session — the package publishes it as an event
+ * on its own ExtensionAPI instance, not anywhere a route handler can reach —
+ * so this answers a narrower, cheaper question: is the gateway pointed at
+ * anything at all. A `mcp` tool registered with zero servers configured is
+ * the failure this exists to surface, the same class extension-health already
+ * covers for a tool that failed to register at all.
+ */
+export async function getMcpConfigSummary(): Promise<McpConfigSummary> {
+  const { path: configPath } = isolateMcpConfigMode();
+
+  try {
+    const mod = (await import(
+      /* turbopackIgnore: true */ MCP_CONFIG_MODULE_PATH
+    )) as LoadedMcpConfigModule;
+    const config = mod.loadMcpConfig(undefined, process.cwd());
+    const servers = Object.keys(config.mcpServers);
+    const enabledServers = servers.filter(
+      (name) => config.mcpServers[name]?.disabled !== true,
+    );
+    return { configPath, enabledServers, error: null, servers };
+  } catch (error) {
+    return {
+      configPath,
+      enabledServers: [],
+      error: error instanceof Error ? error.message : String(error),
+      servers: [],
+    };
+  }
 }

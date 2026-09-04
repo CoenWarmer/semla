@@ -17,8 +17,8 @@ afterEach(() => {
 });
 
 describe("extension health", () => {
-  it("reports the manifest in load order with the entry files installed", () => {
-    const health = getExtensionHealth();
+  it("reports the manifest in load order with the entry files installed", async () => {
+    const health = await getExtensionHealth();
 
     expect(health.contractVersion).toBe(EXTENSION_CONTRACT_VERSION);
     expect(health.manifest).toHaveLength(EXTENSION_MANIFEST.length);
@@ -31,13 +31,13 @@ describe("extension health", () => {
     );
   });
 
-  it("is ok before any session has run, and says so", () => {
-    const health = getExtensionHealth();
+  it("is ok before any session has run, and says so", async () => {
+    const health = await getExtensionHealth();
     expect(health.lastLoad).toBeNull();
     expect(health.ok).toBe(true);
   });
 
-  it("surfaces a failed load from the last session", () => {
+  it("surfaces a failed load from the last session", async () => {
     // No slots are armed here, so the workflow extension counts as loaded but
     // silent — the shape of a real degradation.
     recordExtensionLoad(
@@ -48,7 +48,7 @@ describe("extension health", () => {
       }),
     );
 
-    const health = getExtensionHealth();
+    const health = await getExtensionHealth();
 
     expect(health.ok).toBe(false);
     expect(health.lastLoad?.ok).toBe(false);
@@ -58,7 +58,7 @@ describe("extension health", () => {
     );
   });
 
-  it("reports a healthy load", () => {
+  it("reports a healthy load", async () => {
     const tools = EXTENSION_MANIFEST.flatMap((s) => [...s.providesTools]);
     for (const spec of EXTENSION_MANIFEST) {
       for (const slot of spec.providesSlots) {
@@ -74,8 +74,17 @@ describe("extension health", () => {
       }),
     );
 
-    const health = getExtensionHealth();
+    const health = await getExtensionHealth();
     expect(health.ok).toBe(true);
     expect(health.lastLoad?.problems).toEqual([]);
+  });
+
+  it("reports the mcp config summary when the mcp extension is in the manifest", async () => {
+    const health = await getExtensionHealth();
+
+    const hasMcp = EXTENSION_MANIFEST.some((spec) => spec.id === "mcp");
+    expect(hasMcp).toBe(true);
+    expect(health.mcp).not.toBeNull();
+    expect(Array.isArray(health.mcp?.servers)).toBe(true);
   });
 });

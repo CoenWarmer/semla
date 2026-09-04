@@ -13,8 +13,8 @@ import { getExtensionHealth } from "@/lib/pi/extension-health";
  * symptom the user saw was "the agent has no wiki tools". This shows the
  * declared extension set alongside how it actually loaded in the last session.
  */
-export function ExtensionHealthCard() {
-  const health = getExtensionHealth();
+export async function ExtensionHealthCard() {
+  const health = await getExtensionHealth();
   // Keyed by string: ExtensionHealth widens the manifest id for serialisation.
   const statusById = new Map(
     (health.lastLoad?.extensions ?? []).map(
@@ -124,6 +124,49 @@ export function ExtensionHealthCard() {
                 {error}
               </p>
             ))}
+          </div>
+        ) : null}
+
+        {health.mcp ? (
+          <div className="space-y-1 rounded-md border p-3">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-sm font-medium">MCP servers</p>
+              <Badge
+                variant={
+                  health.mcp.error
+                    ? "destructive"
+                    : health.mcp.enabledServers.length > 0
+                      ? "secondary"
+                      : "outline"
+                }
+              >
+                {health.mcp.error
+                  ? "Unreadable"
+                  : health.mcp.enabledServers.length > 0
+                    ? `${health.mcp.enabledServers.length} configured`
+                    : "None configured"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Read from{" "}
+              <code className="break-all">{health.mcp.configPath}</code>
+              {health.mcp.error
+                ? " \u2014 does not parse."
+                : health.mcp.enabledServers.length === 0
+                  ? " \u2014 the gateway tool is registered but has nothing to reach."
+                  : "."}
+            </p>
+            {health.mcp.error ? (
+              <p className="text-xs text-destructive">{health.mcp.error}</p>
+            ) : null}
+            {health.mcp.enabledServers.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {health.mcp.enabledServers.join(", ")}
+                {health.mcp.servers.length > health.mcp.enabledServers.length
+                  ? ` (+${health.mcp.servers.length - health.mcp.enabledServers.length} disabled)`
+                  : ""}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </CardContent>
