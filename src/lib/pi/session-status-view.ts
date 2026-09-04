@@ -8,7 +8,12 @@
  * is present on one endpoint and quietly missing on the other.
  */
 
-import { hasTranscript, type SessionMeta } from "@/lib/pi/session-meta";
+import { otherActiveSessionCount } from "@/lib/pi/session-concurrency";
+import {
+  hasTranscript,
+  listSessionMeta,
+  type SessionMeta,
+} from "@/lib/pi/session-meta";
 import { orderLinks, type ProjectLink } from "@/lib/pi/session-project-links";
 import { isSessionActive } from "@/lib/pi/session-service";
 
@@ -33,12 +38,31 @@ export const sessionIsRunning = (meta: SessionMeta): boolean =>
  * `absolutePath` is not sent either. It was `PI_WORKSPACE_ROOT + "/" + path`
  * repeated on every project of every row; the root goes out once per response
  * instead and the one consumer that needs an absolute path joins it.
+ *
+ * `otherActiveSessions` is phase 1 of docs/plans/session-isolation.md: how
+ * many *other* sessions are currently running a turn against this same
+ * project. Nothing here blocks anything — it turns a silent, shared index
+ * into a fact the UI and the agent can both see.
  */
-export const sessionProjects = (links: readonly ProjectLink[]) =>
-  orderLinks(links).map((link) => ({ path: link.path }));
+export const sessionProjects = (
+  links: readonly ProjectLink[],
+  selfSessionId: string,
+  allSessions: readonly SessionMeta[] = listSessionMeta(),
+) =>
+  orderLinks(links).map((link) => ({
+    path: link.path,
+    otherActiveSessions: otherActiveSessionCount(
+      link.path,
+      selfSessionId,
+      allSessions,
+    ),
+  }));
 
 /** One session's row for the sidebar's list. */
-export const toSessionStatus = (meta: SessionMeta) => ({
+export const toSessionStatus = (
+  meta: SessionMeta,
+  allSessions: readonly SessionMeta[],
+) => ({
   id: meta.id,
   title: meta.title,
   createdAt: meta.createdAt,
@@ -46,5 +70,5 @@ export const toSessionStatus = (meta: SessionMeta) => ({
   // "Ran and finished" rather than "exists": a session that was created and
   // never used has nothing to report as complete.
   hasRun: hasTranscript(meta.id),
-  projects: sessionProjects(meta.projects),
+  projects: sessionProjects(meta.projects, meta.id, allSessions),
 });

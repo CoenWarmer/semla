@@ -26,6 +26,7 @@ import {
   writeTurnMark,
   type ProjectMark,
 } from "@/lib/pi/review-turn-mark";
+import { otherActiveSessionCount } from "@/lib/pi/session-concurrency";
 import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session-project";
 import type { ProjectLink } from "@/lib/pi/session-meta";
 import type { ProjectReview, SessionReview } from "@/lib/review-types";
@@ -79,6 +80,7 @@ export function resolveReviewFile(
 async function readProjectReview(
   link: ProjectLink,
   startSha: string | null,
+  sessionId: string,
 ): Promise<ProjectReview> {
   const root = projectAbsolutePath(link);
   const [{ files, omitted }, headSha] = await Promise.all([
@@ -91,6 +93,7 @@ async function readProjectReview(
     headSha,
     name: projectName(link.path),
     omitted,
+    otherActiveSessions: otherActiveSessionCount(link.path, sessionId),
     path: link.path,
     startSha,
     turnCommits: await readTurnCommits(root, startSha),
@@ -111,7 +114,11 @@ export async function readSessionReview(
 
   const projects = await Promise.all(
     links.map((link) =>
-      readProjectReview(link, mark?.projects[link.path]?.head ?? null),
+      readProjectReview(
+        link,
+        mark?.projects[link.path]?.head ?? null,
+        sessionId,
+      ),
     ),
   );
 

@@ -8,6 +8,7 @@ vi.mock("@/lib/user-settings-store", () => ({
 }));
 vi.mock("@/lib/pi/session-meta", () => ({
   readSessionMeta: readSessionMetaMock,
+  listSessionMeta: () => [],
 }));
 vi.mock("@/lib/pi/prompts", () => ({
   buildMemoryContextBlock: () => "MEMORY_BLOCK",

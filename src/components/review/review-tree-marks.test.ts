@@ -28,6 +28,7 @@ const project = (
   headSha: "abc",
   name: path.split("/").pop() ?? path,
   omitted: 0,
+  otherActiveSessions: 0,
   path,
   startSha: "abc",
   turnCommits: [],

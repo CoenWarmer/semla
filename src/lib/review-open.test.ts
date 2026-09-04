@@ -8,6 +8,7 @@ const project = (overrides: Partial<ProjectReview> = {}): ProjectReview => ({
   headSha: "abc",
   name: "semla",
   omitted: 0,
+  otherActiveSessions: 0,
   path: "semla",
   startSha: "abc",
   turnCommits: [],

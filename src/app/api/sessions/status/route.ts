@@ -31,9 +31,10 @@ export async function GET() {
   try {
     const { user } = await requireUser();
 
-    const sessions = listSessionMeta()
+    const allSessions = listSessionMeta();
+    const sessions = allSessions
       .filter((meta) => meta.userId === null || meta.userId === user.id)
-      .map(toSessionStatus);
+      .map((meta) => toSessionStatus(meta, allSessions));
 
     return Response.json({ sessions });
   } catch (error) {

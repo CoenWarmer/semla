@@ -24,6 +24,13 @@
 export type SessionProject = {
   /** Workspace-relative. The identity, and all that is sent. */
   path: string;
+  /**
+   * How many *other* sessions are currently running a turn against this same
+   * project. Phase 1 of docs/plans/session-isolation.md: nothing is blocked
+   * on this, it exists so a shared index and a shared working tree are a
+   * visible fact instead of a silent one.
+   */
+  otherActiveSessions: number;
 };
 
 export type SessionStatus = {

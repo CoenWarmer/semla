@@ -119,15 +119,29 @@ export function SessionItem({
             // every project the pointer crossed on its way down the list.
             <span className="flex flex-wrap items-center gap-1">
               {projects.slice(0, VISIBLE_PROJECTS).map((project) => (
-                <GitStatusBadge
-                  key={project.path}
-                  showBranchStatus={false}
-                  showProjectName
-                  target={{
-                    kind: "project",
-                    path: projectAbsolutePath(workspaceRoot, project.path),
-                  }}
-                />
+                <span className="flex items-center gap-0.5" key={project.path}>
+                  <GitStatusBadge
+                    showBranchStatus={false}
+                    showProjectName
+                    target={{
+                      kind: "project",
+                      path: projectAbsolutePath(workspaceRoot, project.path),
+                    }}
+                  />
+                  {project.otherActiveSessions > 0 && (
+                    // Phase 1 of docs/plans/session-isolation.md: this session
+                    // shares a working tree, index and HEAD with someone else
+                    // active in the same project right now.
+                    <span
+                      className="rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400"
+                      title={`${project.otherActiveSessions} other session${
+                        project.otherActiveSessions === 1 ? "" : "s"
+                      } active in ${project.path} right now`}
+                    >
+                      +{project.otherActiveSessions}
+                    </span>
+                  )}
+                </span>
               ))}
               {projects.length > VISIBLE_PROJECTS && (
                 <span

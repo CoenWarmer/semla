@@ -79,6 +79,14 @@ export interface ProjectReview {
    * diffs, and a list that silently stops is worse than one that says so.
    */
   omitted: number;
+  /**
+   * Other sessions currently running a turn against this same project.
+   * Phase 1 of docs/plans/session-isolation.md: this is why `changedFiles`
+   * can list a file this session never touched — the working tree, index and
+   * HEAD are shared, so another session's edit shows up here as if it were
+   * this turn's own.
+   */
+  otherActiveSessions: number;
 }
 
 /** The most changed files one project will report in a single read. */

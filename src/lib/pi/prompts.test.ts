@@ -51,3 +51,35 @@ describe("buildMemoryContextBlock", () => {
     expect(block).toContain("# Codebase wiki");
   });
 });
+
+describe("buildMemoryContextBlock — concurrency (phase 1 of session-isolation.md)", () => {
+  it("says nothing about other sessions when none are active", () => {
+    const block = buildMemoryContextBlock(["semla"], {});
+
+    expect(block).not.toContain("Other sessions working here");
+  });
+
+  it("says nothing when the map has an empty entry for the project", () => {
+    const block = buildMemoryContextBlock(["semla"], { semla: [] });
+
+    expect(block).not.toContain("Other sessions working here");
+  });
+
+  it("names the project and count when another session is active on it", () => {
+    const block = buildMemoryContextBlock(["semla"], { semla: ["other-1"] });
+
+    expect(block).toContain("Other sessions working here right now");
+    expect(block).toContain("`semla`: 1 other session active right now.");
+    expect(block).toContain("no isolation between concurrent sessions");
+  });
+
+  it("pluralises and reports only the projects that are actually contended", () => {
+    const block = buildMemoryContextBlock(["semla", "kibana"], {
+      semla: ["a", "b"],
+      kibana: [],
+    });
+
+    expect(block).toContain("`semla`: 2 other sessions active right now.");
+    expect(block).not.toContain("`kibana`:");
+  });
+});

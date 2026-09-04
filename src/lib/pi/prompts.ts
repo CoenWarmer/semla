@@ -12,6 +12,13 @@ import { WIKI_HOME } from "@/lib/pi/runtime-config";
 export const buildMemoryContextBlock = (
   /** Workspace-relative project paths, anchor first. Doubles as the repo slug. */
   projects: readonly string[],
+  /**
+   * Other sessions currently running a turn against one of `projects`, keyed
+   * by project path. Phase 1 of docs/plans/session-isolation.md: the agent is
+   * told this as a fact rather than left to discover it as an unexplained
+   * commit or a changed-files list it did not produce.
+   */
+  otherActiveSessions: Readonly<Record<string, readonly string[]>> = {},
 ): string => {
   const lines = [
     "# Codebase wiki",
@@ -117,6 +124,31 @@ export const buildMemoryContextBlock = (
     lines.push(
       "",
       "Before starting work: call `wiki_recall` with the project name to check for existing codebase knowledge. If no pages are returned, invoke the `orient` skill to initialise the wiki for this repo.",
+    );
+  }
+
+  const concurrent = projects
+    .map((path) => ({ others: otherActiveSessions[path] ?? [], path }))
+    .filter((entry) => entry.others.length > 0);
+
+  if (concurrent.length > 0) {
+    lines.push(
+      "",
+      "## Other sessions working here right now",
+      "",
+      "There is no isolation between concurrent sessions on the same project: " +
+        "they share one working directory, one git index, and one HEAD. " +
+        "`git add`/`git commit` in this turn can include another session's " +
+        "staged or unstaged changes with no warning, and `git stash`, " +
+        "`git checkout --` and `git reset --hard` affect all of them.",
+      ...concurrent.map(
+        (entry) =>
+          `- \`${entry.path}\`: ${entry.others.length} other session${
+            entry.others.length === 1 ? "" : "s"
+          } active right now.`,
+      ),
+      "Commit narrowly (by path or hunk), avoid the destructive commands above, " +
+        "and do not assume every changed file in this repository belongs to this turn.",
     );
   }
 

@@ -48,14 +48,29 @@ function SessionProjectBadges({ sessionId }: { sessionId: string }) {
   return (
     <>
       {projects.map((project) => (
-        <GitStatusBadge
-          key={project.path}
-          showProjectName
-          showBorder
-          // The session variant, not the workspace one: this is the indicator
-          // being looked at, and it is where a stale ref actually misleads.
-          target={{ kind: "session", path: project.path, sessionId }}
-        />
+        <span className="flex items-center gap-1" key={project.path}>
+          <GitStatusBadge
+            showProjectName
+            showBorder
+            // The session variant, not the workspace one: this is the indicator
+            // being looked at, and it is where a stale ref actually misleads.
+            target={{ kind: "session", path: project.path, sessionId }}
+          />
+          {project.otherActiveSessions > 0 && (
+            // Phase 1 of docs/plans/session-isolation.md: nothing here blocks
+            // anything, it just says the working tree, index and HEAD this
+            // session is about to touch are shared with someone else right
+            // now.
+            <span
+              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400"
+              title={`${project.otherActiveSessions} other session${
+                project.otherActiveSessions === 1 ? "" : "s"
+              } working in ${project.path} right now — commits, stashes and resets affect them too.`}
+            >
+              +{project.otherActiveSessions}
+            </span>
+          )}
+        </span>
       ))}
       <SessionProjectPicker
         linkedPaths={new Set(projects.map((project) => project.path))}

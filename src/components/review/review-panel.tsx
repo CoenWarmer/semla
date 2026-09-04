@@ -276,6 +276,21 @@ export function ReviewPanel({
           </span>
         ) : null}
 
+        {/* Phase 1 of docs/plans/session-isolation.md: the changed-files list
+            above is read straight off the shared working tree, so it can
+            include a file another session wrote. This is why, not a guess. */}
+        {activeProject && activeProject.otherActiveSessions > 0 && (
+          <span
+            className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400"
+            title={`${activeProject.otherActiveSessions} other session${
+              activeProject.otherActiveSessions === 1 ? "" : "s"
+            } are active in ${activeProject.name} right now — changed files here may include their edits, and a commit here may include their staged changes.`}
+          >
+            shared with {activeProject.otherActiveSessions} other session
+            {activeProject.otherActiveSessions === 1 ? "" : "s"}
+          </span>
+        )}
+
         <div className="ml-auto flex items-center gap-2">
           {selection ? (
             <span className="max-w-md truncate font-mono text-xs text-muted-foreground">

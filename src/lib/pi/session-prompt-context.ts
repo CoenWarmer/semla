@@ -1,4 +1,5 @@
 import { buildMemoryContextBlock } from "@/lib/pi/prompts";
+import { otherActiveSessionsByProject } from "@/lib/pi/session-concurrency";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
 import { sessionProjects } from "@/lib/pi/session-project";
 import { readUserSettings } from "@/lib/user-settings-store";
@@ -57,9 +58,11 @@ export async function resolveSessionPromptContext(
     localSettings?.defaultModelProvider ?? settingsData?.default_model_provider;
   const modelId = localSettings?.defaultModelId ?? settingsData?.default_model_id;
 
+  const otherActiveSessions = otherActiveSessionsByProject(projects, sessionId);
+
   return {
     projects,
-    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projects)}`,
+    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projects, otherActiveSessions)}`,
     defaultModel: provider && modelId ? { provider, modelId } : null,
   };
 }

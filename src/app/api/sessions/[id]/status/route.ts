@@ -48,7 +48,7 @@ export async function GET(
     return Response.json({
       exists: true,
       isRunning: sessionIsRunning(meta),
-      projects: sessionProjects(meta.projects),
+      projects: sessionProjects(meta.projects, meta.id),
     });
   } catch (error) {
     return handleRouteError(error, `[sessions/${id}/status]`);
