@@ -43,9 +43,26 @@ does today: `runPiPrompt` moves it just before a turn so an edited prompt lands
 in the right place. It is not fine for branch *navigation*, where the whole
 point is that the choice outlives the click.
 
-**Decision: Semla owns the leaf and stores it in `SessionMeta`.** That file
-already holds the title, goal, projects, model and usage, on disk, authoritative
-— a `leafId: string | null` belongs beside them.
+**Decision: the leaf lives in three places, each answering a different
+question.** An earlier draft of this plan put it solely in `SessionMeta`, which
+conflates viewing a branch with committing to it.
+
+| Where | Answers | Why there |
+|---|---|---|
+| **The URL** — `?leaf=<entryId>` | *Which branch am I looking at?* | Shareable, and the browser's back and forward buttons become branch navigation for free — which is what switching branches actually is |
+| **The prompt request** | *Which branch does this turn continue from?* | The client sends the leaf with the prompt and the server applies `branch()` before appending. No ambient state decides where a turn lands |
+| **`SessionMeta`** | *Which branch by default?* | Only a fallback, for the cases with no browser: a background continuation, a resumed session, a fresh tab with no parameter |
+
+The property that makes the URL the right home is that **looking is not
+writing**. With the leaf held only on the server, clicking through branches to
+read them mutates the session and changes where the next turn would land — even
+though the operator was only looking. In the URL, browsing costs nothing, two
+tabs can sit on two different branches, and a link to a branch is a link
+someone else can open.
+
+`SessionMeta` still has to hold something, because a turn can start without a
+browser attached. It records the leaf a turn last actually ran from, not every
+branch that was glanced at.
 
 ### The contract this must not break
 
@@ -57,13 +74,18 @@ objection any reader will raise:
 > exactly the same way.
 
 That warning is about the UI *unilaterally* choosing a different leaf from the
-one the model continues from. Storing a leaf does not do that, provided it is
-applied to **both** sides: the transcript walk reads it, and `runPiPrompt`
-applies it through `branch()` before appending anything. The rule becomes "the
-leaf is the one Semla recorded, defaulting to the last entry when it has
-recorded none" — a strengthening of the contract rather than a departure from
-it. `session-path.test.ts` pins the current rule and would need to pin the new
-one.
+one the model continues from. Naming the leaf explicitly does not do that — it
+does the opposite, provided the same value reaches **both** sides: the
+transcript walk resolves it, and `runPiPrompt` applies it through `branch()`
+before appending anything. Carrying it on the request is what makes that hard to
+get wrong: the view the operator was looking at and the branch the turn
+continues is one value travelling together, rather than two pieces of state that
+have to be kept in agreement.
+
+The rule becomes "the leaf is the one the request names, falling back to the
+recorded default and then to the last entry" — a strengthening of the contract
+rather than a departure from it. `session-path.test.ts` pins the current rule
+and would need to pin the new one.
 
 ---
 
@@ -103,6 +125,15 @@ arrive a tick after the tree, which `code-map-panel.tsx` already handles.
 **Clicking a node switches the leaf** to that branch's tip and the conversation
 re-renders. That is the same write as forking, aimed at a different entry.
 
+**Read the parameter on the client, not in the page.** `sessions/[id]/page.tsx`
+is a server component that runs a Supabase query and `buildSessionMessages`
+before it renders; it already takes `searchParams` for `?new=`. Reading `?leaf=`
+there would re-run that whole payload on every branch click. It belongs in
+`useSearchParams` inside the client component, as part of the message query's
+key, so switching a branch is one API call rather than a full server render.
+Navigate with `push` rather than `replace`, or back and forward — half the value
+of putting it in the URL — will not work.
+
 The panel belongs in the bottom bar, through the slot mechanism
 `bottom-panel.tsx` documents: the bar owns which panel is open, the session
 portals its content in, one at a time. The graph's data belongs to the session
@@ -112,10 +143,13 @@ subscription, which is exactly the split that mechanism exists for.
 
 ## 5. Phases
 
-**1 — A durable leaf, no UI.** `leafId` on `SessionMeta`; the transcript walk
-reads it; `runPiPrompt` applies it before appending. This is the whole
-correctness surface, and it is independently useful: it is also what
-`superseded-turns.md` phase 5 needs to offer recovery of an orphaned branch.
+**1 — The leaf becomes an explicit parameter, no UI.** The transcript read
+accepts a leaf; the prompt request carries one and `runPiPrompt` applies it
+through `branch()` before appending; `SessionMeta` records the one a turn last
+ran from, as the fallback. This is the whole correctness surface, and it is
+independently useful: it is also what `superseded-turns.md` phase 5 needs to
+offer recovery of an orphaned branch. `?leaf=` can land with it or with phase 3
+— nothing else depends on the order.
 
 **2 — The fork button**, beside copy and edit. Fork sets the leaf to that
 message. The conversation truncates; an affordance says so.
@@ -137,6 +171,8 @@ data is already stamped per session but not per path.
 |---|---|
 | Stored leaf and pi's in-memory leaf drift apart | One chokepoint: `runPiPrompt` already moves the leaf before a turn, so it applies there and nowhere else |
 | A stored leaf naming an entry that no longer exists — pi has `_rewriteFile`, and compaction rewrites history | Fall back to the last entry and say so, never fail the read |
+| A shared `?leaf=` link goes stale as that branch grows past the entry it names | Treat the parameter as naming a *branch*, not a position: resolve it to the current tip of the branch that entry is on. Pinning an exact entry would make every shared link rot |
+| `?leaf=` pointing at an entry in a different session | The walk already refuses an unknown id — `EntryNotFoundError` exists for this; fall back to the default and say so |
 | Two turns racing to move the leaf | The failure `superseded-turns.md` describes; that plan lands first or this one inherits it |
 | A thousand-entry session renders an unreadable graph | Turn-level nodes; collapse long linear runs to a single edge with a count |
 | Compaction and branch-summary entries are structural, not conversational | `buildContextEntries` already handles them on pi's side; the graph must not draw them as turns |
