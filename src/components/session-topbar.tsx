@@ -18,6 +18,7 @@ import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
 import { SessionAgentsPanel } from "./session-agents-panel";
+import { SessionBranchesPanel } from "./session-branches-panel";
 import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
@@ -40,6 +41,8 @@ interface SessionTopbarProps {
   /** Size of this session's system prompt, from the transcript response. */
   systemPromptChars?: number;
   onAgentClick: (agentId: number, runId: string) => void;
+  /** Scroll the conversation to this turn's opening message. */
+  onBranchNodeClick?: (turnId: string) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
   /** Recorded spans, passed through to the timeline. */
@@ -48,7 +51,7 @@ interface SessionTopbarProps {
   workflowRuns?: WorkflowRun[];
 }
 
-/** The panels the title bar still owns. "agents" moved to the bottom bar. */
+/** The panels the title bar still owns. "agents" and "branches" moved to the bottom bar. */
 type PanelMode = "codemap" | "inspector" | null;
 
 function ContextQualityDot({ sessionId }: { sessionId: string }) {
@@ -80,6 +83,7 @@ export function SessionTopbar({
   onGoalSave,
   messages,
   onAgentClick,
+  onBranchNodeClick,
   sessionRunning,
   snapshot,
   spans,
@@ -200,6 +204,7 @@ export function SessionTopbar({
         toolCalls={toolCalls}
         workflowRuns={workflowRuns}
       />
+      <SessionBranchesPanel onNodeClick={onBranchNodeClick} sessionId={sessionId} />
 
       {panelMode === "codemap" && (
         <div

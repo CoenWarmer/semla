@@ -345,6 +345,28 @@ export function ClientSessionComponent({
     setSelectedAgent({ agentId, runId });
   }, []);
 
+  /**
+   * Scroll to the turn a branch-graph node was clicked for.
+   *
+   * The graph's node id is the id of the user message that opens the turn
+   * (session-turn-graph.ts), which is also the DOM id every message row
+   * renders under — message-edit.tsx's `<Message id={message.id}>` for a
+   * user row, and the same for an assistant one below. So no lookup table is
+   * needed, only the id itself.
+   *
+   * Silently does nothing when the turn is not currently rendered: the graph
+   * draws every branch the file has ever held, but this page only mounts the
+   * live path's messages (or a fork's truncated view of it) — clicking a node
+   * on an abandoned branch has nothing to scroll to yet. Switching to that
+   * branch so it does render is docs/plans/branching-sessions.md phase 4, not
+   * this.
+   */
+  const handleBranchNodeClick = useCallback((turnId: string) => {
+    document
+      .getElementById(turnId)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   // Why this is the test, and why it does not flash on a legitimate ?new=1
   // page, is in `isSessionMissing`.
   const sessionMissing = isSessionMissing({
@@ -545,6 +567,7 @@ export function ClientSessionComponent({
         onGoalSave={handleGoalSave}
         messages={messages}
         onAgentClick={handleAgentClick}
+        onBranchNodeClick={handleBranchNodeClick}
         sessionRunning={isActive}
         snapshot={
           // Prefer the persisted snapshot (from DB/live polling) over the SSE

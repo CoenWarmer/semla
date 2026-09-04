@@ -131,7 +131,16 @@ const getToolCalls = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const getMessageText = (message: PiMessage): string => {
+/**
+ * The text of a message, joined across its text content parts.
+ *
+ * Exported for session-turn-graph.ts, which needs a turn's prompt text for
+ * its node label and has no reason to duplicate this walk — a graph node's
+ * label and the transcript's own rendering of the same message must read the
+ * same content parts the same way, or a label could show something the
+ * bubble underneath it does not.
+ */
+export const getMessageText = (message: PiMessage): string => {
   if (typeof message.content === "string") {
     return message.content;
   }

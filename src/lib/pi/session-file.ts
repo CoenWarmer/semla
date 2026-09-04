@@ -40,7 +40,7 @@ export interface TranscriptRow {
   superseded?: Array<{ message?: unknown; timestamp?: string }>;
 }
 
-interface SessionFileEntry {
+export interface SessionFileEntry {
   id?: string;
   message?: unknown;
   parentId?: string | null;
@@ -65,13 +65,24 @@ export function sessionFilePath(semlaSessionId: string, dir = PI_SESSION_DIR): s
  * wherever a non-message entry — a branch summary, say — sits between two
  * messages, and the walk would stop early at a gap of its own making.
  */
-export function readSessionEntries(
+/**
+ * Every entry in the file, tree structure intact — abandoned branches
+ * included, unlike `readSessionEntries` which walks down to the live
+ * conversation. For anything that needs to see the *shape* of the tree rather
+ * than the one path through it: session-turn-graph.ts is the only caller so
+ * far.
+ *
+ * Null for exactly the cases `readSessionEntries` treats as null: no file, or
+ * an empty one. An empty array means a real file holding only its header.
+ */
+export function readAllSessionEntries(
   semlaSessionId: string,
   dir = PI_SESSION_DIR,
-  leafId?: string | null,
-): TranscriptRow[] | null {
-  const path = sessionFilePath(semlaSessionId, dir);
+): SessionFileEntry[] | null {
+  return parseSessionFile(sessionFilePath(semlaSessionId, dir));
+}
 
+function parseSessionFile(path: string): SessionFileEntry[] | null {
   try {
     if (statSync(path).size === 0) return null;
   } catch {
@@ -95,6 +106,17 @@ export function readSessionEntries(
 
     entries.push(entry);
   }
+
+  return entries;
+}
+
+export function readSessionEntries(
+  semlaSessionId: string,
+  dir = PI_SESSION_DIR,
+  leafId?: string | null,
+): TranscriptRow[] | null {
+  const entries = parseSessionFile(sessionFilePath(semlaSessionId, dir));
+  if (!entries) return null;
 
   const resolvedLeaf = resolveLeafOverride(entries, leafId);
   const superseded = supersededSiblings(entries, resolvedLeaf);
