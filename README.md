@@ -100,6 +100,7 @@ PI_ALLOW_HOST_DEV=true
 | `SEMLA_LOCAL_USER_ID` | No | User id sessions are attributed to in local mode. Inferred from existing session records when they agree on one owner. |
 | `SEMLA_GIT_FETCH_INTERVAL_MS` | No | How often Semla may `git fetch` a project to keep the prompt bar's ahead/behind counts honest. Defaults to `60000`. The fetch is throttled per repository, never blocks a request, and refuses every credential prompt so it cannot hang. Set to `0` to disable it and compare against whatever was last fetched by hand. |
 | `PI_CODING_AGENT_DIR` | No | Where pi keeps credentials and the model catalog. Defaults to `~/.semla/agent`, isolated from the `~/.pi/agent` the `pi` CLI uses. Seeded once from the host on first run so the model picker is not empty; after that the two are independent. |
+| `PI_MCP_CONFIG_MODE` | No | Set to `exclusive` at boot so the agent's MCP config comes from exactly one file inside `PI_CODING_AGENT_DIR`, not merged with host-global or other tools' configs. Set it yourself before starting Semla to opt back into the shared, cross-tool config file. See [MCP servers](#mcp-servers). |
 
 ### Run the development server
 
@@ -165,6 +166,47 @@ if the fetch fails the catalog already on disk is used — and skipped entirely
 when `PI_OFFLINE` is set.
 
 The agent loop lives in `session-service.ts`. Each prompt streams events (assistant deltas, tool calls, workflow snapshots) over SSE to the client. Workflow progress is also polled from Supabase so background runs stay up to date after a page reload.
+
+### MCP servers
+
+Semla can reach [MCP](https://modelcontextprotocol.io) servers — filesystem,
+browser, issue trackers, whatever you configure — through one `mcp` gateway
+tool (`pi-mcp-adapter`) that discovers and calls servers on demand, rather than
+registering every server's tools at session start. It is always active, not a
+toggleable tool; it shows up in the prompt bar's tool picker under
+"Extensions (always active)".
+
+**Configuration lives in exactly one file:** `~/.semla/agent/mcp.json`, inside
+Semla's own agent directory — never a file written for another tool. By
+default the underlying package merges up to six config sources by precedence,
+two of which are host-global (`~/.config/mcp/mcp.json`,
+`~/.agents/mcp.json`) and would silently hand the agent whatever another tool's
+config grants it. Semla sets `PI_MCP_CONFIG_MODE=exclusive` at boot, which
+collapses that to the one file above and switches off auto-discovery of
+Cursor/Claude/etc. configs too.
+
+An MCP server entry can be a `command` and its `args` — arbitrary process
+execution — or a `url` — network access to whatever that endpoint does. Write
+that file deliberately. Example:
+
+```json
+{
+  "mcpServers": {
+    "deepwiki": { "url": "https://mcp.deepwiki.com/mcp", "protocolVersion": "auto" }
+  }
+}
+```
+
+If you want the shared, cross-tool config file back instead, set
+`PI_MCP_CONFIG_MODE` yourself (to anything other than `exclusive`) before
+starting Semla — an operator's own setting is never overridden.
+
+The settings page's extension health card shows how many servers the pinned
+file declares (and whether it fails to parse at all); actual connection status
+(connected / needs auth / failed) is only known inside a running session, since
+the package publishes it as an in-session event rather than anywhere a route
+handler can read without one. See `docs/plans/mcp-servers.md` for the full design
+and the spike it rests on.
 
 ---
 
