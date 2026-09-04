@@ -15,7 +15,8 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useDismissReview, useReview } from "@/hooks/use-review";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import { LIVE_MESSAGE_ID, mergeToolCalls } from "@/lib/live-tool-calls";
+import { isLiveRoundMessageId, mergeToolCalls } from "@/lib/live-tool-calls";
+import { liveRoundMessages } from "@/lib/live-rounds";
 import { shouldOpenReview } from "@/lib/review-open";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
@@ -32,7 +33,7 @@ import { CopyMessageButton } from "./message-copy";
 import { EditableUserMessage } from "./message-edit";
 import { SessionStepsStrip } from "./session-steps-strip";
 import { GoalEditor } from "./goal-editor";
-import { groupConversation, splitLiveSteps } from "@/lib/session-steps";
+import { groupConversation } from "@/lib/session-steps";
 import dynamic from "next/dynamic";
 
 const WikiMiniGraph = dynamic(
@@ -74,6 +75,7 @@ export function ClientSessionComponent({
     activeTool,
     codeMap,
     isReconnecting,
+    liveRounds,
     liveToolCalls,
     mutation: promptMutation,
     pendingQuestion,
@@ -81,7 +83,6 @@ export function ClientSessionComponent({
     serverTitle,
     sessionExists,
     streamError,
-    streamingText,
     wikiActive,
     spans,
     workflowSnapshot,
@@ -152,44 +153,24 @@ export function ClientSessionComponent({
     () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
     [persistedToolCalls, liveToolCalls],
   );
-  // A live tool call's messageId points at this placeholder rather than a
-  // real assistant message, because the turn that made it has not been
-  // persisted yet. Without a message here for groupConversation to attach to,
-  // every call arriving mid-turn was silently dropped from the steps strip
-  // until the turn ended and a real, id-bearing message replaced it. It
-  // carries no text, so isSilent still folds it into a steps group, and it
-  // disappears on its own once the persisted refetch lands: mergeToolCalls
-  // then drops the now-duplicate live rows, leaving this placeholder with no
-  // steps to show and groupConversation drops empty ones.
-  const messagesWithLiveTurn = useMemo(() => {
-    const hasLiveSteps = toolCalls.some(
-      (call) => call.messageId === LIVE_MESSAGE_ID,
-    );
-    if (!hasLiveSteps) return messages;
-
-    return [
-      ...messages,
-      {
-        createdAt: new Date().toISOString(),
-        id: LIVE_MESSAGE_ID,
-        role: "assistant" as const,
-        text: "",
-      },
-    ];
-  }, [messages, toolCalls]);
+  // One pseudo-message per assistant round trip this turn has made so far,
+  // appended after the persisted ones. A live tool call's messageId points at
+  // one of these — see live-rounds.ts — so groupConversation interleaves live
+  // text and live tool calls in the order the round trips actually happened,
+  // the same way it already interleaves the persisted rows they become once
+  // the turn ends. No separate live renderer and no placement hack: this and
+  // `messages` are simply concatenated and handed to the one function that
+  // already gets this right.
+  const liveMessages = useMemo(() => liveRoundMessages(liveRounds), [liveRounds]);
+  const messagesWithLiveRounds = useMemo(
+    () => [...messages, ...liveMessages],
+    [messages, liveMessages],
+  );
   // Turns that only called tools carry no text and used to render as empty
   // bubbles. Folded into strips of steps instead — see session-steps.ts.
   const conversation = useMemo(
-    () => groupConversation(messagesWithLiveTurn, toolCalls),
-    [messagesWithLiveTurn, toolCalls],
-  );
-  // Split off the live-turn's own steps so they can be drawn after
-  // `streamingText` instead of before it — without this, the strip for tools
-  // the current turn is still running rendered above the answer streaming in
-  // alongside them, rather than beneath it. See splitLiveSteps.
-  const { historyItems, liveSteps } = useMemo(
-    () => splitLiveSteps(conversation, LIVE_MESSAGE_ID),
-    [conversation],
+    () => groupConversation(messagesWithLiveRounds, toolCalls),
+    [messagesWithLiveRounds, toolCalls],
   );
 
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
@@ -278,10 +259,15 @@ export function ClientSessionComponent({
 
   const elapsedLabel =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : null;
-  // Rough estimate: ~4 chars per token for output only. No cost yet — the real
-  // usage (and its price) only arrives with the finished message.
+  // Rough estimate: ~4 chars per token for output only, across every round
+  // trip this turn has made so far. No cost yet — the real usage (and its
+  // price) only arrives with the finished message.
+  const liveTextLength = useMemo(
+    () => liveRounds.reduce((sum, round) => sum + round.text.length, 0),
+    [liveRounds],
+  );
   const estimatedTokens =
-    streamingText.length > 0 ? Math.round(streamingText.length / 4) : null;
+    liveTextLength > 0 ? Math.round(liveTextLength / 4) : null;
 
   const [reviewManuallyOpened, setReviewManuallyOpened] = useState(false);
   // The badge is worth a request even with the panel shut: it is how the
@@ -552,58 +538,52 @@ export function ClientSessionComponent({
                 title="Start a conversation"
               />
             ) : (
-              historyItems.map((item) =>
+              conversation.map((item) =>
                 item.kind === "steps" ? (
                   <SessionStepsStrip items={item.items} key={item.id} />
+                ) : item.message.role === "user" ? (
+                  // Renders its own Message and bubble, so the edit button
+                  // can sit beside the bubble rather than inside it.
+                  <EditableUserMessage
+                    disabled={isActive}
+                    key={item.message.id}
+                    message={item.message}
+                    onSubmit={handleEditPrompt}
+                  />
                 ) : (
-                  item.message.role === "user" ? (
-                    // Renders its own Message and bubble, so the edit button
-                    // can sit beside the bubble rather than inside it.
-                    <EditableUserMessage
-                      disabled={isActive}
-                      key={item.message.id}
-                      message={item.message}
-                      onSubmit={handleEditPrompt}
-                    />
-                  ) : (
-                    <Message
-                      from={item.message.role}
-                      id={item.message.id}
-                      key={item.message.id}
-                    >
-                      {/*
+                  <Message
+                    from={item.message.role}
+                    id={item.message.id}
+                    key={item.message.id}
+                  >
+                    {/*
                         An assistant reply is left-aligned, so its gutter is on
                         the right — the mirror of the user row in
                         message-edit.tsx, which puts its buttons on the left.
                       */}
-                      <div className="group/message flex items-start gap-2">
-                        <MessageContent>
-                          <MessageResponse>{item.message.text}</MessageResponse>
-                        </MessageContent>
-                        <CopyMessageButton
-                          className="mt-1"
-                          text={item.message.text}
-                        />
-                      </div>
-                    </Message>
-                  )
+                    <div className="group/message flex items-start gap-2">
+                      <MessageContent>
+                        {/*
+                          A live round's pseudo-message is still streaming, so
+                          it animates the same way the old single streamingText
+                          bubble did. isLiveRoundMessageId tells it apart from a
+                          persisted message with the same shape — a real id is a
+                          UUID and never matches this prefix.
+                        */}
+                        <MessageResponse
+                          isAnimating={isLiveRoundMessageId(item.message.id)}
+                        >
+                          {item.message.text}
+                        </MessageResponse>
+                      </MessageContent>
+                      <CopyMessageButton
+                        className="mt-1"
+                        text={item.message.text}
+                      />
+                    </div>
+                  </Message>
                 ),
               )
-            )}
-            {streamingText && (
-              <Message from="assistant">
-                <MessageContent>
-                  <MessageResponse isAnimating>{streamingText}</MessageResponse>
-                </MessageContent>
-              </Message>
-            )}
-            {/*
-              The steps for tools the current turn is still running, drawn
-              after the streaming answer rather than before it — see
-              historyItems/liveSteps above.
-            */}
-            {liveSteps && (
-              <SessionStepsStrip items={liveSteps.items} key={liveSteps.id} />
             )}
             {/*
               `active` is the same value the prompt bar gets as `isRunning`
@@ -615,7 +595,7 @@ export function ClientSessionComponent({
               activeTool={activeTool}
               elapsedLabel={elapsedLabel}
               estimatedTokens={estimatedTokens}
-              streaming={streamingText.length > 0}
+              streaming={liveTextLength > 0}
             />
             {errorMessage && (
               <p className="text-destructive text-sm">{errorMessage}</p>

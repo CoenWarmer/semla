@@ -110,6 +110,16 @@ export const createTurnEventRouter = ({
   // attach the project it aimed at.
   const pendingWrittenPaths = new Map<string, string>();
 
+  // Which assistant round trip is currently streaming. A turn is not one
+  // model reply — `message_start`/`message_end` bracket each round trip the
+  // model makes (text, then a tool call, then more text, ...), and each
+  // becomes its own persisted message once the turn ends. Deltas and tool
+  // events between one `message_start` and the next all belong to the same
+  // round, so they are stamped with this id — see `round-start` in
+  // session-events.ts for why the client needs the boundary at all.
+  let currentRoundId: string | null = null;
+  let roundSeq = 0;
+
   const announceBackgroundRun = (runId: string) => {
     detach(
       semlaSessionId,
@@ -152,6 +162,13 @@ export const createTurnEventRouter = ({
 
   const onToolStart = (
     event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>,
+    // The round trip this call belongs to, per the message_start seen just
+    // before it. Never actually null in practice — a tool call cannot fire
+    // before the assistant message that requested it has started — but the
+    // fallback keeps a tool call from a future event ordering the current
+    // agent-core version does not produce from being silently dropped by
+    // groupConversation for want of a messageId.
+    roundId: string | null,
   ) => {
     sessionLog(semlaSessionId, "tool start", { tool: event.toolName });
     debug.onToolStart(event.toolName);
@@ -164,6 +181,7 @@ export const createTurnEventRouter = ({
     const params = getParams(event.args);
     emit({
       at: new Date().toISOString(),
+      roundId: roundId ?? "live-round-0",
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       type: "tool-start",
@@ -178,6 +196,7 @@ export const createTurnEventRouter = ({
 
   const onToolEnd = (
     event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>,
+    roundId: string | null,
   ) => {
     sessionLog(semlaSessionId, "tool end", { tool: event.toolName });
     debug.onToolEnd(event.toolName, event.result);
@@ -193,6 +212,7 @@ export const createTurnEventRouter = ({
       ...(isError ? { errorText: resultText.slice(0, 1000) } : {}),
       isError,
       ...(resultText ? { resultText: resultText.slice(0, 4000) } : {}),
+      roundId: roundId ?? "live-round-0",
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       type: "tool-end",
@@ -265,8 +285,19 @@ export const createTurnEventRouter = ({
     // `pi.ai.request` — a span pi declares but never emits. Only the
     // assistant's own messages: a tool result is appended as a message too,
     // and it is not a round trip.
+    //
+    // It is also the client's only signal for where one round trip ends and
+    // the next begins: without `roundId`, every round trip's text deltas
+    // concatenated into one blob and every tool call carried one placeholder
+    // id, so a turn that said something, called a tool, then said more,
+    // rendered live as one flattened answer with every tool chip stuck at the
+    // end — correct once persisted rows replaced it, but visibly wrong while
+    // still streaming. See `round-start` in session-events.ts.
     if (event.type === "message_start" && event.message.role === "assistant") {
       host.stepStarted();
+      roundSeq += 1;
+      currentRoundId = `live-round-${roundSeq}`;
+      emit({ roundId: currentRoundId, type: "round-start" });
     }
 
     if (event.type === "message_end" && event.message.role === "assistant") {
@@ -283,18 +314,18 @@ export const createTurnEventRouter = ({
     if (event.type === "message_update") {
       const update = event.assistantMessageEvent;
 
-      if (update.type === "text_delta") {
+      if (update.type === "text_delta" && currentRoundId) {
         debug.onAssistantDelta(update.delta);
-        emit({ delta: update.delta, type: "assistant-delta" });
+        emit({ delta: update.delta, roundId: currentRoundId, type: "assistant-delta" });
       }
     }
 
     if (event.type === "tool_execution_start") {
-      onToolStart(event);
+      onToolStart(event, currentRoundId);
     }
 
     if (event.type === "tool_execution_end") {
-      onToolEnd(event);
+      onToolEnd(event, currentRoundId);
     }
 
     if (event.type === "tool_execution_update" && event.toolName === "workflow") {

@@ -79,6 +79,10 @@ const setup = (state: TurnBackgroundState = createTurnBackgroundState()) => {
 /** The fields the router reads; the SDK's event carries far more. */
 const event = (value: Record<string, unknown>) => value as AgentSessionEvent;
 
+/** The message_start that opens an assistant round trip — real event ordering always has one before any message_update or tool_execution_start/end for that round. */
+const assistantMessageStart = () =>
+  event({ message: { role: "assistant" }, type: "message_start" });
+
 const toolStart = (overrides: Record<string, unknown> = {}) =>
   event({
     args: {},
@@ -103,9 +107,10 @@ beforeEach(() => {
 });
 
 describe("assistant output", () => {
-  it("forwards text deltas to the client", () => {
+  it("forwards text deltas to the client, tagged with the round they belong to", () => {
     const { emitted, router } = setup();
 
+    router.onSessionEvent(assistantMessageStart());
     router.onSessionEvent(
       event({
         assistantMessageEvent: { delta: "hello", type: "text_delta" },
@@ -113,18 +118,50 @@ describe("assistant output", () => {
       }),
     );
 
-    expect(emitted).toEqual([{ delta: "hello", type: "assistant-delta" }]);
+    expect(emitted).toEqual([
+      { roundId: "live-round-1", type: "round-start" },
+      { delta: "hello", roundId: "live-round-1", type: "assistant-delta" },
+    ]);
   });
 
   it("ignores other assistant events", () => {
     const { emitted, router } = setup();
 
+    router.onSessionEvent(assistantMessageStart());
     router.onSessionEvent(
       event({
         assistantMessageEvent: { type: "thinking_delta" },
         type: "message_update",
       }),
     );
+
+    expect(emitted).toEqual([{ roundId: "live-round-1", type: "round-start" }]);
+  });
+
+  /**
+   * A turn is not one model reply — the model can say text, call a tool, say
+   * more text, and so on, and each of those round trips has to be told apart
+   * on the client so live rendering can interleave them the way the persisted
+   * transcript already does. Without round-start there would be no way to
+   * tell a delta or tool call arriving in the second round trip from one
+   * arriving in the first.
+   */
+  it("assigns a new round id to each assistant message_start", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(assistantMessageStart());
+
+    expect(emitted).toEqual([
+      { roundId: "live-round-1", type: "round-start" },
+      { roundId: "live-round-2", type: "round-start" },
+    ]);
+  });
+
+  it("does not open a round for a tool-result message_start", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(event({ message: { role: "toolResult" }, type: "message_start" }));
 
     expect(emitted).toEqual([]);
   });
@@ -146,6 +183,43 @@ describe("tool calls", () => {
       type: "tool-start",
     });
     expect(typeof (emitted[0] as { at: string }).at).toBe("string");
+  });
+
+  /**
+   * A call made mid-turn belongs to whichever round trip is currently open,
+   * so the client can group it with that round's text instead of every tool
+   * call in the turn landing in one bucket at the end.
+   */
+  it("tags a tool call with the round trip that is currently open", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(toolStart());
+    router.onSessionEvent(toolEnd());
+
+    expect(emitted).toMatchObject([
+      { roundId: "live-round-1", type: "round-start" },
+      { roundId: "live-round-1", type: "tool-start" },
+      { roundId: "live-round-1", type: "tool-end" },
+    ]);
+  });
+
+  it("tags a second round trip's tool call differently from the first's", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(toolStart({ toolCallId: "call-1" }));
+    router.onSessionEvent(toolEnd({ toolCallId: "call-1" }));
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(toolStart({ toolCallId: "call-2" }));
+
+    const toolEvents = emitted.filter(
+      (e): e is Extract<PiSessionEvent, { type: "tool-start" }> => e.type === "tool-start",
+    );
+    expect(toolEvents.map((e) => e.roundId)).toEqual([
+      "live-round-1",
+      "live-round-2",
+    ]);
   });
 
   it("reports whether the call failed", () => {

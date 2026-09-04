@@ -12,19 +12,29 @@
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 
 /**
- * The `messageId` a live tool call carries before the turn's real assistant
- * message exists. `groupConversation` matches calls to messages by id, so
- * without a shared placeholder id here it can never fold a still-streaming
- * call into a steps group — the chip only appeared once the turn ended and
- * the persisted refetch supplied a real id. A caller that wants live calls to
- * render inline must add a placeholder message carrying this same id.
+ * Prefix shared with the placeholder pseudo-messages built in
+ * live-rounds.ts's liveRoundMessages(), so a `messageId` on a live-round
+ * pseudo-message and on the tool calls that round produced can be told apart
+ * from a real persisted message id (which is a UUID and never starts with
+ * this). `LIVE_ROUND_PREFIX + roundId` from a `round-start` SSE event (see
+ * session-events.ts) is the actual messageId used — one per assistant round
+ * trip, not one constant for the whole turn, so groupConversation can
+ * interleave live text and live tool calls the same way it already
+ * interleaves the persisted rows a round trip becomes once the turn ends.
  */
-export const LIVE_MESSAGE_ID = "live-turn";
+export const LIVE_ROUND_PREFIX = "live-round-message:";
+
+export const liveRoundMessageId = (roundId: string): string =>
+  `${LIVE_ROUND_PREFIX}${roundId}`;
+
+export const isLiveRoundMessageId = (messageId: string): boolean =>
+  messageId.startsWith(LIVE_ROUND_PREFIX);
 
 export type LiveToolEvent =
   | {
       at: string;
       params?: Record<string, string>;
+      roundId: string;
       summary?: string;
       toolCallId: string;
       toolName: string;
@@ -35,6 +45,7 @@ export type LiveToolEvent =
       errorText?: string;
       isError: boolean;
       resultText?: string;
+      roundId: string;
       toolCallId: string;
       toolName: string;
       type: "tool-end";
@@ -57,10 +68,10 @@ export function applyLiveToolEvent(
       {
         createdAt: event.at,
         id: event.toolCallId,
-        // Points at the placeholder live-turn message rather than a real one —
-        // there is nothing to scroll the transcript to yet. Marker clicks guard
-        // on this being non-empty, and LIVE_MESSAGE_ID is.
-        messageId: LIVE_MESSAGE_ID,
+        // Points at this round's placeholder pseudo-message rather than a real
+        // one — there is nothing to scroll the transcript to yet. Marker
+        // clicks guard on this being non-empty, and it is.
+        messageId: liveRoundMessageId(event.roundId),
         name: event.toolName,
         ...(event.summary ? { summary: event.summary } : {}),
         ...(event.params ? { params: event.params } : {}),

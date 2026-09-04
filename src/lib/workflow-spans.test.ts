@@ -253,6 +253,7 @@ test("tool calls seen on the stream render before anything is persisted", () => 
   const live = applyLiveToolEvent(
     applyLiveToolEvent([], {
       at: new Date(T0 + 1_000).toISOString(),
+      roundId: "live-round-1",
       summary: "npm test",
       toolCallId: "call-1",
       toolName: "bash",
@@ -260,6 +261,7 @@ test("tool calls seen on the stream render before anything is persisted", () => 
     }),
     {
       at: new Date(T0 + 2_000).toISOString(),
+      roundId: "live-round-1",
       toolCallId: "call-2",
       toolName: "read",
       type: "tool-start",
@@ -293,6 +295,7 @@ test("tool calls seen on the stream render before anything is persisted", () => 
 test("a completed live call gains its result marker, and persisting adds no duplicate", () => {
   const started = applyLiveToolEvent([], {
     at: new Date(T0 + 1_000).toISOString(),
+    roundId: "live-round-1",
     toolCallId: "call-1",
     toolName: "bash",
     type: "tool-start",
@@ -300,6 +303,7 @@ test("a completed live call gains its result marker, and persisting adds no dupl
   const live = applyLiveToolEvent(started, {
     at: new Date(T0 + 3_000).toISOString(),
     isError: false,
+    roundId: "live-round-1",
     toolCallId: "call-1",
     toolName: "bash",
     type: "tool-end",

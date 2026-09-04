@@ -22,6 +22,11 @@ import {
 } from "@/hooks/use-session-projects";
 import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
 import {
+  applyRoundDelta,
+  applyRoundStart,
+  type LiveRound,
+} from "@/lib/live-rounds";
+import {
   clearsDeadStreamLatch,
   shouldReconnect,
 } from "@/lib/session-reconnect";
@@ -64,7 +69,8 @@ type PromptInput = {
 
 type PiStreamEvent =
   | { text: string; type: "user-message" }
-  | { delta: string; type: "assistant-delta" }
+  | { roundId: string; type: "round-start" }
+  | { delta: string; roundId: string; type: "assistant-delta" }
   | { message: string; type: "error" }
   | LiveToolEvent
   | { runId: string; startedAt: string; type: "workflow-started" }
@@ -90,7 +96,8 @@ const trace = (stage: string, data?: Record<string, unknown>) => {
 
 type StreamHandlers = {
   onUserMessage?: (text: string) => void;
-  onDelta: (delta: string) => void;
+  onRoundStart: (event: Extract<PiStreamEvent, { type: "round-start" }>) => void;
+  onDelta: (event: Extract<PiStreamEvent, { type: "assistant-delta" }>) => void;
   onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
   onAskUser: (payload: AskUserPayload) => void;
@@ -136,8 +143,10 @@ const readPiStream = async (
 
       if (piEvent.type === "user-message") {
         handlers.onUserMessage?.(piEvent.text);
+      } else if (piEvent.type === "round-start") {
+        handlers.onRoundStart(piEvent);
       } else if (piEvent.type === "assistant-delta") {
-        handlers.onDelta(piEvent.delta);
+        handlers.onDelta(piEvent);
       } else if (piEvent.type === "tool-start") {
         handlers.onToolStart(piEvent);
         handlers.onWikiTool(piEvent.toolName);
@@ -194,7 +203,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // Identifies this hook instance, so a trace line can be attributed to the
   // component that is actually rendering the spinner.
   const [inst] = useState(() => Math.random().toString(36).slice(2, 7));
-  const [streamingText, setStreamingText] = useState("");
+  // The turn's assistant round trips so far, each kept as its own bucket of
+  // text rather than concatenated into one string — see live-rounds.ts for
+  // why a single string cannot represent a turn that said something, called
+  // a tool, then said more. Cleared at the same points streamingText used to
+  // be.
+  const [liveRounds, setLiveRounds] = useState<LiveRound[]>([]);
   const [activeTool, setActiveTool] = useState<string>();
   // Tool calls seen on the stream, so the timeline can show them as they happen
   // rather than only after the turn's entries are persisted. Kept until the
@@ -261,7 +275,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   const handOffToTranscript = useCallback(
     () =>
       handOffStreamedAnswer({
-        clearStreamed: () => setStreamingText(""),
+        clearStreamed: () => setLiveRounds([]),
         loadTranscript: () =>
           queryClient.invalidateQueries({
             queryKey: sessionMessagesQueryKey(sessionId),
@@ -285,7 +299,8 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // created new closure objects on every call, which confused the React Compiler.
   const handlers = useMemo(
     (): StreamHandlers => ({
-      onDelta: (delta) => setStreamingText((t) => t + delta),
+      onRoundStart: (event) => setLiveRounds((r) => applyRoundStart(r, event)),
+      onDelta: (event) => setLiveRounds((r) => applyRoundDelta(r, event)),
       onToolStart: (event) => {
         setActiveTool(event.toolName);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
@@ -349,7 +364,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     reconnectAbortRef.current = controller;
 
     const reconnect = async () => {
-      setStreamingText("");
+      setLiveRounds([]);
       setActiveTool(undefined);
       setLiveToolCalls([]);
       setWorkflowSnapshot(undefined);
@@ -522,7 +537,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         { inFlight: inFlightRef.current },
       );
       setStreamError(undefined);
-      setStreamingText("");
+      setLiveRounds([]);
       setActiveTool(undefined);
       setLiveToolCalls([]);
       setWorkflowSnapshot(undefined);
@@ -624,14 +639,19 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
   // The decisive line: if "onSettled:end" logs but this never reports
   // isPending=false, the mutation settled and React simply is not rendering it.
   // If this never logs after onSettled:start, the stall is inside onSettled.
+  const liveTextLength = useMemo(
+    () => liveRounds.reduce((sum, round) => sum + round.text.length, 0),
+    [liveRounds],
+  );
+
   useEffect(() => {
     trace("status", {
       inst,
       status: mutation.status,
       isPending: mutation.isPending,
-      streamingTextLength: streamingText.length,
+      streamingTextLength: liveTextLength,
     });
-  }, [inst, mutation.status, mutation.isPending, streamingText.length]);
+  }, [inst, mutation.status, mutation.isPending, liveTextLength]);
 
   useEffect(() => {
     // A turn the server has only just started re-arms the latch: the stream this
@@ -661,6 +681,14 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     codeMap,
     isReconnecting,
     serverIsRunning,
+    /**
+     * This turn's assistant round trips so far, in order — not one flattened
+     * string. See live-rounds.ts for why: a turn that says something, calls a
+     * tool, and says more is several round trips, and the caller needs them
+     * kept apart to interleave live text with live tool calls the way
+     * groupConversation already interleaves the persisted rows they become.
+     */
+    liveRounds,
     liveToolCalls,
     mutation,
     pendingQuestion,
@@ -675,7 +703,6 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
      */
     spans,
     streamError,
-    streamingText,
     wikiActive,
     workflowSnapshot,
   };

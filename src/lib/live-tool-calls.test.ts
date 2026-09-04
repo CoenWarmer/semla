@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 import {
   applyLiveToolEvent,
-  LIVE_MESSAGE_ID,
+  liveRoundMessageId,
+  isLiveRoundMessageId,
   mergeToolCalls,
   type LiveToolEvent,
 } from "@/lib/live-tool-calls";
@@ -13,9 +14,10 @@ type StartEvent = Extract<LiveToolEvent, { type: "tool-start" }>;
 const start = (
   toolCallId: string,
   at: string,
-  extra: Pick<StartEvent, "params" | "summary"> | object = {},
+  extra: Pick<StartEvent, "params" | "summary" | "roundId"> | object = {},
 ): StartEvent => ({
   at,
+  roundId: "live-round-1",
   toolCallId,
   toolName: "bash",
   type: "tool-start",
@@ -26,10 +28,11 @@ const end = (
   toolCallId: string,
   at: string,
   isError = false,
-  extra: Pick<Extract<LiveToolEvent, { type: "tool-end" }>, "errorText" | "resultText"> | object = {},
+  extra: Pick<Extract<LiveToolEvent, { type: "tool-end" }>, "errorText" | "resultText" | "roundId"> | object = {},
 ): LiveToolEvent => ({
   at,
   isError,
+  roundId: "live-round-1",
   toolCallId,
   toolName: "bash",
   type: "tool-end",
@@ -44,11 +47,22 @@ describe("applyLiveToolEvent", () => {
       {
         createdAt: "2026-08-26T10:00:00.000Z",
         id: "call-1",
-        messageId: LIVE_MESSAGE_ID,
+        messageId: liveRoundMessageId("live-round-1"),
         name: "bash",
       },
     ]);
     expect(calls[0].resultAt).toBeUndefined();
+  });
+
+  it("tags the row with the round it belongs to, distinguishable from a real persisted messageId", () => {
+    const [call] = applyLiveToolEvent(
+      [],
+      start("call-1", "2026-08-26T10:00:00.000Z", { roundId: "live-round-2" }),
+    );
+
+    expect(call.messageId).toBe(liveRoundMessageId("live-round-2"));
+    expect(isLiveRoundMessageId(call.messageId)).toBe(true);
+    expect(isLiveRoundMessageId("a-real-persisted-uuid")).toBe(false);
   });
 
   it("carries the summary and params through to the marker label", () => {

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
-import { groupConversation, splitLiveSteps, summariseSteps } from "./session-steps.ts";
+import { groupConversation, summariseSteps } from "./session-steps.ts";
 
 const message = (
   id: string,
@@ -104,89 +104,41 @@ describe("groupConversation", () => {
     expect(items.map((item) => item.kind)).toEqual(["message"]);
   });
 
-  it("folds a live tool call into a steps group via the placeholder live-turn message", () => {
+  it("folds a live round's tool call into a steps group via its placeholder pseudo-message", () => {
     // A call still streaming has no real assistant message yet — the caller
-    // adds a placeholder carrying LIVE_MESSAGE_ID (see live-tool-calls.ts) so
-    // this can attach it rather than dropping it until the turn ends.
+    // adds a pseudo-message per live round (see live-rounds.ts) carrying a
+    // liveRoundMessageId so this can attach it rather than dropping it until
+    // the turn ends.
     const items = groupConversation(
-      [message("u", "user", "question"), message("live-turn", "assistant", "")],
-      [call("c1", "live-turn", "bash")],
+      [message("u", "user", "question"), message("live-round-message:live-round-1", "assistant", "")],
+      [call("c1", "live-round-message:live-round-1", "bash")],
     );
 
     expect(items.map((item) => item.kind)).toEqual(["message", "steps"]);
     expect(items[1].kind === "steps" && items[1].items).toHaveLength(1);
   });
-});
 
-describe("splitLiveSteps", () => {
-  it("pulls the trailing live-turn steps off so they can render after the streaming answer", () => {
-    const items = groupConversation(
-      [message("u", "user", "question"), message("live-turn", "assistant", "")],
-      [call("c1", "live-turn", "bash")],
-    );
-
-    const { historyItems, liveSteps } = splitLiveSteps(items, "live-turn");
-
-    expect(historyItems.map((item) => item.kind)).toEqual(["message"]);
-    expect(liveSteps?.items).toHaveLength(1);
-  });
-
-  it("leaves everything in historyItems when nothing is live", () => {
-    const items = groupConversation(
-      [message("u", "user", "question"), message("a", "assistant", "answer")],
-      [],
-    );
-
-    const { historyItems, liveSteps } = splitLiveSteps(items, "live-turn");
-
-    expect(historyItems).toEqual(items);
-    expect(liveSteps).toBeNull();
-  });
-
-  it("does not mistake an earlier, already-finished steps group for the live one", () => {
+  it("interleaves several live rounds the same way it interleaves persisted turns", () => {
+    // A turn that said something, called a tool, then said more, produces one
+    // pseudo-message per round trip in order — groupConversation needs no
+    // special-casing to interleave them correctly, the same as it already
+    // does for the equivalent persisted messages once the turn ends.
     const items = groupConversation(
       [
-        message("s1", "assistant", "", "earlier thought"),
-        message("a", "assistant", "answer"),
+        message("u", "user", "question"),
+        message("live-round-message:live-round-1", "assistant", "Let me check that."),
+        message("live-round-message:live-round-2", "assistant", ""),
+        message("live-round-message:live-round-3", "assistant", "Found it."),
       ],
-      [call("c1", "s1", "bash")],
+      [call("c1", "live-round-message:live-round-2", "bash")],
     );
 
-    const { historyItems, liveSteps } = splitLiveSteps(items, "live-turn");
-
-    expect(historyItems).toEqual(items);
-    expect(liveSteps).toBeNull();
-  });
-
-  it("keeps an already-finished turn's steps behind when groupConversation merged it with the live one", () => {
-    // The turn right before the live one was itself silent (say it ended in a
-    // tool error with no closing text), so groupConversation folds its steps
-    // into the same trailing group as the live-turn placeholder. Only the
-    // live steps should move past the streaming answer — the finished ones
-    // stay in their historical position.
-    const items = groupConversation(
-      [
-        message("u1", "user", "q1"),
-        message("s0", "assistant", "", "earlier finished thought"),
-        message("live-turn", "assistant", ""),
-      ],
-      [call("c0", "s0", "bash"), call("c1", "live-turn", "read")],
-    );
-
-    const { historyItems, liveSteps } = splitLiveSteps(items, "live-turn");
-
-    expect(historyItems.map((item) => item.kind)).toEqual(["message", "steps"]);
-    const finishedGroup = historyItems[1];
-    expect(finishedGroup.kind === "steps" && finishedGroup.items).toHaveLength(2);
-    expect(
-      finishedGroup.kind === "steps" &&
-        finishedGroup.items.every((item) => item.messageId === "s0"),
-    ).toBe(true);
-
-    expect(liveSteps?.items).toHaveLength(1);
-    expect(liveSteps?.items.every((item) => item.messageId === "live-turn")).toBe(
-      true,
-    );
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "message",
+      "steps",
+      "message",
+    ]);
   });
 });
 

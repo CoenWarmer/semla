@@ -17,10 +17,24 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 
 export type PiSessionEvent =
   | { text: string; type: "user-message" }
-  | { delta: string; type: "assistant-delta" }
+  /**
+   * A new assistant round trip has started within this turn. A turn is not
+   * one model reply — the model can say text, call a tool, say more text,
+   * call another tool, and so on, and each of those is its own
+   * `message_start`/`message_end` pair server-side, becoming its own
+   * persisted message once the turn ends. Without a boundary event the client
+   * had no way to tell which round trip a delta or a tool call belonged to,
+   * so every round trip's text was concatenated into one blob and every tool
+   * call was tagged with one placeholder id — correct once persisted rows
+   * replaced it, but flattened and out of order while still streaming. See
+   * `roundId` on assistant-delta/tool-start/tool-end.
+   */
+  | { roundId: string; type: "round-start" }
+  | { delta: string; roundId: string; type: "assistant-delta" }
   | {
       at: string;
       params?: Record<string, string>;
+      roundId: string;
       summary?: string;
       toolCallId: string;
       toolName: string;
@@ -31,6 +45,7 @@ export type PiSessionEvent =
       errorText?: string;
       isError: boolean;
       resultText?: string;
+      roundId: string;
       toolCallId: string;
       toolName: string;
       type: "tool-end";
