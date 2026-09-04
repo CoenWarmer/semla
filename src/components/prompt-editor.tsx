@@ -456,6 +456,8 @@ export function PromptEditor({
             <TooltipContent side="top">
               {mcpStatus?.error ? (
                 <span>mcp.json does not parse: {mcpStatus.error}</span>
+              ) : mcpStatus?.hint ? (
+                <span>{mcpStatus.hint}</span>
               ) : mcpServerCount > 0 ? (
                 <span>{mcpStatus?.enabledServers.join(", ")}</span>
               ) : (

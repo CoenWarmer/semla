@@ -3,7 +3,7 @@
  * pi-mcp-adapter actually reads to collapse its config-source chain, and that
  * it does not override an operator's own choice.
  */
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,9 +55,6 @@ describe("isolateMcpConfigMode", () => {
   });
 
   it("reports the config path under the current agent dir", () => {
-    // MCP_CONFIG_PATH is computed once at import time from PI_AGENT_DIR, not
-    // from the mutable PI_CODING_AGENT_DIR env var — this asserts the two
-    // stay in the same directory rather than drifting apart.
     const result = isolateMcpConfigMode();
 
     expect(result.path).toBe(MCP_CONFIG_PATH);
@@ -65,13 +62,6 @@ describe("isolateMcpConfigMode", () => {
   });
 });
 
-/**
- * Confirms this module's understanding of the package's own precedence
- * collapse against the package source directly, via jiti — the same way
- * mcp-package-contract.test.ts loads it, and for the same reason: the claim
- * lives in a docblock and would otherwise go untested against a release that
- * changes it.
- */
 describe("pi-mcp-adapter exclusive mode", () => {
   const packageConfigPath = join(
     process.cwd(),
@@ -98,11 +88,6 @@ describe("pi-mcp-adapter exclusive mode", () => {
         process.env[PI_AGENT_DIR_ENV] = agentDir;
         process.env[MCP_CONFIG_MODE_ENV] = MCP_EXCLUSIVE_CONFIG_MODE;
 
-        // MCP_CONFIG_PATH is fixed at this module's first import, from whatever
-        // PI_AGENT_DIR held then — it cannot pick up the temp dir set just above.
-        // Re-import fresh (vitest resets the module registry) so the value
-        // compared against the package's own answer is computed under the same
-        // environment the package sees, not the one this file loaded under.
         vi.resetModules();
         const { MCP_CONFIG_PATH: pathUnderTempDir } = await import("./mcp-config.ts");
 
@@ -119,4 +104,84 @@ describe("pi-mcp-adapter exclusive mode", () => {
       }
     },
   );
+});
+
+describe("getMcpConfigSummary misplaced-server detection", () => {
+  const previousMode = process.env[MCP_CONFIG_MODE_ENV];
+  const previousAgentDir = process.env[PI_AGENT_DIR_ENV];
+
+  afterEach(() => {
+    if (previousMode === undefined) delete process.env[MCP_CONFIG_MODE_ENV];
+    else process.env[MCP_CONFIG_MODE_ENV] = previousMode;
+    if (previousAgentDir === undefined) delete process.env[PI_AGENT_DIR_ENV];
+    else process.env[PI_AGENT_DIR_ENV] = previousAgentDir;
+  });
+
+  const withConfig = async (contents: string) => {
+    const agentDir = mkdtempSync(join(tmpdir(), "semla-mcp-hint-"));
+    writeFileSync(join(agentDir, "mcp.json"), contents, "utf8");
+    process.env[PI_AGENT_DIR_ENV] = agentDir;
+    process.env[MCP_CONFIG_MODE_ENV] = MCP_EXCLUSIVE_CONFIG_MODE;
+    vi.resetModules();
+    const mod = await import("./mcp-config.ts");
+    return mod.getMcpConfigSummary();
+  };
+
+  it("hints when a command-based server is written at the top level", async () => {
+    const summary = await withConfig(
+      JSON.stringify({
+        "brave-devtools": { type: "stdio", command: "npx", args: ["-y", "brave-mcp@latest"] },
+      }),
+    );
+
+    expect(summary.error).toBeNull();
+    expect(summary.servers).toEqual([]);
+    expect(summary.hint).toContain("brave-devtools");
+    expect(summary.hint).toContain("mcpServers");
+  });
+
+  it("hints when a url-based server is written at the top level", async () => {
+    const summary = await withConfig(
+      JSON.stringify({ deepwiki: { url: "https://mcp.deepwiki.com/mcp" } }),
+    );
+
+    expect(summary.hint).toContain("deepwiki");
+  });
+
+  it("does not hint for a deliberately empty config", async () => {
+    const summary = await withConfig(JSON.stringify({}));
+
+    expect(summary.hint).toBeNull();
+  });
+
+  it("does not hint once servers are correctly nested under mcpServers", async () => {
+    const summary = await withConfig(
+      JSON.stringify({
+        mcpServers: { deepwiki: { url: "https://mcp.deepwiki.com/mcp" } },
+      }),
+    );
+
+    expect(summary.hint).toBeNull();
+    expect(summary.servers).toEqual(["deepwiki"]);
+  });
+
+  it("does not hint when the file does not exist at all", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "semla-mcp-hint-"));
+    process.env[PI_AGENT_DIR_ENV] = agentDir;
+    process.env[MCP_CONFIG_MODE_ENV] = MCP_EXCLUSIVE_CONFIG_MODE;
+    vi.resetModules();
+    const mod = await import("./mcp-config.ts");
+
+    const summary = await mod.getMcpConfigSummary();
+
+    expect(summary.hint).toBeNull();
+    expect(summary.error).toBeNull();
+  });
+
+  it("reports unparseable JSON as `error`, not `hint`", async () => {
+    const summary = await withConfig("{ not json");
+
+    expect(summary.error).not.toBeNull();
+    expect(summary.hint).toBeNull();
+  });
 });

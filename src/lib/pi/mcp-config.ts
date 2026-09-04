@@ -37,6 +37,7 @@
  * the default here, same as PI_AGENT_DIR does over PI_AGENT_DIR_ENV.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
@@ -127,6 +128,18 @@ export interface McpConfigSummary {
   enabledServers: string[];
   /** Set when the config could not be read at all — a malformed file, say. */
   error: string | null;
+  /**
+   * Set when the file parses but declares zero servers *and* looks like a
+   * plausible mistake rather than a deliberately empty config — most often,
+   * server entries written at the top level instead of nested under an
+   * `mcpServers` key. The package's own `loadMcpConfig` treats any shape it
+   * does not recognise as "no servers" with no error, so a file like
+   * `{ "my-server": { "command": "npx", ... } }` reports the same empty,
+   * healthy-looking result as `{}` — hit for real by an operator who wrote a
+   * server entry at the top level and saw the settings page report "None
+   * configured" with nothing pointing at why.
+   */
+  hint: string | null;
 }
 
 /**
@@ -142,6 +155,20 @@ export interface McpConfigSummary {
 export async function getMcpConfigSummary(): Promise<McpConfigSummary> {
   const { path: configPath } = isolateMcpConfigMode();
 
+  // `loadMcpConfig` never throws on bad JSON: readValidatedConfig inside the
+  // package catches the parse error itself, `console.warn`s, and returns an
+  // empty config — indistinguishable, from out here, from a deliberately
+  // empty file. So the file is parsed here too, once, purely for diagnostics:
+  // an actual parse failure becomes `error`; a parse that succeeds but whose
+  // top level looks like misplaced server entries becomes `hint`. The server
+  // list itself still comes from the package's own loader below, which is the
+  // one that applies its merge/import/settings rules — this repeats none of
+  // that, it only explains a result the package already produced.
+  const diagnosis = diagnoseConfigFile(configPath);
+  if (diagnosis.error) {
+    return { configPath, enabledServers: [], error: diagnosis.error, hint: null, servers: [] };
+  }
+
   try {
     const mod = (await import(
       /* turbopackIgnore: true */ MCP_CONFIG_MODULE_PATH
@@ -151,13 +178,79 @@ export async function getMcpConfigSummary(): Promise<McpConfigSummary> {
     const enabledServers = servers.filter(
       (name) => config.mcpServers[name]?.disabled !== true,
     );
-    return { configPath, enabledServers, error: null, servers };
+    const hint = servers.length === 0 ? diagnosis.hint : null;
+    return { configPath, enabledServers, error: null, hint, servers };
   } catch (error) {
     return {
       configPath,
       enabledServers: [],
       error: error instanceof Error ? error.message : String(error),
+      hint: null,
       servers: [],
     };
   }
+}
+
+interface ConfigFileDiagnosis {
+  /** Set when the file exists but is not valid JSON. */
+  error: string | null;
+  /**
+   * Set when the file parses but its top level looks like server entries
+   * written outside an `mcpServers` key — the mistake this diagnosis exists
+   * to catch. Only consulted by the caller when the package's own loader
+   * reports zero servers; a file that both parses and declares real servers
+   * under `mcpServers` is never flagged, even if it also has stray top-level
+   * junk.
+   */
+  hint: string | null;
+}
+
+/**
+ * Reads and parses the pinned file once, independently of the package's own
+ * loader, purely to explain a zero-server result: was the file missing
+ * (fine, not flagged), unparseable (`error`), or parseable but with server
+ * entries written at the top level instead of nested under `mcpServers`
+ * (`hint`) — e.g. `{ "my-server": { "command": "npx", ... } }`. Deliberately
+ * narrow: only flags a top-level value that itself looks like a server entry
+ * (a `command`, `url`, or `socket` field), so an intentionally empty `{}` is
+ * left alone.
+ */
+function diagnoseConfigFile(configPath: string): ConfigFileDiagnosis {
+  if (!existsSync(configPath)) return { error: null, hint: null };
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    return {
+      error: `${configPath} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      hint: null,
+    };
+  }
+
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { error: null, hint: null };
+  }
+  const topLevel = raw as Record<string, unknown>;
+  if ("mcpServers" in topLevel || "mcp-servers" in topLevel) {
+    return { error: null, hint: null };
+  }
+
+  const looksLikeServerEntry = (value: unknown): boolean =>
+    typeof value === "object" &&
+    value !== null &&
+    ("command" in value || "url" in value || "socket" in value);
+
+  const misplaced = Object.keys(topLevel).filter((key) =>
+    looksLikeServerEntry(topLevel[key]),
+  );
+  if (misplaced.length === 0) return { error: null, hint: null };
+
+  return {
+    error: null,
+    hint:
+      `${configPath} declares ${misplaced.join(", ")} at the top level, but ` +
+      'pi-mcp-adapter only reads servers nested under an "mcpServers" key. ' +
+      `Wrap ${misplaced.length === 1 ? "it" : "them"} in { "mcpServers": { ... } }.`,
+  };
 }

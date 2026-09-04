@@ -133,7 +133,7 @@ export async function ExtensionHealthCard() {
               <p className="text-sm font-medium">MCP servers</p>
               <Badge
                 variant={
-                  health.mcp.error
+                  health.mcp.error || health.mcp.hint
                     ? "destructive"
                     : health.mcp.enabledServers.length > 0
                       ? "secondary"
@@ -142,9 +142,11 @@ export async function ExtensionHealthCard() {
               >
                 {health.mcp.error
                   ? "Unreadable"
-                  : health.mcp.enabledServers.length > 0
-                    ? `${health.mcp.enabledServers.length} configured`
-                    : "None configured"}
+                  : health.mcp.hint
+                    ? "Misconfigured"
+                    : health.mcp.enabledServers.length > 0
+                      ? `${health.mcp.enabledServers.length} configured`
+                      : "None configured"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -152,12 +154,17 @@ export async function ExtensionHealthCard() {
               <code className="break-all">{health.mcp.configPath}</code>
               {health.mcp.error
                 ? " \u2014 does not parse."
-                : health.mcp.enabledServers.length === 0
-                  ? " \u2014 the gateway tool is registered but has nothing to reach."
-                  : "."}
+                : health.mcp.hint
+                  ? " \u2014 declares servers the gateway will not see."
+                  : health.mcp.enabledServers.length === 0
+                    ? " \u2014 the gateway tool is registered but has nothing to reach."
+                    : "."}
             </p>
             {health.mcp.error ? (
               <p className="text-xs text-destructive">{health.mcp.error}</p>
+            ) : null}
+            {health.mcp.hint ? (
+              <p className="text-xs text-destructive">{health.mcp.hint}</p>
             ) : null}
             {health.mcp.enabledServers.length > 0 ? (
               <p className="text-xs text-muted-foreground">
