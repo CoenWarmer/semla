@@ -54,6 +54,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import { SESSION_STATUS_KEY } from "@/lib/session-status";
+import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
@@ -130,6 +131,12 @@ export function ClientSessionComponent({
   // work that is still going.
   const isActive =
     promptMutation.isPending || isReconnecting || serverIsRunning;
+
+  // Plays question.mp3 / done.mp3 when this session is not the tab in focus.
+  useSessionSoundCue({
+    hasPendingQuestion: pendingQuestion !== null,
+    isActive,
+  });
   // Paused mid-turn: the server has no rows for a turn until it ends, so an
   // unbidden refetch would replace the optimistic prompt with a list without it.
   const messagesQuery = useSessionMessages(
