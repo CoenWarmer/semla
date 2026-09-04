@@ -1,4 +1,5 @@
 import { Children, isValidElement, type ReactNode } from "react";
+import { defaultRehypePlugins } from "streamdown";
 
 /**
  * A markdown paragraph that does not put a `<div>` inside a `<p>`.
@@ -77,3 +78,33 @@ export const MarkdownParagraph = ({
   if (tag === "div") return <div {...props}>{children}</div>;
   return <p {...props}>{children}</p>;
 };
+
+/**
+ * Every default Streamdown rehype plugin except `raw`, for every place this
+ * app renders a message or reasoning trace as markdown.
+ *
+ * Streamdown's default `rehypePlugins` include `rehype-raw`, which parses
+ * literal HTML written in text as real elements rather than escaping it —
+ * so a message that happens to contain the text `<p>...</p>` (someone
+ * pasting an error message, an HTML snippet, anything with angle brackets)
+ * renders an actual nested `<p>` inside the paragraph markdown already wraps
+ * it in. That is invalid HTML, and React reports it as a hydration mismatch
+ * because the browser's parser closes the outer `<p>` early while the
+ * server-rendered tree still has it open — the same class of bug this
+ * file's `MarkdownParagraph` fixes for images, just triggered by prose
+ * instead of markdown syntax.
+ *
+ * Streamdown ships its own fix for exactly this — a remark plugin that
+ * converts raw HTML nodes to plain text instead of parsing them — but only
+ * auto-adds it when `rehype-raw` is *not* among the configured
+ * `rehypePlugins`. Passing the defaults minus `raw` is what triggers that,
+ * confirmed by reading the package's own bundle: it adds the text-conversion
+ * plugin exactly when `rehype-raw` is absent from the list. `sanitize` and
+ * `harden` still run — they matter for markdown-generated elements (links,
+ * images) regardless of raw HTML, so nothing else is lost.
+ */
+export const STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW = Object.entries(
+  defaultRehypePlugins,
+)
+  .filter(([name]) => name !== "raw")
+  .map(([, plugin]) => plugin);

@@ -25,7 +25,10 @@ import {
 } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
 
-import { MarkdownParagraph } from "./markdown-paragraph";
+import {
+  MarkdownParagraph,
+  STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW,
+} from "./markdown-paragraph";
 
 import { Shimmer } from "./shimmer";
 
@@ -222,7 +225,11 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown components={streamdownComponents} plugins={streamdownPlugins}>
+      <Streamdown
+        components={streamdownComponents}
+        plugins={streamdownPlugins}
+        rehypePlugins={STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW}
+      >
         {children}
       </Streamdown>
     </CollapsibleContent>

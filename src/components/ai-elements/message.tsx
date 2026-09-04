@@ -30,7 +30,10 @@ import {
 } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
 
-import { MarkdownParagraph } from "./markdown-paragraph";
+import {
+  MarkdownParagraph,
+  STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW,
+} from "./markdown-paragraph";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -346,6 +349,7 @@ export const MessageResponse = memo(
       )}
       components={streamdownComponents}
       plugins={streamdownPlugins}
+      rehypePlugins={STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW}
       {...props}
     />
   ),
