@@ -103,7 +103,15 @@ export const MessageAction = ({
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger>{button}</TooltipTrigger>
+          {/*
+            `render` rather than nesting `button` as children: TooltipTrigger
+            renders its own <button> by default, and `button` above is one
+            too — nested as children that is a <button> inside a <button>,
+            invalid HTML that React hydrates inconsistently. `render` swaps
+            TooltipTrigger's own host element for this one instead of
+            wrapping it.
+          */}
+          <TooltipTrigger render={button} />
           <TooltipContent>
             <p>{tooltip}</p>
           </TooltipContent>

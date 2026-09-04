@@ -445,14 +445,24 @@ export function PromptEditor({
         </div>
         {mcpEnabled && (
           <Tooltip>
-            <TooltipTrigger>
-              <PromptInputButton>
-                <ServerIcon size={16} />
-                <span>
-                  {mcpServerCount} MCP server{mcpServerCount === 1 ? "" : "s"}
-                </span>
-              </PromptInputButton>
-            </TooltipTrigger>
+            {/*
+              `render` rather than nesting PromptInputButton as children:
+              TooltipTrigger renders its own <button> by default, and
+              PromptInputButton renders one too — nested as children that is
+              a <button> inside a <button>, invalid HTML that React hydrates
+              inconsistently. `render` swaps TooltipTrigger's own host element
+              for this one instead of wrapping it.
+            */}
+            <TooltipTrigger
+              render={
+                <PromptInputButton>
+                  <ServerIcon size={16} />
+                  <span>
+                    {mcpServerCount} MCP server{mcpServerCount === 1 ? "" : "s"}
+                  </span>
+                </PromptInputButton>
+              }
+            />
             <TooltipContent side="top">
               {mcpStatus?.error ? (
                 <span>mcp.json does not parse: {mcpStatus.error}</span>
@@ -468,6 +478,7 @@ export function PromptEditor({
             </TooltipContent>
           </Tooltip>
         )}
+
         <ModelSelector
           onOpenChange={setModelSelectorOpen}
           open={modelSelectorOpen}
