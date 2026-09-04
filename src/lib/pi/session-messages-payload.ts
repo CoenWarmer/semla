@@ -33,12 +33,18 @@ export async function buildSessionMessages(
   supabase: SupabaseClient,
   sessionId: string,
   userId: string,
+  /**
+   * Which branch to render, when it is not the session's default — the entry
+   * a `?leaf=` parameter names. Absent for the common case: the live path,
+   * same as Pi itself would resolve. See docs/plans/branching-sessions.md §2.
+   */
+  leafId?: string | null,
 ): Promise<SessionMessagesPayload> {
   // The same string a turn would actually be sent with, not just whatever
   // override the user has saved — most sessions have none.
   const [{ messages, toolCalls }, { defaultModel, systemPrompt }] =
     await Promise.all([
-      getTranscript(supabase, sessionId),
+      getTranscript(supabase, sessionId, leafId),
       resolveSessionPromptContext(supabase, sessionId, userId),
     ]);
 

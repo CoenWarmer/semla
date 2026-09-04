@@ -33,6 +33,7 @@ export async function POST(
     /** Present when this prompt is also what brings the session into being. */
     create?: unknown;
     editEntryId?: unknown;
+    leafId?: unknown;
     model?: { modelId?: unknown; provider?: unknown };
     text?: unknown;
     tools?: unknown;
@@ -43,6 +44,15 @@ export async function POST(
   const editEntryId =
     typeof body?.editEntryId === "string" && body.editEntryId.trim()
       ? body.editEntryId.trim()
+      : null;
+  // Present when the client was viewing a branch other than the default when
+  // it sent this prompt — the turn continues from there. See
+  // docs/plans/branching-sessions.md §2: this is the one place a turn's
+  // landing spot is decided, so it travels on the request rather than as
+  // ambient state on the server.
+  const leafId =
+    typeof body?.leafId === "string" && body.leafId.trim()
+      ? body.leafId.trim()
       : null;
   const modelId =
     typeof body?.model?.modelId === "string" ? body.model.modelId : "";
@@ -193,6 +203,7 @@ export async function POST(
 
       void runPiPrompt({
         editEntryId,
+        leafId,
         model: { modelId, provider },
         onEvent: send,
         projects,

@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
 import { activePath, supersededSiblings } from "@/lib/pi/session-path";
+import { resolveLeafOverride } from "@/lib/pi/session-leaf";
 
 /** The row shape getTranscript consumes, from either source. */
 export interface TranscriptRow {
@@ -67,6 +68,7 @@ export function sessionFilePath(semlaSessionId: string, dir = PI_SESSION_DIR): s
 export function readSessionEntries(
   semlaSessionId: string,
   dir = PI_SESSION_DIR,
+  leafId?: string | null,
 ): TranscriptRow[] | null {
   const path = sessionFilePath(semlaSessionId, dir);
 
@@ -94,9 +96,10 @@ export function readSessionEntries(
     entries.push(entry);
   }
 
-  const superseded = supersededSiblings(entries);
+  const resolvedLeaf = resolveLeafOverride(entries, leafId);
+  const superseded = supersededSiblings(entries, resolvedLeaf);
 
-  return activePath(entries)
+  return activePath(entries, resolvedLeaf)
     .filter((entry) => entry.type === "message")
     .map((entry) => {
       // Only message siblings: a prompt branched away from may have a whole

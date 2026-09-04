@@ -180,4 +180,37 @@ describe("readSessionEntries", () => {
 
     expect(readSessionEntries("s1", d)).toEqual([]);
   });
+
+  it("walks to a named leaf instead of the default when leafId is given", () => {
+    const d = dir();
+    write(d, "s1", [
+      header,
+      message("a", "2026-08-31T09:00:01.000Z", null, "first ask"),
+      message("b1", "2026-08-31T09:00:02.000Z", "a", "abandoned reply"),
+      message("c1", "2026-08-31T09:00:03.000Z", "b1", "abandoned follow-up"),
+      message("b2", "2026-08-31T09:00:04.000Z", "a", "edited ask"),
+      message("c2", "2026-08-31T09:00:05.000Z", "b2", "live reply"),
+    ]);
+
+    // Naming the abandoned branch's own tip surfaces it instead of the default.
+    expect(readSessionEntries("s1", d, "c1")!.map((r) => r.id)).toEqual([
+      "a",
+      "b1",
+      "c1",
+    ]);
+  });
+
+  it("falls back to the default leaf for an id the session does not recognise", () => {
+    const d = dir();
+    write(d, "s1", [
+      header,
+      message("a", "2026-08-31T09:00:01.000Z"),
+      message("b", "2026-08-31T09:00:02.000Z", "a"),
+    ]);
+
+    expect(readSessionEntries("s1", d, "unknown")!.map((r) => r.id)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
 });

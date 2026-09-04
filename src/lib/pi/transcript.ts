@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session-file";
 import { activePath, supersededSiblings } from "@/lib/pi/session-path";
+import { resolveLeafOverride } from "@/lib/pi/session-leaf";
 
 type PiUsage = {
   cacheRead?: number;
@@ -194,17 +195,19 @@ const isDisplayMessage = (
  */
 export const getTranscript = async (
   supabase: SupabaseClient<Database>,
-  semlaSessionId: string
+  semlaSessionId: string,
+  leafId?: string | null,
 ): Promise<SessionTranscript> => {
-  const fromDisk = readSessionEntries(semlaSessionId);
+  const fromDisk = readSessionEntries(semlaSessionId, undefined, leafId);
   if (fromDisk) return buildTranscript(fromDisk);
 
-  return getTranscriptFromDatabase(supabase, semlaSessionId);
+  return getTranscriptFromDatabase(supabase, semlaSessionId, leafId);
 };
 
 const getTranscriptFromDatabase = async (
   supabase: SupabaseClient<Database>,
-  semlaSessionId: string
+  semlaSessionId: string,
+  leafId?: string | null,
 ): Promise<SessionTranscript> => {
   const { data: piSession, error: sessionError } = await supabase
     .from("pi_sessions")
@@ -234,7 +237,9 @@ const getTranscriptFromDatabase = async (
     throw new Error(`Unable to load Pi transcript: ${entriesError.message}`);
   }
 
-  return buildTranscript(liveMessageRows(entries as unknown as TranscriptRow[]));
+  return buildTranscript(
+    liveMessageRows(entries as unknown as TranscriptRow[], leafId),
+  );
 };
 
 /**
@@ -244,7 +249,10 @@ const getTranscriptFromDatabase = async (
  * so the walk is fed from the entry rather than from the row — the two are not
  * required to agree, and depending on them agreeing would be a silent coupling.
  */
-export const liveMessageRows = (rows: TranscriptRow[]): TranscriptRow[] => {
+export const liveMessageRows = (
+  rows: TranscriptRow[],
+  leafId?: string | null,
+): TranscriptRow[] => {
   const walkable = rows
     .filter((row) => row.payload?.entry?.id)
     .map((row) => ({
@@ -253,9 +261,10 @@ export const liveMessageRows = (rows: TranscriptRow[]): TranscriptRow[] => {
       row,
     }));
 
-  const superseded = supersededSiblings(walkable);
+  const resolvedLeaf = resolveLeafOverride(walkable, leafId);
+  const superseded = supersededSiblings(walkable, resolvedLeaf);
 
-  return activePath(walkable)
+  return activePath(walkable, resolvedLeaf)
     .filter((entry) => entry.row.payload.entry.type === "message")
     .map((entry) => {
       const earlier = (superseded.get(entry.id as string) ?? [])

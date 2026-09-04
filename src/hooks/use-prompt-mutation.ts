@@ -62,6 +62,14 @@ type PromptInput = {
    * appended after the answer it corrects.
    */
   editEntryId?: string;
+  /**
+   * The branch this prompt continues from, when it is not the session's
+   * default — the entry the client had open (from `?leaf=`) at the moment the
+   * prompt was sent. See docs/plans/branching-sessions.md §2: which branch a
+   * turn lands on travels with the request that starts it, not as state the
+   * server remembers between requests.
+   */
+  leafId?: string;
   model: PromptModel;
   text: string;
   tools: string[];
@@ -475,11 +483,11 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     PromptInput,
     { previousMessages: SessionMessage[] }
   >({
-    mutationFn: async ({ create, editEntryId, model, text, tools }) => {
+    mutationFn: async ({ create, editEntryId, leafId, model, text, tools }) => {
       const id = ++traceSeq;
       trace("mutationFn:start", { id, textLength: text.length });
       const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
-        body: JSON.stringify({ create, editEntryId, model, text, tools }),
+        body: JSON.stringify({ create, editEntryId, leafId, model, text, tools }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });

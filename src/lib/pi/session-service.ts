@@ -71,6 +71,7 @@ import {
   resolveBranchTarget,
 } from "@/lib/pi/session-branch";
 import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session-cwd";
+import { writeSessionMeta } from "@/lib/pi/session-meta";
 import { createTurnEventRouter } from "@/lib/pi/session-event-router";
 import {
   releaseSpanSink,
@@ -236,6 +237,7 @@ export const stopPiSession = async (semlaSessionId: string): Promise<boolean> =>
 
 export const runPiPrompt = async ({
   editEntryId = null,
+  leafId = null,
   model,
   onEvent,
   projects = [],
@@ -251,6 +253,19 @@ export const runPiPrompt = async ({
    * points at. Nothing is deleted; see session-branch.ts.
    */
   editEntryId?: string | null;
+  /**
+   * Continue from this entry rather than from wherever the file happens to
+   * end — the branch a client was looking at when it sent this prompt. See
+   * docs/plans/branching-sessions.md §2: the client is the one place that
+   * knows which branch it was viewing, so it is the one place that can say
+   * where the turn should land. Ignored when `editEntryId` is set, since an
+   * edit already names its own, more specific target (the edited entry's
+   * parent). An id this session does not recognise is logged and ignored
+   * rather than failing the turn — falling back to the default leaf (the
+   * last entry, same as Pi) is a safe default in a way that silently
+   * discarding an *edit* target would not be.
+   */
+  leafId?: string | null;
   model: { modelId: string; provider: string };
   onEvent: (event: PiSessionEvent) => void;
   /**
@@ -365,6 +380,21 @@ export const runPiPrompt = async ({
       resolveBranchTarget(sessionManager.getEntries(), editEntryId),
     );
     sessionLog(semlaSessionId, "editing entry", { entry: editEntryId });
+  } else if (leafId) {
+    // A fork-continuation, not an edit: land on the named entry itself rather
+    // than its parent, so the next append becomes its child. Validated against
+    // the entries actually in this session file — an id from a different
+    // session, or one a rewrite has since dropped, is exactly the case
+    // session-branch.ts's EntryNotFoundError exists for on the edit path; here
+    // the safe answer is to ignore it and keep the leaf Pi would already have
+    // picked, not to fail the turn over a stale reference.
+    const known = sessionManager.getEntries().some((entry) => entry.id === leafId);
+    if (known) {
+      sessionManager.branch(leafId);
+      sessionLog(semlaSessionId, "continuing from leaf", { entry: leafId });
+    } else {
+      sessionLog(semlaSessionId, "unknown leaf, using default", { entry: leafId });
+    }
   }
 
   // Publish this session's repo so the wiki bridge can attribute the sources its
@@ -653,6 +683,10 @@ export const runPiPrompt = async ({
     // Disk is what the badges read, and these entries are already in memory —
     // cumulative for the session, so a set rather than an add.
     stampConversationUsage(semlaSessionId, sumEntryUsage(entries));
+    // Record the leaf this turn actually landed on — the fallback default for
+    // the cases with no browser to supply one (a resumed session, a background
+    // continuation). Not every leaf a client merely looked at: see SessionMeta.
+    writeSessionMeta(semlaSessionId, { leafId: session.sessionManager.getLeafId() });
     debug.onPromptComplete(entries.length, state.hasBackgroundWorkflow);
     if (persistedEntries.length === 0) {
       const title = generateTitle(text);

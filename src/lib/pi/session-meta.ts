@@ -72,6 +72,18 @@ export interface SessionMeta {
    * field existed — both fall back to the model a turn would use.
    */
   model?: { modelId: string; provider: string };
+  /**
+   * The leaf a turn last actually ran from — not every branch that was merely
+   * viewed. This is the fallback of last resort: docs/plans/branching-sessions.md
+   * puts the leaf a *client* is looking at in the URL and the leaf a *turn*
+   * continues from on the prompt request, precisely so that looking does not
+   * write here. This field only matters for the cases with no browser attached
+   * to supply either one — a background continuation, or a resumed session —
+   * and for a fresh tab with no `?leaf=` yet. Absent for a session that has
+   * never branched, which falls back to the last entry in the file, same as
+   * Pi itself.
+   */
+  leafId?: string | null;
 }
 
 const metaPath = (id: string, dir: string) => join(dir, `${id}.json`);
