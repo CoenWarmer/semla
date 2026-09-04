@@ -86,7 +86,19 @@ export function ReviewPanel({
    * setting state from that effect, which is the `react/set-state-in-effect`
    * error this repository treats as fatal.
    */
-  initialTarget?: { project: string; path: string; line: number } | null;
+  initialTarget?: {
+    project: string;
+    path: string;
+    line: number;
+    /**
+     * Whether `line` is the exact clicked position, or only the nearest
+     * resolvable component's own declaration line. `"component"` is shown
+     * as a notice rather than presented as if the panel scrolled to the
+     * exact spot clicked — see `LocatedElement` in `element-locator.ts` for
+     * why the element picker sometimes cannot do better than that.
+     */
+    precision?: "exact" | "component";
+  } | null;
   onClose: () => void;
   /**
    * Ask the agent something. Routed up rather than handled here: the session
@@ -281,6 +293,15 @@ export function ReviewPanel({
           </Button>
         </div>
       </header>
+
+      {initialTarget?.precision === "component" && (
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+          <span className="text-xs text-muted-foreground">
+            Opened on the nearest component Semla could resolve — not
+            necessarily the exact line clicked.
+          </span>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <aside

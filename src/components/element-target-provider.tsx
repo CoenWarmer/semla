@@ -15,6 +15,14 @@ export type ElementTarget = {
   /** The line the fiber's debug stack named, so the editor can jump to it. */
   line: number;
   /**
+   * Whether `line` is the exact clicked position, or only the nearest named
+   * component's own declaration line — see `LocatedElement` in
+   * `element-locator.ts`. The panel shows a notice for `"component"` rather
+   * than silently opening a line that is not quite where the operator
+   * clicked.
+   */
+  precision: "exact" | "component";
+  /**
    * Unique per pick, including a second pick of the exact same file and line.
    *
    * `ReviewPanel` only reads its `initialTarget` prop once, on mount (see its

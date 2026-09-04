@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { componentName, nameChainBetween, type Fiber } from "./element-locator.ts";
+import { componentName, nameChainToBoundary, type Fiber } from "./element-locator.ts";
 
 function Plain() {}
 Plain.displayName = undefined;
@@ -85,7 +85,7 @@ describe("componentName", () => {
   });
 });
 
-describe("nameChainBetween", () => {
+describe("nameChainToBoundary", () => {
   it("collects names outermost-first, excluding the boundary", () => {
     function A() {}
     function B() {}
@@ -95,7 +95,7 @@ describe("nameChainBetween", () => {
     const middle: Fiber = { return: boundary, type: B };
     const leaf: Fiber = { return: middle, type: C };
 
-    expect(nameChainBetween(boundary, leaf)).toEqual(["B", "C"]);
+    expect(nameChainToBoundary("A", leaf)).toEqual(["B", "C"]);
   });
 
   it("skips a fiber componentName cannot classify, without breaking the chain", () => {
@@ -108,11 +108,41 @@ describe("nameChainBetween", () => {
     const host: Fiber = { return: boundary, type: "div" };
     const leaf: Fiber = { return: host, type: C };
 
-    expect(nameChainBetween(boundary, leaf)).toEqual(["C"]);
+    expect(nameChainToBoundary("A", leaf)).toEqual(["C"]);
   });
 
   it("returns an empty chain when to and from are the same fiber", () => {
-    const boundary: Fiber = { type: () => null };
-    expect(nameChainBetween(boundary, boundary)).toEqual([]);
+    function A() {}
+    const boundary: Fiber = { type: A };
+    expect(nameChainToBoundary("A", boundary)).toEqual([]);
+  });
+
+  it("finds the boundary by name even when it is not the fiber the caller expected — the whole point of matching by name rather than identity", () => {
+    function A() {}
+    function B() {}
+    function C() {}
+
+    // Two separate fiber objects both named "A" — standing in for the case
+    // that motivated this: the fiber a debug-stack frame resolved from is not
+    // guaranteed to be the same *reference* as the one sitting on the
+    // clicked element's structural .return chain, even when it shares that
+    // ancestor's name.
+    const otherA: Fiber = { type: A };
+    const boundary: Fiber = { type: A };
+    const middle: Fiber = { return: boundary, type: B };
+    const leaf: Fiber = { return: middle, type: C };
+
+    expect(otherA).not.toBe(boundary);
+    expect(nameChainToBoundary("A", leaf)).toEqual(["B", "C"]);
+  });
+
+  it("returns null when no ancestor by that name exists at all", () => {
+    function B() {}
+    function C() {}
+
+    const middle: Fiber = { type: B };
+    const leaf: Fiber = { return: middle, type: C };
+
+    expect(nameChainToBoundary("NoSuchAncestor", leaf)).toBeNull();
   });
 });

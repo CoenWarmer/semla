@@ -125,6 +125,7 @@ export function ElementPicker({ sessionId }: { sessionId: string }) {
           elementTarget.request({
             line: located.line,
             path: body.path,
+            precision: located.precision,
             project: body.project,
           });
         })

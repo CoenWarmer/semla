@@ -92,4 +92,30 @@ describe("resolveJsxComponentChain", () => {
       }),
     ).toBeNull();
   });
+
+  it("requires the boundary's own name as the chain's first entry", () => {
+    // `PAGE` is where <ClientSessionComponent> is *used*, not where it is
+    // declared — "SessionTopbar" as the first entry asks whether PAGE's own
+    // JSX contains <SessionTopbar>, which it does not; <SessionTopbar> is
+    // used inside client-session-component.tsx's body. This is the exact
+    // shape of the bug element-locator.ts's caller had: omitting the
+    // boundary's own name from the front of the chain fails on the very
+    // first hop and falls all the way back to the boundary answer, which is
+    // the wrong-file symptom this test pins down.
+    expect(
+      resolveJsxComponentChain({
+        chain: ["SessionTopbar", "InspectorPanel"],
+        file: PAGE,
+      }),
+    ).toBeNull();
+
+    // Prepending it is what element-locator.ts's caller now does, and is
+    // what makes the chain resolve all the way through.
+    expect(
+      resolveJsxComponentChain({
+        chain: ["ClientSessionComponent", "SessionTopbar", "InspectorPanel"],
+        file: PAGE,
+      }),
+    ).toMatchObject({ file: "src/components/inspector-panel.tsx", line: 86 });
+  });
 });

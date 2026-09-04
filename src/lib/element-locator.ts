@@ -194,28 +194,57 @@ function collectDebugStacks(fiber: Fiber): Array<{ fiber: Fiber; stack: string }
 }
 
 /**
- * Component names from `from` down to (and including) `to`, outermost first.
+ * Component names between the ancestor named `boundaryName` and `to`,
+ * outermost first — or `null` if no ancestor by that name exists on `to`'s
+ * *structural* parent chain at all.
  *
- * Walks the *structural* `return` chain — never `_debugOwner`, which is only
- * ever as reliable as the `_debugStack` it is bookkeeping for — so this is
- * unaffected by React's dev-stack throttle. `from` is expected to be an
- * ancestor of `to`; if the walk does not reach it within a generous bound, it
- * returns what it found, which the caller treats as a chain that ran out
- * rather than an error.
+ * Matched by name rather than by comparing to a specific fiber reference,
+ * because the fiber whose frame resolved (see `collectDebugStacks`) was found
+ * by walking `_debugOwner ?? current.return` — a mix of two different
+ * chains. `_debugOwner` is "who authored the JSX that created this fiber",
+ * which is not always this fiber's structural parent: it diverges for
+ * anything rendered through `{children}` passthrough, a portal, or content
+ * built from data rather than a literal JSX tag — markdown, in particular,
+ * where Streamdown/react-markdown constructs `<p>`, `<strong>` and so on from
+ * a parsed AST, not from any tag Semla wrote. A fiber found that way is not
+ * guaranteed to sit on `to`'s `.return` chain at all, so comparing by
+ * reference either fails to find it (walking to the tree's true root, well
+ * past where the boundary actually is) or, worse, matches the wrong node by
+ * coincidence. Its *name* is reliable, though — `componentName` reads the
+ * same `fiber.type` this module already resolved the boundary's own name
+ * from — and Next's App Router structure guarantees a Server Component
+ * boundary like a page's default export genuinely is a structural ancestor
+ * of everything client-rendered under it, so matching on name and then
+ * walking the real, unthrottled `.return` chain is both correct and exactly
+ * as reliable as `_debugStack` itself is not.
  */
-export function nameChainBetween(from: Fiber, to: Fiber): string[] {
+export function nameChainToBoundary(
+  boundaryName: string,
+  to: Fiber,
+): string[] | null {
   // Walking parent-to-child is not possible on a fiber (there is no back
   // reference), so this collects child-to-parent first and reverses.
   const reversed: string[] = [];
   let current: Fiber | null = to;
   let hops = 0;
+  let found = false;
 
-  while (current && current !== from && hops < 200) {
+  while (current && hops < 200) {
     const name = componentName(current);
+    if (name === boundaryName) {
+      found = true;
+      break;
+    }
     if (name) reversed.push(name);
     current = current.return ?? null;
     hops += 1;
   }
+
+  // Walked off the top of the tree without ever finding the boundary by
+  // name — the assumption above did not hold for this element (a portal is
+  // the realistic way that happens), so nothing collected along the way can
+  // be trusted as "between the boundary and the clicked element".
+  if (!found) return null;
 
   return reversed.reverse();
 }
@@ -384,14 +413,32 @@ export async function locateElement(
       // `owner` resolved, but it is an ancestor's frame, not the clicked
       // element's own — the component names between it and the clicked
       // fiber are what is missing, and only the *structural* chain (never
-      // throttled) can still name them.
-      const chain = nameChainBetween(owner, fiber);
-      const hopped = await resolveNameChain(located.file, chain);
+      // throttled) can still name them. Matched by `owner`'s own name
+      // rather than by comparing fibers directly — see nameChainToBoundary's
+      // doc for why `owner` is not guaranteed to be on `fiber`'s structural
+      // `.return` chain at all, even though it is a real ancestor.
+      const boundaryName = componentName(owner);
+      const inward = boundaryName
+        ? nameChainToBoundary(boundaryName, fiber)
+        : null;
+      // `located.file` is where `<boundaryName>` is *used* (`owner`'s frame
+      // resolved to its caller, not its own declaration) — so the first hop
+      // has to resolve `boundaryName` itself, landing on *its* file, before
+      // hopping through `inward`'s names one by one from there. Omitting
+      // this hop asks `located.file` for `inward[0]` directly, which is a
+      // name used inside `boundaryName`'s own body, almost never inside the
+      // file that merely renders `<boundaryName ... />`.
+      const chain =
+        boundaryName && inward ? [boundaryName, ...inward] : null;
+      const hopped = chain
+        ? await resolveNameChain(located.file, chain)
+        : null;
       if (hopped) {
         return { column: 1, line: hopped.line, file: hopped.file, precision: "component" };
       }
 
-      // The chain could not be hopped at all (e.g. it is empty, or the
+      // The chain could not be hopped at all (e.g. it is empty, the
+      // boundary could not be found by name on the structural chain, or the
       // boundary's own source no longer matches what the fiber reported) —
       // the boundary itself, named exactly, is still a real answer and a
       // closer one than nothing.
