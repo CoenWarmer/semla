@@ -27,18 +27,21 @@ import {
 } from "@/components/ai-elements/message";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { CopyMessageButton } from "@/components/message-copy";
+import { ForkMessageButton } from "@/components/message-fork";
 import { cn } from "@/lib/utils";
 
 interface EditableUserMessageProps {
   message: SessionMessage;
   /** A turn is in flight; branching the leaf under it would interleave paths. */
   disabled?: boolean;
+  onFork: (entryId: string) => void;
   onSubmit: (entryId: string, text: string) => void;
 }
 
 export function EditableUserMessage({
   disabled = false,
   message,
+  onFork,
   onSubmit,
 }: EditableUserMessageProps) {
   const [editing, setEditing] = useState(false);
@@ -131,6 +134,12 @@ export function EditableUserMessage({
           stays nearest the bubble it edits.
         */}
         {!editing && <CopyMessageButton text={message.text} />}
+        {!editing && (
+          <ForkMessageButton
+            disabled={disabled}
+            onFork={() => onFork(message.id)}
+          />
+        )}
         <button
           className={cn(
             "shrink-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:cursor-not-allowed",

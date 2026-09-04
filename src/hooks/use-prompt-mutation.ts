@@ -9,6 +9,7 @@ import {
 } from "@/hooks/use-session-messages";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { promptFailureMessage } from "@/lib/prompt-failure";
+import { truncateAtMessage } from "@/lib/session-fork";
 import {
   fetchSessionSpans,
   mergeSpans,
@@ -531,7 +532,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           : "Pi could not process this prompt."
       );
     },
-    onMutate: async ({ text }) => {
+    onMutate: async ({ leafId, text }) => {
       // Cancel any in-progress reconnect so it doesn't race with the new prompt.
       reconnectAbortRef.current?.abort();
       reconnectAbortRef.current = null;
@@ -558,7 +559,17 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         queryClient.getQueryData<SessionMessagesResult>(
           sessionMessagesQueryKey(sessionId)
         );
-      const previousMessages = previous?.messages ?? [];
+      // Truncated to the fork point when this turn continues from one, so the
+      // optimistic bubble lands right after it rather than after messages the
+      // fork was supposed to have cut off — the client's own render already
+      // shows that truncated view (client-session-component.tsx), and the
+      // server is about to move the leaf there too. Disagreeing here would be
+      // a visible jump: the bubble briefly after the wrong messages, then
+      // snapping back once the real transcript refetches.
+      const previousMessages = truncateAtMessage(
+        previous?.messages ?? [],
+        leafId,
+      );
       queryClient.setQueryData<SessionMessagesResult>(
         sessionMessagesQueryKey(sessionId),
         {

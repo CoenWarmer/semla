@@ -30,7 +30,9 @@ import { ReviewPanel } from "./review/review-panel";
 import { SessionActivityLine } from "@/components/session-activity-line";
 import { AskUserDialog } from "./ask-user-dialog";
 import { CopyMessageButton } from "./message-copy";
+import { ForkMessageButton } from "./message-fork";
 import { EditableUserMessage } from "./message-edit";
+import { truncateAtMessage } from "@/lib/session-fork";
 import { SessionStepsStrip } from "./session-steps-strip";
 import { GoalEditor } from "./goal-editor";
 import { groupConversation } from "@/lib/session-steps";
@@ -145,12 +147,31 @@ export function ClientSessionComponent({
     isActive,
   );
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
+  /**
+   * The message a fork is currently positioned at, or null when the view is
+   * the live tip. See docs/plans/branching-sessions.md §3: forking does not
+   * itself create a branch, it repositions where the next prompt will land
+   * — so until that prompt is sent, the only visible effect is that the
+   * conversation is shown truncated to this point.
+   *
+   * Cleared whenever the transcript query resolves to a *different* set of
+   * messages than the one the fork was taken against: a real branch only
+   * exists once a second child is appended, and once it does, the newly
+   * fetched conversation already ends at the right place on its own —
+   * continuing to truncate on the client would then cut off the very reply
+   * the fork produced.
+   */
+  const [forkedAt, setForkedAt] = useState<string | null>(null);
   // Memoised, not just defaulted: `?? []` hands out a fresh array on every
   // render while the query is empty, which defeats every memo and effect
   // downstream that depends on it.
-  const messages = useMemo(
+  const allMessages = useMemo(
     () => messagesQuery.data?.messages ?? [],
     [messagesQuery.data?.messages],
+  );
+  const messages = useMemo(
+    () => truncateAtMessage(allMessages, forkedAt),
+    [allMessages, forkedAt],
   );
   // Persisted rows arrive only when the turn's entries are written, so fold in
   // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
@@ -349,10 +370,31 @@ export function ClientSessionComponent({
         return;
       }
 
-      await promptMutation.mutateAsync({ model, text: message.text, tools });
+      // The branch this prompt continues from, when it is not the live tip.
+      // Cleared regardless of outcome: on success the fetched conversation
+      // already ends at the right place, and on failure there is nothing to
+      // stay forked at — the prompt never landed.
+      const leafId = forkedAt ?? undefined;
+      setForkedAt(null);
+      await promptMutation.mutateAsync({ leafId, model, text: message.text, tools });
     },
-    [promptMutation],
+    [forkedAt, promptMutation],
   );
+
+  /**
+   * Fork the conversation at this message.
+   *
+   * Sets the position; nothing is sent yet, and nothing branches yet — see
+   * docs/plans/branching-sessions.md §3. The next prompt (from the bar, an
+   * edit, or "Explain") is what actually continues from here.
+   */
+  const handleFork = useCallback((entryId: string) => {
+    setForkedAt(entryId);
+  }, []);
+
+  const handleCancelFork = useCallback(() => {
+    setForkedAt(null);
+  }, []);
 
   // The model and tools the prompt bar would submit with. An edit runs a turn
   // from a message rather than from the bar, and should use the same selection.
@@ -384,6 +426,10 @@ export function ClientSessionComponent({
       if (!selection) return;
 
       setReviewManuallyOpened(false);
+      // A distinct turn from wherever the operator was forked to — explaining
+      // an element is asked of the live conversation, not of a branch that
+      // happened to be open in the panel underneath it.
+      setForkedAt(null);
       promptMutation
         .mutateAsync({
           model: selection.model,
@@ -401,6 +447,13 @@ export function ClientSessionComponent({
       // No model resolved yet, or a turn is already running — branching the leaf
       // under a live turn would interleave two paths in one session.
       if (!selection) return;
+
+      // An edit names its own, more specific target (the edited entry's
+      // parent) and takes priority over any fork position on the server — see
+      // runPiPrompt. Clearing here keeps the client's display in step with
+      // that: the truncation this fork was showing no longer applies once a
+      // different leaf move has been made.
+      setForkedAt(null);
 
       // Rejections surface through the mutation's onError as streamError.
       promptMutation
@@ -555,6 +608,7 @@ export function ClientSessionComponent({
                     disabled={isActive}
                     key={item.message.id}
                     message={item.message}
+                    onFork={handleFork}
                     onSubmit={handleEditPrompt}
                   />
                 ) : (
@@ -583,10 +637,13 @@ export function ClientSessionComponent({
                           {item.message.text}
                         </MessageResponse>
                       </MessageContent>
-                      <CopyMessageButton
-                        className="mt-1"
-                        text={item.message.text}
-                      />
+                      <div className="mt-1 flex shrink-0 items-center gap-1">
+                        <CopyMessageButton text={item.message.text} />
+                        <ForkMessageButton
+                          disabled={isActive}
+                          onFork={() => handleFork(item.message.id)}
+                        />
+                      </div>
                     </div>
                   </Message>
                 ),
@@ -645,6 +702,25 @@ export function ClientSessionComponent({
               sessionId={sessionId}
               onDismiss={() => {}}
             />
+          </div>
+        )}
+        {forkedAt && (
+          // Nothing has diverged yet — see docs/plans/branching-sessions.md
+          // §3. The conversation above is showing only up to the forked
+          // message; whatever came after it on the live path still exists,
+          // simply not reached from here until this is cancelled.
+          <div className="flex shrink-0 items-center justify-between gap-2 border-border/40 border-t bg-muted/30 px-3 py-1.5 text-muted-foreground text-xs">
+            <span>
+              Continuing from an earlier message. The next prompt starts a new
+              branch here.
+            </span>
+            <button
+              className="shrink-0 underline hover:no-underline"
+              onClick={handleCancelFork}
+              type="button"
+            >
+              Cancel
+            </button>
           </div>
         )}
         <div className="shrink-0">
