@@ -29,6 +29,12 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useMcpStatus } from "@/hooks/use-mcp-status";
 import { useModels, type PiModel } from "@/hooks/use-models";
 import { useTools } from "@/hooks/use-tools";
 import {
@@ -36,7 +42,7 @@ import {
   useUserSettings,
 } from "@/hooks/use-user-settings";
 
-import { CheckIcon, WrenchIcon } from "lucide-react";
+import { CheckIcon, ServerIcon, WrenchIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -203,6 +209,7 @@ export function PromptEditor({
     isSuccess: userSettingsLoaded,
   } = useUserSettings();
   const { data: piTools } = useTools(sessionId);
+  const { data: mcpStatus } = useMcpStatus();
 
   const { error: updateUserSettingsError, mutate: updateUserSettings } =
     useUpdateUserSettings();
@@ -249,6 +256,11 @@ export function PromptEditor({
   const matchingExtensionTools = extensionTools.filter((tool) =>
     tool.toLowerCase().includes(toolQuery.toLowerCase()),
   );
+  // Only shown once the mcp extension tool is actually present — mirrors the
+  // health card's own "an extension that never loaded should not be implied
+  // to exist" rule, rather than assuming the manifest entry is always there.
+  const mcpEnabled = extensionTools.includes("mcp");
+  const mcpServerCount = mcpStatus?.enabledServers.length ?? 0;
 
   const toggleTool = useCallback((tool: string) => {
     setTools((current) =>
@@ -431,6 +443,29 @@ export function PromptEditor({
             </div>
           )}
         </div>
+        {mcpEnabled && (
+          <Tooltip>
+            <TooltipTrigger>
+              <PromptInputButton>
+                <ServerIcon size={16} />
+                <span>
+                  {mcpServerCount} MCP server{mcpServerCount === 1 ? "" : "s"}
+                </span>
+              </PromptInputButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {mcpStatus?.error ? (
+                <span>mcp.json does not parse: {mcpStatus.error}</span>
+              ) : mcpServerCount > 0 ? (
+                <span>{mcpStatus?.enabledServers.join(", ")}</span>
+              ) : (
+                <span>
+                  No MCP servers configured. Edit {mcpStatus?.configPath ?? "mcp.json"}.
+                </span>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <ModelSelector
           onOpenChange={setModelSelectorOpen}
           open={modelSelectorOpen}
