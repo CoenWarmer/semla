@@ -4,10 +4,12 @@
 trackers, whatever the operator configures — without the agent's context being
 consumed by hundreds of tool definitions it will not use.
 
-**Status:** designed and spiked 2026-09-04; Phase 1 (§6) implemented. §2 records
-what the spike actually did and found; the recommendation in §3 rests on it
-rather than on the package's documentation, which is wrong about the one thing
-that mattered.
+**Status:** designed and spiked 2026-09-04; Phases 1 and 2 (§6) implemented.
+§2 records what the spike actually did and found; the recommendation in §3
+rests on it rather than on the package's documentation, which is wrong about
+the one thing that mattered — and §5's own original proposal turned out to be
+wrong about a second thing, corrected during implementation and noted inline
+below.
 
 **Phase 1 note:** pinned to `pi-mcp-adapter@2.29.0`, not the then-latest
 2.32.1 — this sandbox's npm refuses anything published after 2026-08-28 (see
@@ -19,7 +21,14 @@ away, and `@napi-rs/keyring` installing via optional dependencies with no
 postinstall script. Landed as `MCP_PACKAGE_DIR`/`MCP_EXTENSION_PATH` in
 `runtime-config.ts`, a `kind: "path"` manifest entry (`providesTools: ["mcp"]`,
 `optionalTools: ["mcpScript"]`), and
-`src/lib/pi/extensions/mcp-package-contract.test.ts`. Phases 2–4 remain open.
+`src/lib/pi/extensions/mcp-package-contract.test.ts`.
+
+**Phase 2 note:** the plan's original `--mcp-config` approach turned out not to
+work — see the revised §5 and §6 below. `PI_MCP_CONFIG_MODE=exclusive` is what
+actually collapses the package's six-source precedence chain to one file, and
+an env var (not an argv flag) is the right mechanism for a long-lived server
+process. Landed as `src/lib/pi/mcp-config.ts`, called from
+`instrumentation.ts`. Phases 3–4 remain open.
 
 ---
 
@@ -157,10 +166,34 @@ Two of those are host-global and outrank the agent directory. Semla already sets
 cache land inside Semla's own directory for free — but the first two would still
 win.
 
-**Decision: pin the config path.** `index.ts:197` reads
-`options.configPath ?? getConfigPathFromArgv()`, and `getConfigPathFromArgv`
-looks for `--mcp-config <path>` in `process.argv`. Appending that at server boot
-pins one file and bypasses the precedence chain entirely.
+**Decision, revised during implementation: pin the config *mode*, not a
+`--mcp-config` path.** The original plan here read `index.ts:197`'s
+`options.configPath ?? getConfigPathFromArgv()` as bypassing the precedence
+chain. It does not: reading `config.ts`'s `getConfigSources()` directly shows
+an `overridePath` only replaces the *pi-global* entry's path — the two
+host-global sources (`~/.config/mcp/mcp.json`, `~/.agents/mcp.json` and its
+nested form) and the project sources are still pushed onto the list and merged
+in regardless. `--mcp-config` narrows *where the pi-global file lives*; it does
+not narrow *how many files are read*.
+
+What actually collapses the chain is `PI_MCP_CONFIG_MODE=exclusive`.
+`getConfigSources()` early-returns a single `"pi-global"` entry when
+`isExclusiveConfigMode()` is true, host-config auto-discovery
+(`loadDiscoveredHostConfigs`, importing from Cursor/Claude/etc.) is switched
+off, and `loadMcpConfig()` skips package and agent-plugin configs too via the
+same early return — confirmed by reading and exercising `config.ts` directly
+with jiti, not assumed from the package's docs (see
+`src/lib/pi/mcp-config.test.ts`).
+
+That single remaining source is `getAgentPath("mcp.json")` — inside whatever
+`PI_CODING_AGENT_DIR` points at, which is already Semla's own agent directory
+(`isolatePiAgentDir()` in `agent-dir.ts`). So no `--mcp-config` value is needed
+at all: setting the mode is sufficient, and pinning it as an env var read at
+call time is also the safer mechanism for Semla specifically — it is one
+long-lived Next.js process serving concurrent sessions, and a flag pushed onto
+`process.argv` at boot would still be present for every request the process
+ever handles afterwards, where `process.env.PI_MCP_CONFIG_MODE` is read fresh
+by `isExclusiveConfigMode()` on every call with no such leak.
 
 **Why pin rather than share.** An MCP server entry is a `command` and its
 `args` — it is arbitrary process execution, described in a file. Sharing one
@@ -169,7 +202,10 @@ single-user machine, so this is a judgement rather than a rule. It is pinned
 because Semla should be able to state what its agent can reach, and because
 "the agent gained a capability from a file written for a different tool" is
 precisely the kind of thing this codebase writes tests to prevent. An operator
-who wants the shared file can point the pin at it, in one place, on purpose.
+who wants the shared file back can set `PI_MCP_CONFIG_MODE` themselves before
+Semla starts — `isolateMcpConfigMode()` reads any value already present in the
+environment before defaulting to `exclusive`, the same precedence
+`isolatePiAgentDir()` already gives `PI_CODING_AGENT_DIR`.
 
 **Keeping `.pi/` gone.** The adapter writes protocol traces to `.pi/mcp-traces/`
 when they are enabled, and a project override to `.pi/mcp.json` if one is
@@ -182,14 +218,23 @@ and `pi-dir-removed.test.ts` keeps holding.
 
 **0 — Spike.** Done; §2.
 
-**1 — Load it.** Exact pin in the root `package.json`, the two path constants,
-the manifest entry, and the contract test: version pinned, tool set asserted
-against the installed package, and the peer edges asserted to resolve to
-`@earendil-works` rather than `@mariozechner`, because that is the failure that
-would come back silently.
+**1 — Load it.** Done. Exact pin (`pi-mcp-adapter@2.29.0`; the sandbox's npm
+caps at packages published before 2026-08-28, so `2.32.1` was unreachable and
+must be re-checked before any bump) in the root `package.json`,
+`MCP_PACKAGE_DIR`/`MCP_EXTENSION_PATH` in `runtime-config.ts`, a manifest entry
+in `extension-manifest.ts` (`providesTools: ["mcp"]`,
+`optionalTools: ["mcpScript"]`), and
+`src/lib/pi/extensions/mcp-package-contract.test.ts`: version pinned, tool set
+asserted against the installed package, and the peer edges asserted to resolve
+to `@earendil-works` with no `@mariozechner` wildcard to alias away.
 
-**2 — Pin the configuration.** `--mcp-config` at boot, pointing at
-`~/.semla/agent/mcp.json`; a test that the pinned path is what the adapter reads.
+**2 — Pin the configuration.** Done, but not as originally written here — see
+the revised §5 above. `PI_MCP_CONFIG_MODE=exclusive`, set by
+`isolateMcpConfigMode()` in `src/lib/pi/mcp-config.ts` and called from
+`instrumentation.ts` right after `isolatePiAgentDir()`, so the one remaining
+config source lands inside `~/.semla/agent/mcp.json`.
+`src/lib/pi/mcp-config.test.ts` proves the pinned mode collapses the package's
+own `getConfigDiscoveryPaths()` to exactly that path.
 
 **3 — Make it visible.** The panel already advertises `EXTENSION_TOOLS`. Decide
 whether `mcp` joins `PI_TOOLS` so it can be toggled per turn, and surface which

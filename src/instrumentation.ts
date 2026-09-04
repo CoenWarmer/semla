@@ -21,6 +21,13 @@ export async function register() {
     );
   }
 
+  // Pins pi-mcp-adapter to the one file inside `dir` above, rather than the
+  // six-source precedence chain it otherwise merges — two of which are
+  // host-global and would outrank anything set here. See mcp-config.ts.
+  const { isolateMcpConfigMode } = await import("@/lib/pi/mcp-config");
+  const mcpConfig = isolateMcpConfigMode();
+  console.log(`[pi] mcp config mode: ${mcpConfig.mode} (${mcpConfig.path})`);
+
   // Code intelligence resolves language servers by name on PATH, and degrades
   // quietly to structural evidence when one is missing. Do it before any session
   // starts, and say what it found, so a thin code answer is traceable to here.
