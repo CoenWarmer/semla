@@ -15,7 +15,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useDismissReview, useReview } from "@/hooks/use-review";
 import { useSessionMessages } from "@/hooks/use-session-messages";
-import { mergeToolCalls } from "@/lib/live-tool-calls";
+import { LIVE_MESSAGE_ID, mergeToolCalls } from "@/lib/live-tool-calls";
 import { shouldOpenReview } from "@/lib/review-open";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
@@ -32,7 +32,7 @@ import { CopyMessageButton } from "./message-copy";
 import { EditableUserMessage } from "./message-edit";
 import { SessionStepsStrip } from "./session-steps-strip";
 import { GoalEditor } from "./goal-editor";
-import { groupConversation } from "@/lib/session-steps";
+import { groupConversation, splitLiveSteps } from "@/lib/session-steps";
 import dynamic from "next/dynamic";
 
 const WikiMiniGraph = dynamic(
@@ -152,11 +152,44 @@ export function ClientSessionComponent({
     () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
     [persistedToolCalls, liveToolCalls],
   );
+  // A live tool call's messageId points at this placeholder rather than a
+  // real assistant message, because the turn that made it has not been
+  // persisted yet. Without a message here for groupConversation to attach to,
+  // every call arriving mid-turn was silently dropped from the steps strip
+  // until the turn ended and a real, id-bearing message replaced it. It
+  // carries no text, so isSilent still folds it into a steps group, and it
+  // disappears on its own once the persisted refetch lands: mergeToolCalls
+  // then drops the now-duplicate live rows, leaving this placeholder with no
+  // steps to show and groupConversation drops empty ones.
+  const messagesWithLiveTurn = useMemo(() => {
+    const hasLiveSteps = toolCalls.some(
+      (call) => call.messageId === LIVE_MESSAGE_ID,
+    );
+    if (!hasLiveSteps) return messages;
+
+    return [
+      ...messages,
+      {
+        createdAt: new Date().toISOString(),
+        id: LIVE_MESSAGE_ID,
+        role: "assistant" as const,
+        text: "",
+      },
+    ];
+  }, [messages, toolCalls]);
   // Turns that only called tools carry no text and used to render as empty
   // bubbles. Folded into strips of steps instead — see session-steps.ts.
   const conversation = useMemo(
-    () => groupConversation(messages, toolCalls),
-    [messages, toolCalls],
+    () => groupConversation(messagesWithLiveTurn, toolCalls),
+    [messagesWithLiveTurn, toolCalls],
+  );
+  // Split off the live-turn's own steps so they can be drawn after
+  // `streamingText` instead of before it — without this, the strip for tools
+  // the current turn is still running rendered above the answer streaming in
+  // alongside them, rather than beneath it. See splitLiveSteps.
+  const { historyItems, liveSteps } = useMemo(
+    () => splitLiveSteps(conversation, LIVE_MESSAGE_ID),
+    [conversation],
   );
 
   const contextCheckTrigger = useTriggerContextCheck(sessionId);
@@ -519,7 +552,7 @@ export function ClientSessionComponent({
                 title="Start a conversation"
               />
             ) : (
-              conversation.map((item) =>
+              historyItems.map((item) =>
                 item.kind === "steps" ? (
                   <SessionStepsStrip items={item.items} key={item.id} />
                 ) : (
@@ -563,6 +596,14 @@ export function ClientSessionComponent({
                   <MessageResponse isAnimating>{streamingText}</MessageResponse>
                 </MessageContent>
               </Message>
+            )}
+            {/*
+              The steps for tools the current turn is still running, drawn
+              after the streaming answer rather than before it — see
+              historyItems/liveSteps above.
+            */}
+            {liveSteps && (
+              <SessionStepsStrip items={liveSteps.items} key={liveSteps.id} />
             )}
             {/*
               `active` is the same value the prompt bar gets as `isRunning`

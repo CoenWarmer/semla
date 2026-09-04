@@ -11,6 +11,16 @@
  */
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 
+/**
+ * The `messageId` a live tool call carries before the turn's real assistant
+ * message exists. `groupConversation` matches calls to messages by id, so
+ * without a shared placeholder id here it can never fold a still-streaming
+ * call into a steps group — the chip only appeared once the turn ended and
+ * the persisted refetch supplied a real id. A caller that wants live calls to
+ * render inline must add a placeholder message carrying this same id.
+ */
+export const LIVE_MESSAGE_ID = "live-turn";
+
 export type LiveToolEvent =
   | {
       at: string;
@@ -22,7 +32,9 @@ export type LiveToolEvent =
     }
   | {
       at: string;
+      errorText?: string;
       isError: boolean;
+      resultText?: string;
       toolCallId: string;
       toolName: string;
       type: "tool-end";
@@ -45,9 +57,10 @@ export function applyLiveToolEvent(
       {
         createdAt: event.at,
         id: event.toolCallId,
-        // No entry exists yet, so there is nothing to scroll the transcript to.
-        // Marker clicks guard on this being non-empty.
-        messageId: "",
+        // Points at the placeholder live-turn message rather than a real one —
+        // there is nothing to scroll the transcript to yet. Marker clicks guard
+        // on this being non-empty, and LIVE_MESSAGE_ID is.
+        messageId: LIVE_MESSAGE_ID,
         name: event.toolName,
         ...(event.summary ? { summary: event.summary } : {}),
         ...(event.params ? { params: event.params } : {}),
@@ -63,6 +76,8 @@ export function applyLiveToolEvent(
     ...next[index],
     isError: event.isError,
     resultAt: event.at,
+    ...(event.errorText ? { errorText: event.errorText } : {}),
+    ...(event.resultText ? { resultText: event.resultText } : {}),
   };
   return next;
 }

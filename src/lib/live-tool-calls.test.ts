@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 import {
   applyLiveToolEvent,
+  LIVE_MESSAGE_ID,
   mergeToolCalls,
   type LiveToolEvent,
 } from "@/lib/live-tool-calls";
@@ -21,12 +22,18 @@ const start = (
   ...extra,
 });
 
-const end = (toolCallId: string, at: string, isError = false): LiveToolEvent => ({
+const end = (
+  toolCallId: string,
+  at: string,
+  isError = false,
+  extra: Pick<Extract<LiveToolEvent, { type: "tool-end" }>, "errorText" | "resultText"> | object = {},
+): LiveToolEvent => ({
   at,
   isError,
   toolCallId,
   toolName: "bash",
   type: "tool-end",
+  ...extra,
 });
 
 describe("applyLiveToolEvent", () => {
@@ -37,7 +44,7 @@ describe("applyLiveToolEvent", () => {
       {
         createdAt: "2026-08-26T10:00:00.000Z",
         id: "call-1",
-        messageId: "",
+        messageId: LIVE_MESSAGE_ID,
         name: "bash",
       },
     ]);
@@ -75,6 +82,28 @@ describe("applyLiveToolEvent", () => {
     expect(calls[0].resultAt).toBeUndefined();
     expect(calls[1].resultAt).toBe("2026-08-26T10:00:03.000Z");
     expect(calls[1].isError).toBe(true);
+  });
+
+  it("carries the tool's response text onto the row, so the drawer can show it before the turn ends", () => {
+    const started = applyLiveToolEvent([], start("call-1", "2026-08-26T10:00:00.000Z"));
+    const closed = applyLiveToolEvent(
+      started,
+      end("call-1", "2026-08-26T10:00:02.000Z", false, { resultText: "total 0\ndrwxr-xr-x" }),
+    );
+
+    expect(closed[0].resultText).toBe("total 0\ndrwxr-xr-x");
+    expect(closed[0].errorText).toBeUndefined();
+  });
+
+  it("carries the error text separately when the call failed", () => {
+    const started = applyLiveToolEvent([], start("call-1", "2026-08-26T10:00:00.000Z"));
+    const closed = applyLiveToolEvent(
+      started,
+      end("call-1", "2026-08-26T10:00:02.000Z", true, { errorText: "no such file" }),
+    );
+
+    expect(closed[0].errorText).toBe("no such file");
+    expect(closed[0].isError).toBe(true);
   });
 
   it("ignores a repeated start and an unmatched end", () => {

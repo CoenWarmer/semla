@@ -28,7 +28,9 @@ export type PiSessionEvent =
     }
   | {
       at: string;
+      errorText?: string;
       isError: boolean;
+      resultText?: string;
       toolCallId: string;
       toolName: string;
       type: "tool-end";

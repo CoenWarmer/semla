@@ -29,7 +29,11 @@ import {
   persistWorkflowSnapshot,
 } from "@/lib/pi/session-persistence";
 import { setSessionRepos } from "@/lib/pi/wiki-session-repo";
-import { getParams, summarizeArguments } from "@/lib/pi/transcript";
+import {
+  getParams,
+  summarizeArguments,
+  textFromToolResultContent,
+} from "@/lib/pi/transcript";
 import {
   claimBackgroundRun,
   noteDeliveredDuringPrompt,
@@ -178,9 +182,17 @@ export const createTurnEventRouter = ({
     sessionLog(semlaSessionId, "tool end", { tool: event.toolName });
     debug.onToolEnd(event.toolName, event.result);
     host.toolEnded(event.toolCallId, { isError: Boolean(event.isError) });
+    const isError = Boolean(event.isError);
+    // Same extraction and length limits the persisted transcript applies to a
+    // toolResult message (transcript.ts's getToolCalls) — so the live drawer
+    // shows the identical text the persisted one replaces it with, rather
+    // than nothing until the turn ends and the refetch lands.
+    const resultText = textFromToolResultContent(event.result?.content);
     emit({
       at: new Date().toISOString(),
-      isError: Boolean(event.isError),
+      ...(isError ? { errorText: resultText.slice(0, 1000) } : {}),
+      isError,
+      ...(resultText ? { resultText: resultText.slice(0, 4000) } : {}),
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       type: "tool-end",

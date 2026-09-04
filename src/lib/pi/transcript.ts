@@ -268,6 +268,26 @@ export const liveMessageRows = (rows: TranscriptRow[]): TranscriptRow[] => {
     });
 };
 
+/**
+ * The text a tool result's content carries, joining every text block and
+ * ignoring images — the same shape a persisted `toolResult` message and a
+ * live `tool_execution_end` event's `result.content` both use. Shared so the
+ * live event router (session-event-router.ts) reports the same text the
+ * persisted transcript would, rather than re-deriving its own reading of the
+ * content array.
+ */
+export const textFromToolResultContent = (content: unknown): string =>
+  Array.isArray(content)
+    ? (content as Array<unknown>)
+        .filter((p): p is { type: string; text: string } =>
+          isRecord(p) && p.type === "text" && typeof p.text === "string"
+        )
+        .map((p) => p.text)
+        .join("")
+    : typeof content === "string"
+      ? content
+      : "";
+
 /** The shared transform: both sources reduce to the same row shape. */
 export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => {
 
@@ -280,16 +300,7 @@ export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => 
     if (!message || message.role !== "toolResult") continue;
     const callId = typeof message.toolCallId === "string" ? message.toolCallId : null;
     if (!callId) continue;
-    const text = Array.isArray(message.content)
-      ? (message.content as Array<unknown>)
-          .filter((p): p is { type: string; text: string } =>
-            isRecord(p) && p.type === "text" && typeof p.text === "string"
-          )
-          .map((p) => p.text)
-          .join("")
-      : typeof message.content === "string"
-        ? message.content
-        : "";
+    const text = textFromToolResultContent(message.content);
     const resultAt = payload.entry?.timestamp ?? entry.created_at;
     toolResultMap.set(callId, { isError: Boolean(message.isError), resultAt, text });
   }

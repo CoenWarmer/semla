@@ -90,6 +90,51 @@ export function groupConversation(
   return items;
 }
 
+/**
+ * Pull the live turn's own steps off the end of a conversation, so the caller
+ * can draw them after the streaming answer instead of before it.
+ *
+ * The live-turn placeholder message (see LIVE_MESSAGE_ID in
+ * live-tool-calls.ts) is always appended last, by construction, so its steps
+ * — when present — always land inside the trailing item groupConversation
+ * produces. But that trailing group is not necessarily *only* the live turn:
+ * groupConversation folds consecutive silent turns into one strip, so an
+ * already-finished turn immediately before it (one that also had no text —
+ * e.g. it ended in a tool error) merges into the same group. Pulling that
+ * whole group out would move finished, historical steps below an answer they
+ * have nothing to do with. This splits by `messageId` instead of by group, so
+ * only the steps whose `messageId` is the live placeholder move; anything else
+ * in that trailing group is kept behind in `historyItems`, in its own group,
+ * exactly where groupConversation put it.
+ */
+export function splitLiveSteps(
+  items: readonly ConversationItem[],
+  liveMessageId: string,
+): { historyItems: ConversationItem[]; liveSteps: Extract<ConversationItem, { kind: "steps" }> | null } {
+  const last = items.at(-1);
+  if (last?.kind !== "steps") {
+    return { historyItems: [...items], liveSteps: null };
+  }
+
+  const liveItems = last.items.filter((item) => item.messageId === liveMessageId);
+  if (liveItems.length === 0) {
+    return { historyItems: [...items], liveSteps: null };
+  }
+
+  const finishedItems = last.items.filter(
+    (item) => item.messageId !== liveMessageId,
+  );
+  const historyItems =
+    finishedItems.length > 0
+      ? [...items.slice(0, -1), { ...last, items: finishedItems }]
+      : items.slice(0, -1);
+
+  return {
+    historyItems,
+    liveSteps: { ...last, items: liveItems },
+  };
+}
+
 /** "12 bash · 3 code_map", for the strip's label. */
 export function summariseSteps(items: readonly StepItem[]): string {
   const counts = new Map<string, number>();

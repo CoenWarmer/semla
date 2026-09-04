@@ -155,6 +155,51 @@ describe("tool calls", () => {
 
     expect(emitted[0]).toMatchObject({ isError: true, type: "tool-end" });
   });
+
+  /**
+   * The persisted transcript only exists after the turn ends, so without this
+   * the drawer showed no response for a call clicked while it was still
+   * streaming — or just after it finished, before the refetch landed.
+   */
+  it("carries the tool's response text on tool-end, matching what the persisted transcript will show", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      toolEnd({ result: { content: [{ text: "total 0\ndrwxr-xr-x", type: "text" }] } }),
+    );
+
+    expect(emitted[0]).toMatchObject({
+      resultText: "total 0\ndrwxr-xr-x",
+      type: "tool-end",
+    });
+    expect((emitted[0] as { errorText?: string }).errorText).toBeUndefined();
+  });
+
+  it("reports the response text as errorText when the call failed", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      toolEnd({
+        isError: true,
+        result: { content: [{ text: "no such file", type: "text" }] },
+      }),
+    );
+
+    expect(emitted[0]).toMatchObject({
+      errorText: "no such file",
+      isError: true,
+      resultText: "no such file",
+      type: "tool-end",
+    });
+  });
+
+  it("omits resultText when the tool returned no text content", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(toolEnd({ result: {} }));
+
+    expect((emitted[0] as { resultText?: string }).resultText).toBeUndefined();
+  });
 });
 
 /**
