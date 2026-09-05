@@ -129,6 +129,14 @@ export function ClientSessionComponent({
     );
   }, [sessionId]);
 
+  const handleCompact = useCallback(() => {
+    void fetch(`/api/sessions/${sessionId}/compact`, { method: "POST" }).catch(
+      (error: unknown) => {
+        console.warn("[session] compact failed:", error);
+      },
+    );
+  }, [sessionId]);
+
   const handleGoalSave = useCallback(
     async (next: string | null) => {
       setGoal(next);
@@ -663,6 +671,7 @@ export function ClientSessionComponent({
         title={shownTitle}
         codeMap={codeMap}
         contextWindow={messagesQuery.data?.contextWindow ?? null}
+        cacheReadRatePerMToken={messagesQuery.data?.cacheReadRatePerMToken}
         systemPromptChars={messagesQuery.data?.systemPromptChars}
         sessionId={sessionId}
         goal={goal}
@@ -671,6 +680,7 @@ export function ClientSessionComponent({
         onAgentClick={handleAgentClick}
         onBranchNodeClick={handleBranchNodeClick}
         sessionRunning={isActive}
+        onCompactClick={handleCompact}
         snapshot={
           // Prefer the persisted snapshot (from DB/live polling) over the SSE
           // shell whenever they reference the same run and the persisted one

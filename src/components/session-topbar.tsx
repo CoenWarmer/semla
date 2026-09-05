@@ -38,12 +38,15 @@ interface SessionTopbarProps {
   messages: SessionMessage[];
   /** Model context window, from the transcript response. */
   contextWindow: number | null;
+  /** Cache-read cost rate in $/M tokens, from the transcript response. */
+  cacheReadRatePerMToken?: number | null;
   /** Size of this session's system prompt, from the transcript response. */
   systemPromptChars?: number;
   onAgentClick: (agentId: number, runId: string) => void;
   /** Switch to the branch this turn opens — see docs/plans/branching-sessions.md §4. */
   onBranchNodeClick?: (turnId: string, isLive: boolean) => void;
   sessionRunning?: boolean;
+  onCompactClick?: () => void;
   snapshot?: WorkflowSnapshot;
   /** Recorded spans, passed through to the timeline. */
   spans?: readonly RecordedSpan[];
@@ -77,6 +80,7 @@ export function SessionTopbar({
   title,
   codeMap,
   contextWindow,
+  cacheReadRatePerMToken,
   systemPromptChars,
   sessionId,
   goal,
@@ -90,6 +94,7 @@ export function SessionTopbar({
   toolCalls,
   workflowRuns,
   onReviewClick,
+  onCompactClick,
   reviewCount = 0,
   reviewOpen = false,
 }: SessionTopbarProps) {
@@ -103,11 +108,12 @@ export function SessionTopbar({
     () =>
       sessionComposition({
         contextWindow,
+        cacheReadRatePerMToken,
         messages,
         systemPromptChars: systemPromptChars ?? 0,
         toolCalls: toolCalls ?? [],
       }),
-    [contextWindow, messages, systemPromptChars, toolCalls],
+    [cacheReadRatePerMToken, contextWindow, messages, systemPromptChars, toolCalls],
   );
 
   const agentCount = snapshot?.agentCount ?? 0;
@@ -189,7 +195,11 @@ export function SessionTopbar({
           </div>
         </div>
       </div>
-      <SessionContextWindowBar composition={composition} />
+      <SessionContextWindowBar
+        composition={composition}
+        sessionRunning={sessionRunning}
+        onCompactClick={onCompactClick}
+      />
 
       {/* Panel area */}
       <SessionAgentsPanel

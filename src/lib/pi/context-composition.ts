@@ -28,3 +28,18 @@ export async function modelContextWindow(
     return null;
   }
 }
+
+/** Cache-read cost rate ($/M tokens) for the model a session is configured to use. */
+export async function modelCacheReadRate(
+  provider: string | null | undefined,
+  modelId: string | null | undefined,
+): Promise<number | null> {
+  if (!provider || !modelId) return null;
+  try {
+    ensurePiAgentDirIsolated();
+    const runtime = await ModelRuntime.create({ refreshOnCreate: false });
+    return runtime.getModel(provider, modelId)?.cost?.cacheRead ?? null;
+  } catch {
+    return null;
+  }
+}

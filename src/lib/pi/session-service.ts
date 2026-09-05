@@ -235,6 +235,12 @@ export const stopPiSession = async (semlaSessionId: string): Promise<boolean> =>
   return true;
 };
 
+export const compactPiSession = async (semlaSessionId: string): Promise<void> => {
+  const live = getLiveSession(semlaSessionId);
+  if (!live) throw new Error("Session is not live — start a turn first to load it.");
+  await live.compact();
+};
+
 export const runPiPrompt = async ({
   editEntryId = null,
   leafId = null,

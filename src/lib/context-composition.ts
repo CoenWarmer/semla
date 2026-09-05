@@ -31,6 +31,8 @@ export interface CompositionBreakdown {
    * than measured from a real token count.
    */
   contextWindowEstimated: boolean;
+  /** Estimated cost of one additional turn at the current context size, in USD. Null if unknown. */
+  costPerTurn: number | null;
   summary: string;
 }
 
@@ -41,6 +43,7 @@ export const EMPTY_COMPOSITION: CompositionBreakdown = {
   toolResultFraction: 0,
   contextWindowFraction: null,
   contextWindowEstimated: false,
+  costPerTurn: null,
   summary: "No messages yet.",
 };
 
@@ -161,11 +164,14 @@ export function latestInputTokens(
  */
 export function sessionComposition({
   contextWindow,
+  cacheReadRatePerMToken,
   messages,
   systemPromptChars,
   toolCalls,
 }: {
   contextWindow: number | null;
+  /** Cache-read cost rate in $/M tokens; used to estimate cost per additional turn. */
+  cacheReadRatePerMToken?: number | null;
   messages: readonly CompositionMessage[];
   systemPromptChars: number;
   toolCalls: readonly CompositionToolCall[];
@@ -175,6 +181,12 @@ export function sessionComposition({
   if (messages.length === 0 && systemPromptChars === 0) return EMPTY_COMPOSITION;
 
   const metrics = computeComposition(messages, toolCalls, systemPromptChars);
+  const inputTokens = latestInputTokens(messages);
+
+  const costPerTurn =
+    inputTokens != null && cacheReadRatePerMToken != null
+      ? (inputTokens * cacheReadRatePerMToken) / 1_000_000
+      : null;
 
   return {
     assistantFraction: metrics.assistantFraction,
@@ -182,10 +194,7 @@ export function sessionComposition({
     systemPromptFraction: metrics.systemPromptFraction,
     toolResultFraction: metrics.toolResultFraction,
     userFraction: metrics.userFraction,
-    ...contextWindowUsage(
-      latestInputTokens(messages),
-      metrics.totalChars,
-      contextWindow,
-    ),
+    costPerTurn,
+    ...contextWindowUsage(inputTokens, metrics.totalChars, contextWindow),
   };
 }

@@ -15,7 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { modelContextWindow } from "@/lib/pi/context-composition";
+import { modelCacheReadRate, modelContextWindow } from "@/lib/pi/context-composition";
 import { readSessionMeta } from "@/lib/pi/session-meta";
 import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
 import { getTranscript, type SessionToolCall, type SessionTranscriptEntry } from "@/lib/pi/transcript";
@@ -23,6 +23,8 @@ import { createAdminClient } from "@/lib/supabase-admin";
 
 export type SessionMessagesPayload = {
   contextWindow: number | null;
+  /** Cache-read cost rate in $/M tokens for the session's model. */
+  cacheReadRatePerMToken: number | null;
   messages: SessionTranscriptEntry[];
   /** Size of the system prompt a turn would actually be sent with. */
   systemPromptChars: number;
@@ -53,6 +55,7 @@ export async function buildSessionMessages(
   // would use — otherwise the window size is unknown for exactly the new
   // session the bar was asked to draw.
   let contextWindow: number | null = null;
+  let cacheReadRatePerMToken: number | null = null;
   try {
     // Disk first: the model is stamped into the session's meta when its pi
     // session is ensured, so the common case costs no query. Postgres answers
@@ -70,16 +73,19 @@ export async function buildSessionMessages(
             .maybeSingle()
         ).data;
 
-    contextWindow = await modelContextWindow(
-      stamped?.provider ?? fromDatabase?.model_provider ?? defaultModel?.provider,
-      stamped?.modelId ?? fromDatabase?.model_id ?? defaultModel?.modelId,
-    );
+    const provider = stamped?.provider ?? fromDatabase?.model_provider ?? defaultModel?.provider;
+    const modelId = stamped?.modelId ?? fromDatabase?.model_id ?? defaultModel?.modelId;
+    [contextWindow, cacheReadRatePerMToken] = await Promise.all([
+      modelContextWindow(provider, modelId),
+      modelCacheReadRate(provider, modelId),
+    ]);
   } catch {
     // Non-fatal — the bar shows proportions and says the window is unknown.
   }
 
   return {
     contextWindow,
+    cacheReadRatePerMToken,
     messages,
     systemPromptChars: systemPrompt.length,
     toolCalls,

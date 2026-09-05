@@ -14,6 +14,7 @@
 
 export interface StoppableSession {
   abort(): Promise<void>;
+  compact(customInstructions?: string): Promise<unknown>;
 }
 
 const running = new Map<string, StoppableSession>();

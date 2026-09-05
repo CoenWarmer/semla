@@ -14,8 +14,14 @@ type CompositionMode = "absolute" | "relative";
  */
 export function SessionContextWindowBar({
   composition,
+  sessionRunning,
+  onCompactClick,
 }: {
   composition: CompositionBreakdown | null | undefined;
+  /** Whether the agent is currently running a turn. */
+  sessionRunning?: boolean;
+  /** Called when the user requests manual compaction. Absent when compaction is unavailable. */
+  onCompactClick?: () => void;
 }) {
   const [mode, setMode] = useState<CompositionMode>("absolute");
 
@@ -25,6 +31,7 @@ export function SessionContextWindowBar({
     assistantFraction,
     contextWindowEstimated,
     contextWindowFraction,
+    costPerTurn,
     systemPromptFraction,
     toolResultFraction,
     userFraction,
@@ -53,6 +60,13 @@ export function SessionContextWindowBar({
   };
   const remainder = absolute ? Math.max(0, 1 - contextWindowFraction) : 0;
   const pct = (f: number) => `${Math.round(f * 100)}%`;
+
+  const canCompact = onCompactClick != null && !sessionRunning;
+
+  const formatCost = (cost: number) =>
+    cost < 0.01
+      ? `<$0.01`
+      : `$${cost.toFixed(cost >= 1 ? 2 : 3)}`;
 
   return (
     <div className="group relative shrink-0">
@@ -95,23 +109,34 @@ export function SessionContextWindowBar({
           <span className="text-xs font-medium text-foreground">
             Composition
           </span>
-          {windowKnown && (
-            <button
-              className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() =>
-                setMode((m: CompositionMode) =>
-                  m === "absolute" ? "relative" : "absolute",
-                )
-              }
-              title={
-                mode === "absolute"
-                  ? "Switch to proportional view"
-                  : "Switch to context window view"
-              }
-            >
-              {mode === "absolute" ? "vs. context window" : "proportional"}
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {canCompact && (
+              <button
+                className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                onClick={onCompactClick}
+                title="Summarise the conversation history to free up context window space"
+              >
+                Compact
+              </button>
+            )}
+            {windowKnown && (
+              <button
+                className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() =>
+                  setMode((m: CompositionMode) =>
+                    m === "absolute" ? "relative" : "absolute",
+                  )
+                }
+                title={
+                  mode === "absolute"
+                    ? "Switch to proportional view"
+                    : "Switch to context window view"
+                }
+              >
+                {mode === "absolute" ? "vs. context window" : "proportional"}
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
           {seg.system > 0.001 && (
@@ -142,6 +167,14 @@ export function SessionContextWindowBar({
           {!windowKnown && (
             <span className="ml-auto text-muted-foreground/60">
               proportions only — context window size unknown
+            </span>
+          )}
+          {costPerTurn != null && (
+            <span
+              className="ml-auto text-muted-foreground/60"
+              title="Estimated cache-read cost per additional turn at the current context size"
+            >
+              ≈{formatCost(costPerTurn)} per turn
             </span>
           )}
         </div>

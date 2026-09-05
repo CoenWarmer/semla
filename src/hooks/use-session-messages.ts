@@ -32,6 +32,8 @@ export type SessionToolCall = {
 
 export type SessionMessagesResult = {
   contextWindow: number | null;
+  /** Cache-read cost rate in $/M tokens for the session's model. */
+  cacheReadRatePerMToken?: number | null;
   messages: SessionMessage[];
   /**
    * Size of the system prompt this session's turns are sent with. Travels with
