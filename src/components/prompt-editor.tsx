@@ -162,6 +162,8 @@ interface PromptEditorProps {
    * handed, beside its own buttons.
    */
   goalEditor?: ReactNode;
+  /** Estimated cost of one additional turn given the current context size, in USD. */
+  costPerTurn?: number | null;
   /**
    * The session has a turn in flight. Driven by the parent rather than the
    * editor's own submit state, which knows nothing about a turn still running
@@ -192,6 +194,7 @@ interface PromptEditorProps {
 export function PromptEditor({
   defaultTools,
   goalEditor,
+  costPerTurn,
   isRunning,
   onSelectionChange,
   onStop,
@@ -368,6 +371,14 @@ export function PromptEditor({
           someone typed.
         */}
         {goalEditor && <div className="flex grow min-w-0">{goalEditor}</div>}
+        {costPerTurn != null && (
+          <span
+            className="shrink-0 text-[10px] text-muted-foreground/60 tabular-nums"
+            title="Estimated cache-read cost per additional turn at the current context size"
+          >
+            ≈{costPerTurn < 0.01 ? "<$0.01" : `$${costPerTurn.toFixed(costPerTurn >= 1 ? 2 : 3)}`} / turn
+          </span>
+        )}
         <div
           className={cn(
             "flex items-center gap-1 transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",

@@ -47,6 +47,7 @@ import Link from "next/link";
 import { isSessionMissing } from "@/lib/prompt-failure";
 
 import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
+import { latestInputTokens } from "@/lib/context-composition";
 import { SessionTopbar } from "./session-topbar";
 import { MessageSquareIcon } from "lucide-react";
 import {
@@ -196,6 +197,13 @@ export function ClientSessionComponent({
     () => truncateAtMessage(allMessages, forkedAt),
     [allMessages, forkedAt],
   );
+  const costPerTurn = useMemo(() => {
+    const rate = messagesQuery.data?.cacheReadRatePerMToken;
+    if (rate == null) return null;
+    const tokens = latestInputTokens(messages);
+    if (tokens == null) return null;
+    return (tokens * rate) / 1_000_000;
+  }, [messages, messagesQuery.data?.cacheReadRatePerMToken]);
   // Persisted rows arrive only when the turn's entries are written, so fold in
   // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
   // row becomes the persisted row rather than a second marker.
@@ -878,6 +886,7 @@ export function ClientSessionComponent({
         <div className="shrink-0">
           <PromptEditor
             defaultTools={defaultTools}
+            costPerTurn={costPerTurn}
             goalEditor={
               <GoalEditor
                 /* Compact: it sits in the footer's tool row now, beside the
