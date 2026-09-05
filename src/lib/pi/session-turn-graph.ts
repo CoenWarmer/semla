@@ -37,12 +37,56 @@ export type TurnNode = {
   promptText: string | null;
   /** Every entry folded into this turn, including the head itself. */
   entryCount: number;
+  /** Tool calls the assistant made in reply, summed across every reply this turn folds in. */
+  toolCallCount: number;
+  /**
+   * This turn's own spend \u2014 the same fields session-usage-store.ts's
+   * sumEntryUsage sums for a whole session, scoped here to the entries this
+   * one turn folds in, so a node's cost is what that turn cost rather than a
+   * running total that grows meaningless to compare node to node.
+   */
+  tokens: number;
+  cost: number;
   createdAt: string;
   /** On the path the session's default leaf resolves to \u2014 session-path.ts's rule, no override. */
   isLive: boolean;
   /** More than one child: a branch was taken here. */
   isFork: boolean;
 };
+
+/** A message entry as far as tool-call counting and usage summing care. */
+type UsageBearingMessage = {
+  content?: unknown;
+  role?: unknown;
+  usage?: { cost?: { total?: number } | null; totalTokens?: number } | null;
+};
+
+/** How a single entry contributes to its turn's tool-call count and spend. */
+function entryContribution(
+  entry: SessionFileEntry,
+): { cost: number; toolCallCount: number; tokens: number } {
+  const message = entry.message as UsageBearingMessage | null | undefined;
+  if (!isRecord(message)) return { cost: 0, toolCallCount: 0, tokens: 0 };
+
+  const toolCallCount = Array.isArray(message.content)
+    ? message.content.filter(
+        (part) => isRecord(part) && part.type === "toolCall",
+      ).length
+    : 0;
+
+  // Usage lives on the assistant message, the same restriction
+  // sumEntryUsage applies \u2014 a user entry carries none, and a role that
+  // later gains one should not be double-counted here either.
+  if (message.role !== "assistant" || !message.usage) {
+    return { cost: 0, toolCallCount, tokens: 0 };
+  }
+
+  return {
+    cost: message.usage.cost?.total ?? 0,
+    toolCallCount,
+    tokens: message.usage.totalTokens ?? 0,
+  };
+}
 
 export type TurnGraph = {
   nodes: TurnNode[];
@@ -131,12 +175,30 @@ export function buildTurnGraph(entries: readonly SessionFileEntry[]): TurnGraph 
   };
 
   const entryCounts = new Map<string, number>();
+  const toolCallCounts = new Map<string, number>();
+  const tokenTotals = new Map<string, number>();
+  const costTotals = new Map<string, number>();
   const heads = new Map<string, SessionFileEntry>();
   let sawRootEntries = false;
 
   for (const entry of entries) {
     const head = resolveHead(entry);
     entryCounts.set(head, (entryCounts.get(head) ?? 0) + 1);
+
+    const contribution = entryContribution(entry);
+    if (contribution.toolCallCount > 0) {
+      toolCallCounts.set(
+        head,
+        (toolCallCounts.get(head) ?? 0) + contribution.toolCallCount,
+      );
+    }
+    if (contribution.tokens > 0) {
+      tokenTotals.set(head, (tokenTotals.get(head) ?? 0) + contribution.tokens);
+    }
+    if (contribution.cost > 0) {
+      costTotals.set(head, (costTotals.get(head) ?? 0) + contribution.cost);
+    }
+
     if (head === ROOT_TURN_ID) sawRootEntries = true;
     else if (!heads.has(head)) heads.set(head, entry);
   }
@@ -167,6 +229,7 @@ export function buildTurnGraph(entries: readonly SessionFileEntry[]): TurnGraph 
 
   if (sawRootEntries) {
     nodes.push({
+      cost: costTotals.get(ROOT_TURN_ID) ?? 0,
       createdAt: entries[0]?.timestamp ?? "",
       entryCount: entryCounts.get(ROOT_TURN_ID) ?? 0,
       id: ROOT_TURN_ID,
@@ -174,6 +237,8 @@ export function buildTurnGraph(entries: readonly SessionFileEntry[]): TurnGraph 
       isLive: true, // the root of every path is always live
       parentId: null,
       promptText: null,
+      tokens: tokenTotals.get(ROOT_TURN_ID) ?? 0,
+      toolCallCount: toolCallCounts.get(ROOT_TURN_ID) ?? 0,
     });
   }
 
@@ -185,6 +250,7 @@ export function buildTurnGraph(entries: readonly SessionFileEntry[]): TurnGraph 
     }
 
     nodes.push({
+      cost: costTotals.get(headId) ?? 0,
       createdAt: head.timestamp ?? "",
       entryCount: entryCounts.get(headId) ?? 1,
       id: headId,
@@ -192,6 +258,8 @@ export function buildTurnGraph(entries: readonly SessionFileEntry[]): TurnGraph 
       isLive: head.id ? livePath.has(head.id) : false,
       parentId: parentTurn,
       promptText: firstLine(getMessageText(head.message as PiMessage)),
+      tokens: tokenTotals.get(headId) ?? 0,
+      toolCallCount: toolCallCounts.get(headId) ?? 0,
     });
   }
 

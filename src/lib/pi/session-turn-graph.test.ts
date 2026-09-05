@@ -17,9 +17,35 @@ const user = (id: string, at: string, parentId: string | null, text = "hi") => (
   type: "message",
 });
 
-const assistant = (id: string, at: string, parentId: string | null, text = "") => ({
+const assistant = (
+  id: string,
+  at: string,
+  parentId: string | null,
+  text = "",
+  extra: {
+    toolCalls?: number;
+    usage?: { cost?: number; totalTokens?: number };
+  } = {},
+) => ({
   id,
-  message: { content: [{ text, type: "text" }], role: "assistant" },
+  message: {
+    content: [
+      { text, type: "text" },
+      ...Array.from({ length: extra.toolCalls ?? 0 }, (_, i) => ({
+        name: `tool${i}`,
+        type: "toolCall",
+      })),
+    ],
+    role: "assistant",
+    ...(extra.usage
+      ? {
+          usage: {
+            cost: { total: extra.usage.cost ?? 0 },
+            totalTokens: extra.usage.totalTokens ?? 0,
+          },
+        }
+      : {}),
+  },
   parentId,
   timestamp: at,
   type: "message",
@@ -136,5 +162,83 @@ describe("buildTurnGraph", () => {
     ];
 
     expect(() => buildTurnGraph(entries)).not.toThrow();
+  });
+
+  it("counts tool calls across every reply the turn folds in", () => {
+    const entries: SessionFileEntry[] = [
+      user("a", "t1", null, "ask"),
+      assistant("b", "t2", "a", "looking", { toolCalls: 2 }),
+      toolResult("c", "t3", "b"),
+      assistant("d", "t4", "c", "done", { toolCalls: 1 }),
+    ];
+
+    expect(buildTurnGraph(entries).nodes[0]!.toolCallCount).toBe(3);
+  });
+
+  it("sums tokens and cost from assistant usage, ignoring entries with none", () => {
+    const entries: SessionFileEntry[] = [
+      user("a", "t1", null, "ask"),
+      assistant("b", "t2", "a", "looking", {
+        usage: { cost: 0.02, totalTokens: 500 },
+      }),
+      toolResult("c", "t3", "b"),
+      assistant("d", "t4", "c", "done", {
+        usage: { cost: 0.03, totalTokens: 800 },
+      }),
+    ];
+
+    const node = buildTurnGraph(entries).nodes[0]!;
+    expect(node.tokens).toBe(1300);
+    expect(node.cost).toBeCloseTo(0.05);
+  });
+
+  it("does not count a user message's own content as a tool call or usage", () => {
+    const entries: SessionFileEntry[] = [user("a", "t1", null, "ask")];
+
+    const node = buildTurnGraph(entries).nodes[0]!;
+    expect(node.toolCallCount).toBe(0);
+    expect(node.tokens).toBe(0);
+    expect(node.cost).toBe(0);
+  });
+
+  it("gives the synthetic root turn zeroed usage fields rather than undefined", () => {
+    const entries: SessionFileEntry[] = [
+      { id: "m", parentId: null, timestamp: "t0", type: "model_change" },
+      user("a", "t1", "m", "ask"),
+    ];
+
+    const root = buildTurnGraph(entries).nodes[0]!;
+    expect(root.toolCallCount).toBe(0);
+    expect(root.tokens).toBe(0);
+    expect(root.cost).toBe(0);
+  });
+
+  it("keeps two turns' usage totals separate rather than accumulating one running total", () => {
+    const entries: SessionFileEntry[] = [
+      user("a", "t1", null, "first"),
+      assistant("b", "t2", "a", "", {
+        toolCalls: 1,
+        usage: { cost: 0.01, totalTokens: 100 },
+      }),
+      user("c", "t3", "b", "second"),
+      assistant("d", "t4", "c", "", {
+        toolCalls: 2,
+        usage: { cost: 0.02, totalTokens: 200 },
+      }),
+    ];
+
+    const graph = buildTurnGraph(entries);
+    const first = graph.nodes.find((n) => n.id === "a")!;
+    const second = graph.nodes.find((n) => n.id === "c")!;
+
+    expect(first.toolCallCount).toBe(1);
+    expect(first.tokens).toBe(100);
+    expect(first.cost).toBeCloseTo(0.01);
+
+    // Not 3 / 300 / 0.03 — each turn's own reply only, not a cumulative sum
+    // carried forward from the turn before it.
+    expect(second.toolCallCount).toBe(2);
+    expect(second.tokens).toBe(200);
+    expect(second.cost).toBeCloseTo(0.02);
   });
 });

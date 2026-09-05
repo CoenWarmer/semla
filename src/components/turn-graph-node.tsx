@@ -14,10 +14,36 @@
 import { GitForkIcon } from "lucide-react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
+import { formatCost, formatTokens } from "@/components/token-usage";
 import { cn } from "@/lib/utils";
 import { turnNodeLabel, type LaidOutTurnNode } from "@/lib/session-turn-layout";
 
 export type TurnGraphNodeData = LaidOutTurnNode;
+
+/**
+ * "3 tools · 1.3k tokens · $0.05", using the same formatters the rest of the
+ * app reads spend through (token-usage.tsx) so a node's numbers round the
+ * same way the header badge and the session totals do.
+ *
+ * Falls back to the entry count for a turn with nothing yet to report — a
+ * user message the agent has not replied to has no tool calls and no usage,
+ * and an empty second line would look like the node failed to load rather
+ * than like a turn that has not finished.
+ */
+export function turnNodeSummary(node: Pick<LaidOutTurnNode, "cost" | "entryCount" | "tokens" | "toolCallCount">): string {
+  const parts: string[] = [];
+  if (node.toolCallCount > 0) {
+    parts.push(`${node.toolCallCount} ${node.toolCallCount === 1 ? "tool" : "tools"}`);
+  }
+  if (node.tokens > 0) parts.push(`${formatTokens(node.tokens)} tokens`);
+  if (node.cost > 0) parts.push(formatCost(node.cost));
+
+  if (parts.length === 0) {
+    return `${node.entryCount} ${node.entryCount === 1 ? "entry" : "entries"}`;
+  }
+
+  return parts.join(" \u00b7 ");
+}
 
 export function TurnGraphNode({ data }: NodeProps) {
   const node = data as unknown as TurnGraphNodeData;
@@ -61,7 +87,7 @@ export function TurnGraphNode({ data }: NodeProps) {
         </span>
       </div>
       <span className="truncate text-[10px] text-muted-foreground tabular-nums leading-tight">
-        {node.entryCount} {node.entryCount === 1 ? "entry" : "entries"}
+        {turnNodeSummary(node)}
       </span>
 
       <Handle

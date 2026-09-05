@@ -17,9 +17,10 @@
  * holding the pair together — never clearing state from inside the effect —
  * is reused rather than re-derived.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useNodesState,
+  useReactFlow,
   type Edge as FlowEdge,
   type Node as FlowNode,
   type NodeMouseHandler,
@@ -34,6 +35,50 @@ import { layoutTurnGraph, type TurnGraphLayout } from "@/lib/session-turn-layout
 import type { TurnGraph } from "@/lib/pi/session-turn-graph";
 
 const nodeTypes = { turnGraphNode: TurnGraphNode };
+
+/**
+ * Recenters the canvas on a node that just appeared — a new turn the
+ * conversation just added, most often. A plain `fitView` on every layout
+ * would also fit a node the operator dragged out of frame back into it,
+ * which reads as the canvas fighting a deliberate pan; only a genuinely new
+ * id earns a recenter.
+ *
+ * A child of `<Canvas>` rather than a hook call in `TurnGraphCanvas` itself:
+ * `useReactFlow` only resolves inside the store `<ReactFlow>` provides to its
+ * own children, and `TurnGraphCanvas` renders above that boundary.
+ */
+function CenterOnNewNode({ nodes }: { nodes: FlowNode[] }) {
+  const { setCenter } = useReactFlow();
+  // Undefined until the first layout has been seen at all, so the very first
+  // graph a session ever shows does not "recenter" on every one of its nodes
+  // at once — fitView (Canvas's own default) already frames that view.
+  const seenIds = useRef<Set<string> | undefined>(undefined);
+
+  useEffect(() => {
+    const previous = seenIds.current;
+    const nextIds = new Set(nodes.map((node) => node.id));
+
+    if (previous) {
+      const added = nodes.find((node) => !previous.has(node.id));
+      // Width/height live on the laid-out data, not React Flow's own node
+      // fields — toFlow() (in this file) sizes a node through `style`, so
+      // `node.width`/`node.height` are unset until React Flow measures the
+      // DOM element, which has not happened yet for a node that just arrived.
+      const data = added?.data as { height?: number; width?: number } | undefined;
+      if (added && data) {
+        void setCenter(
+          added.position.x + (data.width ?? 0) / 2,
+          added.position.y + (data.height ?? 0) / 2,
+          { duration: 400, zoom: 1 },
+        );
+      }
+    }
+
+    seenIds.current = nextIds;
+  }, [nodes, setCenter]);
+
+  return null;
+}
 
 function toFlow(layout: TurnGraphLayout): { edges: FlowEdge[]; nodes: FlowNode[] } {
   return {
@@ -160,6 +205,7 @@ export function TurnGraphCanvas({
             panOnDrag
           >
             <Controls showInteractive={false} />
+            <CenterOnNewNode nodes={nodes} />
           </Canvas>
         ) : (
           <div className="flex h-full items-center justify-center">

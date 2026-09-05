@@ -361,7 +361,18 @@ export function ClientSessionComponent({
   }, []);
 
   /**
-   * Switch to the branch a graph node was clicked for.
+   * The turn a graph-node click most recently asked to see, until the
+   * conversation has actually scrolled to it.
+   *
+   * A ref rather than state: setting it must never itself trigger a render,
+   * or the effect below that reads it — which fires *because* a render
+   * happened, when new messages arrive — would need to distinguish its own
+   * writes from an external one. It is read, not rendered from.
+   */
+  const pendingScrollToRef = useRef<string | null>(null);
+
+  /**
+   * Switch to the branch a graph node was clicked for, and scroll to it.
    *
    * "Clicking a node switches the leaf to that branch's tip and the
    * conversation re-renders" — docs/plans/branching-sessions.md §4, and the
@@ -387,9 +398,20 @@ export function ClientSessionComponent({
    * `push`, not `replace`: back and forward becoming branch navigation for
    * free is half the reason the plan puts this in the URL at all, and
    * `replace` would erase that history entry instead of adding to it.
+   *
+   * The scroll cannot simply run here. A click that stays on the branch
+   * already shown has the turn on screen immediately, but a click that
+   * switches branches only gets it once the new `?leaf=` triggers a refetch
+   * and the conversation re-renders with it — an unknown number of renders
+   * away, on whatever tick the query resolves. `pendingScrollToRef` marks
+   * the request; the effect below, which runs after every render this
+   * component makes, is what actually finds the element and scrolls, once
+   * it exists.
    */
   const handleBranchNodeClick = useCallback(
     (turnId: string, isLive: boolean) => {
+      pendingScrollToRef.current = turnId;
+
       const next = new URLSearchParams(searchParams);
       if (isLive) next.delete("leaf");
       else next.set("leaf", turnId);
@@ -398,6 +420,28 @@ export function ClientSessionComponent({
     },
     [router, searchParams, sessionId],
   );
+
+  /**
+   * Fulfil a pending scroll once its target actually exists.
+   *
+   * Runs after every render, which is deliberately more often than the
+   * conversation content changes — the check is cheap (one DOM lookup) and
+   * the alternative, listing every value that could make the target appear
+   * (query data, live rounds, forkedAt's truncation), is exactly the kind of
+   * dependency array that silently misses one and stops firing. The ref
+   * being cleared once satisfied is what stops this from re-scrolling on
+   * every subsequent render.
+   */
+  useEffect(() => {
+    const turnId = pendingScrollToRef.current;
+    if (!turnId) return;
+
+    const target = document.getElementById(turnId);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    pendingScrollToRef.current = null;
+  });
 
   // Why this is the test, and why it does not flash on a legitimate ?new=1
   // page, is in `isSessionMissing`.
