@@ -38,7 +38,9 @@ function StepDetail({ item }: { item: StepItem }) {
           <BrainIcon className="size-3.5 shrink-0" />
           Thinking
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.text}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">
+          {item.text}
+        </p>
       </div>
     );
   }
@@ -101,7 +103,7 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
 
   return (
     <>
-      <div className="flex items-center gap-1 py-1">
+      <div className="flex items-center gap-1 py-1 flex-wrap">
         {items.map((item) => {
           const failed = item.kind === "tool" && item.call.isError;
           const label =
@@ -142,7 +144,9 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
         <DrawerContent
           className="flex max-w-[90vw] flex-col overflow-hidden"
           style={
-            { "--drawer-content-width": `${DRAWER_WIDTH}px` } as React.CSSProperties
+            {
+              "--drawer-content-width": `${DRAWER_WIDTH}px`,
+            } as React.CSSProperties
           }
         >
           <DrawerHeader className="flex flex-row items-start justify-between gap-2 pb-3">
