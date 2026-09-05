@@ -59,6 +59,7 @@ import {
   releaseLiveSession,
   retainLiveSession,
 } from "@/lib/pi/live-sessions";
+import { takeTurnSlot } from "@/lib/pi/session-turn-lock";
 import {
   PI_AGENT_DIR,
   PI_SESSION_DIR,
@@ -285,6 +286,19 @@ export const runPiPrompt = async ({
   tools: string[];
 }) => {
   assertSandboxedRuntime();
+
+  // Taken as the very first thing this function does, before any `await` —
+  // see session-turn-lock.ts's docblock on why the swap has to happen in one
+  // synchronous tick. Whichever of two overlapping prompts for this session
+  // reaches this line first is unambiguously the one the other waits on.
+  const turnSlot = takeTurnSlot(semlaSessionId);
+
+  // Block until anything already running for this session has been told to
+  // stand down and has completely finished — not merely settled its agent
+  // loop, but run its own `finally`, which is what performs the writes this
+  // exists to keep from racing. Nothing below may touch the session file
+  // before this resolves. See docs/plans/superseded-turns.md §4 (Phase 1).
+  await turnSlot.waitForPrior();
 
   // Captured before any tool runs so the stamp sweep can tell the pages this
   // turn wrote from the ones an earlier orient left behind.
@@ -527,6 +541,9 @@ export const runPiPrompt = async ({
 
   // Registered before the turn starts so a stop request has something to reach.
   retainLiveSession(semlaSessionId, session);
+  // From here, a turn that supersedes this one can abort it directly rather
+  // than only waiting out whatever extension loading was still doing.
+  turnSlot.updateAbort(() => session.abort());
 
   const loadedExtensions = extensionsResult.extensions.map((e) => e.path);
   sessionLog(semlaSessionId, "extensions loaded", {
@@ -665,6 +682,10 @@ export const runPiPrompt = async ({
    * no end attributes, which is why there is a run span above it at all.
    */
   let turnFailure: { code?: string; type?: string } | null = null;
+  // Set once the `finally` below hands the session's turn slot off to a
+  // background continuation, so `turnSlot.finish()` there is skipped for
+  // this turn and runs instead when the continuation itself ends.
+  let handedOffToContinuation = false;
 
   try {
     sessionLog(semlaSessionId, "prompting");
@@ -717,7 +738,7 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
-    releaseLiveSession(semlaSessionId);
+    releaseLiveSession(semlaSessionId, session);
     clearSessionRepo(piRuntimeSessionId);
     // The recorder the manager holds closes over the sink, so a background run
     // keeps recording after this; only the lookup goes away.
@@ -789,7 +810,15 @@ export const runPiPrompt = async ({
         detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
       }
 
-      void runBackgroundContinuation({
+      // Ownership of this session's file passes to the continuation, which
+      // keeps appending to it after this function returns. The turn slot
+      // must not release until *that* work is done too, or a prompt that
+      // arrives while a background workflow is still being watched would
+      // race the continuation's writes exactly as Phase 1 exists to prevent.
+      // Its abort is retargeted to standing the continuation down, since
+      // `session.abort()` has nothing left to interrupt once the prompt
+      // turn's own model loop has already ended.
+      const continuation = runBackgroundContinuation({
         abortSignal: armBackgroundContinuation(semlaSessionId),
         agentCwd,
         debug,
@@ -806,10 +835,23 @@ export const runPiPrompt = async ({
           flush: flushSpans,
         },
       });
+      turnSlot.updateAbort(() => {
+        abortBackgroundContinuation(semlaSessionId);
+        return Promise.resolve();
+      });
+      void continuation.finally(() => turnSlot.finish());
+      // Deliberately not `return` here: this sits inside the `finally` of
+      // the outer try/catch, and a `return` in a `finally` block silently
+      // overrides a pending throw from the `try` — which would swallow a
+      // real failure from this turn. `turnSlot.finish()` is guarded by the
+      // same flag instead.
+      handedOffToContinuation = true;
     } else {
       sessionLog(semlaSessionId, "session disposed");
       session.dispose();
       detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
     }
+
+    if (!handedOffToContinuation) turnSlot.finish();
   }
 };

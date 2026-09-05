@@ -5,14 +5,18 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { releaseLiveSession, retainLiveSession } from "./live-sessions.ts";
+import {
+  getLiveSession,
+  releaseLiveSession,
+  retainLiveSession,
+} from "./live-sessions.ts";
 import {
   otherActiveSessionCount,
   otherActiveSessionsByProject,
 } from "./session-concurrency.ts";
 import type { SessionMeta } from "./session-meta.ts";
 
-const session = () => ({ abort: async () => {} });
+const session = () => ({ abort: async () => {}, compact: async () => {} });
 
 const link = (path: string) => ({
   path,
@@ -33,7 +37,10 @@ const meta = (id: string, projects: string[]): SessionMeta => ({
 });
 
 afterEach(() => {
-  for (const id of ["a", "b", "c"]) releaseLiveSession(id);
+  for (const id of ["a", "b", "c"]) {
+    const live = getLiveSession(id);
+    if (live) releaseLiveSession(id, live);
+  }
 });
 
 describe("otherActiveSessionsByProject", () => {

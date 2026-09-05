@@ -11,15 +11,20 @@ import {
   armBackgroundContinuation,
 } from "./bg-continuation-registry.ts";
 import {
+  getLiveSession,
   releaseLiveSession,
   retainLiveSession,
 } from "./live-sessions.ts";
 import { isSessionActive } from "./session-service.ts";
 
-const session = () => ({ abort: vi.fn().mockResolvedValue(undefined) });
+const session = () => ({
+  abort: vi.fn().mockResolvedValue(undefined),
+  compact: vi.fn().mockResolvedValue(undefined),
+});
 
 afterEach(() => {
-  releaseLiveSession("s1");
+  const live = getLiveSession("s1");
+  if (live) releaseLiveSession("s1", live);
   abortBackgroundContinuation("s1");
 });
 
@@ -31,8 +36,9 @@ describe("isSessionActive", () => {
   });
 
   it("is false once the turn lets go", () => {
-    retainLiveSession("s1", session());
-    releaseLiveSession("s1");
+    const live = session();
+    retainLiveSession("s1", live);
+    releaseLiveSession("s1", live);
 
     expect(isSessionActive("s1")).toBe(false);
   });

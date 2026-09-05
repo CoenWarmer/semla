@@ -13,10 +13,16 @@ import {
   retainLiveSession,
 } from "./live-sessions.ts";
 
-const session = () => ({ abort: vi.fn().mockResolvedValue(undefined) });
+const session = () => ({
+  abort: vi.fn().mockResolvedValue(undefined),
+  compact: vi.fn().mockResolvedValue(undefined),
+});
 
 afterEach(() => {
-  for (const id of ["s1", "s2"]) releaseLiveSession(id);
+  for (const id of ["s1", "s2"]) {
+    const live = getLiveSession(id);
+    if (live) releaseLiveSession(id, live);
+  }
 });
 
 describe("live session registry", () => {
@@ -36,9 +42,10 @@ describe("live session registry", () => {
   // The turn ending is what removes it; a stop arriving afterwards finds
   // nothing, which is the honest answer rather than an error.
   it("forgets a session once its turn ends", () => {
-    retainLiveSession("s1", session());
+    const live = session();
+    retainLiveSession("s1", live);
 
-    releaseLiveSession("s1");
+    releaseLiveSession("s1", live);
 
     expect(isSessionLive("s1")).toBe(false);
   });
@@ -49,7 +56,7 @@ describe("live session registry", () => {
     retainLiveSession("s1", first);
     retainLiveSession("s2", second);
 
-    releaseLiveSession("s1");
+    releaseLiveSession("s1", first);
 
     expect(getLiveSession("s1")).toBeUndefined();
     expect(getLiveSession("s2")).toBe(second);
@@ -62,5 +69,20 @@ describe("live session registry", () => {
     retainLiveSession("s1", newer);
 
     expect(getLiveSession("s1")).toBe(newer);
+  });
+
+  // The guard Phase 1 of docs/plans/superseded-turns.md adds: a superseded
+  // turn's own release, arriving after a new turn has already registered,
+  // must not clear the new turn's handle.
+  it("does not clear a newer turn's handle when an old handle is released late", () => {
+    const stale = session();
+    retainLiveSession("s1", stale);
+    const newer = session();
+    retainLiveSession("s1", newer);
+
+    releaseLiveSession("s1", stale);
+
+    expect(getLiveSession("s1")).toBe(newer);
+    expect(isSessionLive("s1")).toBe(true);
   });
 });
