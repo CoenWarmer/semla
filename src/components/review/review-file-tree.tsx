@@ -330,8 +330,8 @@ export function ReviewFileTree({
   );
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="relative px-2 pb-1">
+    <div className="flex h-full flex-col">
+      <div className="relative shrink-0 px-2 pb-1">
         <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
         <Input
           aria-label="Filter files"
@@ -352,7 +352,7 @@ export function ReviewFileTree({
         />
       </div>
 
-      {body}
+      <div className="min-h-0 flex-1 overflow-y-auto text-[12px]">{body}</div>
     </div>
   );
 }

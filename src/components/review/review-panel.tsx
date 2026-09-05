@@ -27,22 +27,21 @@ import {
   useReview,
   useSaveFile,
   useStageHunks,
-  useUncommit,
-  useUncommitPlan,
   workspacePath,
 } from "@/hooks/use-review";
 import { isEmptyReview, totalChangedFiles } from "@/lib/review-types";
 import type { SessionReview } from "@/lib/review-types";
 import { cn } from "@/lib/utils";
 
-import {
-  ReviewChangedFiles,
-  type FileSelection,
-} from "./review-changed-files";
+import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
 import { ReviewEditorPane } from "./review-editor-pane";
 import { ReviewFileTree } from "./review-file-tree";
-import { ReviewTurnCommits } from "./review-turn-commits";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "../ui/resizable";
 
 const SIDEBAR_WIDTH = 300;
 
@@ -143,7 +142,6 @@ export function ReviewPanel({
   const stage = useStageHunks(sessionId);
   const commit = useCommitReview(sessionId);
   const save = useSaveFile(sessionId);
-  const uncommit = useUncommit(sessionId);
 
   const selection = chosen ?? defaultSelection(review.data);
   const projects = review.data?.projects ?? [];
@@ -151,19 +149,10 @@ export function ReviewPanel({
     projects.find((project) => project.path === selection?.project) ??
     projects[0];
 
-  // Only asked for when there is something to ask about: the plan costs an
-  // ancestry check, an upstream lookup and two rev-lists.
-  const uncommitPlan = useUncommitPlan(
-    sessionId,
-    activeProject?.path ?? null,
-    (activeProject?.turnCommits.length ?? 0) > 0,
-  );
-
   const bottom = (panel?.open ? panel.height : 0) + CONSOLE_BAR_HEIGHT;
   const changed = review.data ? totalChangedFiles(review.data) : 0;
   const unsavedCount = Object.keys(drafts).length;
-  const busy =
-    stage.isPending || commit.isPending || save.isPending || uncommit.isPending;
+  const busy = stage.isPending || commit.isPending || save.isPending;
 
   // Escape closes, which is what every overlay in the app does. Registered on
   // the document because the editor swallows keys inside itself.
@@ -192,10 +181,13 @@ export function ReviewPanel({
       const key = draftKey(selection);
 
       save.mutate(
-        { content, path: workspacePath(selection.project, selection.path), sha },
         {
-          onError: (error) =>
-            setResult({ message: error.message, ok: false }),
+          content,
+          path: workspacePath(selection.project, selection.path),
+          sha,
+        },
+        {
+          onError: (error) => setResult({ message: error.message, ok: false }),
           onSuccess: () => {
             setResult(null);
             setDrafts((previous) => {
@@ -218,7 +210,10 @@ export function ReviewPanel({
         onSuccess: (data) => {
           setResult(
             data.ok
-              ? { message: `Committed ${data.sha?.slice(0, 7) ?? ""}`, ok: true }
+              ? {
+                  message: `Committed ${data.sha?.slice(0, 7) ?? ""}`,
+                  ok: true,
+                }
               : data,
           );
           if (data.ok) setMessage("");
@@ -236,11 +231,9 @@ export function ReviewPanel({
     >
       <header className="flex shrink-0 items-center gap-3 border-b px-3 py-2">
         <h2 className="text-sm font-medium">Review</h2>
-
         <span className="text-xs text-muted-foreground tabular-nums">
           {changed} changed {changed === 1 ? "file" : "files"}
         </span>
-
         {/* A session can work in several repositories, and a commit is always
             against exactly one of them — so which is a choice, not a guess. */}
         {projects.length > 1 ? (
@@ -291,13 +284,9 @@ export function ReviewPanel({
           </span>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
-          {selection ? (
-            <span className="max-w-md truncate font-mono text-xs text-muted-foreground">
-              {selection.path}
-            </span>
-          ) : null}
+        {/* Current commit */}
 
+        <div className="ml-auto flex items-center gap-2">
           <Button
             aria-label="Close review"
             onClick={onClose}
@@ -320,42 +309,37 @@ export function ReviewPanel({
 
       <div className="flex min-h-0 flex-1">
         <aside
-          className="flex shrink-0 flex-col gap-2 overflow-y-auto border-r py-2"
+          className="flex shrink-0 flex-col border-r"
           style={{ width: SIDEBAR_WIDTH }}
         >
-          {review.isPending ? (
-            <div className="flex justify-center py-4">
-              <Spinner />
-            </div>
-          ) : (
-            <>
-              <ReviewChangedFiles
-                onSelect={setChosen}
-                projects={projects}
-                selected={selection}
-              />
-
-              {activeProject ? (
-                <ReviewTurnCommits
-                  busy={busy}
-                  onUncommit={(target) =>
-                    uncommit.mutate(
-                      { project: activeProject.path, target },
-                      { onSuccess: (data) => setResult(data) },
-                    )
-                  }
-                  plan={uncommitPlan.data}
-                  project={activeProject}
+          <ResizablePanelGroup orientation="vertical" className="h-full">
+            <ResizablePanel
+              defaultSize={40}
+              minSize={15}
+              className="overflow-y-auto py-2"
+            >
+              {review.isPending ? (
+                <div className="flex justify-center py-4">
+                  <Spinner />
+                </div>
+              ) : (
+                <ReviewChangedFiles
+                  onSelect={setChosen}
+                  projects={projects}
+                  selected={selection}
                 />
-              ) : null}
+              )}
+            </ResizablePanel>
 
-              {/* The whole project, so the changed files above have somewhere
-                  to sit. Keyed by project so switching repositories re-opens
-                  the tree on the new one's changes rather than keeping the
-                  old one's expansion. */}
+            <ResizableHandle withHandle />
+
+            {/* The whole project tree, keyed by project so switching repositories
+                re-opens the tree on the new one's changes rather than keeping the
+                old one's expansion. */}
+            <ResizablePanel defaultSize={60} minSize={15} className="flex flex-col">
               {activeProject ? (
-                <div className="flex min-h-0 flex-col border-t pt-2">
-                  <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="flex h-full flex-col py-2">
+                  <p className="shrink-0 px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     {activeProject.name}
                   </p>
                   <ReviewFileTree
@@ -375,8 +359,8 @@ export function ReviewPanel({
                   />
                 </div>
               ) : null}
-            </>
-          )}
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </aside>
 
         <main className="min-w-0 flex-1">

@@ -254,61 +254,6 @@ export function useSaveFile(sessionId: string) {
   });
 }
 
-export interface UncommitPlan {
-  allowed: boolean;
-  message: string;
-  commits: import("@/lib/review-types").TurnCommit[];
-  target: string | null;
-  pushed: number;
-  dirty: boolean;
-}
-
-/**
- * Whether the agent's commits can be brought back, and why not if they cannot.
- *
- * Fetched separately from the review itself, and only when the operator is
- * looking at the commits: it costs an ancestry check, an upstream lookup and
- * two rev-lists, none of which is worth doing on every read of a panel that
- * usually has no commits to report.
- */
-export function useUncommitPlan(
-  sessionId: string,
-  project: string | null,
-  enabled: boolean,
-) {
-  return useQuery({
-    enabled: Boolean(project) && enabled,
-    queryFn: async () => {
-      const params = new URLSearchParams({ project: project! });
-      const res = await fetch(
-        `/api/sessions/${sessionId}/review/uncommit?${params}`,
-      );
-      if (!res.ok) throw new Error(`uncommit plan ${res.status}`);
-      return res.json() as Promise<UncommitPlan>;
-    },
-    queryKey: ["review", sessionId, "uncommit", project] as const,
-    staleTime: 0,
-  });
-}
-
-export function useUncommit(sessionId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (request: { project: string; target: string }) =>
-      post<ReviewActionResult>(
-        `/api/sessions/${sessionId}/review/uncommit`,
-        request,
-      ),
-    onSuccess: () => {
-      invalidateAfterWrite(queryClient, sessionId);
-      void queryClient.invalidateQueries({
-        queryKey: ["review", sessionId, "uncommit"],
-      });
-    },
-  });
-}
-
 export interface EnclosingSymbol {
   symbol: string;
   name: string;
