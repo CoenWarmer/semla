@@ -42,7 +42,7 @@ import {
   useUserSettings,
 } from "@/hooks/use-user-settings";
 
-import { CheckIcon, ServerIcon, WrenchIcon } from "lucide-react";
+import { CheckIcon, FoldVerticalIcon, ServerIcon, WrenchIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -164,6 +164,10 @@ interface PromptEditorProps {
   goalEditor?: ReactNode;
   /** Estimated cost of one additional turn given the current context size, in USD. */
   costPerTurn?: number | null;
+  /** Fraction of the model's context window currently in use (0–1). Drives cost label colour. */
+  contextWindowFraction?: number | null;
+  /** Trigger manual context compaction. Absent when unavailable (e.g. no live session). */
+  onCompactClick?: () => void;
   /**
    * The session has a turn in flight. Driven by the parent rather than the
    * editor's own submit state, which knows nothing about a turn still running
@@ -195,6 +199,8 @@ export function PromptEditor({
   defaultTools,
   goalEditor,
   costPerTurn,
+  contextWindowFraction,
+  onCompactClick,
   isRunning,
   onSelectionChange,
   onStop,
@@ -364,6 +370,15 @@ export function PromptEditor({
       )}
 
       <PromptInputTools>
+        {onCompactClick && !isRunning && (
+          <PromptInputButton
+            onClick={onCompactClick}
+            title="Summarise conversation history to free up context window space"
+          >
+            <FoldVerticalIcon size={16} />
+            <span>Compact</span>
+          </PromptInputButton>
+        )}
         {/*
           Bounded and truncating rather than `flex-1`: a long goal would
           otherwise push the attachment, search and tool buttons across
@@ -376,7 +391,16 @@ export function PromptEditor({
             <div className="flex self-end">
               {costPerTurn != null && (
                 <span
-                  className="shrink-0 text-[10px] text-muted-foreground/60 tabular-nums"
+                  className={cn(
+                    "shrink-0 text-[10px] tabular-nums",
+                    contextWindowFraction == null || contextWindowFraction < 0.4
+                      ? "text-muted-foreground/60"
+                      : contextWindowFraction < 0.65
+                        ? "text-muted-foreground"
+                        : contextWindowFraction < 0.85
+                          ? "text-amber-500"
+                          : "text-red-500",
+                  )}
                   title="Estimated cache-read cost per additional turn at the current context size"
                 >
                   ≈
