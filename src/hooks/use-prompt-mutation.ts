@@ -187,7 +187,34 @@ const readPiStream = async (
   return piError;
 };
 
-export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean) => {
+export const usePromptMutation = (
+  sessionId: string,
+  initialIsRunning?: boolean,
+  /**
+   * The branch currently being viewed, from `?leaf=` — undefined for the
+   * default/live view. Every cache read, write and invalidation this hook
+   * does against the transcript has to agree with `useSessionMessages` on
+   * which branch's entry that is, or a turn's optimistic bubble and its
+   * eventual refetch would land in two different cache slots. See
+   * sessionMessagesQueryKey's own doc for why the key varies by this.
+   *
+   * Named apart from the mutation's own per-submission `leafId` (the fork a
+   * *prompt* continues from, in PromptInput below) on purpose: the two answer
+   * different questions and `onMutate` destructures the latter from its
+   * variables — a same-named parameter here would silently shadow it rather
+   * than erroring, which is a mistake worth naming around rather than relying
+   * on scoping rules to avoid.
+   */
+  viewingLeafId?: string | null,
+) => {
+  // Memoised: this array is a dependency of several callbacks below, and a
+  // fresh one on every render would defeat their own memoisation — the tuple
+  // form of sessionMessagesQueryKey returns a new array each call, the same
+  // reason `messages` elsewhere in this codebase is never `?? []` inline.
+  const messagesKey = useMemo(
+    () => sessionMessagesQueryKey(sessionId, viewingLeafId),
+    [sessionId, viewingLeafId],
+  );
   const queryClient = useQueryClient();
 
   /**
@@ -287,10 +314,10 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         clearStreamed: () => setLiveRounds([]),
         loadTranscript: () =>
           queryClient.invalidateQueries({
-            queryKey: sessionMessagesQueryKey(sessionId),
+            queryKey: messagesKey,
           }),
       }),
-    [queryClient, sessionId],
+    [queryClient, messagesKey],
   );
   const reconnectAbortRef = useRef<AbortController | null>(null);
   // Set when a reattach is told this session has no stream. The status poll is a
@@ -402,7 +429,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           setListRunning(false);
 
           await queryClient.invalidateQueries({
-            queryKey: sessionMessagesQueryKey(sessionId),
+            queryKey: messagesKey,
           });
           return;
         }
@@ -411,7 +438,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
           ...handlers,
           onUserMessage: (text) => {
             queryClient.setQueryData<SessionMessagesResult>(
-              sessionMessagesQueryKey(sessionId),
+              messagesKey,
               (prev) => ({
                 contextWindow: prev?.contextWindow ?? null,
                 systemPromptChars: prev?.systemPromptChars,
@@ -442,7 +469,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
 
     void reconnect();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, messagesKey]);
 
   useEffect(() => {
     if (!initialIsRunning) return;
@@ -517,7 +544,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
     onError: (mutationError, _variables, context) => {
       if (context?.previousMessages) {
         queryClient.setQueryData<SessionMessagesResult>(
-          sessionMessagesQueryKey(sessionId),
+          messagesKey,
           (prev) => ({
             contextWindow: prev?.contextWindow ?? null,
             messages: context.previousMessages,
@@ -552,12 +579,12 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
       setWorkflowSnapshot(undefined);
       setPendingQuestion(null);
       await queryClient.cancelQueries({
-        queryKey: sessionMessagesQueryKey(sessionId),
+        queryKey: messagesKey,
       });
 
       const previous =
         queryClient.getQueryData<SessionMessagesResult>(
-          sessionMessagesQueryKey(sessionId)
+          messagesKey
         );
       // Truncated to the fork point when this turn continues from one, so the
       // optimistic bubble lands right after it rather than after messages the
@@ -571,7 +598,7 @@ export const usePromptMutation = (sessionId: string, initialIsRunning?: boolean)
         leafId,
       );
       queryClient.setQueryData<SessionMessagesResult>(
-        sessionMessagesQueryKey(sessionId),
+        messagesKey,
         {
           contextWindow: previous?.contextWindow ?? null,
           // Carried, not recomputed: these writes rebuild the cache entry, and

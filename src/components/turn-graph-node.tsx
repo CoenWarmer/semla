@@ -6,8 +6,10 @@
  * Modeled on code-map-node.tsx, but laid out left to right instead of
  * top-down — a branch graph reads as a timeline, and Left/Right handles are
  * what a left-to-right elk layout expects an edge to connect to.
- * Read-only for now — docs/plans/branching-sessions.md phase 4 is what makes
- * a click switch branches; this node only shows where it stands.
+ *
+ * The click that switches branches (docs/plans/branching-sessions.md §4)
+ * is wired one level up in turn-graph-canvas.tsx's React Flow `onNodeClick`,
+ * not here — this component only ever renders what a node looks like.
  */
 import { GitForkIcon } from "lucide-react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
@@ -21,6 +23,12 @@ export function TurnGraphNode({ data }: NodeProps) {
   const node = data as unknown as TurnGraphNodeData;
   const label = turnNodeLabel(node);
 
+  // The synthetic root turn (promptText null) is the one node
+  // turn-graph-canvas.tsx's click handler refuses to act on — shown as
+  // unclickable here too, so the cursor does not promise a switch that will
+  // not happen.
+  const isClickable = node.promptText !== null;
+
   return (
     <div
       className={cn(
@@ -28,8 +36,15 @@ export function TurnGraphNode({ data }: NodeProps) {
         node.isLive
           ? "border-primary bg-card ring-1 ring-primary/40"
           : "border-border/60 bg-muted/30 text-muted-foreground",
+        isClickable && "cursor-pointer hover:bg-muted",
       )}
-      title={node.isLive ? "On the live conversation" : "An earlier, abandoned path"}
+      title={
+        !isClickable
+          ? undefined
+          : node.isLive
+            ? "On the live conversation"
+            : "Switch to this branch"
+      }
     >
       <Handle
         className="!bg-muted-foreground/40"

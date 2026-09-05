@@ -57,6 +57,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { SESSION_STATUS_KEY } from "@/lib/session-status";
 import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
@@ -74,6 +75,19 @@ export function ClientSessionComponent({
   sessionId: string;
   title: string | null;
 }) {
+  /**
+   * The branch this page is showing, from `?leaf=` — null for the default,
+   * live view. Read here rather than in the server page: sessions/[id]/page.tsx
+   * already runs a Supabase query and buildSessionMessages before it renders,
+   * and re-running that whole payload on every branch click would turn a
+   * client-side navigation into a full server round trip for a value the
+   * client already fetches for itself. See
+   * docs/plans/branching-sessions.md §4.
+   */
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const viewingLeafId = searchParams.get("leaf");
+
   const {
     activeTool,
     codeMap,
@@ -89,7 +103,7 @@ export function ClientSessionComponent({
     wikiActive,
     spans,
     workflowSnapshot,
-  } = usePromptMutation(sessionId, isRunning);
+  } = usePromptMutation(sessionId, isRunning, viewingLeafId);
 
   const { consume: consumePendingPrompt } = usePendingPrompt();
 
@@ -145,6 +159,7 @@ export function ClientSessionComponent({
     sessionId,
     initialMessagesData,
     isActive,
+    viewingLeafId,
   );
   const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
   /**
@@ -346,26 +361,30 @@ export function ClientSessionComponent({
   }, []);
 
   /**
-   * Scroll to the turn a branch-graph node was clicked for.
+   * Switch to the branch a graph node was clicked for.
    *
-   * The graph's node id is the id of the user message that opens the turn
-   * (session-turn-graph.ts), which is also the DOM id every message row
-   * renders under — message-edit.tsx's `<Message id={message.id}>` for a
-   * user row, and the same for an assistant one below. So no lookup table is
-   * needed, only the id itself.
+   * "Clicking a node switches the leaf to that branch's tip and the
+   * conversation re-renders" — docs/plans/branching-sessions.md §4, and the
+   * same write as forking (§3), aimed at a different entry: the URL is the
+   * one thing that changes, `?leaf=<turnId>` naming the clicked turn's
+   * opening message. What that resolves *to* is not decided here —
+   * resolveLeafOverride (session-leaf.ts, phase 1) walks it forward to
+   * whatever the current tip of that branch is, so a node on the live path
+   * simply reopens the live conversation, and a node on an abandoned branch
+   * opens that branch's own abandoned tip.
    *
-   * Silently does nothing when the turn is not currently rendered: the graph
-   * draws every branch the file has ever held, but this page only mounts the
-   * live path's messages (or a fork's truncated view of it) — clicking a node
-   * on an abandoned branch has nothing to scroll to yet. Switching to that
-   * branch so it does render is docs/plans/branching-sessions.md phase 4, not
-   * this.
+   * `push`, not `replace`: back and forward becoming branch navigation for
+   * free is half the reason the plan puts this in the URL at all, and
+   * `replace` would erase that history entry instead of adding to it.
    */
-  const handleBranchNodeClick = useCallback((turnId: string) => {
-    document
-      .getElementById(turnId)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, []);
+  const handleBranchNodeClick = useCallback(
+    (turnId: string) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("leaf", turnId);
+      router.push(`/sessions/${sessionId}?${next.toString()}`);
+    },
+    [router, searchParams, sessionId],
+  );
 
   // Why this is the test, and why it does not flash on a legitimate ?new=1
   // page, is in `isSessionMissing`.
@@ -393,14 +412,22 @@ export function ClientSessionComponent({
       }
 
       // The branch this prompt continues from, when it is not the live tip.
+      // A fork position (set by the fork button, within whatever branch is
+      // currently open) takes priority over just viewing a branch through
+      // ?leaf= — forking is the more specific of the two. Either way this is
+      // self-healing if the named entry is stale by the time the turn lands:
+      // resolveLeafOverride (session-leaf.ts) walks it forward to the current
+      // tip of its branch rather than pinning the exact entry.
+      //
       // Cleared regardless of outcome: on success the fetched conversation
       // already ends at the right place, and on failure there is nothing to
-      // stay forked at — the prompt never landed.
-      const leafId = forkedAt ?? undefined;
+      // stay forked at — the prompt never landed. viewingLeafId is left alone
+      // either way — it is the URL's concern, not this submission's.
+      const leafId = forkedAt ?? viewingLeafId ?? undefined;
       setForkedAt(null);
       await promptMutation.mutateAsync({ leafId, model, text: message.text, tools });
     },
-    [forkedAt, promptMutation],
+    [forkedAt, promptMutation, viewingLeafId],
   );
 
   /**
@@ -417,6 +444,16 @@ export function ClientSessionComponent({
   const handleCancelFork = useCallback(() => {
     setForkedAt(null);
   }, []);
+
+  // Navigating to a different branch (§4) supersedes any in-progress fork
+  // (§3) the operator had set up on whatever branch they were looking at
+  // before — a fork position named against the old view has no meaning
+  // against the new one. This mirrors an external value the URL controls,
+  // not something the component could derive without an effect.
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    setForkedAt(null);
+  }, [viewingLeafId]);
 
   // The model and tools the prompt bar would submit with. An edit runs a turn
   // from a message rather than from the bar, and should use the same selection.
@@ -449,18 +486,26 @@ export function ClientSessionComponent({
 
       setReviewManuallyOpened(false);
       // A distinct turn from wherever the operator was forked to — explaining
-      // an element is asked of the live conversation, not of a branch that
-      // happened to be open in the panel underneath it.
+      // an element is asked of the conversation as it stands, not of a fork
+      // position that was set up but never sent.
       setForkedAt(null);
+      // But NOT distinct from whatever branch is actually open: if the page is
+      // showing an earlier branch (viewingLeafId, §4), that is the
+      // conversation this prompt is asked of. Omitting it here would send the
+      // turn to the session's live tip while this view stays keyed to the
+      // branch it is showing (see usePromptMutation's messagesKey) — the
+      // reply would land somewhere this screen never refetches, which reads
+      // as "nothing happened" rather than as an answer that went missing.
       promptMutation
         .mutateAsync({
+          leafId: viewingLeafId ?? undefined,
           model: selection.model,
           text: prompt,
           tools: selection.tools,
         })
         .catch(() => {});
     },
-    [promptMutation],
+    [promptMutation, viewingLeafId],
   );
 
   const handleEditPrompt = useCallback(
@@ -725,6 +770,23 @@ export function ClientSessionComponent({
               sessionId={sessionId}
               onDismiss={() => {}}
             />
+          </div>
+        )}
+        {!forkedAt && viewingLeafId && (
+          // A branch was opened from the graph (§4), not forked from a
+          // message (§3) — there is no truncation to warn about here, since
+          // this branch's own conversation is exactly what is rendered above.
+          // What is worth saying is that it may not be the one every other
+          // link to this session opens by default.
+          <div className="flex shrink-0 items-center justify-between gap-2 border-border/40 border-t bg-muted/30 px-3 py-1.5 text-muted-foreground text-xs">
+            <span>Viewing an earlier branch of this conversation.</span>
+            <button
+              className="shrink-0 underline hover:no-underline"
+              onClick={() => router.push(`/sessions/${sessionId}`)}
+              type="button"
+            >
+              Back to the live conversation
+            </button>
           </div>
         )}
         {forkedAt && (

@@ -42,11 +42,28 @@ export type SessionMessagesResult = {
   toolCalls: SessionToolCall[];
 };
 
-export const sessionMessagesQueryKey = (sessionId: string) =>
-  ["session-messages", sessionId] as const;
+/**
+ * `leafId` is part of the key on purpose: two branches of the same session are
+ * two different transcripts, and TanStack Query only knows to keep them apart
+ * — and to refetch on navigation between them — if the key says so. Omitted
+ * (rather than `null`) for the default/live view, so a plain session URL with
+ * no `?leaf=` keeps the key it always had and no existing cache entry goes
+ * stale just because this shipped. See docs/plans/branching-sessions.md §4.
+ */
+export const sessionMessagesQueryKey = (
+  sessionId: string,
+  leafId?: string | null,
+): readonly (string | null)[] =>
+  leafId ? ["session-messages", sessionId, leafId] : ["session-messages", sessionId];
 
-const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesResult> => {
-  const response = await fetch(`/api/sessions/${sessionId}/messages`);
+const fetchSessionMessages = async (
+  sessionId: string,
+  leafId?: string | null,
+): Promise<SessionMessagesResult> => {
+  const url = leafId
+    ? `/api/sessions/${sessionId}/messages?leaf=${encodeURIComponent(leafId)}`
+    : `/api/sessions/${sessionId}/messages`;
+  const response = await fetch(url);
 
   if (!response.ok) {
     throw new Error("Unable to load this session.");
@@ -71,8 +88,9 @@ const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesR
 export const sessionMessagesQueryOptions = (
   sessionId: string,
   turnActive: boolean,
+  leafId?: string | null,
 ) => ({
-  queryKey: sessionMessagesQueryKey(sessionId),
+  queryKey: sessionMessagesQueryKey(sessionId, leafId),
   refetchOnWindowFocus: !turnActive,
   refetchOnReconnect: !turnActive,
 });
@@ -82,9 +100,17 @@ export const useSessionMessages = (
   initialData?: SessionMessagesResult,
   /** True while a prompt turn is streaming. */
   turnActive = false,
+  /**
+   * The branch to load, from `?leaf=`. Undefined for the default view, which
+   * is also the only case `initialData` — the server page's own render — is
+   * valid for: the page never resolves a `?leaf=` today, so seeding it as
+   * this query's initial data while asking for a specific branch would show
+   * the wrong conversation until the real fetch overwrote it.
+   */
+  leafId?: string | null,
 ) =>
   useQuery({
-    ...sessionMessagesQueryOptions(sessionId, turnActive),
-    initialData,
-    queryFn: () => fetchSessionMessages(sessionId),
+    ...sessionMessagesQueryOptions(sessionId, turnActive, leafId),
+    initialData: leafId ? undefined : initialData,
+    queryFn: () => fetchSessionMessages(sessionId, leafId),
   });

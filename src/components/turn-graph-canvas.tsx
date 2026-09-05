@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * Draws a session's branch structure.
+ * Draws a session's branch structure, and switches to a branch on click.
  *
- * Read-only in the sense that a click here never moves the session's leaf
- * — docs/plans/branching-sessions.md phase 4 is what does that. What a click
- * does today is scroll the conversation to the clicked turn's opening
- * message, so the graph is also a way to navigate a long session rather than
- * only a diagram of it.
+ * The click itself never touches the server — it only reports the clicked
+ * turn's id upward through `onNodeClick`. What that id *means* is the
+ * caller's business: client-session-component.tsx turns it into a
+ * `?leaf=<turnId>` navigation, which is the same write forking is (§3),
+ * aimed at a different entry, and the server resolves it forward to whatever
+ * the current tip of that branch is (session-leaf.ts) rather than pinning
+ * the exact clicked entry. See docs/plans/branching-sessions.md §4.
  *
  * Modeled closely on code-map-panel.tsx: elk layout is async for the same
  * reason (it is a compiled Java library with no synchronous entry point), so
@@ -56,9 +58,9 @@ export function TurnGraphCanvas({
   sessionId,
 }: {
   /**
-   * The clicked turn's id — the id of the user message it starts with, or
-   * null for the synthetic root turn a session's pre-first-message entries
-   * are grouped under, which has no message to jump to.
+   * The clicked turn's id — the id of the user message it starts with. Never
+   * called for the synthetic root turn (session-turn-graph.ts's ‹root›), which
+   * has no message and so nothing a leaf could name.
    */
   onNodeClick?: (turnId: string) => void;
   sessionId: string;
@@ -97,8 +99,8 @@ export function TurnGraphCanvas({
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       // The synthetic root turn (session-turn-graph.ts's ‹root›) has no
-      // message of its own to scroll to — promptText is null only for it,
-      // so that is the signal rather than comparing against a private id.
+      // message of its own to name as a leaf — promptText is null only for
+      // it, so that is the signal rather than comparing against a private id.
       const data = node.data as { promptText?: string | null } | undefined;
       if (data?.promptText === null) return;
       onNodeClick?.(node.id);
