@@ -41,7 +41,7 @@ interface SessionTopbarProps {
   /** Size of this session's system prompt, from the transcript response. */
   systemPromptChars?: number;
   onAgentClick: (agentId: number, runId: string) => void;
-  /** Scroll the conversation to this turn's opening message. */
+  /** Switch to the branch this turn opens — see docs/plans/branching-sessions.md §4. */
   onBranchNodeClick?: (turnId: string) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
