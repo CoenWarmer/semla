@@ -104,6 +104,7 @@ import {
 } from "@/lib/pi/session-persistence";
 import {
   closeSessionStream,
+  isSessionStreamActive,
   openSessionStream,
   publishToSessionStream,
 } from "@/lib/pi/session-stream-store";
@@ -218,7 +219,17 @@ export const stopPiSession = async (semlaSessionId: string): Promise<boolean> =>
   const live = getLiveSession(semlaSessionId);
   const watching = hasBackgroundContinuation(semlaSessionId);
 
-  if (!live && !watching) return false;
+  if (!live && !watching) {
+    // No active turn, but the SSE stream may still be open if a previous turn
+    // ended without emitting a terminal event (e.g. an error that predates the
+    // fix below). Close it so clients stop waiting for events that will never
+    // arrive.
+    if (isSessionStreamActive(semlaSessionId)) {
+      publishToSessionStream(semlaSessionId, { type: "complete" });
+      closeSessionStream(semlaSessionId);
+    }
+    return false;
+  }
 
   sessionLog(semlaSessionId, "stop requested");
   abortBackgroundContinuation(semlaSessionId);
@@ -734,6 +745,11 @@ export const runPiPrompt = async ({
       code: msg.slice(0, 200),
       type: err instanceof Error ? err.name : "Error",
     };
+    // Publish a terminal event before the stream is closed in `finally`, so
+    // SSE clients don't stay stuck in "reconnecting" state waiting for events
+    // that will never arrive. Without this, an aborted or errored turn leaves
+    // the stream open (keep-alive only) indefinitely.
+    emit({ type: "error", message: msg });
     throw new Error(msg);
   } finally {
     unsubscribe();
