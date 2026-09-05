@@ -79,11 +79,7 @@ export function GoalEditor({
             onClick={startEdit}
             type="button"
           >
-            {goal?.trim() ? (
-              goal
-            ) : (
-              <span className="italic">No goal set — click to define one</span>
-            )}
+            {goal?.trim() ? goal : <span className="italic">No goal set</span>}
           </button>
         )}
       </div>
