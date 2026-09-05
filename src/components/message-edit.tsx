@@ -133,13 +133,13 @@ export function EditableUserMessage({
           is the gutter between it and the conversation. Copy first, so edit
           stays nearest the bubble it edits.
         */}
-        {!editing && <CopyMessageButton text={message.text} />}
         {!editing && (
           <ForkMessageButton
             disabled={disabled}
             onFork={() => onFork(message.id)}
           />
         )}
+        {!editing && <CopyMessageButton text={message.text} />}
         <button
           className={cn(
             "shrink-0 transition-opacity hover:text-foreground focus-visible:opacity-100 disabled:cursor-not-allowed",
