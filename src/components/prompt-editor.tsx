@@ -389,11 +389,11 @@ export function PromptEditor({
                 <span
                   className={cn(
                     "shrink-0 text-[10px] tabular-nums",
-                    contextWindowFraction == null || contextWindowFraction < 0.4
+                    costPerTurn < 0.01
                       ? "text-muted-foreground/60"
-                      : contextWindowFraction < 0.65
+                      : costPerTurn < 0.05
                         ? "text-muted-foreground"
-                        : contextWindowFraction < 0.85
+                        : costPerTurn < 0.15
                           ? "text-amber-500"
                           : "text-red-500",
                   )}
