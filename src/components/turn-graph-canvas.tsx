@@ -58,11 +58,13 @@ export function TurnGraphCanvas({
   sessionId,
 }: {
   /**
-   * The clicked turn's id — the id of the user message it starts with. Never
-   * called for the synthetic root turn (session-turn-graph.ts's ‹root›), which
-   * has no message and so nothing a leaf could name.
+   * The clicked turn's id and whether it is the live one — the caller
+   * decides what a click on each means (session-turn-graph.ts's `isLive`,
+   * the same flag the node's own border reads). Never called for the
+   * synthetic root turn (‹root›), which has no message and so nothing a
+   * leaf could name.
    */
-  onNodeClick?: (turnId: string) => void;
+  onNodeClick?: (turnId: string, isLive: boolean) => void;
   sessionId: string;
 }) {
   const graphQuery = useTurnGraph(sessionId, true);
@@ -101,9 +103,11 @@ export function TurnGraphCanvas({
       // The synthetic root turn (session-turn-graph.ts's ‹root›) has no
       // message of its own to name as a leaf — promptText is null only for
       // it, so that is the signal rather than comparing against a private id.
-      const data = node.data as { promptText?: string | null } | undefined;
+      const data = node.data as
+        | { isLive?: boolean; promptText?: string | null }
+        | undefined;
       if (data?.promptText === null) return;
-      onNodeClick?.(node.id);
+      onNodeClick?.(node.id, data?.isLive ?? false);
     },
     [onNodeClick],
   );

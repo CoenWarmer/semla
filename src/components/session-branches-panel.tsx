@@ -28,8 +28,8 @@ export function SessionBranchesPanel({
   onNodeClick,
   sessionId,
 }: {
-  /** The clicked turn's message id, forwarded from TurnGraphCanvas. */
-  onNodeClick?: (turnId: string) => void;
+  /** The clicked turn's message id and liveness, forwarded from TurnGraphCanvas. */
+  onNodeClick?: (turnId: string, isLive: boolean) => void;
   sessionId: string;
 }) {
   const bar = useBottomPanel();

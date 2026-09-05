@@ -373,15 +373,28 @@ export function ClientSessionComponent({
    * simply reopens the live conversation, and a node on an abandoned branch
    * opens that branch's own abandoned tip.
    *
+   * A click on a node the graph already marked `isLive` clears the param
+   * instead of setting it to that node's own id. Setting `?leaf=<turnId>`
+   * there would still *resolve* to the live conversation —
+   * resolveLeafOverride walks forward to the same tip either way — so the
+   * conversation shown would be correct. What would not be is the "viewing
+   * an earlier branch" banner below, which keys off `viewingLeafId` being
+   * present at all rather than off what it resolves to: a present-but-live
+   * leaf claimed to be viewing history it was not. Clearing the param is
+   * also simply the more honest URL for "the live conversation" — the one
+   * every other link to this session already opens by default.
+   *
    * `push`, not `replace`: back and forward becoming branch navigation for
    * free is half the reason the plan puts this in the URL at all, and
    * `replace` would erase that history entry instead of adding to it.
    */
   const handleBranchNodeClick = useCallback(
-    (turnId: string) => {
+    (turnId: string, isLive: boolean) => {
       const next = new URLSearchParams(searchParams);
-      next.set("leaf", turnId);
-      router.push(`/sessions/${sessionId}?${next.toString()}`);
+      if (isLive) next.delete("leaf");
+      else next.set("leaf", turnId);
+      const query = next.toString();
+      router.push(`/sessions/${sessionId}${query ? `?${query}` : ""}`);
     },
     [router, searchParams, sessionId],
   );

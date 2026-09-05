@@ -42,7 +42,7 @@ interface SessionTopbarProps {
   systemPromptChars?: number;
   onAgentClick: (agentId: number, runId: string) => void;
   /** Switch to the branch this turn opens — see docs/plans/branching-sessions.md §4. */
-  onBranchNodeClick?: (turnId: string) => void;
+  onBranchNodeClick?: (turnId: string, isLive: boolean) => void;
   sessionRunning?: boolean;
   snapshot?: WorkflowSnapshot;
   /** Recorded spans, passed through to the timeline. */
