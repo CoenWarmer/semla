@@ -42,7 +42,12 @@ import {
   useUserSettings,
 } from "@/hooks/use-user-settings";
 
-import { CheckIcon, FoldVerticalIcon, ServerIcon, WrenchIcon } from "lucide-react";
+import {
+  CheckIcon,
+  FoldVerticalIcon,
+  ServerIcon,
+  WrenchIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -370,15 +375,6 @@ export function PromptEditor({
       )}
 
       <PromptInputTools>
-        {onCompactClick && !isRunning && (
-          <PromptInputButton
-            onClick={onCompactClick}
-            title="Summarise conversation history to free up context window space"
-          >
-            <FoldVerticalIcon size={16} />
-            <span>Compact</span>
-          </PromptInputButton>
-        )}
         {/*
           Bounded and truncating rather than `flex-1`: a long goal would
           otherwise push the attachment, search and tool buttons across
@@ -422,6 +418,15 @@ export function PromptEditor({
             toolPickerOpen || modelSelectorOpen ? "opacity-80" : "opacity-0",
           )}
         >
+          {onCompactClick && !isRunning && (
+            <PromptInputButton
+              onClick={onCompactClick}
+              title="Summarise conversation history to free up context window space"
+            >
+              <FoldVerticalIcon size={16} />
+              <span>Compact</span>
+            </PromptInputButton>
+          )}
           <div className="relative" ref={toolPickerRef}>
             <PromptInputButton
               aria-expanded={toolPickerOpen}
@@ -525,7 +530,6 @@ export function PromptEditor({
               </TooltipContent>
             </Tooltip>
           )}
-
           <ModelSelector
             onOpenChange={setModelSelectorOpen}
             open={modelSelectorOpen}
