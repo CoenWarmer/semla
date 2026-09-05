@@ -227,7 +227,10 @@ export function ClientSessionComponent({
   // the turn ends. No separate live renderer and no placement hack: this and
   // `messages` are simply concatenated and handed to the one function that
   // already gets this right.
-  const liveMessages = useMemo(() => liveRoundMessages(liveRounds), [liveRounds]);
+  const liveMessages = useMemo(
+    () => liveRoundMessages(liveRounds),
+    [liveRounds],
+  );
   const messagesWithLiveRounds = useMemo(
     () => [...messages, ...liveMessages],
     [messages, liveMessages],
@@ -505,7 +508,12 @@ export function ClientSessionComponent({
       // either way — it is the URL's concern, not this submission's.
       const leafId = forkedAt ?? viewingLeafId ?? undefined;
       setForkedAt(null);
-      await promptMutation.mutateAsync({ leafId, model, text: message.text, tools });
+      await promptMutation.mutateAsync({
+        leafId,
+        model,
+        text: message.text,
+        tools,
+      });
     },
     [forkedAt, promptMutation, viewingLeafId],
   );
@@ -717,7 +725,7 @@ export function ClientSessionComponent({
         toolCalls={toolCalls}
         workflowRuns={workflowRunsQuery.data}
       />
-      <div className="flex min-h-0 flex-1 flex-col gap-4 px-20 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-0 px-20 pb-1">
         {reviewOpen && (
           <ReviewPanel
             // Remounts the panel for each new pick, which is what makes
@@ -788,11 +796,11 @@ export function ClientSessionComponent({
                         </MessageResponse>
                       </MessageContent>
                       <div className="mt-1 flex shrink-0 items-center gap-1">
-                        <CopyMessageButton text={item.message.text} />
                         <ForkMessageButton
                           disabled={isActive}
                           onFork={() => handleFork(item.message.id)}
                         />
+                        <CopyMessageButton text={item.message.text} />
                       </div>
                     </div>
                   </Message>
