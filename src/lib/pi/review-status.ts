@@ -156,11 +156,12 @@ export function parseTurnCommits(output: string): TurnCommit[] {
       const [meta, ...rest] = record.split("\n");
       const [sha, shortSha, subject, author, at] = meta.split(UNIT);
       // --name-only prints a blank line, then one path per line.
-      const fileCount = rest.filter((line) => line.trim() !== "").length;
+      const files = rest.map((line) => line.trim()).filter((line) => line !== "");
       return {
         at: at ?? "",
         author: author ?? "",
-        fileCount,
+        fileCount: files.length,
+        files,
         sha: sha ?? "",
         shortSha: shortSha ?? "",
         subject: subject ?? "",

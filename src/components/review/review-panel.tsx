@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
+import { ReviewCommitNav } from "./review-commit-nav";
 import { ReviewEditorPane } from "./review-editor-pane";
 import { ReviewFileTree } from "./review-file-tree";
 import {
@@ -115,6 +116,7 @@ export function ReviewPanel({
       ? { path: initialTarget.path, project: initialTarget.project }
       : null,
   );
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
@@ -153,6 +155,18 @@ export function ReviewPanel({
   const changed = review.data ? totalChangedFiles(review.data) : 0;
   const unsavedCount = Object.keys(drafts).length;
   const busy = stage.isPending || commit.isPending || save.isPending;
+
+  // When the operator selects a commit, filter the changed-files list to only
+  // the files that commit touched. The commit stores repo-relative paths;
+  // changedFiles.path is also repo-relative, so the match is direct.
+  const selectedCommit = activeProject?.turnCommits.find(
+    (c) => c.sha === selectedCommitSha,
+  ) ?? null;
+  const visibleFiles = selectedCommit
+    ? (activeProject?.changedFiles ?? []).filter((f) =>
+        selectedCommit.files.includes(f.path),
+      )
+    : (activeProject?.changedFiles ?? []);
 
   // Escape closes, which is what every overlay in the app does. Registered on
   // the document because the editor swallows keys inside itself.
@@ -229,7 +243,7 @@ export function ReviewPanel({
       role="dialog"
       style={{ bottom, left: INSET.left, right: INSET.right, top: INSET.top }}
     >
-      <header className="flex shrink-0 items-center gap-3 border-b px-3 py-2">
+      <header className="relative flex shrink-0 items-center gap-3 border-b px-3 py-2">
         <h2 className="text-sm font-medium">Review</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
           {changed} changed {changed === 1 ? "file" : "files"}
@@ -269,6 +283,16 @@ export function ReviewPanel({
           </span>
         ) : null}
 
+        {activeProject && activeProject.turnCommits.length > 0 && (
+          <div className="absolute left-1/2 -translate-x-1/2">
+            <ReviewCommitNav
+              commits={activeProject.turnCommits}
+              selectedSha={selectedCommitSha}
+              onSelect={setSelectedCommitSha}
+            />
+          </div>
+        )}
+
         {/* Phase 1 of docs/plans/session-isolation.md: the changed-files list
             above is read straight off the shared working tree, so it can
             include a file another session wrote. This is why, not a guess. */}
@@ -283,8 +307,6 @@ export function ReviewPanel({
             {activeProject.otherActiveSessions === 1 ? "" : "s"}
           </span>
         )}
-
-        {/* Current commit */}
 
         <div className="ml-auto flex items-center gap-2">
           <Button
@@ -325,7 +347,15 @@ export function ReviewPanel({
               ) : (
                 <ReviewChangedFiles
                   onSelect={setChosen}
-                  projects={projects}
+                  projects={
+                    selectedCommit
+                      ? projects.map((p) =>
+                          p.path === activeProject?.path
+                            ? { ...p, changedFiles: visibleFiles }
+                            : p,
+                        )
+                      : projects
+                  }
                   selected={selection}
                 />
               )}

@@ -90,6 +90,7 @@ describe("shouldOpenReview", () => {
               at: "2026-09-03T10:00:00Z",
               author: "Test",
               fileCount: 2,
+              files: ["src/a.ts", "src/b.ts"],
               sha: "a".repeat(40),
               shortSha: "aaaaaaa",
               subject: "[Agent]: done",

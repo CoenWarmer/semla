@@ -55,6 +55,8 @@ export interface TurnCommit {
   /** ISO 8601, author date. */
   at: string;
   fileCount: number;
+  /** Repo-relative paths of every file the commit touched. */
+  files: string[];
 }
 
 /**
