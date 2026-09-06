@@ -59,6 +59,8 @@ export type PersistedRunState = {
   /** Whatever the workflow script returned. Present once the run completes. */
   result?: unknown;
   runId: string;
+  /** The pi session this run belongs to (undefined on legacy runs). */
+  sessionId?: string;
   startedAt: string;
   status: "aborted" | "completed" | "failed" | "paused" | "pending" | "running";
   tokenUsage?: {

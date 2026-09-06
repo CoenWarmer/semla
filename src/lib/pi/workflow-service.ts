@@ -97,11 +97,17 @@ export async function verifyRunBelongsToSession(
   if (error) {
     return { error: error.message, ok: false, status: 500 };
   }
-  if (!run) {
-    return { error: "Workflow run not found.", ok: false, status: 404 };
+  if (run) return { ok: true };
+
+  // Supabase row may not exist yet for live/in-progress runs. Fall back to
+  // disk: the run file stores sessionId and was written at run start.
+  const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
+  for (const cwd of cwds) {
+    const runState = readWorkflowRun(cwd, runId);
+    if (runState?.sessionId === semlaSessionId) return { ok: true };
   }
 
-  return { ok: true };
+  return { error: "Workflow run not found.", ok: false, status: 404 };
 }
 
 export type AgentDetail = {
