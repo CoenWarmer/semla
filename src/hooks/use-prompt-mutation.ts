@@ -43,6 +43,13 @@ import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import {
+  sessionActiveToolKey,
+  sessionCodeMapKey,
+  sessionLiveRoundsKey,
+  sessionLiveToolCallsKey,
+  sessionWorkflowSnapshotKey,
+} from "@/lib/session-live-state";
 
 export type PromptModel = {
   modelId: string;
@@ -217,6 +224,10 @@ export const usePromptMutation = (
   );
   const queryClient = useQueryClient();
 
+  // Live turn state is mirrored into the query cache so layout-level
+  // components (e.g. bottom-bar panels) can read it without a prop or portal.
+  // See src/lib/session-live-state.ts for the keys and read hooks.
+
   /**
    * Tell the sidebar what this page already knows about its own session.
    *
@@ -311,13 +322,16 @@ export const usePromptMutation = (
   const handOffToTranscript = useCallback(
     () =>
       handOffStreamedAnswer({
-        clearStreamed: () => setLiveRounds([]),
+        clearStreamed: () => {
+          setLiveRounds([]);
+          queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
+        },
         loadTranscript: () =>
           queryClient.invalidateQueries({
             queryKey: messagesKey,
           }),
       }),
-    [queryClient, messagesKey],
+    [queryClient, messagesKey, sessionId],
   );
   const reconnectAbortRef = useRef<AbortController | null>(null);
   // Set when a reattach is told this session has no stream. The status poll is a
@@ -335,28 +349,52 @@ export const usePromptMutation = (
   // created new closure objects on every call, which confused the React Compiler.
   const handlers = useMemo(
     (): StreamHandlers => ({
-      onRoundStart: (event) => setLiveRounds((r) => applyRoundStart(r, event)),
-      onDelta: (event) => setLiveRounds((r) => applyRoundDelta(r, event)),
+      onRoundStart: (event) => {
+        setLiveRounds((r) => applyRoundStart(r, event));
+        queryClient.setQueryData(sessionLiveRoundsKey(sessionId), (prev) =>
+          applyRoundStart((prev as LiveRound[] | undefined) ?? [], event),
+        );
+      },
+      onDelta: (event) => {
+        setLiveRounds((r) => applyRoundDelta(r, event));
+        queryClient.setQueryData(sessionLiveRoundsKey(sessionId), (prev) =>
+          applyRoundDelta((prev as LiveRound[] | undefined) ?? [], event),
+        );
+      },
       onToolStart: (event) => {
         setActiveTool(event.toolName);
+        queryClient.setQueryData(sessionActiveToolKey(sessionId), event.toolName);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+        queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
+          applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
+        );
       },
       onToolEnd: (event) => {
         setActiveTool(undefined);
+        queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
+        queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
+          applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
+        );
         if (event.toolName === "ask_user") setPendingQuestion(null);
       },
       onAskUser: (payload) => setPendingQuestion(payload),
-      onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
+      onWorkflowSnapshot: (snapshot) => {
+        setWorkflowSnapshot(snapshot);
+        queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
+      },
       onSpans: (incoming) =>
         setSpansById((previous) => {
           const next = new Map(previous);
           for (const span of incoming) next.set(span.spanId, span);
           return next;
         }),
-      onCodeMap: (map) => setCodeMap(map),
-      onWorkflowStarted: (event) =>
-        setWorkflowSnapshot({
+      onCodeMap: (map) => {
+        setCodeMap(map);
+        queryClient.setQueryData(sessionCodeMapKey(sessionId), map);
+      },
+      onWorkflowStarted: (event) => {
+        const snapshot: WorkflowSnapshot = {
           agentCount: 0,
           agents: [],
           doneCount: 0,
@@ -366,7 +404,10 @@ export const usePromptMutation = (
           runId: event.runId,
           runningCount: 0,
           startedAt: event.startedAt,
-        }),
+        };
+        setWorkflowSnapshot(snapshot);
+        queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
+      },
       onTitleUpdated: (title) => {
         setServerTitle(title);
         // So the sidebar shows it now rather than on its next poll.
@@ -401,9 +442,13 @@ export const usePromptMutation = (
 
     const reconnect = async () => {
       setLiveRounds([]);
+      queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
       setLiveToolCalls([]);
+      queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
+      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), undefined);
       setIsReconnecting(true);
 
       try {
@@ -462,6 +507,7 @@ export const usePromptMutation = (
       } finally {
         setIsReconnecting(false);
         setActiveTool(undefined);
+        queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
         setPendingQuestion(null);
         await handOffToTranscript();
       }
@@ -574,9 +620,13 @@ export const usePromptMutation = (
       );
       setStreamError(undefined);
       setLiveRounds([]);
+      queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
       setLiveToolCalls([]);
+      queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
+      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), undefined);
       setPendingQuestion(null);
       await queryClient.cancelQueries({
         queryKey: messagesKey,
@@ -630,6 +680,7 @@ export const usePromptMutation = (
     onSettled: async () => {
       trace("onSettled:start");
       setActiveTool(undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
       setPendingQuestion(null);
       trace("onSettled:invalidate-begin");
       await handOffToTranscript();

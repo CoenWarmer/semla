@@ -35,6 +35,7 @@ const STALE_RUNNING_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes without an update
  */
 export const useWorkflowRuns = (sessionId: string, expectedRunId?: string) =>
   useQuery({
+    enabled: !!sessionId,
     queryFn: () => fetchWorkflowRuns(sessionId),
     queryKey: workflowRunsQueryKey(sessionId),
     refetchInterval: (query) => {

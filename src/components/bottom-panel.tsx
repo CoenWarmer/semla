@@ -13,14 +13,9 @@ import {
  * The bottom bar, shared between the frame and the page inside it.
  *
  * `AppConsole` sits in the root layout, outside `{children}`, because the bar
- * must stay put rather than scroll away with the page. The agent timeline it
- * now hosts is the opposite: its data — the snapshot, the spans, the live tool
- * calls — belongs to the session tree and arrives on that turn's stream.
- *
- * So neither side can own both. The bar owns which panel is open and provides
- * two slots; the session renders its button and its panel into them through
- * portals. Nothing is lifted, nothing is duplicated, and the session's state
- * stays where it is subscribed.
+ * must stay put rather than scroll away with the page. The shell owns which
+ * panel is open and its height, so the terminal and any other bottom panels
+ * share the same drag-to-resize behaviour.
  *
  * One panel at a time, deliberately. Two stacked 288px panels leave a
  * conversation reading through a letterbox, and the bar is a place to glance

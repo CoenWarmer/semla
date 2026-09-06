@@ -3,22 +3,15 @@
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextInspections } from "@/hooks/use-context-check";
-import type {
-  SessionMessage,
-  SessionToolCall,
-} from "@/hooks/use-session-messages";
-import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
-import type { WorkflowSnapshot } from "@/types/workflow";
+import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
-import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { GitCompareIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
 import { InspectorPanel } from "./inspector-panel";
-import { SessionAgentsPanel } from "./session-agents-panel";
-import { SessionBranchesPanel } from "./session-branches-panel";
+
 import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
@@ -42,16 +35,9 @@ interface SessionTopbarProps {
   cacheReadRatePerMToken?: number | null;
   /** Size of this session's system prompt, from the transcript response. */
   systemPromptChars?: number;
-  onAgentClick: (agentId: number, runId: string) => void;
-  /** Switch to the branch this turn opens — see docs/plans/branching-sessions.md §4. */
-  onBranchNodeClick?: (turnId: string, isLive: boolean) => void;
   sessionRunning?: boolean;
   onCompactClick?: () => void;
-  snapshot?: WorkflowSnapshot;
-  /** Recorded spans, passed through to the timeline. */
-  spans?: readonly RecordedSpan[];
   toolCalls?: SessionToolCall[];
-  workflowRuns?: WorkflowRun[];
 }
 
 /** The panels the title bar still owns. "agents" and "branches" moved to the bottom bar. */
@@ -86,17 +72,12 @@ export function SessionTopbar({
   goal,
   onGoalSave,
   messages,
-  onAgentClick,
-  onBranchNodeClick,
   sessionRunning,
-  snapshot,
-  spans,
-  toolCalls,
-  workflowRuns,
   onReviewClick,
   onCompactClick,
   reviewCount = 0,
   reviewOpen = false,
+  toolCalls,
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const { cost: totalCost, tokens: totalTokens } = useSessionCost(sessionId);
@@ -115,10 +96,6 @@ export function SessionTopbar({
       }),
     [cacheReadRatePerMToken, contextWindow, messages, systemPromptChars, toolCalls],
   );
-
-  const agentCount = snapshot?.agentCount ?? 0;
-  const runningCount = snapshot?.runningCount ?? 0;
-  const showAgentCount = agentCount > 0 || runningCount > 0;
 
   function togglePanel(mode: PanelMode) {
     setPanelMode((prev) => (prev === mode ? null : mode));
@@ -200,21 +177,6 @@ export function SessionTopbar({
         sessionRunning={sessionRunning}
         onCompactClick={onCompactClick}
       />
-
-      {/* Panel area */}
-      <SessionAgentsPanel
-        messages={messages}
-        onAgentClick={onAgentClick}
-        sessionId={sessionId}
-        sessionRunning={sessionRunning}
-        sessionTitle={title}
-        show={showAgentCount}
-        snapshot={snapshot}
-        spans={spans}
-        toolCalls={toolCalls}
-        workflowRuns={workflowRuns}
-      />
-      <SessionBranchesPanel onNodeClick={onBranchNodeClick} sessionId={sessionId} />
 
       {panelMode === "codemap" && (
         <div

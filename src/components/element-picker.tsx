@@ -17,11 +17,12 @@
 
 import { Crosshair } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useElementTarget } from "@/components/element-target-provider";
 import { locateElement } from "@/lib/element-locator";
+import { cn } from "@/lib/utils";
 
 /** Only meaningful in dev: `_debugStack` is a dev-runtime-only field. */
 const AVAILABLE = process.env.NODE_ENV === "development";
@@ -51,14 +52,14 @@ function HoverBox({ rect }: { rect: DOMRect | null }) {
   );
 }
 
-export function ElementPicker({ sessionId }: { sessionId: string }) {
+export function ElementPicker() {
+  const { id } = useParams<{ id?: string }>();
+  const sessionId = id;
   const [picking, setPicking] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const elementTarget = useElementTarget();
-  // The picker's own UI must never highlight or resolve itself — clicking the
-  // toggle button while armed would otherwise try to locate the button.
   const rootRef = useRef<HTMLDivElement>(null);
 
   const stop = useCallback(() => {
@@ -84,9 +85,6 @@ export function ElementPicker({ sessionId }: { sessionId: string }) {
         return;
       }
 
-      // Swallowed here, not left to run: the point of picking is to inspect
-      // the element, not to also fire whatever it does — a picked button
-      // must not also submit the form it sits in.
       event.preventDefault();
       event.stopPropagation();
 
@@ -103,11 +101,6 @@ export function ElementPicker({ sessionId }: { sessionId: string }) {
             return;
           }
 
-          // Attaches Semla's own repo to this session (idempotent) and
-          // confirms the path is inside it, then hands the resolved
-          // {project, path} to the session component so it can open the
-          // Review panel — the same shape any other file selection there
-          // uses.
           const res = await fetch(
             `/api/sessions/${sessionId}/element-target`,
             {
@@ -137,15 +130,9 @@ export function ElementPicker({ sessionId }: { sessionId: string }) {
       if (event.key === "Escape") stop();
     };
 
-    // Capture phase: this has to see the click before the element's own
-    // handlers do, which is also what makes preventDefault/stopPropagation
-    // here effective against them.
     document.addEventListener("pointermove", onMove, true);
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown);
-    // The whole page, not just this button: the point is to pick an element
-    // anywhere on screen, and the crosshair has to say so wherever the
-    // pointer goes.
     document.body.classList.add("cursor-crosshair");
 
     return () => {
@@ -156,32 +143,35 @@ export function ElementPicker({ sessionId }: { sessionId: string }) {
     };
   }, [elementTarget, picking, sessionId, stop]);
 
-  if (!AVAILABLE) return null;
+  if (!AVAILABLE || !sessionId) return null;
 
   return (
     <div className="relative" ref={rootRef}>
-      <Button
+      <button
         aria-pressed={picking}
+        className={cn(
+          "flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground",
+          picking && "text-foreground",
+        )}
         onClick={() => (picking ? stop() : setPicking(true))}
-        size="sm"
         title="Select an element to open its source in Review"
-        variant={picking ? "secondary" : "ghost"}
+        type="button"
       >
         {resolving ? (
-          <Spinner className="size-3.5" />
+          <Spinner className="size-3" />
         ) : (
-          <Crosshair className="size-3.5" />
+          <Crosshair className="size-3" />
         )}
         {picking ? "Click an element…" : "Select"}
-      </Button>
-
-      {picking && <HoverBox rect={hoverRect} />}
+      </button>
 
       {error && (
-        <div className="absolute top-full left-0 z-[999] mt-1 w-64 rounded-md border bg-popover px-2 py-1.5 text-xs text-muted-foreground shadow-md">
+        <div className="absolute top-full right-0 z-[999] mt-1 w-64 rounded-md border bg-popover px-2 py-1.5 text-xs text-muted-foreground shadow-md">
           {error}
         </div>
       )}
+
+      {picking && <HoverBox rect={hoverRect} />}
     </div>
   );
 }

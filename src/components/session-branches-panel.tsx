@@ -1,75 +1,79 @@
 "use client";
 
-import { ChevronDownIcon, ChevronUpIcon, GitForkIcon } from "lucide-react";
-import { createPortal } from "react-dom";
-
-import { useBottomPanel } from "@/components/bottom-panel";
+import { useCallback, useState, Suspense } from "react";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { ChevronDownIcon, ChevronUpIcon, GitBranchIcon } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { sessionPendingScrollKey } from "@/lib/session-live-state";
 import { TurnGraphCanvas } from "@/components/turn-graph-canvas";
+import { useTurnGraph } from "@/hooks/use-turn-graph";
 
-/** This panel's id in the shared bottom bar. See bottom-panel.tsx. */
-const BRANCHES_PANEL = "branches";
+export function SessionBranchesPanel() {
+  const { id } = useParams<{ id?: string }>();
+  const sessionId = id;
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
 
-/**
- * The session's branch structure, in the bottom bar beside the agent
- * timeline.
- *
- * docs/plans/branching-sessions.md §4: "the panel belongs in the bottom bar,
- * through the slot mechanism bottom-panel.tsx documents." Modeled directly
- * on session-agents-panel.tsx — portalled into the bar's slots so the bar
- * itself never needs to know what a branch is, and mounted only while open,
- * since the graph holds no connection worth keeping alive collapsed.
- *
- * Unlike the agents panel, this is not conditionally shown: every session has
- * a branch structure, even a linear one with nothing yet to draw — and the
- * whole point of surfacing it is that a session gives no other sign a branch
- * exists at all.
- */
-export function SessionBranchesPanel({
-  onNodeClick,
-  sessionId,
-}: {
-  /** The clicked turn's message id and liveness, forwarded from TurnGraphCanvas. */
-  onNodeClick?: (turnId: string, isLive: boolean) => void;
-  sessionId: string;
-}) {
-  const bar = useBottomPanel();
+  const graphQuery = useTurnGraph(sessionId ?? "", !!sessionId);
+  const graph = graphQuery.data;
+  const hasBranches = graph && graph.nodes.length > 1;
 
-  // Null outside the app frame, and the slots are null until the bar mounts.
-  // Both mean "render nothing extra" rather than "throw".
-  if (!bar) return null;
+  const handleNodeClick = useCallback(
+    (turnId: string, isLive: boolean) => {
+      if (!sessionId) return;
+      queryClient.setQueryData(sessionPendingScrollKey(sessionId), turnId);
 
-  const open = bar.open === BRANCHES_PANEL;
+      const next = new URLSearchParams(searchParams);
+      if (isLive) next.delete("leaf");
+      else next.set("leaf", turnId);
+      const query = next.toString();
+      router.push(`${pathname}${query ? `?${query}` : ""}`);
+    },
+    [queryClient, sessionId, router, pathname, searchParams],
+  );
+
+  if (!sessionId || !hasBranches) {
+    return null;
+  }
 
   return (
-    <>
-      {bar.barSlot &&
-        createPortal(
-          <button
-            aria-expanded={open}
-            className="flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() => bar.toggle(BRANCHES_PANEL)}
-            title="Show this session's branches"
-            type="button"
-          >
-            <GitForkIcon className="size-3" />
-            Branches
-            {open ? (
-              <ChevronDownIcon className="size-3" />
-            ) : (
-              <ChevronUpIcon className="size-3" />
-            )}
-          </button>,
-          bar.barSlot,
-        )}
-
-      {open &&
-        bar.panelSlot &&
-        createPortal(
-          <div className="h-full overflow-hidden p-2">
-            <TurnGraphCanvas onNodeClick={onNodeClick} sessionId={sessionId} />
-          </div>,
-          bar.panelSlot,
-        )}
-    </>
+    <div className="shrink-0 border-b border-border/40">
+      <div className="flex h-11 items-center gap-2 px-6">
+        <button
+          aria-expanded={open}
+          className="flex items-center gap-2 rounded px-1 tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setOpen((prev) => !prev)}
+          title="Show branch graph"
+          type="button"
+        >
+          <GitBranchIcon className="size-4" />
+          {graph?.nodes.length ?? 0} turns
+          {open ? (
+            <ChevronDownIcon className="size-3" />
+          ) : (
+            <ChevronUpIcon className="size-3" />
+          )}
+        </button>
+      </div>
+      {open && (
+        <div className="h-[400px] overflow-hidden">
+          <Suspense fallback={<Spinner className="size-4" />}>
+            <TurnGraphCanvas
+              onNodeClick={handleNodeClick}
+              sessionId={sessionId}
+            />
+          </Suspense>
+        </div>
+      )}
+    </div>
   );
 }

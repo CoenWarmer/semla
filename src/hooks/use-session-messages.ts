@@ -113,6 +113,7 @@ export const useSessionMessages = (
 ) =>
   useQuery({
     ...sessionMessagesQueryOptions(sessionId, turnActive, leafId),
+    enabled: !!sessionId,
     initialData: leafId ? undefined : initialData,
     queryFn: () => fetchSessionMessages(sessionId, leafId),
   });

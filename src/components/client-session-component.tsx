@@ -23,6 +23,14 @@ import {
   useWorkflowRuns,
   workflowRunsQueryKey,
 } from "@/hooks/use-workflow-runs";
+import {
+  sessionAgentSelectionKey,
+  sessionPendingScrollKey,
+  sessionRunningKey,
+  sessionWorkflowComputedSnapshotKey,
+  useSessionAgentSelection,
+  useSessionPendingScroll,
+} from "@/lib/session-live-state";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { useElementTarget } from "./element-target-provider";
@@ -102,7 +110,6 @@ export function ClientSessionComponent({
     sessionExists,
     streamError,
     wikiActive,
-    spans,
     workflowSnapshot,
   } = usePromptMutation(sessionId, isRunning, viewingLeafId);
 
@@ -297,6 +304,25 @@ export function ClientSessionComponent({
     };
   }, [isActive, messages.length, activeTool]);
 
+  const snapshot =
+    workflowSnapshot &&
+    persistedWorkflowSnapshot &&
+    workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
+    persistedWorkflowSnapshot.agents.length >= workflowSnapshot.agents.length
+      ? persistedWorkflowSnapshot
+      : (workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot);
+
+  useEffect(() => {
+    queryClient.setQueryData(
+      sessionWorkflowComputedSnapshotKey(sessionId),
+      snapshot,
+    );
+  }, [queryClient, sessionId, snapshot]);
+
+  useEffect(() => {
+    queryClient.setQueryData(sessionRunningKey(sessionId), isActive);
+  }, [queryClient, sessionId, isActive]);
+
   // After every 10th user prompt, trigger a background context-quality check.
   const prevPendingRef = useRef(false);
   useEffect(() => {
@@ -377,76 +403,10 @@ export function ClientSessionComponent({
     const seen = reviewQuery.data?.fingerprint;
     if (seen) dismissReview.mutate(seen);
   }, [dismissReview, elementTarget, reviewQuery.data?.fingerprint]);
-  const [selectedAgent, setSelectedAgent] = useState<{
-    agentId: number;
-    runId: string;
-  } | null>(null);
+  const agentSelection = useSessionAgentSelection(sessionId);
+  const selectedAgent = agentSelection.data;
 
-  const handleAgentClick = useCallback((agentId: number, runId: string) => {
-    setSelectedAgent({ agentId, runId });
-  }, []);
-
-  /**
-   * The turn a graph-node click most recently asked to see, until the
-   * conversation has actually scrolled to it.
-   *
-   * A ref rather than state: setting it must never itself trigger a render,
-   * or the effect below that reads it — which fires *because* a render
-   * happened, when new messages arrive — would need to distinguish its own
-   * writes from an external one. It is read, not rendered from.
-   */
-  const pendingScrollToRef = useRef<string | null>(null);
-
-  /**
-   * Switch to the branch a graph node was clicked for, and scroll to it.
-   *
-   * "Clicking a node switches the leaf to that branch's tip and the
-   * conversation re-renders" — docs/plans/branching-sessions.md §4, and the
-   * same write as forking (§3), aimed at a different entry: the URL is the
-   * one thing that changes, `?leaf=<turnId>` naming the clicked turn's
-   * opening message. What that resolves *to* is not decided here —
-   * resolveLeafOverride (session-leaf.ts, phase 1) walks it forward to
-   * whatever the current tip of that branch is, so a node on the live path
-   * simply reopens the live conversation, and a node on an abandoned branch
-   * opens that branch's own abandoned tip.
-   *
-   * A click on a node the graph already marked `isLive` clears the param
-   * instead of setting it to that node's own id. Setting `?leaf=<turnId>`
-   * there would still *resolve* to the live conversation —
-   * resolveLeafOverride walks forward to the same tip either way — so the
-   * conversation shown would be correct. What would not be is the "viewing
-   * an earlier branch" banner below, which keys off `viewingLeafId` being
-   * present at all rather than off what it resolves to: a present-but-live
-   * leaf claimed to be viewing history it was not. Clearing the param is
-   * also simply the more honest URL for "the live conversation" — the one
-   * every other link to this session already opens by default.
-   *
-   * `push`, not `replace`: back and forward becoming branch navigation for
-   * free is half the reason the plan puts this in the URL at all, and
-   * `replace` would erase that history entry instead of adding to it.
-   *
-   * The scroll cannot simply run here. A click that stays on the branch
-   * already shown has the turn on screen immediately, but a click that
-   * switches branches only gets it once the new `?leaf=` triggers a refetch
-   * and the conversation re-renders with it — an unknown number of renders
-   * away, on whatever tick the query resolves. `pendingScrollToRef` marks
-   * the request; the effect below, which runs after every render this
-   * component makes, is what actually finds the element and scrolls, once
-   * it exists.
-   */
-  const handleBranchNodeClick = useCallback(
-    (turnId: string, isLive: boolean) => {
-      pendingScrollToRef.current = turnId;
-
-      const next = new URLSearchParams(searchParams);
-      if (isLive) next.delete("leaf");
-      else next.set("leaf", turnId);
-      const query = next.toString();
-      router.push(`/sessions/${sessionId}${query ? `?${query}` : ""}`);
-    },
-    [router, searchParams, sessionId],
-  );
-
+  const pendingScrollQuery = useSessionPendingScroll(sessionId);
   /**
    * Fulfil a pending scroll once its target actually exists.
    *
@@ -454,19 +414,17 @@ export function ClientSessionComponent({
    * conversation content changes — the check is cheap (one DOM lookup) and
    * the alternative, listing every value that could make the target appear
    * (query data, live rounds, forkedAt's truncation), is exactly the kind of
-   * dependency array that silently misses one and stops firing. The ref
-   * being cleared once satisfied is what stops this from re-scrolling on
-   * every subsequent render.
+   * dependency array that silently misses one and stops firing.
    */
   useEffect(() => {
-    const turnId = pendingScrollToRef.current;
+    const turnId = pendingScrollQuery.data;
     if (!turnId) return;
 
     const target = document.getElementById(turnId);
     if (!target) return;
 
     target.scrollIntoView({ behavior: "smooth", block: "center" });
-    pendingScrollToRef.current = null;
+    queryClient.setQueryData(sessionPendingScrollKey(sessionId), null);
   });
 
   // Why this is the test, and why it does not flash on a legitimate ?new=1
@@ -700,30 +658,9 @@ export function ClientSessionComponent({
         goal={goal}
         onGoalSave={handleGoalSave}
         messages={messages}
-        onAgentClick={handleAgentClick}
-        onBranchNodeClick={handleBranchNodeClick}
         sessionRunning={isActive}
         onCompactClick={handleCompact}
-        snapshot={
-          // Prefer the persisted snapshot (from DB/live polling) over the SSE
-          // shell whenever they reference the same run and the persisted one
-          // has at least as many agents. Background workflows emit an empty
-          // "workflow-started" shell via SSE and never update it — the polling
-          // snapshot has the real agent progress (including running agents
-          // from the in-memory WorkflowManager).
-          workflowSnapshot &&
-          persistedWorkflowSnapshot &&
-          workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
-          persistedWorkflowSnapshot.agents.length >=
-            workflowSnapshot.agents.length
-            ? persistedWorkflowSnapshot
-            : (workflowSnapshot ??
-              persistedWorkflowSnapshot ??
-              sessionAgentSnapshot)
-        }
-        spans={spans}
         toolCalls={toolCalls}
-        workflowRuns={workflowRunsQuery.data}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-0 px-20 pb-1">
         {reviewOpen && (
@@ -742,7 +679,12 @@ export function ClientSessionComponent({
 
         <AgentTranscriptDrawer
           agentId={selectedAgent?.agentId ?? null}
-          onClose={() => setSelectedAgent(null)}
+          onClose={() =>
+            queryClient.setQueryData(
+              sessionAgentSelectionKey(sessionId),
+              null,
+            )
+          }
           open={selectedAgent !== null}
           runId={selectedAgent?.runId ?? null}
           sessionId={sessionId}

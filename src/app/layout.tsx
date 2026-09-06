@@ -8,6 +8,9 @@ import { HeaderActions } from "@/components/header-actions";
 import { AppConsole } from "@/components/app-console";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";
+import { SessionAgentsPanel } from "@/components/session-agents-panel";
+import { SessionBranchesPanel } from "@/components/session-branches-panel";
+import { ElementPicker } from "@/components/element-picker";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -69,6 +72,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                       <div className="flex-1 min-h-0 overflow-y-auto">
                         {children}
                       </div>
+                      <SessionAgentsPanel />
+                      <SessionBranchesPanel />
+                      <ElementPicker />
                       {/* Bottom of the frame, outside the scroll container, so it
                           stays put rather than scrolling away with the page. */}
                       <AppConsole />

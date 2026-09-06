@@ -1,148 +1,141 @@
 "use client";
 
+import { useCallback, useMemo, useState, Suspense } from "react";
+import { useParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import { createPortal } from "react-dom";
-
-import { useBottomPanel } from "@/components/bottom-panel";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  sessionAgentSelectionKey,
+  useSessionLiveToolCalls,
+  useSessionWorkflowSnapshot,
+} from "@/lib/session-live-state";
+import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
+import { sessionSpansKey, fetchSessionSpans } from "@/lib/session-spans";
+import { mergeToolCalls } from "@/lib/live-tool-calls";
+import { sessionStatusKey, fetchSingleSessionStatus } from "@/lib/session-status";
 import { countSessionAgents } from "@/lib/session-agent-counts";
-import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
-import type {
-  SessionMessage,
-  SessionToolCall,
-} from "@/hooks/use-session-messages";
-import type { WorkflowRun } from "@/hooks/use-workflow-runs";
-import type { WorkflowSnapshot } from "@/types/workflow";
-
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 
-/** This panel's id in the shared bottom bar. See bottom-panel.tsx. */
-const AGENTS_PANEL = "agents";
+const EMPTY_TOOL_CALLS: import("@/hooks/use-session-messages").SessionToolCall[] = [];
 
 const agentsLabel = (count: number) =>
   `${count} ${count === 1 ? "agent" : "agents"}`;
 
-/**
- * The agent timeline, in the bottom bar beside the console.
- *
- * It used to open below the title bar, which put a 360px panel between the
- * header and the conversation and pushed the reading area down the screen. The
- * bar is where a thing you glance at belongs, and the terminal already
- * established the shape.
- *
- * Rendered through portals rather than by the bar itself. `AppConsole` is in
- * the root layout, outside `{children}`, so that it stays put instead of
- * scrolling with the page — while everything this needs (the snapshot, the
- * spans, the live tool calls) belongs to the session tree and arrives on that
- * turn's stream. Portalling keeps the state where it is subscribed and gives
- * the bar no reason to know what a workflow is.
- */
-export function SessionAgentsPanel({
-  messages,
-  onAgentClick,
-  sessionId,
-  sessionRunning,
-  sessionTitle,
-  show,
-  snapshot,
-  spans,
-  toolCalls,
-  workflowRuns,
-}: {
-  messages?: SessionMessage[];
-  onAgentClick?: (agentId: number, runId: string) => void;
-  sessionId?: string;
-  sessionRunning?: boolean;
-  /** Passed through so the timeline is named for what it draws. */
-  sessionTitle?: string | null;
-  /** Whether this session has anything to show a timeline for. */
-  show: boolean;
-  snapshot?: WorkflowSnapshot;
-  spans?: readonly RecordedSpan[];
-  toolCalls?: SessionToolCall[];
-  workflowRuns?: WorkflowRun[];
-}) {
-  const bar = useBottomPanel();
+export function SessionAgentsPanel() {
+  const { id } = useParams<{ id?: string }>();
+  const sessionId = id;
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const snapshotQuery = useSessionWorkflowSnapshot(sessionId ?? "");
+  const workflowRunsQuery = useWorkflowRuns(sessionId ?? "");
+  const liveToolCallsQuery = useSessionLiveToolCalls(sessionId ?? "");
+  const messagesQuery = useSessionMessages(sessionId ?? "");
+  const spansQuery = useQuery({
+    enabled: !!sessionId,
+    queryKey: sessionSpansKey(sessionId ?? ""),
+    queryFn: () => fetchSessionSpans(sessionId ?? ""),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const statusQuery = useQuery({
+    enabled: !!sessionId,
+    queryKey: sessionStatusKey(sessionId ?? ""),
+    queryFn: () => fetchSingleSessionStatus(sessionId ?? ""),
+    refetchInterval: 5_000,
+  });
+
+  const snapshot = snapshotQuery.data ?? undefined;
+  const workflowRuns = workflowRunsQuery.data;
+  /**
+   * Approximation: this polls the server's view, which only knows whether
+   * the session process is alive. The page's `isActive` also factors in
+   * `promptMutation.isPending` and `isReconnecting`, so this can read false
+   * for a brief window while a prompt is being sent or the stream is
+   * reconnecting. See docs/plans/session-live-state.md (pending).
+   */
+  const sessionRunning = statusQuery.data?.isRunning ?? false;
+
+  const persistedToolCalls = messagesQuery.data?.toolCalls;
+  const liveToolCalls = liveToolCallsQuery.data ?? EMPTY_TOOL_CALLS;
+  const toolCalls = useMemo(
+    () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
+    [persistedToolCalls, liveToolCalls],
+  );
+
   const counts = countSessionAgents({
     sessionRunning,
     snapshot,
     workflowRuns,
   });
 
-  // Null outside the app frame, and the slots are null until the bar mounts.
-  // Both mean "render nothing extra" rather than "throw".
-  if (!bar || !show) return null;
+  const handleAgentClick = useCallback(
+    (agentId: number, runId: string) => {
+      if (!sessionId) return;
+      queryClient.setQueryData(sessionAgentSelectionKey(sessionId), {
+        agentId,
+        runId,
+      });
+    },
+    [queryClient, sessionId],
+  );
 
-  const open = bar.open === AGENTS_PANEL;
+  if (!sessionId || (counts.running === 0 && counts.idle === 0 && !snapshot)) {
+    return null;
+  }
 
   return (
-    <>
-      {bar.barSlot &&
-        createPortal(
-          <button
-            aria-expanded={open}
-            className="flex items-center gap-2 rounded px-1 tabular-nums text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() => bar.toggle(AGENTS_PANEL)}
-            title="Show agent timeline"
-            type="button"
-          >
-            {/*
-              Hidden at zero rather than shown as "0 agents", which beside a
-              live green dot reads as a claim that something is running.
-            */}
-            {counts.running > 0 && (
-              <span className="flex items-center gap-1.5">
-                <span
-                  aria-hidden
-                  className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                />
-                {agentsLabel(counts.running)}
-              </span>
-            )}
-
+    <div className="shrink-0 border-b border-border/40">
+      <div className="flex h-11 items-center gap-2 px-6">
+        <button
+          aria-expanded={open}
+          className="flex items-center gap-2 rounded px-1 tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setOpen((prev) => !prev)}
+          title="Show agent timeline"
+          type="button"
+        >
+          {counts.running > 0 && (
             <span className="flex items-center gap-1.5">
-              {/* Hollow: used by the session, not working now. */}
               <span
                 aria-hidden
-                className="size-1.5 shrink-0 rounded-full border border-current"
+                className="size-1.5 shrink-0 rounded-full bg-emerald-500"
               />
-              {agentsLabel(counts.idle)}
+              {agentsLabel(counts.running)}
             </span>
+          )}
 
-            {open ? (
-              <ChevronDownIcon className="size-3" />
-            ) : (
-              <ChevronUpIcon className="size-3" />
-            )}
-          </button>,
-          bar.barSlot,
-        )}
+          <span className="flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full border border-current"
+            />
+            {agentsLabel(counts.idle)}
+          </span>
 
-      {/*
-        Mounted only while open. Unlike the terminal — which stays mounted so
-        collapsing does not kill the shell — this holds no connection, and the
-        waterfall measures its own container, so keeping a hidden one alive
-        would have it fitting spans to a box of zero width.
-      */}
-      {open &&
-        bar.panelSlot &&
-        createPortal(
-          // Not `overflow-auto`: the panel scrolls its own span rows, so the
-          // header stays put while they move under it.
-          <div className="h-full overflow-hidden">
+          {open ? (
+            <ChevronDownIcon className="size-3" />
+          ) : (
+            <ChevronUpIcon className="size-3" />
+          )}
+        </button>
+      </div>
+      {open && snapshot && (
+        <div className="h-[400px] overflow-hidden">
+          <Suspense fallback={<Spinner className="size-4" />}>
             <SessionWorkflowPanel
-              messages={messages}
-              onAgentClick={onAgentClick}
+              messages={messagesQuery.data?.messages}
+              onAgentClick={handleAgentClick}
               sessionId={sessionId}
               sessionRunning={sessionRunning}
-              sessionTitle={sessionTitle}
               snapshot={snapshot}
-              spans={spans}
+              spans={spansQuery.data}
               toolCalls={toolCalls}
               workflowRuns={workflowRuns}
             />
-          </div>,
-          bar.panelSlot,
-        )}
-    </>
+          </Suspense>
+        </div>
+      )}
+    </div>
   );
 }
