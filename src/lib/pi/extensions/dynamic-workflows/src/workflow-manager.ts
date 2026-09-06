@@ -981,6 +981,7 @@ export class WorkflowManager extends EventEmitter {
             agent.history = event.history;
           }
           this.emitLive(managed, "agentHistory", { runId: managed.runId, agentId: agent?.id, ...event });
+          this.schedulePersist(managed);
           progress();
         },
         onTokenUsage: (usage) => {

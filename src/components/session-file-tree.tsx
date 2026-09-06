@@ -102,9 +102,7 @@ function FileTreeNode({
   const marked = mark?.(entry) ?? null;
   // Spread conditionally: an explicit `onClick: undefined` would override the
   // primitive's own handler with nothing and make the row inert.
-  const fileProps = onSelectFile
-    ? { onClick: () => onSelectFile(entry) }
-    : {};
+  const fileProps = onSelectFile ? { onClick: () => onSelectFile(entry) } : {};
   const childQuery = useQuery({
     enabled: entry.type === "directory" && isExpanded,
     queryKey: filesQueryKey(sessionId, entry.path),
@@ -195,7 +193,7 @@ export function SessionFileTree({
 }) {
   return (
     <FileTree
-      className="border-none bg-transparent"
+      className="border-none bg-transparent text-[12px]"
       expanded={expandedPaths}
       onExpandedChange={onExpandedChange}
       onSelect={onSelect}
