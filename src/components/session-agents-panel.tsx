@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   sessionAgentSelectionKey,
   useSessionLiveToolCalls,
-  useSessionWorkflowSnapshot,
+  useSessionWorkflowComputedSnapshot,
 } from "@/lib/session-live-state";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
@@ -29,7 +29,13 @@ export function SessionAgentsPanel() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const snapshotQuery = useSessionWorkflowSnapshot(sessionId ?? "");
+  // The computed snapshot, not the raw SSE one: client-session-component.tsx
+  // writes this with a synthetic single-agent fallback for sessions running no
+  // background workflow, so the panel has something to show for an ordinary
+  // session too. The raw snapshot is undefined outside a workflow, which used
+  // to make this panel (and its `!snapshot` visibility guard) disappear for
+  // every non-workflow session.
+  const snapshotQuery = useSessionWorkflowComputedSnapshot(sessionId ?? "");
   const workflowRunsQuery = useWorkflowRuns(sessionId ?? "");
   const liveToolCallsQuery = useSessionLiveToolCalls(sessionId ?? "");
   const messagesQuery = useSessionMessages(sessionId ?? "");
