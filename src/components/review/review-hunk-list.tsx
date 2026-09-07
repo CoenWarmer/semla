@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FileDiff, Hunk } from "@/lib/review-types";
 
+import { hunkAnchorLine, hunkAnchorText } from "./review-decorations";
+
 /** A one-line summary of what a hunk does, without opening it. */
 export function hunkSummary(hunk: Hunk): { added: number; removed: number } {
   return {
@@ -151,7 +153,7 @@ function Group({
             direction={direction}
             hunk={hunk}
             onApply={() => onApply([hunk.index])}
-            onReveal={() => onReveal(hunk.newStart)}
+            onReveal={() => onReveal(hunkAnchorLine(hunk))}
           />
         ))
       )}
