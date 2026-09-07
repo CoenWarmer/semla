@@ -208,14 +208,26 @@ div.react-sigma {
 .semla-hunk-bracket-host {
   overflow: visible;
   pointer-events: none;
+  position: relative;
 }
 
+/*
+ * Monaco resets the host node's own height to one line on every render
+ * pass (`glyphMargin.js`'s `render()` calls `setHeight(lineHeight)`
+ * unconditionally on every glyph-margin widget, regardless of what this
+ * node's own style says) — so the bracket cannot get its height from the
+ * host. It is sized directly instead, via an inline `height` style set by
+ * `review-hunk-bracket-widgets.tsx` to the hunk's own line span, and
+ * positioned absolutely from the host's top edge so it can overflow
+ * downward past the host's Monaco-clamped single line.
+ */
 .semla-hunk-bracket {
   align-items: center;
   display: flex;
-  height: 100%;
   justify-content: center;
-  position: relative;
+  left: 0;
+  position: absolute;
+  top: 0;
   width: 100%;
 }
 

@@ -71,10 +71,12 @@ export interface HunkBracketEntry {
 function HunkBracket({
   action,
   busy,
+  height,
   onClick,
 }: {
   action: HunkAction;
   busy: boolean;
+  height: number;
   onClick: () => void;
 }) {
   const isStage = action.direction === "stage";
@@ -82,7 +84,7 @@ function HunkBracket({
   const colorClass = isStage ? "text-emerald-500" : "text-destructive";
 
   return (
-    <div className="semla-hunk-bracket">
+    <div className="semla-hunk-bracket" style={{ height }}>
       <div
         className={cn(
           "semla-hunk-bracket-line",
@@ -135,16 +137,21 @@ function HunkBracketRoot({
   action,
   busy,
   lineCount,
+  lineHeight,
   onClick,
 }: {
   action: HunkAction;
   busy: boolean;
   lineCount: number;
+  lineHeight: number;
   onClick: () => void;
 }) {
   if (lineCount <= 1) {
     return (
-      <div className="semla-hunk-bracket semla-hunk-bracket-single">
+      <div
+        className="semla-hunk-bracket semla-hunk-bracket-single"
+        style={{ height: lineHeight }}
+      >
         <Button
           aria-label={action.direction === "stage" ? "Stage hunk" : "Unstage hunk"}
           className={cn(
@@ -170,7 +177,14 @@ function HunkBracketRoot({
     );
   }
 
-  return <HunkBracket action={action} busy={busy} onClick={onClick} />;
+  return (
+    <HunkBracket
+      action={action}
+      busy={busy}
+      height={lineCount * lineHeight}
+      onClick={onClick}
+    />
+  );
 }
 
 interface WidgetState {
@@ -217,9 +231,15 @@ export class HunkBracketWidgets {
       const domNode = document.createElement("div");
       domNode.className = "semla-hunk-bracket-host";
 
+      // Monaco owns this node's own height: every render pass
+      // (`glyphMargin.js`'s `render()`) sets it back to exactly one line's
+      // height, the same as any other glyph-margin widget, regardless of
+      // what is set here. So the bracket can't be sized by sizing this
+      // node — its child is the one that overflows downward from this
+      // node's top edge, via its own explicit inline height and
+      // `position: absolute` (`.semla-hunk-bracket` in globals.css), which
+      // Monaco never touches.
       const lineCount = Math.max(1, entry.endLine - entry.startLine + 1);
-      domNode.style.height = `${lineCount * lineHeight}px`;
-      domNode.style.width = "100%";
 
       const widget: monaco.editor.IGlyphMarginWidget = {
         getDomNode: () => domNode,
@@ -249,6 +269,7 @@ export class HunkBracketWidgets {
           action={entry.action}
           busy={busy}
           lineCount={lineCount}
+          lineHeight={lineHeight}
           onClick={() => this.onStage(entry.action.index, entry.action.direction)}
         />,
       );

@@ -24,9 +24,26 @@ export function hunkSummary(hunk: Hunk): { added: number; removed: number } {
   };
 }
 
-/** Where in the file a hunk sits, in the terms the editor's gutter shows. */
-export const hunkLocation = (hunk: Hunk): string =>
-  hunk.heading ? `${hunk.newStart} · ${hunk.heading}` : `line ${hunk.newStart}`;
+const maxSnippetLength = 60;
+
+/** Where in the file a hunk sits, in the terms the editor's gutter shows.
+ *
+ * Leads with a snippet of the anchor line itself — the actual changed
+ * line — rather than git's own `@@` heading, since that heading names the
+ * enclosing region, not the change. Falls back to the heading only when the
+ * anchor line has no usable text (a pure-removals hunk, or a blank line). */
+export const hunkLocation = (hunk: Hunk): string => {
+  const anchor = hunkAnchorLine(hunk);
+  const snippet = hunkAnchorText(hunk);
+  if (snippet !== null) {
+    const truncated =
+      snippet.length > maxSnippetLength
+        ? `${snippet.slice(0, maxSnippetLength)}…`
+        : snippet;
+    return `${anchor} · ${truncated}`;
+  }
+  return hunk.heading ? `${anchor} · ${hunk.heading}` : `line ${anchor}`;
+};
 
 function HunkRow({
   busy,
