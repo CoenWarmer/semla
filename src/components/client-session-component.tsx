@@ -1,21 +1,13 @@
 "use client";
 
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@/components/ai-elements/message";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
 import { useDismissReview, useReview } from "@/hooks/use-review";
-import { useSessionMessages } from "@/hooks/use-session-messages";
-import { isLiveRoundMessageId, mergeToolCalls } from "@/lib/live-tool-calls";
+import {
+  SessionMessagesResult,
+  useSessionMessages,
+} from "@/hooks/use-session-messages";
+import { mergeToolCalls } from "@/lib/live-tool-calls";
 import { liveRoundMessages } from "@/lib/live-rounds";
 import { shouldOpenReview } from "@/lib/review-open";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
@@ -35,14 +27,13 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
 import { useElementTarget } from "./element-target-provider";
 import { ReviewPanel } from "./review/review-panel";
-import { SessionActivityLine } from "@/components/session-activity-line";
-import { AskUserDialog } from "./ask-user-dialog";
-import { CopyMessageButton } from "./message-copy";
-import { ForkMessageButton } from "./message-fork";
-import { EditableUserMessage } from "./message-edit";
+import { SessionConversation } from "./session-conversation";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "./ui/resizable";
 import { truncateAtMessage } from "@/lib/session-fork";
-import { SessionStepsStrip } from "./session-steps-strip";
-import { GoalEditor } from "./goal-editor";
 import { groupConversation } from "@/lib/session-steps";
 import dynamic from "next/dynamic";
 
@@ -50,14 +41,12 @@ const WikiMiniGraph = dynamic(
   () => import("./wiki/wiki-mini-graph").then((m) => m.WikiMiniGraph),
   { ssr: false },
 );
-import Link from "next/link";
 
 import { isSessionMissing } from "@/lib/prompt-failure";
 
-import { PromptEditor, type PromptEditorModel } from "./prompt-editor";
+import type { PromptEditorModel } from "./prompt-editor";
 import { latestInputTokens } from "@/lib/context-composition";
 import { SessionTopbar } from "./session-topbar";
-import { MessageSquareIcon } from "lucide-react";
 import {
   usePendingPrompt,
   type PendingPrompt,
@@ -66,7 +55,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { SESSION_STATUS_KEY } from "@/lib/session-status";
 import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function ClientSessionComponent({
@@ -79,7 +68,7 @@ export function ClientSessionComponent({
 }: {
   defaultTools: string[];
   goal?: string | null;
-  initialMessagesData?: import("@/hooks/use-session-messages").SessionMessagesResult;
+  initialMessagesData?: SessionMessagesResult;
   isRunning?: boolean;
   sessionId: string;
   title: string | null;
@@ -94,7 +83,6 @@ export function ClientSessionComponent({
    * docs/plans/branching-sessions.md §4.
    */
   const searchParams = useSearchParams();
-  const router = useRouter();
   const viewingLeafId = searchParams.get("leaf");
 
   const {
@@ -365,6 +353,13 @@ export function ClientSessionComponent({
     liveTextLength > 0 ? Math.round(liveTextLength / 4) : null;
 
   const [reviewManuallyOpened, setReviewManuallyOpened] = useState(false);
+  // Which way the review panel splits from the conversation when both are
+  // open. "vertical" stacks them (review on top); "horizontal" sits them
+  // side by side. Session-local rather than persisted: the choice matters
+  // for exactly as long as this review is open.
+  const [reviewLayout, setReviewLayout] = useState<"horizontal" | "vertical">(
+    "horizontal",
+  );
   // The badge is worth a request even with the panel shut: it is how the
   // operator learns there is something to review without being interrupted.
   const reviewQuery = useReview(sessionId);
@@ -517,10 +512,10 @@ export function ClientSessionComponent({
   /**
    * Answer a question asked from the review panel.
    *
-   * The overlay is hidden rather than dismissed: the answer arrives in the
-   * conversation underneath it, which cannot be read through a panel, but the
-   * operator has not said they are finished reviewing — so no fingerprint is
-   * recorded and the Review button still carries its count.
+   * The panel is collapsed rather than dismissed: the answer arrives in the
+   * conversation, which the review panel no longer shares the layout with once
+   * collapsed, but the operator has not said they are finished reviewing — so
+   * no fingerprint is recorded and the Review button still carries its count.
    *
    * Uses the prompt bar's own model and tool selection, exactly as an edited
    * message does.
@@ -641,6 +636,39 @@ export function ClientSessionComponent({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [consumePendingPrompt, sessionId]);
 
+  // Shared between the plain and review-split layouts below: the review
+  // panel's resizable group is one of two places this can render, not two
+  // different conversations.
+  const conversationColumn = (
+    <SessionConversation
+      activeTool={activeTool}
+      contextWindowFraction={contextWindowFraction}
+      conversation={conversation}
+      costPerTurn={costPerTurn}
+      defaultTools={defaultTools}
+      elapsedLabel={elapsedLabel}
+      errorMessage={errorMessage}
+      estimatedTokens={estimatedTokens}
+      forkedAt={forkedAt}
+      goal={goal}
+      hasMessages={messages.length > 0}
+      isActive={isActive}
+      liveTextLength={liveTextLength}
+      onCancelFork={handleCancelFork}
+      onCompactClick={handleCompact}
+      onEditPrompt={handleEditPrompt}
+      onFork={handleFork}
+      onGoalSave={handleGoalSave}
+      onSelectionChange={handleSelectionChange}
+      onStop={handleStop}
+      onSubmit={handleSubmit}
+      pendingQuestion={pendingQuestion}
+      sessionId={sessionId}
+      sessionMissing={sessionMissing}
+      viewingLeafId={viewingLeafId}
+    />
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
@@ -649,6 +677,8 @@ export function ClientSessionComponent({
         }
         reviewCount={reviewChangedCount}
         reviewOpen={reviewOpen}
+        reviewLayout={reviewLayout}
+        onReviewLayoutChange={setReviewLayout}
         title={shownTitle}
         codeMap={codeMap}
         contextWindow={messagesQuery.data?.contextWindow ?? null}
@@ -663,209 +693,52 @@ export function ClientSessionComponent({
         toolCalls={toolCalls}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-0 px-20 pb-1">
-        {reviewOpen && (
-          <ReviewPanel
-            // Remounts the panel for each new pick, which is what makes
-            // `initialTarget` apply again — see its doc comment on
-            // ReviewPanel. A plain open/close toggle has no such key because
-            // there is only ever one "open" to render.
-            key={elementTarget.target?.nonce ?? "manual"}
-            initialTarget={elementTarget.target}
-            onClose={closeReview}
-            onExplain={handleExplain}
-            sessionId={sessionId}
-          />
-        )}
-
         <AgentTranscriptDrawer
           agentId={selectedAgent?.agentId ?? null}
           onClose={() =>
-            queryClient.setQueryData(
-              sessionAgentSelectionKey(sessionId),
-              null,
-            )
+            queryClient.setQueryData(sessionAgentSelectionKey(sessionId), null)
           }
           open={selectedAgent !== null}
           runId={selectedAgent?.runId ?? null}
           sessionId={sessionId}
         />
-        <Conversation className="min-h-0 w-full">
-          <ConversationContent className="w-full">
-            {messages.length === 0 ? (
-              <ConversationEmptyState
-                description="Send a message to start this session."
-                icon={<MessageSquareIcon className="size-12" />}
-                title="Start a conversation"
-              />
-            ) : (
-              conversation.map((item) =>
-                item.kind === "steps" ? (
-                  <SessionStepsStrip items={item.items} key={item.id} />
-                ) : item.message.role === "user" ? (
-                  // Renders its own Message and bubble, so the edit button
-                  // can sit beside the bubble rather than inside it.
-                  <EditableUserMessage
-                    disabled={isActive}
-                    key={item.message.id}
-                    message={item.message}
-                    onFork={handleFork}
-                    onSubmit={handleEditPrompt}
-                  />
-                ) : (
-                  <Message
-                    from={item.message.role}
-                    id={item.message.id}
-                    key={item.message.id}
-                  >
-                    {/*
-                        An assistant reply is left-aligned, so its gutter is on
-                        the right — the mirror of the user row in
-                        message-edit.tsx, which puts its buttons on the left.
-                      */}
-                    <div className="group/message flex items-start gap-2">
-                      <MessageContent>
-                        {/*
-                          A live round's pseudo-message is still streaming, so
-                          it animates the same way the old single streamingText
-                          bubble did. isLiveRoundMessageId tells it apart from a
-                          persisted message with the same shape — a real id is a
-                          UUID and never matches this prefix.
-                        */}
-                        <MessageResponse
-                          isAnimating={isLiveRoundMessageId(item.message.id)}
-                        >
-                          {item.message.text}
-                        </MessageResponse>
-                      </MessageContent>
-                      <div className="mt-1 flex shrink-0 items-center gap-1">
-                        <ForkMessageButton
-                          disabled={isActive}
-                          onFork={() => handleFork(item.message.id)}
-                        />
-                        <CopyMessageButton text={item.message.text} />
-                      </div>
-                    </div>
-                  </Message>
-                ),
-              )
-            )}
-            {/*
-              `active` is the same value the prompt bar gets as `isRunning`
-              below. Passing one signal to both is what stops the stop button
-              and this line disagreeing about whether anything is happening.
-            */}
-            <SessionActivityLine
-              active={isActive}
-              activeTool={activeTool}
-              elapsedLabel={elapsedLabel}
-              estimatedTokens={estimatedTokens}
-              streaming={liveTextLength > 0}
-            />
-            {errorMessage && (
-              <p className="text-destructive text-sm">{errorMessage}</p>
-            )}
-            {sessionMissing && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
-                <p className="font-medium">This session was never created.</p>
-                <p className="mt-1 text-muted-foreground">
-                  Its first prompt is what brings a session into being, and that
-                  prompt never reached the server — most likely the page was
-                  reloaded before it was sent. Prompts typed here cannot create
-                  it, so they will keep failing.
-                </p>
-                <Link
-                  className="mt-3 inline-block underline hover:no-underline"
-                  href="/sessions/new"
-                >
-                  Start a new session
-                </Link>
-              </div>
-            )}
-          </ConversationContent>
-          {/* {messages.length > 0 && (
-          <ConversationDownload
-            messages={
-              messages.map((message) => ({
-                id: message.id,
-                parts: [{ text: message.text, type: "text" }],
-                role: message.role,
-              })) as UIMessage[]
-            }
-          />
-        )} */}
-          <ConversationScrollButton />
-        </Conversation>
-        {pendingQuestion && (
-          <div className="shrink-0">
-            <AskUserDialog
-              payload={pendingQuestion}
-              sessionId={sessionId}
-              onDismiss={() => {}}
-            />
-          </div>
-        )}
-        {!forkedAt && viewingLeafId && (
-          // A branch was opened from the graph (§4), not forked from a
-          // message (§3) — there is no truncation to warn about here, since
-          // this branch's own conversation is exactly what is rendered above.
-          // What is worth saying is that it may not be the one every other
-          // link to this session opens by default.
-          <div className="flex shrink-0 items-center justify-between gap-2 border-border/40 border-t bg-muted/30 px-3 py-1.5 text-muted-foreground text-xs">
-            <span>Viewing an earlier branch of this conversation.</span>
-            <button
-              className="shrink-0 underline hover:no-underline"
-              onClick={() => router.push(`/sessions/${sessionId}`)}
-              type="button"
+        {reviewOpen ? (
+          <ResizablePanelGroup
+            // Remounted on layout flip: react-resizable-panels otherwise
+            // keeps the user's dragged percentages across orientations, so
+            // an 80%-wide review pane would become an 80%-tall one instead
+            // of resetting to a sane split for the new axis.
+            className="min-h-0 flex-1"
+            key={reviewLayout}
+            orientation={reviewLayout}
+          >
+            <ResizablePanel
+              className="flex min-h-0 flex-col overflow-hidden rounded-lg border"
+              defaultSize={45}
+              minSize={20}
             >
-              Back to the live conversation
-            </button>
-          </div>
-        )}
-        {forkedAt && (
-          // Nothing has diverged yet — see docs/plans/branching-sessions.md
-          // §3. The conversation above is showing only up to the forked
-          // message; whatever came after it on the live path still exists,
-          // simply not reached from here until this is cancelled.
-          <div className="flex shrink-0 items-center justify-between gap-2 border-border/40 border-t bg-muted/30 px-3 py-1.5 text-muted-foreground text-xs">
-            <span>
-              Continuing from an earlier message. The next prompt starts a new
-              branch here.
-            </span>
-            <button
-              className="shrink-0 underline hover:no-underline"
-              onClick={handleCancelFork}
-              type="button"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-        <div className="shrink-0">
-          <PromptEditor
-            defaultTools={defaultTools}
-            costPerTurn={costPerTurn}
-            contextWindowFraction={contextWindowFraction}
-            onCompactClick={handleCompact}
-            goalEditor={
-              <GoalEditor
-                /* Compact: it sits in the footer's tool row now, beside the
-                   attachment and tool buttons, where the bordered block
-                   variant was a full-width box among small controls. */
-                variant="inline"
-                autoFocus={!goal?.trim()}
-                goal={goal}
-                onSave={handleGoalSave}
+              <ReviewPanel
+                // Remounts the panel for each new pick, which is what makes
+                // `initialTarget` apply again — see its doc comment on
+                // ReviewPanel. A plain open/close toggle has no such key
+                // because there is only ever one "open" to render.
+                key={elementTarget.target?.nonce ?? "manual"}
+                initialTarget={elementTarget.target}
+                onClose={closeReview}
+                onExplain={handleExplain}
+                sessionId={sessionId}
               />
-            }
-            /* Same signal as SessionActivityLine above. */
-            isRunning={isActive}
-            onSelectionChange={handleSelectionChange}
-            onStop={handleStop}
-            onSubmit={handleSubmit}
-            sessionId={sessionId}
-          />
-        </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={55} minSize={20}>
+              {conversationColumn}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          conversationColumn
+        )}
       </div>
+
       {wikiActive && <WikiMiniGraph />}
     </div>
   );

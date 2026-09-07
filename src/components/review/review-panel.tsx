@@ -4,22 +4,15 @@
  * The review surface: what the turn changed, in a repository, with the file
  * open beside it.
  *
- * A fixed overlay rather than a portal. The bottom bar had to portal because
- * the *bar* lives in the root layout while its data belongs to the session —
- * neither side could own both. Here there is no such split: the data is the
- * session's and fixed positioning already escapes the layout flow, so the
- * session tree renders it directly and keeps its subscriptions.
- *
- * The 20px sides and 40px top are the specified frame. The bottom is not: it
- * stops above the console bar rather than covering it, because that bar hosts
- * the agent timeline and the terminal, and hiding the controls that describe a
- * run while reviewing that run's output is the wrong trade.
+ * Rendered inline, as one panel of the session's own resizable group
+ * (`ClientSessionComponent`) alongside the conversation — not a floating
+ * overlay. The data is the session's, so the session tree renders it
+ * directly and keeps its subscriptions; there is no portal boundary to cross.
  */
 
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { CONSOLE_BAR_HEIGHT, useBottomPanel } from "@/components/bottom-panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -45,9 +38,6 @@ import {
 } from "../ui/resizable";
 
 const SIDEBAR_WIDTH = 300;
-
-/** The frame the panel is specified to sit in. */
-const INSET = { left: 20, right: 20, top: 40 } as const;
 
 /** A draft is keyed by repository and path: two projects can hold one name. */
 const draftKey = (selection: FileSelection) =>
@@ -109,14 +99,26 @@ export function ReviewPanel({
   sessionId: string;
 }) {
   const review = useReview(sessionId);
-  const panel = useBottomPanel();
 
   const [chosen, setChosen] = useState<FileSelection | null>(() =>
     initialTarget
       ? { path: initialTarget.path, project: initialTarget.project }
       : null,
   );
-  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
+  /**
+   * The one changed file whose hunks are folded open, or null when none is.
+   * Accordion, not independent per row: opening one closes whatever was open
+   * before it, so the sidebar never has to scroll past several expanded
+   * hunk lists to find the next file.
+   */
+  const [expanded, setExpanded] = useState<FileSelection | null>(() =>
+    initialTarget
+      ? { path: initialTarget.path, project: initialTarget.project }
+      : null,
+  );
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(
+    null,
+  );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
@@ -145,13 +147,21 @@ export function ReviewPanel({
   const commit = useCommitReview(sessionId);
   const save = useSaveFile(sessionId);
 
+  // Selecting a file opens it in the editor and folds its hunks open in the
+  // sidebar — one click, not two. A null selection (the project-tab switch
+  // when a project has no changed files) closes the accordion too, since
+  // there is nothing left to have open.
+  const selectFile = useCallback((next: FileSelection | null) => {
+    setChosen(next);
+    setExpanded(next);
+  }, []);
+
   const selection = chosen ?? defaultSelection(review.data);
   const projects = review.data?.projects ?? [];
   const activeProject =
     projects.find((project) => project.path === selection?.project) ??
     projects[0];
 
-  const bottom = (panel?.open ? panel.height : 0) + CONSOLE_BAR_HEIGHT;
   const changed = review.data ? totalChangedFiles(review.data) : 0;
   const unsavedCount = Object.keys(drafts).length;
   const busy = stage.isPending || commit.isPending || save.isPending;
@@ -159,9 +169,8 @@ export function ReviewPanel({
   // When the operator selects a commit, filter the changed-files list to only
   // the files that commit touched. The commit stores repo-relative paths;
   // changedFiles.path is also repo-relative, so the match is direct.
-  const selectedCommit = activeProject?.turnCommits.find(
-    (c) => c.sha === selectedCommitSha,
-  ) ?? null;
+  const selectedCommit =
+    activeProject?.turnCommits.find((c) => c.sha === selectedCommitSha) ?? null;
   const visibleFiles = selectedCommit
     ? (activeProject?.changedFiles ?? []).filter((f) =>
         selectedCommit.files.includes(f.path),
@@ -237,12 +246,7 @@ export function ReviewPanel({
   }, [activeProject, commit, message]);
 
   return (
-    <div
-      aria-label="Review changes"
-      className="semla-review-enter fixed z-40 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
-      role="dialog"
-      style={{ bottom, left: INSET.left, right: INSET.right, top: INSET.top }}
-    >
+    <>
       <header className="relative flex shrink-0 items-center gap-3 border-b px-3 py-2">
         <h2 className="text-sm font-medium">Review</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
@@ -262,7 +266,7 @@ export function ReviewPanel({
                 )}
                 key={project.path}
                 onClick={() =>
-                  setChosen(
+                  selectFile(
                     project.changedFiles[0]
                       ? {
                           path: project.changedFiles[0].path,
@@ -346,7 +350,22 @@ export function ReviewPanel({
                 </div>
               ) : (
                 <ReviewChangedFiles
-                  onSelect={setChosen}
+                  busy={busy}
+                  expanded={expanded}
+                  onReveal={revealLine}
+                  onSelect={(next) => {
+                    // Toggle: clicking the already-expanded file's row
+                    // closes it again rather than being a no-op, since it
+                    // is already the open editor selection.
+                    setExpanded((previous) =>
+                      previous?.project === next.project &&
+                      previous.path === next.path
+                        ? null
+                        : next,
+                    );
+                    setChosen(next);
+                  }}
+                  onStage={onStage}
                   projects={
                     selectedCommit
                       ? projects.map((p) =>
@@ -357,6 +376,7 @@ export function ReviewPanel({
                       : projects
                   }
                   selected={selection}
+                  sessionId={sessionId}
                 />
               )}
             </ResizablePanel>
@@ -366,7 +386,11 @@ export function ReviewPanel({
             {/* The whole project tree, keyed by project so switching repositories
                 re-opens the tree on the new one's changes rather than keeping the
                 old one's expansion. */}
-            <ResizablePanel defaultSize={60} minSize={15} className="flex flex-col">
+            <ResizablePanel
+              defaultSize={60}
+              minSize={15}
+              className="flex flex-col"
+            >
               {activeProject ? (
                 <div className="flex h-full flex-col py-2">
                   <p className="shrink-0 px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -375,7 +399,7 @@ export function ReviewPanel({
                   <ReviewFileTree
                     key={activeProject.path}
                     onSelectPath={(path, line) => {
-                      setChosen({ path, project: activeProject.path });
+                      selectFile({ path, project: activeProject.path });
                       if (line) revealLine(line);
                     }}
                     project={activeProject}
@@ -411,7 +435,6 @@ export function ReviewPanel({
                   return { ...previous, [key]: content };
                 })
               }
-              onReveal={revealLine}
               onSave={onSave}
               onStage={onStage}
               reveal={reveal}
@@ -437,6 +460,6 @@ export function ReviewPanel({
         result={result}
         unsavedCount={unsavedCount}
       />
-    </div>
+    </>
   );
 }

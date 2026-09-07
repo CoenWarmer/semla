@@ -27,9 +27,6 @@ import { ReviewCodeMap } from "./review-code-map";
 
 import type { FileSelection } from "./review-changed-files";
 import { ReviewEditor } from "./review-editor";
-import { ReviewHunkList } from "./review-hunk-list";
-
-const HUNKS_WIDTH = 260;
 
 /** A message pane, for the cases where there is no file to open. */
 function Notice({ children }: { children: React.ReactNode }) {
@@ -45,7 +42,6 @@ export function ReviewEditorPane({
   draft,
   onDraftChange,
   onExplain,
-  onReveal,
   onSave,
   onStage,
   reveal,
@@ -67,11 +63,10 @@ export function ReviewEditorPane({
    * number would be an unchanged prop the second time.
    *
    * Owned by the panel rather than here, because two things ask for it — a
-   * hunk row in this pane, and a content-search hit in the sidebar, which also
-   * changes which file is open.
+   * hunk row in the changed-files sidebar, and a content-search hit there
+   * too, which also changes which file is open.
    */
   reveal: { line: number; nonce: number } | null;
-  onReveal: (line: number) => void;
   /**
    * `dirty` is false when the content is back to what is on disk, so the
    * panel can forget the draft — typing an edit and undoing it should not
@@ -79,6 +74,12 @@ export function ReviewEditorPane({
    */
   onDraftChange: (content: string, dirty: boolean) => void;
   onSave: (content: string, sha: string | undefined) => void;
+  /**
+   * Stage or unstage hunks of the open file, straight from the editor's own
+   * per-hunk widgets — see review-hunk-widgets.ts. The same callback the
+   * changed-files sidebar's inline hunk list uses; this is a second caller,
+   * not a second implementation.
+   */
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
   selection: FileSelection;
   sessionId: string;
@@ -209,89 +210,76 @@ export function ReviewEditorPane({
   const dirty = draft !== null && draft !== onDisk;
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex min-w-0 flex-1 flex-col">
-        {notice ? (
-          <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {notice}
-            </span>
-            <Button
-              aria-label="Dismiss"
-              className="h-6 px-2 text-[11px]"
-              onClick={() => setNotice(null)}
-              size="sm"
-              variant="ghost"
-            >
-              Dismiss
-            </Button>
-          </div>
-        ) : null}
-
-        {symbolAt.isPending ? (
-          <div className="shrink-0 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-            Resolving the function&hellip;
-          </div>
-        ) : null}
-
-        {dirty ? (
-          <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
-            <span className="text-xs text-muted-foreground">
-              Unsaved edits in {selection.path}
-            </span>
-            <Button
-              className="ml-auto h-6 px-2 text-[11px]"
-              disabled={busy}
-              onClick={() => onSave(draft, content.data?.sha)}
-              size="sm"
-              variant="secondary"
-            >
-              Save
-            </Button>
-          </div>
-        ) : null}
-
-        <div className="relative min-h-0 flex-1">
-          {/* Over the editor rather than instead of it: the model holds the
-              operator's unsaved edits, and unmounting it would drop them. */}
-          {codeMap || codeMapAt.isPending ? (
-            <ReviewCodeMap
-              onClose={() => setCodeMap(null)}
-              pending={codeMapAt.isPending}
-              result={codeMap}
-            />
-          ) : null}
-
-          <ReviewEditor
-            hunks={hunks.data?.full?.hunks ?? []}
-            onChange={(next) => onDraftChange(next, next !== onDisk)}
-            onExplainLine={explainAt}
-            onVisualizeLine={visualizeAt}
-            reveal={reveal}
-            onSave={() => onSave(draft ?? onDisk, content.data?.sha)}
-            path={selection.path}
-            value={onDisk}
-          />
+    <div className="flex h-full min-h-0 flex-col">
+      {notice ? (
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {notice}
+          </span>
+          <Button
+            aria-label="Dismiss"
+            className="h-6 px-2 text-[11px]"
+            onClick={() => setNotice(null)}
+            size="sm"
+            variant="ghost"
+          >
+            Dismiss
+          </Button>
         </div>
-      </div>
+      ) : null}
 
-      {/* An unchanged file opened from the tree has nothing to stage, and an
-          empty column of controls would only invite clicking them. */}
-      {unchanged ? null : (
-      <aside
-        className="shrink-0 overflow-y-auto border-l"
-        style={{ width: HUNKS_WIDTH }}
-      >
-        <ReviewHunkList
-          busy={busy}
-          onReveal={onReveal}
-          onStage={onStage}
-          staged={hunks.data?.staged ?? null}
-          unstaged={hunks.data?.unstaged ?? null}
-          untracked={hunks.data?.untracked ?? false}
+      {symbolAt.isPending ? (
+        <div className="shrink-0 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+          Resolving the function&hellip;
+        </div>
+      ) : null}
+
+      {dirty ? (
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+          <span className="text-xs text-muted-foreground">
+            Unsaved edits in {selection.path}
+          </span>
+          <Button
+            className="ml-auto h-6 px-2 text-[11px]"
+            disabled={busy}
+            onClick={() => onSave(draft, content.data?.sha)}
+            size="sm"
+            variant="secondary"
+          >
+            Save
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="relative min-h-0 flex-1">
+        {/* Over the editor rather than instead of it: the model holds the
+            operator's unsaved edits, and unmounting it would drop them. */}
+        {codeMap || codeMapAt.isPending ? (
+          <ReviewCodeMap
+            onClose={() => setCodeMap(null)}
+            pending={codeMapAt.isPending}
+            result={codeMap}
+          />
+        ) : null}
+
+        <ReviewEditor
+          hunks={hunks.data?.full?.hunks ?? []}
+          onChange={(next) => onDraftChange(next, next !== onDisk)}
+          onExplainLine={explainAt}
+          onStageHunk={onStage}
+          onVisualizeLine={visualizeAt}
+          reveal={reveal}
+          onSave={() => onSave(draft ?? onDisk, content.data?.sha)}
+          path={selection.path}
+          staging={
+            hunks.data
+              ? { staged: hunks.data.staged, unstaged: hunks.data.unstaged }
+              : null
+          }
+          stagingBusy={busy}
+          value={onDisk}
         />
-      </aside>
-      )}
+      </div>
     </div>
   );
 }

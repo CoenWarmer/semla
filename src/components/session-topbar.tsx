@@ -6,7 +6,13 @@ import { useContextInspections } from "@/hooks/use-context-check";
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
-import { GitCompareIcon, NetworkIcon, ScanSearchIcon } from "lucide-react";
+import {
+  GitCompareIcon,
+  LayoutPanelLeftIcon,
+  LayoutPanelTopIcon,
+  NetworkIcon,
+  ScanSearchIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
 import { CodeMapPanel } from "./code-map-panel";
@@ -16,12 +22,19 @@ import { TokenUsage } from "./token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
-  /** Open the review overlay. Absent when the session cannot be reviewed. */
+  /** Toggle the review panel. Absent when the session cannot be reviewed. */
   onReviewClick?: () => void;
   /** Changed files waiting to be reviewed, for the button's badge. */
   reviewCount?: number;
   /** The review overlay is open, so the button reads as active. */
   reviewOpen?: boolean;
+  /**
+   * Which way the review panel splits from the conversation. Absent hides
+   * the split-direction control — there is nothing to orient while the
+   * panel is closed.
+   */
+  reviewLayout?: "horizontal" | "vertical";
+  onReviewLayoutChange?: (layout: "horizontal" | "vertical") => void;
   title: string | null;
   /** Latest map the code_map tool drew in this session, if any. */
   codeMap?: CodeMap;
@@ -77,6 +90,8 @@ export function SessionTopbar({
   onCompactClick,
   reviewCount = 0,
   reviewOpen = false,
+  reviewLayout,
+  onReviewLayoutChange,
   toolCalls,
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
@@ -139,6 +154,31 @@ export function SessionTopbar({
                 <span className="rounded bg-primary/15 px-1 text-[10px] font-medium tabular-nums">
                   {reviewCount}
                 </span>
+              )}
+            </Button>
+          )}
+
+          {/* Only meaningful while the review panel is actually split against
+              the conversation. */}
+          {reviewOpen && onReviewLayoutChange && (
+            <Button
+              onClick={() =>
+                onReviewLayoutChange(
+                  reviewLayout === "vertical" ? "horizontal" : "vertical",
+                )
+              }
+              size="icon"
+              title={
+                reviewLayout === "vertical"
+                  ? "Switch to side-by-side"
+                  : "Switch to stacked"
+              }
+              variant="ghost"
+            >
+              {reviewLayout === "vertical" ? (
+                <LayoutPanelLeftIcon />
+              ) : (
+                <LayoutPanelTopIcon />
               )}
             </Button>
           )}

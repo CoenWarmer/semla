@@ -190,60 +190,56 @@ div.react-sigma {
 }
 
 /*
- * The review panel's entrance.
+ * The stage/unstage button Monaco draws above a hunk — a content widget, so
+ * plain DOM rather than a component; see review-hunk-widgets.ts.
  *
- * The panel is hinged at its bottom edge and tips into place: it starts tilted
- * out toward the reader and settles flat. `transform-origin: bottom` is what
- * makes it a hinge rather than a spin, and the negative rotateX is what makes
- * it tip *toward* the viewer — in CSS the y-axis points down, so a positive
- * rotateX would swing the top away instead.
- *
- * It rises as it tips. The translate has to carry that on its own: the hinge
- * pins the bottom edge, so the rotation swings the top and leaves the bottom
- * where it is — which reads as a tilt, not as an entrance. The 32px is what
- * makes it arrive from below.
- *
- * The perspective lives in the transform rather than on a parent, because the
- * panel is position:fixed and has no parent to put it on.
- *
- * Deliberately an animation and not a lingering transform. A transform on an
- * ancestor of Monaco changes what getBoundingClientRect reports, and Monaco
- * does its mouse-target arithmetic with that — so the editor would misplace
- * clicks for as long as the transform stayed. An animation leaves nothing
- * behind once it has run. For the same reason there is no `will-change`, which
- * would pin a compositing layer for the life of the panel to save 280ms.
+ * Sized to sit comfortably between two lines of 12.5px code without pushing
+ * them apart by much: the widget occupies real space above its anchor line
+ * (a content widget is not an overlay), so growing it visibly increases the
+ * gap between every hunk and the line before it.
  */
-@keyframes semla-review-enter {
-  from {
-    opacity: 0;
-    transform: perspective(1400px) rotateX(-14deg) translateY(32px);
-  }
-  to {
-    opacity: 1;
-    transform: perspective(1400px) rotateX(0deg) translateY(0);
-  }
+.semla-hunk-action-widget {
+  align-items: center;
+  background-color: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px color-mix(in oklch, black 15%, transparent);
+  display: flex;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  gap: 6px;
+  padding: 2px 6px;
+  white-space: nowrap;
 }
 
-.semla-review-enter {
-  animation: semla-review-enter 280ms cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: bottom center;
+.semla-hunk-action-widget-location {
+  color: var(--muted-foreground);
 }
 
-/*
- * Reduced motion keeps the fade and drops the movement. A hard cut is the
- * other option and is more startling than the thing being avoided.
- */
-@keyframes semla-review-enter-reduced {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.semla-hunk-action-widget-added {
+  color: oklch(0.7 0.15 150);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .semla-review-enter {
-    animation: semla-review-enter-reduced 120ms ease-out;
-  }
+.semla-hunk-action-widget-removed {
+  color: var(--destructive);
 }
+
+.semla-hunk-action-widget-button {
+  background-color: var(--secondary);
+  border-radius: 3px;
+  color: var(--secondary-foreground);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+}
+
+.semla-hunk-action-widget-button:hover:not(:disabled) {
+  background-color: color-mix(in oklch, var(--secondary), var(--foreground) 5%);
+}
+
+.semla-hunk-action-widget-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+

@@ -19,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 
-import type { Hunk } from "@/lib/review-types";
+import type { FileDiff, Hunk } from "@/lib/review-types";
 
 import {
   configureMonaco,
@@ -33,6 +33,8 @@ import {
   firstChangedLine,
   type Decoration,
 } from "./review-decorations";
+import { matchHunkAction } from "./review-hunk-match";
+import { HunkActionWidgets } from "./review-hunk-widgets";
 
 const CLASS_FOR_KIND = {
   "added-line": "semla-review-added-line",
@@ -79,6 +81,17 @@ export interface CodeEditorProps {
   value: string;
   /** The whole change since HEAD, which is what gets coloured. */
   hunks: readonly Hunk[];
+  /**
+   * What is and is not staged, so a widget above a hunk can offer the right
+   * action. Absent (or both null) when there is nothing to stage — an
+   * unchanged file opened from the tree, or one with no hunk-level staging
+   * at all — in which case no widgets are drawn.
+   */
+  staging?: { staged: FileDiff | null; unstaged: FileDiff | null } | null;
+  /** A stage/unstage request is in flight; every widget's button disables. */
+  stagingBusy?: boolean;
+  /** A widget's button was clicked. */
+  onStageHunk?: (hunks: number[], direction: "stage" | "unstage") => void;
   readOnly?: boolean;
   theme?: "dark" | "light";
   /** Fires on every edit, so the panel can track what is unsaved. */
@@ -104,10 +117,13 @@ export default function CodeEditor({
   onChange,
   onExplainLine,
   onSave,
+  onStageHunk,
   onVisualizeLine,
   path,
   readOnly = false,
   reveal = null,
+  staging = null,
+  stagingBusy = false,
   theme = "dark",
   value,
 }: CodeEditorProps) {
@@ -115,6 +131,7 @@ export default function CodeEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef =
     useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const hunkWidgetsRef = useRef<HunkActionWidgets | null>(null);
   /**
    * Models by path, so an edit survives looking at another file and coming
    * back. A single model with setValue would be less code and would throw the
@@ -128,12 +145,14 @@ export default function CodeEditor({
   const onSaveRef = useRef(onSave);
   const onExplainRef = useRef(onExplainLine);
   const onVisualizeRef = useRef(onVisualizeLine);
+  const onStageHunkRef = useRef(onStageHunk);
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
     onExplainRef.current = onExplainLine;
     onVisualizeRef.current = onVisualizeLine;
-  }, [onChange, onExplainLine, onSave, onVisualizeLine]);
+    onStageHunkRef.current = onStageHunk;
+  }, [onChange, onExplainLine, onSave, onStageHunk, onVisualizeLine]);
 
   // Create once. An entry dropped without dispose leaks the editor and every
   // model it holds, and this panel is opened and closed all day.
@@ -169,6 +188,7 @@ export default function CodeEditor({
 
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
+    hunkWidgetsRef.current = new HunkActionWidgets(editor);
 
     const changeSubscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
@@ -221,11 +241,13 @@ export default function CodeEditor({
       changeSubscription.dispose();
       explain.dispose();
       visualize.dispose();
+      hunkWidgetsRef.current?.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
       modelsRef.current.clear();
       editorRef.current = null;
       decorationsRef.current = null;
+      hunkWidgetsRef.current = null;
     };
   }, []);
 
@@ -283,6 +305,45 @@ export default function CodeEditor({
       })),
     );
   }, [hunks, path]);
+
+  // A button above every hunk this diff can stage or unstage on its own —
+  // see review-hunk-widgets.ts for why this is content widgets rather than a
+  // hover, and review-hunk-match.ts for why the action a hunk offers is not
+  // simply its own index.
+  useEffect(() => {
+    const editor = editorRef.current;
+    const widgets = hunkWidgetsRef.current;
+    if (!editor || !widgets) return;
+
+    if (!staging || (!staging.staged && !staging.unstaged)) {
+      widgets.set([], stagingBusy, () => {});
+      return;
+    }
+
+    const model = editor.getModel();
+    const lineCount = model?.getLineCount() ?? 1;
+    // A diff read a moment ago can describe a file the operator has since
+    // shortened, same as the decorations effect above.
+    const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
+
+    const entries = hunks.flatMap((hunk) => {
+      const action = matchHunkAction(hunk, staging);
+      if (!action) return [];
+
+      return [
+        {
+          action,
+          hunk,
+          key: `${hunk.oldStart}-${hunk.newStart}`,
+          line: clamp(hunk.newStart),
+        },
+      ];
+    });
+
+    widgets.set(entries, stagingBusy, (index, direction) => {
+      onStageHunkRef.current?.([index], direction);
+    });
+  }, [hunks, staging, stagingBusy]);
 
   // Open on the change rather than at the top of the file: a review starts at
   // what moved, and a 900-line file's first hunk is often nowhere near line 1.
