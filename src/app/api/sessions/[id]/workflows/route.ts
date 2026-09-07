@@ -1,10 +1,9 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { detach } from "@/lib/pi/session-log";
 import { finalizeBackgroundRun } from "@/lib/pi/session-persistence";
 import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
 import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
 import { createServerTiming } from "@/lib/server-timing";
-import { createClient } from "@/lib/supabase/server";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 export const runtime = "nodejs";
@@ -29,25 +28,10 @@ export async function GET(
   const timing = createServerTiming();
 
   try {
-    const supabase = await createClient();
-
-    // The proxy (src/proxy.ts) already verified this request's JWT, so read the
-    // claims rather than paying another `auth.getUser()` round-trip to the auth
-    // server. Row-level authorization is not skipped, it moves to where it is
-    // already enforced: the workflow_runs SELECT policy (migration
-    // 20260822164000) exposes only runs whose session has
-    // `user_id = auth.uid()`, so another user's session id returns an empty
-    // list instead of a 404 — one fewer round-trip and no id disclosure.
-    const { data: claimsData } = await timing.phase("auth", () =>
-      supabase.auth.getClaims(),
-    );
-
-    if (!claimsData?.claims.sub) {
-      return Response.json(
-        { error: "Authentication required." },
-        { status: 401 },
-      );
-    }
+    // requireUser() handles local/no-auth mode via localUser() — this route was
+    // using getClaims() which returns no claims when bound to loopback, causing
+    // a 401 for every request on a local install.
+    const { supabase } = await timing.phase("auth", () => requireUser());
 
     // Which runs a session has is on disk; the snapshots they point at already
     // were. Postgres answers only for sessions whose runs predate the index.
