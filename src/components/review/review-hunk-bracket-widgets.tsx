@@ -46,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Hunk } from "@/lib/review-types";
 
+import { hunkBracketLineCount } from "./review-hunk-bracket-geometry";
 import { monaco } from "./monaco-setup";
 import type { HunkAction } from "./review-hunk-match";
 
@@ -190,6 +191,7 @@ function HunkBracketRoot({
 interface WidgetState {
   widget: monaco.editor.IGlyphMarginWidget;
   root: Root;
+  entry: HunkBracketEntry;
 }
 
 /**
@@ -207,6 +209,23 @@ export class HunkBracketWidgets {
   private readonly editor: monaco.editor.IStandaloneCodeEditor;
   private states = new Map<string, WidgetState>();
   private onStage: (index: number, direction: HunkAction["direction"]) => void;
+  private busy = false;
+  /**
+   * `onDidScrollChange`/`onDidLayoutChange` fire far more often than a
+   * hunk taller than the viewport actually needs a re-render — e.g. every
+   * pixel of a smooth-scroll animation. `getVisibleRanges()`
+   * (`editor.api.d.ts`, `getVisibleRanges(): Range[]`) is cheap to read but
+   * `root.render` is not free to call once per hunk on every such tick, so
+   * this is compared against the previous value and skipped when the
+   * effective top line has not actually changed.
+   */
+  private lastVisibleTopLine = 1;
+  private readonly scrollSubscription: ReturnType<
+    monaco.editor.IStandaloneCodeEditor["onDidScrollChange"]
+  >;
+  private readonly layoutSubscription: ReturnType<
+    monaco.editor.IStandaloneCodeEditor["onDidLayoutChange"]
+  >;
 
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
@@ -214,12 +233,87 @@ export class HunkBracketWidgets {
   ) {
     this.editor = editor;
     this.onStage = onStage;
+
+    // A hunk taller than the editor's viewport has its widget's anchor
+    // clamped by Monaco to the viewport's own top line once the hunk's own
+    // `startLine` scrolls above it (`glyphMargin.js`,
+    // `_collectWidgetBasedGlyphRenderRequest`: `Math.max(startLineNumber,
+    // visibleStartLineNumber)`). The bracket's rendered height has to track
+    // that clamp — recomputed here on every scroll and layout change, since
+    // either can change which line is at the top of the viewport — rather
+    // than only at construction/`set()` time.
+    this.scrollSubscription = this.editor.onDidScrollChange(() => {
+      this.updateForScroll();
+    });
+    this.layoutSubscription = this.editor.onDidLayoutChange(() => {
+      this.updateForScroll();
+    });
   }
 
-  set(entries: readonly HunkBracketEntry[], busy: boolean) {
+  /**
+   * The line Monaco's own culling/clamping (`glyphMargin.js`,
+   * `_collectWidgetBasedGlyphRenderRequest`'s `visibleStartLineNumber`,
+   * fed by `ctx.visibleRange`) actually uses, reproduced directly from
+   * `getScrollTop()`/line height rather than `getVisibleRanges()`.
+   * `getVisibleRanges()` (`viewModelImpl.js`'s `getCompletelyVisibleViewRange`)
+   * is a *stricter* range — it drops a top line that is only partially
+   * scrolled into view, which `ctx.visibleRange`
+   * (`viewLinesViewportData.js`'s `ViewportData`, built from the same
+   * *partial* `startLineNumber`/`endLineNumber` `getLinesViewportData`
+   * computes) does not. Whenever the scroll offset is not an exact
+   * multiple of the line height — true for most of a scroll gesture —
+   * `getVisibleRanges()` reports one line later than the line Monaco's
+   * widget is actually clamped/anchored to, which would size the bracket
+   * one line height short. `getLineNumberAtOrAfterVerticalOffset`'s own
+   * binary search reduces, for a uniform line height, to this division.
+   */
+  private visibleTopLine(): number {
     const lineHeight = this.editor.getOption(
       monaco.editor.EditorOption.lineHeight,
     );
+    if (lineHeight <= 0) return 1;
+    return Math.floor(this.editor.getScrollTop() / lineHeight) + 1;
+  }
+
+  private updateForScroll() {
+    const visibleTopLine = this.visibleTopLine();
+    if (visibleTopLine === this.lastVisibleTopLine) return;
+    this.lastVisibleTopLine = visibleTopLine;
+
+    const lineHeight = this.editor.getOption(
+      monaco.editor.EditorOption.lineHeight,
+    );
+    for (const state of this.states.values()) {
+      this.renderState(state, lineHeight, visibleTopLine);
+    }
+  }
+
+  private renderState(
+    state: WidgetState,
+    lineHeight: number,
+    visibleTopLine: number,
+  ) {
+    const { entry } = state;
+    const lineCount = hunkBracketLineCount(entry, visibleTopLine);
+
+    state.root.render(
+      <HunkBracketRoot
+        action={entry.action}
+        busy={this.busy}
+        lineCount={lineCount}
+        lineHeight={lineHeight}
+        onClick={() => this.onStage(entry.action.index, entry.action.direction)}
+      />,
+    );
+  }
+
+  set(entries: readonly HunkBracketEntry[], busy: boolean) {
+    this.busy = busy;
+    const lineHeight = this.editor.getOption(
+      monaco.editor.EditorOption.lineHeight,
+    );
+    const visibleTopLine = this.visibleTopLine();
+    this.lastVisibleTopLine = visibleTopLine;
 
     for (const state of this.states.values()) {
       state.root.unmount();
@@ -239,7 +333,6 @@ export class HunkBracketWidgets {
       // node's top edge, via its own explicit inline height and
       // `position: absolute` (`.semla-hunk-bracket` in globals.css), which
       // Monaco never touches.
-      const lineCount = Math.max(1, entry.endLine - entry.startLine + 1);
 
       const widget: monaco.editor.IGlyphMarginWidget = {
         getDomNode: () => domNode,
@@ -253,9 +346,22 @@ export class HunkBracketWidgets {
           // occupant per (line, lane). Sharing a lane would have the
           // widget silently win and the removed-marker glyph vanish.
           lane: monaco.editor.GlyphMarginLane.Right,
+          // The FULL hunk span, not just the anchor line. Monaco culls a
+          // widget once its range's `endLineNumber` is above the
+          // viewport's top (`glyphMargin.js`,
+          // `_collectWidgetBasedGlyphRenderRequest`: `endLineNumber <
+          // visibleStartLineNumber`) — with a single-point range at
+          // `startLine`, that happened the instant `startLine` itself
+          // scrolled out of view, even though the rest of a hunk taller
+          // than the viewport was still on screen below. Spanning the
+          // range to `endLine` keeps the widget alive for as long as any
+          // part of the hunk is visible; `renderState`/`updateForScroll`
+          // above is what keeps the bracket's own height honest once
+          // Monaco clamps the anchor it renders at down to the
+          // viewport's top line.
           range: {
             endColumn: 1,
-            endLineNumber: entry.startLine,
+            endLineNumber: entry.endLine,
             startColumn: 1,
             startLineNumber: entry.startLine,
           },
@@ -264,22 +370,17 @@ export class HunkBracketWidgets {
       };
 
       const root = createRoot(domNode);
-      root.render(
-        <HunkBracketRoot
-          action={entry.action}
-          busy={busy}
-          lineCount={lineCount}
-          lineHeight={lineHeight}
-          onClick={() => this.onStage(entry.action.index, entry.action.direction)}
-        />,
-      );
+      const state: WidgetState = { entry, root, widget };
+      this.renderState(state, lineHeight, visibleTopLine);
 
       this.editor.addGlyphMarginWidget(widget);
-      this.states.set(entry.key, { root, widget });
+      this.states.set(entry.key, state);
     }
   }
 
   dispose() {
+    this.scrollSubscription.dispose();
+    this.layoutSubscription.dispose();
     for (const state of this.states.values()) {
       state.root.unmount();
       this.editor.removeGlyphMarginWidget(state.widget);
