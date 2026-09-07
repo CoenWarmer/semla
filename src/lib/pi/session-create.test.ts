@@ -210,10 +210,11 @@ describe("createSession", () => {
   });
 
   /**
-   * Two requests raced for the same new session. The row exists, which is all
-   * either caller wanted.
+   * The Supabase row already exists (concurrent request or prior session). In
+   * disk-first mode the disk record is created regardless — the Supabase
+   * UNIQUE_VIOLATION just means the mirror is already there, which is fine.
    */
-  it("treats a unique violation as already created", async () => {
+  it("creates the disk record even when Supabase already has the row", async () => {
     const { client } = fakeClient({ code: "23505", message: "duplicate key" });
 
     expect(
@@ -225,15 +226,18 @@ describe("createSession", () => {
         title: "New Session",
         userId: USER,
       }),
-    ).toEqual({ id: ID, kind: "exists" });
+    ).toEqual({ id: ID, kind: "created" });
+    expect(sessionExistsOnDisk(ID, dir)).toBe(true);
   });
 
   /**
-   * A session on disk with no row is broken rather than degraded — the first
-   * turn cannot write `pi_sessions` without it — so a failed insert must not
-   * leave a record behind that looks like a usable session.
+   * Disk is written first and is the canonical record, so a Supabase failure
+   * does not prevent the session from existing. Pi turns will fail with a FK
+   * violation until Supabase is reachable, but the session is visible and the
+   * disk record stands. The old contract (no disk record on insert failure) was
+   * the reverse of the disk-first architecture.
    */
-  it("writes no disk record when the insert fails", async () => {
+  it("still writes the disk record when the Supabase insert fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { client } = fakeClient({ message: "522" });
 
@@ -246,9 +250,9 @@ describe("createSession", () => {
       userId: USER,
     });
 
-    expect(result).toEqual({ kind: "failed", message: "522" });
-    expect(readSessionMeta(ID, dir)).toBeNull();
-    expect(sessionExistsOnDisk(ID, dir)).toBe(false);
+    expect(result).toEqual({ id: ID, kind: "created" });
+    expect(readSessionMeta(ID, dir)).toMatchObject({ id: ID });
+    expect(sessionExistsOnDisk(ID, dir)).toBe(true);
   });
 });
 

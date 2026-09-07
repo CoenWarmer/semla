@@ -6,13 +6,13 @@
  * no record yet — which is how starting a session costs one request instead of
  * two, with nothing between navigating and the agent beginning to work.
  *
- * The order matters and is not the obvious one. Postgres is a mirror for
- * *reading* a session, so the instinct is to write disk first and let the row
- * follow. But `sessions` is a parent row: `pi_sessions.semla_session_id` is
- * `not null references sessions(id)`, so the first turn cannot write anything
- * until it exists. A session on disk with no row is broken rather than
- * degraded, so the row is written first and its failure is the caller's
- * failure.
+ * Disk is written first and is the authoritative record. The Supabase row is a
+ * mirror and is best-effort. The one complication is `pi_sessions`: it has a
+ * `not null references sessions(id)` FK, so the Supabase row must exist before
+ * Pi can start a turn. The sessions insert is therefore awaited, but a failure
+ * is non-fatal — the disk record stands and the session is visible in the UI;
+ * Pi turns will fail with a FK violation until Supabase is reachable and the
+ * RLS policy allows the insert. Fixing that is a Supabase concern, not a code one.
  */
 
 import { randomUUID } from "node:crypto";
@@ -108,10 +108,9 @@ export async function createSession({
     };
   }
 
-  // Checked against the authoritative store rather than left to the table's
-  // primary key. The id can come from a client, and the insert would only catch
-  // a duplicate after writeSessionMeta had overwritten the record of whatever
-  // session owns it.
+  // Checked against the authoritative store. The id can come from a client, and
+  // leaving uniqueness to the table's primary key would catch a duplicate only
+  // after writeSessionMeta had already overwritten whatever owns the id.
   if (sessionExistsOnDisk(id, dir)) return { id, kind: "exists" };
 
   // One timestamp for the record and the link it carries, so the session and
@@ -128,23 +127,22 @@ export async function createSession({
       })
     : [];
 
-  // Disk is the authoritative record — written first so the session exists
-  // even when the Supabase mirror below fails (e.g., in local mode where the
-  // client carries no JWT and the sessions RLS policy blocks the insert).
+  // Disk first: the canonical record. Every reader consults this before Supabase.
   writeSessionMeta(id, { createdAt, projects, title, userId }, dir);
 
-  // Mirror to Supabase for search and cross-device access. Best-effort: the
-  // disk write above already committed the canonical record, so a failure here
-  // is non-fatal. UNIQUE_VIOLATION means another request beat us to the row,
-  // which is fine — the disk record won either way.
-  void client
+  // Mirror to Supabase. Awaited because pi_sessions has a FK on sessions(id)
+  // and Pi cannot start a turn until the row exists. Non-fatal: a failure here
+  // leaves the disk record (the session is visible) but Pi turns will fail with
+  // a FK violation until the Supabase insert succeeds. Fix the sessions RLS
+  // policy if seeing FK errors in local mode.
+  const { error } = await client
     .from("sessions")
-    .insert({ id, title, user_id: userId })
-    .then(({ error }) => {
-      if (error && error.code !== UNIQUE_VIOLATION) {
-        console.error("[session-create] Supabase mirror failed (disk record is canonical):", error);
-      }
-    });
+    .insert({ id, title, user_id: userId });
+
+  if (error && error.code !== UNIQUE_VIOLATION) {
+    // Log but do not return "failed" — the disk record is canonical.
+    console.error("[session-create] Supabase sessions mirror failed:", error);
+  }
 
   // Not awaited, and skipped when there is nothing to mirror: it replaces a
   // session's links by deleting them first, which for a session created one
