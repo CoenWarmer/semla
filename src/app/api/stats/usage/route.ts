@@ -1,4 +1,4 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import {
   sessionUsageTotals,
@@ -6,7 +6,6 @@ import {
 } from "@/lib/pi/session-usage-totals";
 import { createServerTiming } from "@/lib/server-timing";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -33,19 +32,11 @@ export async function GET() {
     });
 
   try {
-    const supabase = await createClient();
-
-    // The proxy (src/proxy.ts) already verified this request's JWT, and the
-    // project signs with ES256, so getClaims() verifies locally against a
-    // cached JWKS instead of making an auth.getUser() round-trip.
-    const { data: claimsData } = await timing.phase("auth", () =>
-      supabase.auth.getClaims(),
-    );
-    const userId = claimsData?.claims.sub;
-
-    if (!userId) {
-      return withTiming({ error: "Authentication required." }, 401);
-    }
+    // requireUser() handles local/no-auth mode via localUser() — this route
+    // was the one route that did its own getClaims() dance and returned 401
+    // when bound to loopback, where there is nobody to authenticate.
+    const { user } = await timing.phase("auth", () => requireUser());
+    const userId = user.id;
 
     // Disk records answer first, the same way the sidebar builds its list.
     // Postgres is asked only for sessions that have no record on disk — ones
