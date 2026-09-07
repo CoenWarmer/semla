@@ -72,6 +72,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                       <div className="flex-1 min-h-0 overflow-y-auto">
                         {children}
                       </div>
+                      {/*
+                        These three source their own session-turn data from the
+                        query cache (session-live-state.ts) via useParams(),
+                        rather than as props from the page — but they still
+                        portal their button and panel into AppConsole's bar
+                        slots, so "Console", "Select", "Branches" and "Agents"
+                        render as one row of buttons sharing one panel area,
+                        not four separately laid-out strips.
+                      */}
                       <SessionAgentsPanel />
                       <SessionBranchesPanel />
                       <ElementPicker />

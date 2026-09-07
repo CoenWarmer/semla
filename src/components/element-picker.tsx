@@ -17,8 +17,10 @@
 
 import { Crosshair } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 
+import { useBottomPanel } from "@/components/bottom-panel";
 import { Spinner } from "@/components/ui/spinner";
 import { useElementTarget } from "@/components/element-target-provider";
 import { locateElement } from "@/lib/element-locator";
@@ -55,6 +57,7 @@ function HoverBox({ rect }: { rect: DOMRect | null }) {
 export function ElementPicker() {
   const { id } = useParams<{ id?: string }>();
   const sessionId = id;
+  const bar = useBottomPanel();
   const [picking, setPicking] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,35 +146,45 @@ export function ElementPicker() {
     };
   }, [elementTarget, picking, sessionId, stop]);
 
-  if (!AVAILABLE || !sessionId) return null;
+  if (!AVAILABLE || !sessionId || !bar) return null;
 
   return (
-    <div className="relative" ref={rootRef}>
-      <button
-        aria-pressed={picking}
-        className={cn(
-          "flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground",
-          picking && "text-foreground",
-        )}
-        onClick={() => (picking ? stop() : setPicking(true))}
-        title="Select an element to open its source in Review"
-        type="button"
-      >
-        {resolving ? (
-          <Spinner className="size-3" />
-        ) : (
-          <Crosshair className="size-3" />
-        )}
-        {picking ? "Click an element…" : "Select"}
-      </button>
+    <>
+      {bar.barSlot &&
+        createPortal(
+          <div className="relative" ref={rootRef}>
+            <button
+              aria-pressed={picking}
+              className={cn(
+                "flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground",
+                picking && "text-foreground",
+              )}
+              onClick={() => (picking ? stop() : setPicking(true))}
+              title="Select an element to open its source in Review"
+              type="button"
+            >
+              {resolving ? (
+                <Spinner className="size-3" />
+              ) : (
+                <Crosshair className="size-3" />
+              )}
+              {picking ? "Click an element…" : "Select"}
+            </button>
 
-      {error && (
-        <div className="absolute top-full right-0 z-[999] mt-1 w-64 rounded-md border bg-popover px-2 py-1.5 text-xs text-muted-foreground shadow-md">
-          {error}
-        </div>
-      )}
+            {/*
+              Anchored above the button, not below: this sits in the bottom
+              bar, where "below" runs off the bottom of the screen.
+            */}
+            {error && (
+              <div className="absolute bottom-full left-0 z-[999] mb-1 w-64 rounded-md border bg-popover px-2 py-1.5 text-xs text-muted-foreground shadow-md">
+                {error}
+              </div>
+            )}
+          </div>,
+          bar.barSlot,
+        )}
 
       {picking && <HoverBox rect={hoverRect} />}
-    </div>
+    </>
   );
 }
