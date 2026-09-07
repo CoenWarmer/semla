@@ -58,6 +58,11 @@ function optionsFor(
     const plural = decoration.removedCount === 1 ? "" : "s";
     return {
       glyphMarginClassName: CLASS_FOR_KIND["removed-marker"],
+      // Pinned to `Left` so it never shares a lane with the stage/unstage
+      // bracket widget (review-hunk-bracket-widgets.tsx, lane `Right`) —
+      // a pure-removal hunk anchors both to the same line, and Monaco's
+      // glyph margin renders only one occupant per (line, lane).
+      glyphMargin: { position: monaco.editor.GlyphMarginLane.Left },
       glyphMarginHoverMessage: {
         value: `${decoration.removedCount} line${plural} removed here`,
       },

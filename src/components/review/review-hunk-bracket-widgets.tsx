@@ -225,7 +225,14 @@ export class HunkBracketWidgets {
         getDomNode: () => domNode,
         getId: () => `semla-hunk-bracket-${entry.key}`,
         getPosition: () => ({
-          lane: monaco.editor.GlyphMarginLane.Center,
+          // A distinct lane from the removed-marker decoration's `Left`
+          // (see code-editor.tsx's `optionsFor`): both can anchor to the
+          // same line — a pure-removal hunk's widget and its "N lines
+          // removed" glyph collapse to the same anchor line by
+          // construction — and Monaco's glyph margin only ever renders one
+          // occupant per (line, lane). Sharing a lane would have the
+          // widget silently win and the removed-marker glyph vanish.
+          lane: monaco.editor.GlyphMarginLane.Right,
           range: {
             endColumn: 1,
             endLineNumber: entry.startLine,
