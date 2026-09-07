@@ -5,12 +5,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { QueryProvider } from "@/components/query-provider";
 import { PendingPromptProvider } from "@/components/pending-prompt-provider";
 import { HeaderActions } from "@/components/header-actions";
-import { AppConsole } from "@/components/app-console";
+import { BottomBar } from "@/components/bottom-bar";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";
-import { SessionAgentsPanel } from "@/components/session-agents-panel";
-import { SessionBranchesPanel } from "@/components/session-branches-panel";
-import { ElementPicker } from "@/components/element-picker";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -72,21 +69,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                       <div className="flex-1 min-h-0 overflow-y-auto">
                         {children}
                       </div>
-                      {/*
-                        These three source their own session-turn data from the
-                        query cache (session-live-state.ts) via useParams(),
-                        rather than as props from the page — but they still
-                        portal their button and panel into AppConsole's bar
-                        slots, so "Console", "Select", "Branches" and "Agents"
-                        render as one row of buttons sharing one panel area,
-                        not four separately laid-out strips.
-                      */}
-                      <SessionAgentsPanel />
-                      <SessionBranchesPanel />
-                      <ElementPicker />
                       {/* Bottom of the frame, outside the scroll container, so it
                           stays put rather than scrolling away with the page. */}
-                      <AppConsole />
+                      <BottomBar />
                     </main>
                   </SidebarProvider>
                 </BottomPanelProvider>
