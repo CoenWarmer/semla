@@ -20,7 +20,9 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await requireSessionOwner(id);
+    // allowMissing: same reason as the messages route — a new session is
+    // polled before its first prompt creates it.
+    await requireSessionOwner(id, undefined, { allowMissing: true });
     const supabase = await createClient();
 
     return Response.json(await getSessionTurnGraph(supabase, id));

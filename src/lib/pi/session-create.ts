@@ -114,20 +114,6 @@ export async function createSession({
   // session owns it.
   if (sessionExistsOnDisk(id, dir)) return { id, kind: "exists" };
 
-  const { error } = await client
-    .from("sessions")
-    .insert({ id, title, user_id: userId });
-
-  if (error) {
-    // Two requests raced for the same new session — the prompt route creating
-    // one, say, while an explicit create was already in flight. The row exists,
-    // which is all the caller wanted.
-    if (error.code === UNIQUE_VIOLATION) return { id, kind: "exists" };
-
-    console.error("[session-create] Failed to create session:", error);
-    return { kind: "failed", message: error.message };
-  }
-
   // One timestamp for the record and the link it carries, so the session and
   // its first project do not disagree about when they began.
   const createdAt = new Date().toISOString();
@@ -142,14 +128,27 @@ export async function createSession({
       })
     : [];
 
-  // Recorded on disk too, so the session is findable without the database —
-  // and it is what every reader consults first.
+  // Disk is the authoritative record — written first so the session exists
+  // even when the Supabase mirror below fails (e.g., in local mode where the
+  // client carries no JWT and the sessions RLS policy blocks the insert).
   writeSessionMeta(id, { createdAt, projects, title, userId }, dir);
+
+  // Mirror to Supabase for search and cross-device access. Best-effort: the
+  // disk write above already committed the canonical record, so a failure here
+  // is non-fatal. UNIQUE_VIOLATION means another request beat us to the row,
+  // which is fine — the disk record won either way.
+  void client
+    .from("sessions")
+    .insert({ id, title, user_id: userId })
+    .then(({ error }) => {
+      if (error && error.code !== UNIQUE_VIOLATION) {
+        console.error("[session-create] Supabase mirror failed (disk record is canonical):", error);
+      }
+    });
 
   // Not awaited, and skipped when there is nothing to mirror: it replaces a
   // session's links by deleting them first, which for a session created one
-  // line ago can only delete nothing. Best-effort by contract, and the disk
-  // write above has already succeeded.
+  // line ago can only delete nothing. Best-effort by contract.
   if (projects.length > 0) void mirrorSessionProjects(id, projects);
 
   return { id, kind: "created" };

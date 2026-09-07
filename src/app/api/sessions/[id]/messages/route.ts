@@ -13,7 +13,10 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const { user } = await requireSessionOwner(id);
+    // allowMissing: a session created by its first prompt is polled before
+    // it exists — returning 404 here caused the messages query to error
+    // during that window. An empty session simply has no messages to return.
+    const { user } = await requireSessionOwner(id, undefined, { allowMissing: true });
     const supabase = await createClient();
 
     // `?leaf=` names the branch a client is looking at; absent, the session's
