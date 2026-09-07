@@ -190,56 +190,61 @@ div.react-sigma {
 }
 
 /*
- * The stage/unstage button Monaco draws above a hunk — a content widget, so
- * plain DOM rather than a component; see review-hunk-widgets.ts.
+ * The stage/unstage button Monaco draws in the gutter next to a hunk, in
+ * place of the removed-marker's wedge on lines this diff can act on. This is
+ * a real `shadcn/ui` Button in an `IGlyphMarginWidget`'s DOM node (see
+ * `review-hunk-bracket-widgets.tsx`), not a CSS glyph — colouring and the
+ * icon itself are Tailwind classes on that component. What is left here is
+ * the decorative vertical bracket around it: a connecting line and two caps
+ * spanning the hunk's full line range, drawn from borders rather than text
+ * characters, sized precisely enough that Tailwind's arbitrary-value utility
+ * classes would be harder to read than a small dedicated rule.
  *
- * Sized to sit comfortably between two lines of 12.5px code without pushing
- * them apart by much: the widget occupies real space above its anchor line
- * (a content widget is not an overlay), so growing it visibly increases the
- * gap between every hunk and the line before it.
+ * The host node Monaco positions and sizes (`.semla-hunk-bracket-host`) is
+ * taller than one line for a multi-line hunk; `.semla-hunk-bracket` fills it
+ * and centers the button within it both ways, so the button sits in the
+ * middle of the bracket regardless of how many lines it spans.
  */
-.semla-hunk-action-widget {
+.semla-hunk-bracket-host {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.semla-hunk-bracket {
   align-items: center;
-  background-color: var(--popover);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 1px 2px color-mix(in oklch, black 15%, transparent);
   display: flex;
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 10px;
-  gap: 6px;
-  padding: 2px 6px;
-  white-space: nowrap;
+  height: 100%;
+  justify-content: center;
+  position: relative;
+  width: 100%;
 }
 
-.semla-hunk-action-widget-location {
-  color: var(--muted-foreground);
+.semla-hunk-bracket-line {
+  border-left-width: 1px;
+  bottom: 3px;
+  left: 50%;
+  position: absolute;
+  top: 3px;
 }
 
-.semla-hunk-action-widget-added {
-  color: oklch(0.7 0.15 150);
+.semla-hunk-bracket-cap {
+  border-top-width: 1px;
+  left: calc(50% - 3px);
+  position: absolute;
+  width: 6px;
 }
 
-.semla-hunk-action-widget-removed {
-  color: var(--destructive);
+.semla-hunk-bracket-cap-top {
+  top: 3px;
 }
 
-.semla-hunk-action-widget-button {
-  background-color: var(--secondary);
-  border-radius: 3px;
-  color: var(--secondary-foreground);
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 1px 6px;
+.semla-hunk-bracket-cap-bottom {
+  bottom: 3px;
 }
 
-.semla-hunk-action-widget-button:hover:not(:disabled) {
-  background-color: color-mix(in oklch, var(--secondary), var(--foreground) 5%);
-}
-
-.semla-hunk-action-widget-button:disabled {
-  cursor: default;
-  opacity: 0.5;
+.semla-hunk-bracket-button {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 

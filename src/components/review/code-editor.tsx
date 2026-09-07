@@ -31,10 +31,11 @@ import {
 import {
   buildDecorations,
   firstChangedLine,
+  hunkChangedLineRange,
   type Decoration,
 } from "./review-decorations";
 import { matchHunkAction } from "./review-hunk-match";
-import { HunkActionWidgets } from "./review-hunk-widgets";
+import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
 
 const CLASS_FOR_KIND = {
   "added-line": "semla-review-added-line",
@@ -131,7 +132,8 @@ export default function CodeEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef =
     useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
-  const hunkWidgetsRef = useRef<HunkActionWidgets | null>(null);
+  const hunkGlyphsRef = useRef<HunkBracketWidgets | null>(null);
+  const stagingBusyRef = useRef(stagingBusy);
   /**
    * Models by path, so an edit survives looking at another file and coming
    * back. A single model with setValue would be less code and would throw the
@@ -188,7 +190,10 @@ export default function CodeEditor({
 
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
-    hunkWidgetsRef.current = new HunkActionWidgets(editor);
+    hunkGlyphsRef.current = new HunkBracketWidgets(editor, (index, direction) => {
+      if (stagingBusyRef.current) return;
+      onStageHunkRef.current?.([index], direction);
+    });
 
     const changeSubscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
@@ -241,15 +246,19 @@ export default function CodeEditor({
       changeSubscription.dispose();
       explain.dispose();
       visualize.dispose();
-      hunkWidgetsRef.current?.dispose();
+      hunkGlyphsRef.current?.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
       modelsRef.current.clear();
       editorRef.current = null;
       decorationsRef.current = null;
-      hunkWidgetsRef.current = null;
+      hunkGlyphsRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    stagingBusyRef.current = stagingBusy;
+  }, [stagingBusy]);
 
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly });
@@ -306,17 +315,18 @@ export default function CodeEditor({
     );
   }, [hunks, path]);
 
-  // A button above every hunk this diff can stage or unstage on its own —
-  // see review-hunk-widgets.ts for why this is content widgets rather than a
-  // hover, and review-hunk-match.ts for why the action a hunk offers is not
-  // simply its own index.
+  // A button in the gutter of every hunk this diff can stage or unstage on
+  // its own — see review-hunk-bracket-widgets.ts for why this is a real
+  // glyph-margin widget rather than a CSS glyph decoration, and
+  // review-hunk-match.ts for why the action a hunk offers is not simply its
+  // own index.
   useEffect(() => {
     const editor = editorRef.current;
-    const widgets = hunkWidgetsRef.current;
-    if (!editor || !widgets) return;
+    const glyphs = hunkGlyphsRef.current;
+    if (!editor || !glyphs) return;
 
     if (!staging || (!staging.staged && !staging.unstaged)) {
-      widgets.set([], stagingBusy, () => {});
+      glyphs.set([], stagingBusy);
       return;
     }
 
@@ -330,19 +340,20 @@ export default function CodeEditor({
       const action = matchHunkAction(hunk, staging);
       if (!action) return [];
 
+      const range = hunkChangedLineRange(hunk);
+
       return [
         {
           action,
+          endLine: clamp(range.end),
           hunk,
           key: `${hunk.oldStart}-${hunk.newStart}`,
-          line: clamp(hunk.newStart),
+          startLine: clamp(range.start),
         },
       ];
     });
 
-    widgets.set(entries, stagingBusy, (index, direction) => {
-      onStageHunkRef.current?.([index], direction);
-    });
+    glyphs.set(entries, stagingBusy);
   }, [hunks, staging, stagingBusy]);
 
   // Open on the change rather than at the top of the file: a review starts at

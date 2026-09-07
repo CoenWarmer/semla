@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "@/lib/pi/review-diff";
 
-import { buildDecorations, firstChangedLine } from "./review-decorations.ts";
+import {
+  buildDecorations,
+  firstChangedLine,
+  hunkAnchorText,
+  hunkChangedLineRange,
+} from "./review-decorations.ts";
 
 /** Parse real diff text so the hunks under test are the ones git produces. */
 const hunksOf = (diff: string) => parseUnifiedDiff(diff)[0].hunks;
@@ -109,6 +114,39 @@ describe("buildDecorations", () => {
 
   it("has nothing to draw for an empty diff", () => {
     expect(buildDecorations([])).toEqual([]);
+  });
+});
+
+describe("hunkAnchorText", () => {
+  it("returns the trimmed text of the first changed line", () => {
+    expect(hunkAnchorText(REPLACED[0])).toBe("const after = 2;");
+  });
+
+  it("has nothing to show for a hunk of pure removals", () => {
+    expect(hunkAnchorText(REMOVED_AT_END[0])).toBeNull();
+  });
+});
+
+describe("hunkChangedLineRange", () => {
+  it("spans exactly the added lines, not the surrounding context", () => {
+    // REPLACED's added line is line 2; "const keep" (1) and "const tail" (3)
+    // are context and must not stretch the range to cover them.
+    expect(hunkChangedLineRange(REPLACED[0])).toEqual({ end: 2, start: 2 });
+  });
+
+  it("spans every added line for a multi-line addition", () => {
+    expect(hunkChangedLineRange(PURE_ADDITION[0])).toEqual({
+      end: 7,
+      start: 6,
+    });
+  });
+
+  it("collapses to the anchor line for a hunk of pure removals", () => {
+    // Nothing survives to span; the single anchor line is the whole range.
+    expect(hunkChangedLineRange(REMOVED_AT_END[0])).toEqual({
+      end: 1,
+      start: 1,
+    });
   });
 });
 

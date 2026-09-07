@@ -11,7 +11,7 @@
  * boundary is why nothing downstream has to remember which convention it is in.
  */
 
-import type { Hunk } from "@/lib/review-types";
+import type { DiffLine, Hunk } from "@/lib/review-types";
 
 export type DecorationKind =
   /** A line the turn added or rewrote. */
@@ -107,14 +107,87 @@ export function buildDecorations(hunks: readonly Hunk[]): Decoration[] {
   return decorations;
 }
 
+/** The anchor line for a single hunk: the first actually-changed line.
+ *
+ * This is not `hunk.newStart` because `newStart` is the first context line
+ * of the git diff (from the "@@" header), not the first changed line. With
+ * -U3 there can be several context lines before the real change, and the
+ * heading git attaches describes the surrounding region rather than the
+ * position of the change itself.
+ */
+export function hunkAnchorLine(hunk: Hunk): number {
+  const anchor = findAnchorLine(hunk);
+  if (anchor !== null && anchor.newLine !== null) return anchor.newLine;
+  // A hunk of pure removals has no surviving line to anchor to; the hunk's
+  // own start is still a position worth reporting.
+  return hunk.newStart;
+}
+
+/** The line `hunkAnchorLine` reports the number of, shared so callers that
+ * need the line's own content do not have to re-walk the hunk. */
+function findAnchorLine(hunk: Hunk): DiffLine | null {
+  for (const line of hunk.lines) {
+    if (line.kind !== "context" && line.newLine !== null) return line;
+  }
+  return null;
+}
+
+/**
+ * The first and last new-file line numbers a hunk actually changed, for
+ * drawing a gutter marker that spans the change without spilling onto the
+ * context lines `-U3` pads it with.
+ *
+ * Only `added` lines have a `newLine` to span — a `removed` line's content is
+ * gone from the new file, so it contributes no line of its own here, same
+ * reasoning `buildDecorations`'s `removed-marker` case uses. A hunk that is
+ * nothing but removals therefore has no span at all, and collapses to the
+ * single anchor line `hunkAnchorLine` would report for it.
+ */
+export function hunkChangedLineRange(hunk: Hunk): {
+  start: number;
+  end: number;
+} {
+  let start: number | null = null;
+  let end: number | null = null;
+
+  for (const line of hunk.lines) {
+    if (line.kind !== "added" || line.newLine === null) continue;
+    if (start === null || line.newLine < start) start = line.newLine;
+    if (end === null || line.newLine > end) end = line.newLine;
+  }
+
+  if (start === null || end === null) {
+    const anchor = hunkAnchorLine(hunk);
+    return { end: anchor, start: anchor };
+  }
+
+  return { end, start };
+}
+
+/**
+ * The text of the anchor line, for showing what changed rather than git's
+ * own hunk heading. The `@@ ... @@` heading is a heuristic over the
+ * enclosing function or class, computed by git and not always meaningful
+ * (or present) — the anchor line's own content is the change itself, which
+ * is what a tooltip or list entry should lead with.
+ *
+ * Returns null when there is no anchor line (a pure-removals hunk with no
+ * surviving line) or its text is empty once trimmed, so callers can fall
+ * back to the heading in that case.
+ */
+export function hunkAnchorText(hunk: Hunk): string | null {
+  const anchor = findAnchorLine(hunk);
+  if (anchor === null) return null;
+  const text = anchor.text.trim();
+  return text.length > 0 ? text : null;
+}
+
 /** The first line worth scrolling to: where the change starts. */
 export function firstChangedLine(hunks: readonly Hunk[]): number | null {
   for (const hunk of hunks) {
-    for (const line of hunk.lines) {
-      if (line.kind !== "context" && line.newLine !== null) return line.newLine;
-    }
-    // A hunk of pure removals still has a position worth going to.
-    if (hunk.lines.some((line) => line.kind === "removed")) return hunk.newStart;
+    const anchor = hunkAnchorLine(hunk);
+    // Skip hunks that are nothing but context; they have no change to go to.
+    if (hunk.lines.some((line) => line.kind !== "context")) return anchor;
   }
   return null;
 }

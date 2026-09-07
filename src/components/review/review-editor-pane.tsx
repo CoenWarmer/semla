@@ -76,9 +76,9 @@ export function ReviewEditorPane({
   onSave: (content: string, sha: string | undefined) => void;
   /**
    * Stage or unstage hunks of the open file, straight from the editor's own
-   * per-hunk widgets — see review-hunk-widgets.ts. The same callback the
-   * changed-files sidebar's inline hunk list uses; this is a second caller,
-   * not a second implementation.
+   * per-hunk gutter buttons — see review-hunk-bracket-widgets.tsx. The same
+   * callback the changed-files sidebar's inline hunk list uses; this is a
+   * second caller, not a second implementation.
    */
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
   selection: FileSelection;
