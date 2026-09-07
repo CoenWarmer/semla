@@ -43,8 +43,9 @@ export const sessionPendingScrollKey = (sessionId: string) =>
 
 export const useSessionWorkflowSnapshot = (sessionId: string) =>
   useQuery({
+    enabled: !!sessionId,
     queryKey: sessionWorkflowSnapshotKey(sessionId),
-    queryFn: (): WorkflowSnapshot | undefined => undefined,
+    queryFn: (): WorkflowSnapshot | null => null,
     staleTime: Number.POSITIVE_INFINITY,
   });
 
@@ -71,15 +72,17 @@ export const useSessionRunning = (sessionId: string) =>
 
 export const useSessionCodeMap = (sessionId: string) =>
   useQuery({
+    enabled: !!sessionId,
     queryKey: sessionCodeMapKey(sessionId),
-    queryFn: (): CodeMap | undefined => undefined,
+    queryFn: (): CodeMap | null => null,
     staleTime: Number.POSITIVE_INFINITY,
   });
 
 export const useSessionActiveTool = (sessionId: string) =>
   useQuery({
+    enabled: !!sessionId,
     queryKey: sessionActiveToolKey(sessionId),
-    queryFn: (): string | undefined => undefined,
+    queryFn: (): string | null => null,
     staleTime: Number.POSITIVE_INFINITY,
   });
 
@@ -102,8 +105,8 @@ export const sessionWorkflowComputedSnapshotKey = (sessionId: string) =>
 
 export const useSessionWorkflowComputedSnapshot = (sessionId: string) =>
   useQuery({
+    enabled: !!sessionId,
     queryKey: sessionWorkflowComputedSnapshotKey(sessionId),
-    queryFn: (): import("@/types/workflow").WorkflowSnapshot | undefined =>
-      undefined,
+    queryFn: (): WorkflowSnapshot | null => null,
     staleTime: Number.POSITIVE_INFINITY,
   });

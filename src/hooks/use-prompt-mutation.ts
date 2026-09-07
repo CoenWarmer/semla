@@ -371,7 +371,7 @@ export const usePromptMutation = (
       },
       onToolEnd: (event) => {
         setActiveTool(undefined);
-        queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
+        queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
         queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
@@ -444,11 +444,11 @@ export const usePromptMutation = (
       setLiveRounds([]);
       queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setLiveToolCalls([]);
       queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
-      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), undefined);
+      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), null);
       setIsReconnecting(true);
 
       try {
@@ -507,7 +507,7 @@ export const usePromptMutation = (
       } finally {
         setIsReconnecting(false);
         setActiveTool(undefined);
-        queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
+        queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
         setPendingQuestion(null);
         await handOffToTranscript();
       }
@@ -622,11 +622,11 @@ export const usePromptMutation = (
       setLiveRounds([]);
       queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setLiveToolCalls([]);
       queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
-      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), undefined);
+      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), null);
       setPendingQuestion(null);
       await queryClient.cancelQueries({
         queryKey: messagesKey,
@@ -680,7 +680,7 @@ export const usePromptMutation = (
     onSettled: async () => {
       trace("onSettled:start");
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), undefined);
+      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setPendingQuestion(null);
       trace("onSettled:invalidate-begin");
       await handOffToTranscript();
