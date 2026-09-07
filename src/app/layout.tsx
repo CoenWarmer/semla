@@ -59,7 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <BottomPanelProvider>
                   <SidebarProvider className="flex-1 min-h-0">
                     <AppSidebar />
-                    <main className="flex w-full flex-col">
+                    <main className="flex min-w-0 w-full flex-col">
                       {/* Named group: controls that only appear on hover key off
                           the header as a whole, not off whatever sits nearest. */}
                       <header className="group/header flex h-11 shrink-0 items-center gap-1 border-b border-border/40 px-2">

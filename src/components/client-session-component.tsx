@@ -692,7 +692,7 @@ export function ClientSessionComponent({
         onCompactClick={handleCompact}
         toolCalls={toolCalls}
       />
-      <div className="flex min-h-0 flex-1 flex-col gap-0 px-20 pb-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-0 pb-1">
         <AgentTranscriptDrawer
           agentId={selectedAgent?.agentId ?? null}
           onClose={() =>
@@ -730,7 +730,11 @@ export function ClientSessionComponent({
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={55} minSize={20}>
+            <ResizablePanel
+              className="flex min-h-0 flex-col overflow-hidden"
+              defaultSize={55}
+              minSize={20}
+            >
               {conversationColumn}
             </ResizablePanel>
           </ResizablePanelGroup>
