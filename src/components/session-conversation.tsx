@@ -147,6 +147,7 @@ export function SessionConversation({
                       */}
                       <MessageResponse
                         isAnimating={isLiveRoundMessageId(item.message.id)}
+                        sessionId={sessionId}
                       >
                         {item.message.text}
                       </MessageResponse>

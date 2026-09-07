@@ -30,6 +30,7 @@ import {
 } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
 
+import { ClickableFilePathCode } from "./clickable-file-path";
 import {
   MarkdownParagraph,
   STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW,
@@ -332,30 +333,66 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  /**
+   * When present, an inline-code span whose text resolves to a file the
+   * session has an attached project for becomes clickable, opening it in
+   * the Review panel — see `clickable-file-path.tsx`. Omitted entirely for
+   * callers with no session in scope (there are none of those today; kept
+   * optional rather than required so a future non-session render site does
+   * not have to invent one).
+   */
+  sessionId?: string;
+};
 
 const streamdownPlugins: PluginConfig = { cjk, code: code as PluginConfig["code"], math, mermaid };
 
-// Only `p` is replaced; Streamdown spreads its own defaults first and the
-// caller's over them, so every other element keeps its renderer.
-const streamdownComponents = { p: MarkdownParagraph };
+// Only `p` is replaced when there is no session to resolve file paths
+// against; Streamdown spreads its own defaults first and the caller's over
+// them, so every other element keeps its renderer.
+const streamdownComponentsWithoutSession = { p: MarkdownParagraph };
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      components={streamdownComponents}
-      plugins={streamdownPlugins}
-      rehypePlugins={STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW}
-      {...props}
-    />
-  ),
+  ({ className, sessionId, ...props }: MessageResponseProps) => {
+    // Stable across renders for a given sessionId, so Streamdown's own
+    // memoization on `components` identity (see `Block`'s comparator in the
+    // package) still holds — a fresh object literal every render would
+    // defeat it.
+    const streamdownComponents = useMemo(
+      () =>
+        sessionId
+          ? {
+              inlineCode: (
+                inlineCodeProps: Omit<
+                  ComponentProps<typeof ClickableFilePathCode>,
+                  "sessionId"
+                >
+              ) => (
+                <ClickableFilePathCode {...inlineCodeProps} sessionId={sessionId} />
+              ),
+              p: MarkdownParagraph,
+            }
+          : streamdownComponentsWithoutSession,
+      [sessionId]
+    );
+
+    return (
+      <Streamdown
+        className={cn(
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+        components={streamdownComponents}
+        plugins={streamdownPlugins}
+        rehypePlugins={STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW}
+        {...props}
+      />
+    );
+  },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
-    nextProps.isAnimating === prevProps.isAnimating
+    nextProps.isAnimating === prevProps.isAnimating &&
+    prevProps.sessionId === nextProps.sessionId
 );
 
 MessageResponse.displayName = "MessageResponse";
