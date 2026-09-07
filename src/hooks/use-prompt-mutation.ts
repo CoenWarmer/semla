@@ -383,12 +383,21 @@ export const usePromptMutation = (
         setWorkflowSnapshot(snapshot);
         queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
       },
-      onSpans: (incoming) =>
+      onSpans: (incoming) => {
         setSpansById((previous) => {
           const next = new Map(previous);
           for (const span of incoming) next.set(span.spanId, span);
           return next;
-        }),
+        });
+        // Push live spans into the query cache so components that read
+        // sessionSpansKey directly (session-agents-panel) see them too —
+        // without this they only ever see the persisted-on-disk copy.
+        queryClient.setQueryData(
+          sessionSpansKey(sessionId),
+          (prev: RecordedSpan[] | undefined) =>
+            mergeSpans(prev ?? [], new Map(incoming.map((s) => [s.spanId, s]))),
+        );
+      },
       onCodeMap: (map) => {
         setCodeMap(map);
         queryClient.setQueryData(sessionCodeMapKey(sessionId), map);
