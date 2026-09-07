@@ -47,6 +47,12 @@ const CONSOLE_PANEL = "console";
  * The panel keeps a fixed height rather than growing with content — a terminal
  * has no natural size, and one that resized itself as output arrived would
  * push the conversation around while you read it.
+ *
+ * This owns the slots (via `useBottomPanelHost()`) that every other bar
+ * panel portals into through `BottomBarPanel`/`BottomBarButton`
+ * (bottom-bar-panel.tsx) — the host side of that contract, not a consumer of
+ * it, which is why it manages its own resize/expand/keep-mounted behaviour
+ * directly rather than going through either of those.
  */
 export function AppConsole() {
   const {
