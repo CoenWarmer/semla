@@ -9,7 +9,7 @@
  * edits in it.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -108,6 +108,18 @@ export function ReviewEditorPane({
 
   const status = hunks.data?.file.status;
   const unchanged = hunks.data === null;
+
+  // Stable across re-renders that do not change the hunks themselves — a
+  // fresh object here would retrigger CodeEditor's widget-rebuild effect on
+  // every keystroke in the draft, tearing down and recreating every stage
+  // widget while the operator is typing.
+  const staging = useMemo(
+    () =>
+      hunks.data
+        ? { staged: hunks.data.staged, unstaged: hunks.data.unstaged }
+        : null,
+    [hunks.data],
+  );
 
   /**
    * Explain: resolve the function, then ask the agent about it.
@@ -271,11 +283,7 @@ export function ReviewEditorPane({
           reveal={reveal}
           onSave={() => onSave(draft ?? onDisk, content.data?.sha)}
           path={selection.path}
-          staging={
-            hunks.data
-              ? { staged: hunks.data.staged, unstaged: hunks.data.unstaged }
-              : null
-          }
+          staging={staging}
           stagingBusy={busy}
           value={onDisk}
         />
