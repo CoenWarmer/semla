@@ -316,8 +316,12 @@ export class HunkBracketWidgets {
     this.lastVisibleTopLine = visibleTopLine;
 
     for (const state of this.states.values()) {
-      state.root.unmount();
+      const { root } = state;
       this.editor.removeGlyphMarginWidget(state.widget);
+      // Defer unmount: calling it synchronously while React is already
+      // rendering (e.g. during a parent component's re-render) triggers a
+      // React 18 warning. The widget DOM node is gone from Monaco already.
+      setTimeout(() => root.unmount(), 0);
     }
     this.states = new Map();
 
@@ -382,8 +386,9 @@ export class HunkBracketWidgets {
     this.scrollSubscription.dispose();
     this.layoutSubscription.dispose();
     for (const state of this.states.values()) {
-      state.root.unmount();
+      const { root } = state;
       this.editor.removeGlyphMarginWidget(state.widget);
+      setTimeout(() => root.unmount(), 0);
     }
     this.states.clear();
   }
