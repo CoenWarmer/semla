@@ -46,6 +46,12 @@ import {
 /**
  * How a row stands out.
  *
+ * The status letter only, with no tint behind the row. A background on every
+ * changed file competes with the one background that has to stay legible —
+ * the selected row's — and in a tree opened on the turn's changes most of the
+ * visible rows are changed files, so the tint stops distinguishing anything
+ * and reads as the tree having a selection it does not have.
+ *
  * Files only. `FileTreeFolder` renders its row inside the element it exposes,
  * so a class on a folder would tint its whole subtree rather than its own
  * line — the initial expansion is what surfaces a changed directory instead.
@@ -59,7 +65,6 @@ function markFor(index: ChangeIndex, entry: FileEntry): FileTreeMark | null {
   return {
     badge: STATUS_LABEL[status],
     badgeClassName: TONE_CLASS[STATUS_TONE[status]],
-    className: "bg-accent/30",
   };
 }
 
