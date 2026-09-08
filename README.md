@@ -13,6 +13,7 @@ The core design principle is that every agent run should be inspectable, repeata
 - **Timeline view** — Workflows are rendered as an OTel-style trace waterfall: phases, agents, and conversation events on a shared time axis. Conversation messages appear as inline event markers that scroll the chat when clicked.
 - **Workspace project browser** — Semla scans the configured workspace root for git repositories and shows them on the home page as cards (branch, staleness). Clicking a card opens a new session pre-titled with the project name. A searchable combobox in the sidebar offers quick access to any repo.
 - **Code map** — Ask about a piece of code and Semla resolves the call graph around it with the TypeScript type checker, then draws it in a panel: callers above callees, each node showing the `file:line` it was resolved to. Every edge is a call the checker traced to a declaration. The map states its own limits — where depth or the node cap stopped it, and every call it could not resolve — so it is never mistaken for the complete picture. TypeScript and JavaScript.
+- **Cost traceability** — See the cost of turns, sessions, and the total lifecycle of the harness in the UI.
 - **Agent transcript viewer** — Drill into any subagent's full transcript, including its prompt rendered as markdown.
 - **Model selection** — Models are loaded dynamically from the pi runtime; the active model is stored per user in user settings.
 - **System prompt editor** — Override the orchestrator's system prompt from the settings page without a redeploy.
