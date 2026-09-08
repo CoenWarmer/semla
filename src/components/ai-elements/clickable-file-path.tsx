@@ -17,12 +17,12 @@
  */
 
 import type { ComponentProps, ReactNode } from "react";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
-import { useElementTarget } from "@/components/element-target-provider";
-import { useSessionProjects } from "@/hooks/use-session-projects";
-import { parseFilePathToken, resolveFileToken } from "@/lib/file-path-token";
+import { parseFilePathToken } from "@/lib/file-path-token";
 import { cn } from "@/lib/utils";
+
+import { useFileTargetClick } from "./use-file-target-click";
 
 type StreamdownInlineCodeProps = {
   children?: ReactNode;
@@ -46,28 +46,7 @@ export function ClickableFilePathCode({
   const text = childrenToText(children);
   const token = useMemo(() => (text ? parseFilePathToken(text) : null), [text]);
 
-  const projectsQuery = useSessionProjects(sessionId);
-  const projectSlugs = useMemo(
-    () => (projectsQuery.data ?? []).map((link) => link.path),
-    [projectsQuery.data],
-  );
-
-  const target = useMemo(
-    () => (token ? resolveFileToken(token, projectSlugs) : null),
-    [token, projectSlugs],
-  );
-
-  const elementTarget = useElementTarget();
-
-  const handleClick = useCallback(() => {
-    if (!target) return;
-    elementTarget.request({
-      line: target.line ?? 1,
-      path: target.path,
-      precision: "exact",
-      project: target.project,
-    });
-  }, [elementTarget, target]);
+  const { handleClick, target } = useFileTargetClick(sessionId, token);
 
   if (!target) {
     return (

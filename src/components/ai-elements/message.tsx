@@ -31,6 +31,7 @@ import {
 import { Streamdown, type PluginConfig } from "streamdown";
 
 import { ClickableFilePathCode } from "./clickable-file-path";
+import { FileLinkSpan } from "./file-link-span";
 import {
   MarkdownParagraph,
   STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW,
@@ -371,6 +372,19 @@ export const MessageResponse = memo(
                 <ClickableFilePathCode {...inlineCodeProps} sessionId={sessionId} />
               ),
               p: MarkdownParagraph,
+              // `rehypeFileLinks` rewrites a markdown link to a repo-relative
+              // source file into a `<span data-file-link="file-link" ...>`
+              // ahead of `harden` (see `markdown-paragraph.tsx`); this is
+              // the renderer for that span. Every other `<span>` a message
+              // contains (there aren't any today) would also route here,
+              // which is why `FileLinkSpan` renders a plain, unstyled
+              // `<span>` back out when `data-file-link` is absent.
+              span: (
+                spanProps: Omit<
+                  ComponentProps<typeof FileLinkSpan>,
+                  "sessionId"
+                >
+              ) => <FileLinkSpan {...spanProps} sessionId={sessionId} />,
             }
           : streamdownComponentsWithoutSession,
       [sessionId]

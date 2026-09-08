@@ -1,30 +1,49 @@
 /**
- * Two things worth pinning down about STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW:
+ * Three things worth pinning down about STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW:
  * that it genuinely omits rehype-raw (the thing that makes literal `<p>` text
  * in a message parse as a real, nested `<p>` element and hydration-mismatch),
- * and that the omission actually changes how Streamdown renders such text —
- * proven against the real package, not just against this module's own logic.
+ * that it still runs the same `sanitize` and `harden` plugin functions
+ * Streamdown ships (only `sanitize`'s schema is widened, not swapped for a
+ * different implementation), and that the omission actually changes how
+ * Streamdown renders such text — proven against the real package, not just
+ * against this module's own logic.
  */
 import { describe, expect, it } from "vitest";
 import { defaultRehypePlugins } from "streamdown";
 
+import { rehypeFileLinks } from "@/lib/markdown/rehype-file-links";
+
 import { STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW } from "./markdown-paragraph.tsx";
 
 describe("STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW", () => {
-  it("omits exactly the raw plugin", () => {
-    expect(STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW).toHaveLength(
-      Object.keys(defaultRehypePlugins).length - 1,
-    );
-    expect(STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW).not.toContain(
-      defaultRehypePlugins.raw,
-    );
+  it("omits the raw plugin and inserts rehypeFileLinks ahead of harden", () => {
+    expect(STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW).toHaveLength(3);
+
+    const [sanitizeEntry, fileLinksEntry, hardenEntry] =
+      STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW;
+
+    expect(fileLinksEntry).toBe(rehypeFileLinks);
+    expect(hardenEntry).toBe(defaultRehypePlugins.harden);
+
+    // sanitize is still the same plugin function, wrapped with a widened
+    // schema object rather than replaced.
+    const [defaultSanitizePlugin] = defaultRehypePlugins.sanitize as [
+      unknown,
+      unknown,
+    ];
+    expect(Array.isArray(sanitizeEntry)).toBe(true);
+    expect((sanitizeEntry as unknown[])[0]).toBe(defaultSanitizePlugin);
   });
 
-  it("keeps every other default plugin", () => {
-    for (const [name, plugin] of Object.entries(defaultRehypePlugins)) {
-      if (name === "raw") continue;
-      expect(STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW).toContain(plugin);
-    }
+  it("widens the sanitize schema to allow rehypeFileLinks' span attributes", () => {
+    const [, sanitizeSchema] = STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW[0] as [
+      unknown,
+      { attributes?: Record<string, unknown[]> },
+    ];
+
+    expect(sanitizeSchema.attributes?.span).toEqual(
+      expect.arrayContaining(["dataFileLink", "dataFilePath", "dataFileLine"]),
+    );
   });
 
   it("changes how Streamdown treats literal HTML in text, proven against the real package", async () => {

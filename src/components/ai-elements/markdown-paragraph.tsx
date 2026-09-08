@@ -1,5 +1,11 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import { defaultRehypePlugins } from "streamdown";
+import type { Pluggable, PluggableList, Plugin } from "unified";
+
+import {
+  FILE_LINK_SPAN_ATTRIBUTES,
+  rehypeFileLinks,
+} from "@/lib/markdown/rehype-file-links";
 
 /**
  * A markdown paragraph that does not put a `<div>` inside a `<p>`.
@@ -103,8 +109,37 @@ export const MarkdownParagraph = ({
  * `harden` still run — they matter for markdown-generated elements (links,
  * images) regardless of raw HTML, so nothing else is lost.
  */
-export const STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW = Object.entries(
-  defaultRehypePlugins,
-)
-  .filter(([name]) => name !== "raw")
-  .map(([, plugin]) => plugin);
+/**
+ * `defaultRehypePlugins.sanitize` is a `[plugin, schema]` tuple. Its schema
+ * strips any attribute it does not list per tag, `span` included — so the
+ * `data-file-link`/`data-file-path`/`data-file-line` attributes
+ * `rehypeFileLinks` emits (see that module's docblock) need adding to the
+ * schema's `span` allowlist, or sanitize (which still runs, right after
+ * this) throws them away before `harden` ever sees the element it would
+ * otherwise have blocked.
+ */
+const [sanitizePlugin, sanitizeSchema] = defaultRehypePlugins.sanitize as [
+  Plugin,
+  { attributes?: Record<string, unknown[]> },
+];
+const sanitizeSchemaWithFileLinks = {
+  ...sanitizeSchema,
+  attributes: {
+    ...sanitizeSchema.attributes,
+    span: [...(sanitizeSchema.attributes?.span ?? []), ...FILE_LINK_SPAN_ATTRIBUTES],
+  },
+};
+
+/**
+ * Every default Streamdown rehype plugin except `raw`, with `rehypeFileLinks`
+ * inserted between `sanitize` (schema widened for its output, above) and
+ * `harden` — after sanitize so the elements it emits are not themselves
+ * treated as attacker-controlled HTML, before harden so a repo-relative
+ * source file link never reaches harden's own `<a>`/`<img>` checks as an
+ * anchor at all. See that module's docblock for why order matters here.
+ */
+export const STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW: PluggableList = [
+  [sanitizePlugin, sanitizeSchemaWithFileLinks],
+  rehypeFileLinks,
+  defaultRehypePlugins.harden as Pluggable,
+];
