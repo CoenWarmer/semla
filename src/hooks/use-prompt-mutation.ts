@@ -482,9 +482,10 @@ export const usePromptMutation = (
           );
           setListRunning(false);
 
-          await queryClient.invalidateQueries({
-            queryKey: messagesKey,
-          });
+          // No invalidateQueries here: this branch's `return` still runs the
+          // `finally` below, whose handOffToTranscript() already invalidates
+          // messagesKey once. Invalidating here too doubled it — two
+          // /messages GETs for one dead-stream reading.
           return;
         }
 

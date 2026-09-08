@@ -101,6 +101,19 @@ export function ClientSessionComponent({
     workflowSnapshot,
   } = usePromptMutation(sessionId, isRunning, viewingLeafId);
 
+  /**
+   * `useMutation` (TanStack Query) returns a fresh result object on every
+   * render — it is read off `useSyncExternalStore` — so `promptMutation`
+   * above is never the same object twice even when nothing about the
+   * mutation changed. `mutateAsync` itself is bound once by the underlying
+   * `MutationObserver` and stays stable for the mutation's lifetime, so
+   * callbacks that only need to *call* the mutation depend on this instead
+   * of on `promptMutation`, which otherwise gives every callback that closes
+   * over it (and every prop built from one of those callbacks, e.g.
+   * `ReviewPanel`'s `onExplain`) a new identity on every render.
+   */
+  const promptMutateAsync = promptMutation.mutateAsync;
+
   const { consume: consumePendingPrompt } = usePendingPrompt();
 
   /**
@@ -392,12 +405,22 @@ export function ClientSessionComponent({
 
   // Closing is also dismissing. Without recording the state as seen, the next
   // refetch would find it unreviewed and open the panel straight back up.
+  //
+  // Depends on `dismissReview.mutate` rather than the `dismissReview` object
+  // itself: `useMutation` returns a fresh result object on every render (it
+  // is read off `useSyncExternalStore`), but the `mutate` function bound to
+  // it is stable for the mutation's whole lifetime — the MutationObserver
+  // binds it once in its constructor. Depending on the object would give
+  // this callback a new identity every render regardless of `useCallback`,
+  // which in turn gave `ReviewPanel`'s `onClose` prop a new identity every
+  // render — the exact case `React.memo` cannot help with.
+  const dismissReviewMutate = dismissReview.mutate;
   const closeReview = useCallback(() => {
     setReviewManuallyOpened(false);
     elementTarget.clear();
     const seen = reviewQuery.data?.fingerprint;
-    if (seen) dismissReview.mutate(seen);
-  }, [dismissReview, elementTarget, reviewQuery.data?.fingerprint]);
+    if (seen) dismissReviewMutate(seen);
+  }, [dismissReviewMutate, elementTarget, reviewQuery.data?.fingerprint]);
   const agentSelection = useSessionAgentSelection(sessionId);
   const selectedAgent = agentSelection.data;
 
@@ -461,14 +484,14 @@ export function ClientSessionComponent({
       // either way — it is the URL's concern, not this submission's.
       const leafId = forkedAt ?? viewingLeafId ?? undefined;
       setForkedAt(null);
-      await promptMutation.mutateAsync({
+      await promptMutateAsync({
         leafId,
         model,
         text: message.text,
         tools,
       });
     },
-    [forkedAt, promptMutation, viewingLeafId],
+    [forkedAt, promptMutateAsync, viewingLeafId],
   );
 
   /**
@@ -537,16 +560,14 @@ export function ClientSessionComponent({
       // branch it is showing (see usePromptMutation's messagesKey) — the
       // reply would land somewhere this screen never refetches, which reads
       // as "nothing happened" rather than as an answer that went missing.
-      promptMutation
-        .mutateAsync({
-          leafId: viewingLeafId ?? undefined,
-          model: selection.model,
-          text: prompt,
-          tools: selection.tools,
-        })
-        .catch(() => {});
+      promptMutateAsync({
+        leafId: viewingLeafId ?? undefined,
+        model: selection.model,
+        text: prompt,
+        tools: selection.tools,
+      }).catch(() => {});
     },
-    [promptMutation, viewingLeafId],
+    [promptMutateAsync, viewingLeafId],
   );
 
   const handleEditPrompt = useCallback(
@@ -564,16 +585,14 @@ export function ClientSessionComponent({
       setForkedAt(null);
 
       // Rejections surface through the mutation's onError as streamError.
-      promptMutation
-        .mutateAsync({
-          editEntryId: entryId,
-          model: selection.model,
-          text,
-          tools: selection.tools,
-        })
-        .catch(() => {});
+      promptMutateAsync({
+        editEntryId: entryId,
+        model: selection.model,
+        text,
+        tools: selection.tools,
+      }).catch(() => {});
     },
-    [promptMutation],
+    [promptMutateAsync],
   );
 
   const pendingPromptRef = useRef<{
