@@ -92,12 +92,18 @@ export function generateCodebaseAuditWorkflow(scope: string, checks: string[]): 
   const displayScope = scope.length > 60 ? `${scope.slice(0, 60)}…` : scope;
   const checkAgents = checks
     .map((check, i) => {
-      const label =
+      // The runtime now hard-throws on a duplicate agent() label (see
+      // workflow.ts's agent() binding), so the index suffix can't stay
+      // conditional on an empty slug — two different `checks[]` entries that
+      // slugify to the same non-empty string (e.g. "Security" and
+      // "security!!!") would otherwise collide.
+      const slug =
         check
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-+|-+$/g, "")
-          .slice(0, 20) || `check-${i + 1}`;
+          .slice(0, 20) || "check";
+      const label = `${slug}-${i + 1}`;
       return `  () => agent(${JSON.stringify(`Audit ${check} across: `)} + scope, { label: ${JSON.stringify(label)} }),`;
     })
     .join("\n");

@@ -83,12 +83,17 @@ return { total: findings.length, survivors, report }`;
 export function generateMultiPerspectiveWorkflow(topic: string, perspectives: string[]): string {
   const perspectiveAgents = perspectives
     .map((p, i) => {
-      const label =
+      // The runtime now hard-throws on a duplicate agent() label (see
+      // workflow.ts's agent() binding), so the index suffix can't stay
+      // conditional on an empty slug — two different `perspectives[]` entries
+      // that slugify to the same non-empty string would otherwise collide.
+      const slug =
         p
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-+|-+$/g, "")
-          .slice(0, 20) || `perspective-${i + 1}`;
+          .slice(0, 20) || "perspective";
+      const label = `${slug}-${i + 1}`;
       return `  () => agent(${JSON.stringify(`Analyze from ${p} perspective: `)} + topic, { label: ${JSON.stringify(label)} }),`;
     })
     .join("\n");

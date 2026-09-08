@@ -163,6 +163,17 @@ export interface SharedRuntime {
    * after the run has been marked complete and torn down. See the drain below.
    */
   inFlight: Set<Promise<unknown>>;
+  /**
+   * Every non-blank label an agent() call has claimed anywhere in this run
+   * tree (this level's script and any nested workflow()'s, since a nested
+   * workflow() shares this SharedRuntime instance) — see the agent() binding's
+   * label-uniqueness check below. Shared, not per-nesting-level, for the same
+   * reason agentCount is: a label collision between a parent agent and a
+   * nested workflow()'s agent is just as real a collision (they're both
+   * onAgentStart/onAgentEnd events in the same run) as one between two
+   * siblings at the same level.
+   */
+  usedLabels: Set<string>;
 }
 
 /** Runtime instrumentation for workflow boundaries, quality helpers, and control attempts. */
@@ -555,6 +566,7 @@ export async function runWorkflow<T = unknown>(
     nestedCallSeq: 0,
     runFatalController: new AbortController(),
     inFlight: new Set<Promise<unknown>>(),
+    usedLabels: new Set<string>(),
   };
   const limiter = shared.limiter;
   // This frame created `shared` fresh (rather than inheriting a parent
@@ -707,6 +719,30 @@ export async function runWorkflow<T = unknown>(
     }
 
     const requestedLabel = agentOptions.label?.trim();
+
+    // Every agent() call must carry a caller-supplied, run-unique label. This
+    // mirrors parallel()/pipeline()'s own TypeError-on-bad-argument contract
+    // (thrown synchronously, before any of the call's real work starts) and
+    // makes the requirement the workflow tool description already tells
+    // authors to follow ("every agent() call needs a short unique label")
+    // an enforced one instead of an unchecked convention. `shared.agentCount`
+    // (not yet incremented at this point) numbers this as the Nth agent()
+    // call attempted in this run, matching what the author sees in logs.
+    if (!requestedLabel) {
+      throw new WorkflowError(
+        `agent() call #${shared.agentCount + 1} is missing a label; add opts.label (e.g. { label: 'researcher' })`,
+        WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+        { recoverable: false },
+      );
+    }
+    if (shared.usedLabels.has(requestedLabel)) {
+      throw new WorkflowError(
+        `agent() label "${requestedLabel}" is already used in this run; give each agent() call a unique label`,
+        WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
+        { recoverable: false },
+      );
+    }
+    shared.usedLabels.add(requestedLabel);
 
     // Resolve a named agentType to its bound definition (tools/model/prompt).
     const agentDef = resolveAgentType(agentOptions.agentType, agentRegistry);
@@ -1413,15 +1449,25 @@ export async function runWorkflow<T = unknown>(
     },
     required: ["complete"],
   };
+  // Call-site counter, not shared.agentCount: this must vary by INVOCATION of
+  // completenessCheck itself (so a script calling it more than once per run,
+  // e.g. once per loopUntilDry round, gets a distinct label each time), not
+  // by however many other agent() calls happened to run first.
+  let completenessCheckCallCount = 0;
   const completenessCheck = async (taskArgs: unknown, results: unknown) => {
     options.onRuntimeEvent?.({
       type: "quality",
       stage: "start",
       helper: "completenessCheck",
     });
+    completenessCheckCallCount++;
+    const label =
+      completenessCheckCallCount === 1
+        ? "completeness critic"
+        : `completeness critic ${completenessCheckCallCount}`;
     const verdict = await agent(
       `Given the task and the results gathered so far, list what is still MISSING (modalities not covered, claims unverified, gaps). Be specific and concise.\n\nTask:\n${JSON.stringify(taskArgs)}\n\nResults so far:\n${JSON.stringify(results).slice(0, 4000)}`,
-      { label: "completeness critic", schema: COMPLETENESS_SCHEMA },
+      { label, schema: COMPLETENESS_SCHEMA },
     );
     options.onRuntimeEvent?.({
       type: "quality",
