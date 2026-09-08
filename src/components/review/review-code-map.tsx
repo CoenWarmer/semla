@@ -16,10 +16,10 @@
 
 import { XIcon } from "lucide-react";
 
-import { CodeMapPanel } from "@/components/code-map-panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { CodeMapAtLine } from "@/hooks/use-review";
+import { CodeMapPanel } from "../conversation/code-map-panel";
 
 export function ReviewCodeMap({
   onClose,

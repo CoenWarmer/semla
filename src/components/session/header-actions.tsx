@@ -2,26 +2,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { useGlobalCost } from "@/hooks/use-global-cost";
 import {
   fetchSingleSessionStatus,
   sessionStatusKey,
 } from "@/lib/session-status";
-import { FolderOpenIcon } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import { GitStatusBadge } from "./git-status-badge";
-import { SessionFilesPanel } from "./session-files-panel";
-import { SessionProjectPicker } from "./session-project-picker";
-import { SessionProjectsPanel } from "./session-projects-panel";
-import { TokenUsage } from "./token-usage";
+import { GitStatusBadge } from "../git-status-badge";
+import { SessionProjectPicker } from "../session-project-picker";
+import { TokenUsage } from "../token-usage";
 
 /**
  * One badge per project the session relates to, each named and showing what its
@@ -97,51 +86,15 @@ function GlobalCostBadge() {
 export function HeaderActions() {
   const params = useParams();
   const sessionId = typeof params?.id === "string" ? params.id : null;
-  const [filesOpen, setFilesOpen] = useState(false);
 
   return (
     <>
-      {sessionId && (
-        <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
-          <FolderOpenIcon />
-          Files
-        </Button>
-      )}
-
       <div className="flex grow items-center justify-center gap-3 px-4">
         {sessionId && <SessionProjectBadges sessionId={sessionId} />}
       </div>
       <div className="flex">
         <GlobalCostBadge />
       </div>
-
-      {sessionId && (
-        <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
-          {/*
-            Left, alongside the sidebar: files are navigation, and the same
-            side as every other way of getting somewhere in the app. Opening
-            over the conversation on the right also covered the thing you were
-            reading the file in aid of.
-          */}
-          <SheetContent
-            className="flex flex-col gap-0 p-0 sm:max-w-2xl"
-            side="left"
-          >
-            <SheetHeader className="shrink-0 border-b px-6 py-4">
-              <SheetTitle>Files</SheetTitle>
-            </SheetHeader>
-            {/*
-              Above the tree rather than beside it: the projects decide what the
-              tree is rooted on, so reading them second would be reading the
-              answer before the question.
-            */}
-            <SessionProjectsPanel sessionId={sessionId} />
-            <div className="min-h-0 flex-1">
-              <SessionFilesPanel sessionId={sessionId} />
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
     </>
   );
 }

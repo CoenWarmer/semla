@@ -39,10 +39,15 @@ export function SessionContextWindowBar({
 
   // Nothing measured yet — an empty strip beats four zero-width segments.
   if (
-    systemPromptFraction + userFraction + assistantFraction + toolResultFraction ===
+    systemPromptFraction +
+      userFraction +
+      assistantFraction +
+      toolResultFraction ===
     0
   ) {
-    return <div className="h-2 w-full shrink-0 border-b border-border/40 bg-muted" />;
+    return (
+      <div className="h-2 w-full shrink-0 border-b border-border/40 bg-muted" />
+    );
   }
 
   // Unknown is not full. Without a window size there is nothing to be a
@@ -64,9 +69,7 @@ export function SessionContextWindowBar({
   const canCompact = onCompactClick != null && !sessionRunning;
 
   const formatCost = (cost: number) =>
-    cost < 0.01
-      ? `<$0.01`
-      : `$${cost.toFixed(cost >= 1 ? 2 : 3)}`;
+    cost < 0.01 ? `<$0.01` : `$${cost.toFixed(cost >= 1 ? 2 : 3)}`;
 
   return (
     <div className="group relative shrink-0">

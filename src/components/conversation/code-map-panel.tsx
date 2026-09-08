@@ -14,15 +14,18 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useNodesState, type Edge as FlowEdge, type Node as FlowNode } from "@xyflow/react";
+import {
+  useNodesState,
+  type Edge as FlowEdge,
+  type Node as FlowNode,
+} from "@xyflow/react";
 import { AlertTriangleIcon, HelpCircleIcon } from "lucide-react";
-
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
-import { CodeMapNode } from "@/components/code-map-node";
 import { Spinner } from "@/components/ui/spinner";
 import { layoutCodeMap, type CodeMapLayout } from "@/lib/code-map/layout";
 import type { CodeMap } from "@/lib/code-map/types";
+import { CodeMapNode } from "./code-map-node";
 
 const nodeTypes = { codeMapNode: CodeMapNode };
 
@@ -78,7 +81,8 @@ export function CodeMapPanel({ map }: { map?: CodeMap }) {
   }, [map]);
 
   const flow = useMemo(
-    () => (map && resolved?.map === map ? toFlow(resolved.layout, map.root) : null),
+    () =>
+      map && resolved?.map === map ? toFlow(resolved.layout, map.root) : null,
     [map, resolved],
   );
 
@@ -151,7 +155,10 @@ export function CodeMapPanel({ map }: { map?: CodeMap }) {
             Real calls whose target the type checker could not determine:
           </p>
           {map.unresolved.slice(0, 30).map((item, index) => (
-            <div className="tabular-nums" key={`${item.name}-${item.line}-${index}`}>
+            <div
+              className="tabular-nums"
+              key={`${item.name}-${item.line}-${index}`}
+            >
               <code>{item.name}</code> at L{item.line} —{" "}
               <span className="text-muted-foreground">{item.reason}</span>
             </div>

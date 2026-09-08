@@ -12,7 +12,7 @@ import {
 /**
  * The bottom bar, shared between the frame and the page inside it.
  *
- * `AppConsole` sits in the root layout, outside `{children}`, because the bar
+ * `BottomBar` sits in the root layout, outside `{children}`, because the bar
  * must stay put rather than scroll away with the page. The shell owns which
  * panel is open and its height, so the terminal and any other bottom panels
  * share the same drag-to-resize behaviour.
@@ -143,7 +143,9 @@ type ProviderValue = BottomPanelContext & {
 export function useBottomPanelHost(): ProviderValue {
   const value = useContext(Context);
   if (!value) {
-    throw new Error("useBottomPanelHost must be used inside a BottomPanelProvider.");
+    throw new Error(
+      "useBottomPanelHost must be used inside a BottomPanelProvider.",
+    );
   }
   return value as ProviderValue;
 }

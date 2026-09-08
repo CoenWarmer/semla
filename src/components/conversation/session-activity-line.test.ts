@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activityLabel } from "@/components/session-activity-line";
+import { activityLabel } from "@/components/conversation/session-activity-line";
 
 describe("activityLabel", () => {
   it("names the tool being run", () => {

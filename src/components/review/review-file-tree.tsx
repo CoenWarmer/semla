@@ -17,14 +17,13 @@
 import { SearchIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useFileSearch } from "@/components/session-file-search";
 import { useContentSearch, type ContentMatch } from "@/hooks/use-review";
 import {
   SessionFileTree,
   useSessionFiles,
   type FileEntry,
   type FileTreeMark,
-} from "@/components/session-file-tree";
+} from "@/components/review/session-file-tree";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -42,6 +41,7 @@ import {
   indexChanges,
   type ChangeIndex,
 } from "./review-tree-marks";
+import { useFileSearch } from "@/hooks/use-file-search";
 
 /**
  * How a row stands out.
@@ -121,7 +121,12 @@ function FilterResults({
     );
   }
 
-  if (paths.length === 0 && content.length === 0 && !pending && !contentPending) {
+  if (
+    paths.length === 0 &&
+    content.length === 0 &&
+    !pending &&
+    !contentPending
+  ) {
     return (
       <p className="px-2 py-2 text-[11px] text-muted-foreground">
         Nothing matches, in a name or in a file.

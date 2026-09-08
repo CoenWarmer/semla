@@ -11,9 +11,9 @@ import {
 } from "@/components/ui/sidebar";
 import { BookOpen, Settings } from "lucide-react";
 import Link from "next/link";
-import { NewSessionButton } from "./new-session-button";
-import { ProjectsCombobox } from "./projects-combobox";
-import { SessionsList } from "./sessions-list";
+import { NewSessionButton } from "./session/new-session-button";
+import { ProjectsCombobox } from "./sidebar/projects-combobox";
+import { SessionsList } from "./sidebar/sessions-list";
 
 export function AppSidebar() {
   return (
@@ -37,10 +37,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<Link href="/wiki" />}
-              tooltip="Wiki"
-            >
+            <SidebarMenuButton render={<Link href="/wiki" />} tooltip="Wiki">
               <BookOpen />
               <span>Wiki</span>
             </SidebarMenuButton>

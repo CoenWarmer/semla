@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 
 import { useCallback, useEffect, useState } from "react";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { GoalEditor } from "@/components/goal-editor";
+import { GoalEditor } from "@/components/session/goal-editor";
 import { usePendingPrompt } from "@/components/pending-prompt-provider";
 import {
   PromptEditor,
   type PromptEditorModel,
-} from "@/components/prompt-editor";
+} from "@/components/conversation/prompt-editor";
 
 export function NewSessionClient({
   defaultTools,

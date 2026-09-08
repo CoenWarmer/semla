@@ -29,9 +29,12 @@ import {
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
 import { Spinner } from "@/components/ui/spinner";
-import { TurnGraphNode } from "@/components/turn-graph-node";
+import { TurnGraphNode } from "@/components/session-panels/turn-graph-node";
 import { useTurnGraph } from "@/hooks/use-turn-graph";
-import { layoutTurnGraph, type TurnGraphLayout } from "@/lib/session-turn-layout";
+import {
+  layoutTurnGraph,
+  type TurnGraphLayout,
+} from "@/lib/session-turn-layout";
 import type { TurnGraph } from "@/lib/pi/session-turn-graph";
 
 const nodeTypes = { turnGraphNode: TurnGraphNode };
@@ -115,7 +118,10 @@ function CenterOnNewOrClickedNode({
   return null;
 }
 
-function toFlow(layout: TurnGraphLayout): { edges: FlowEdge[]; nodes: FlowNode[] } {
+function toFlow(layout: TurnGraphLayout): {
+  edges: FlowEdge[];
+  nodes: FlowNode[];
+} {
   return {
     edges: layout.edges.map((edge) => ({
       id: `${edge.from}->${edge.to}`,
@@ -228,7 +234,8 @@ export function TurnGraphCanvas({
   if (graph && graph.nodes.length <= 1) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground text-xs">
-        No branches yet — every turn so far has continued from the one before it.
+        No branches yet — every turn so far has continued from the one before
+        it.
       </div>
     );
   }

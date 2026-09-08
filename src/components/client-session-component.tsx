@@ -24,10 +24,10 @@ import {
   useSessionPendingScroll,
 } from "@/lib/session-live-state";
 import type { WorkflowSnapshot } from "@/types/workflow";
-import { AgentTranscriptDrawer } from "./agent-transcript-drawer";
+import { AgentTranscriptDrawer } from "./session/agent-transcript-drawer";
 import { useElementTarget } from "./element-target-provider";
 import { ReviewPanel } from "./review/review-panel";
-import { SessionConversation } from "./session-conversation";
+import { SessionConversation } from "./conversation/session-conversation";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -44,9 +44,9 @@ const WikiMiniGraph = dynamic(
 
 import { isSessionMissing } from "@/lib/prompt-failure";
 
-import type { PromptEditorModel } from "./prompt-editor";
+import type { PromptEditorModel } from "./conversation/prompt-editor";
 import { latestInputTokens } from "@/lib/context-composition";
-import { SessionTopbar } from "./session-topbar";
+import { SessionTopbar } from "./session/session-topbar";
 import {
   usePendingPrompt,
   type PendingPrompt,

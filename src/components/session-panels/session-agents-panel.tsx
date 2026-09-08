@@ -15,11 +15,15 @@ import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
 import { sessionSpansKey, fetchSessionSpans } from "@/lib/session-spans";
 import { mergeToolCalls } from "@/lib/live-tool-calls";
-import { sessionStatusKey, fetchSingleSessionStatus } from "@/lib/session-status";
+import {
+  sessionStatusKey,
+  fetchSingleSessionStatus,
+} from "@/lib/session-status";
 import { countSessionAgents } from "@/lib/session-agent-counts";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 
-const EMPTY_TOOL_CALLS: import("@/hooks/use-session-messages").SessionToolCall[] = [];
+const EMPTY_TOOL_CALLS: import("@/hooks/use-session-messages").SessionToolCall[] =
+  [];
 
 /** This panel's id in the shared bottom bar. See bottom-panel.tsx. */
 const AGENTS_PANEL = "agents";
@@ -99,10 +103,7 @@ export function SessionAgentsPanel() {
     [queryClient, sessionId],
   );
 
-  if (
-    !sessionId ||
-    (counts.running === 0 && counts.idle === 0 && !snapshot)
-  ) {
+  if (!sessionId || (counts.running === 0 && counts.idle === 0 && !snapshot)) {
     return null;
   }
 

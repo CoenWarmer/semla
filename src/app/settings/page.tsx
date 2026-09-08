@@ -11,9 +11,9 @@ import {
   getPiRuntimeConfig,
 } from "@/lib/pi/runtime-config";
 import { getInstalledPiPackages } from "@/lib/pi/packages";
-import { ExtensionHealthCard } from "@/components/extension-health-card";
-import { SystemPromptEditor } from "@/components/system-prompt-editor";
-import { ModelTierEditor } from "@/components/model-tier-editor";
+import { ExtensionHealthCard } from "@/components/settings/extension-health-card";
+import { SystemPromptEditor } from "@/components/settings/system-prompt-editor";
+import { ModelTierEditor } from "@/components/settings/model-tier-editor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +60,8 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>System prompt</CardTitle>
           <CardDescription>
-            Instructions appended to pi&apos;s system prompt on every session. Defines how the orchestrator agent should approach tasks.
+            Instructions appended to pi&apos;s system prompt on every session.
+            Defines how the orchestrator agent should approach tasks.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -72,7 +73,8 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>Workflow model tiers</CardTitle>
           <CardDescription>
-            Route workflow subagents to small/medium/big models. Stored in a committed repo file (.pi/workflows/model-tiers.json).
+            Route workflow subagents to small/medium/big models. Stored in a
+            committed repo file (.pi/workflows/model-tiers.json).
           </CardDescription>
         </CardHeader>
         <CardContent>

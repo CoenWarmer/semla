@@ -1,7 +1,7 @@
 /**
  * Live turn state mirrored into the query cache.
  *
- * The bottom bar (AppConsole, in layout.tsx, outside {children}) and the
+ * The bottom bar (BottomBar, in layout.tsx, outside {children}) and the
  * panels that read session turn state used to portal into DOM slots the bar
  * owned, because that state lived in local useState inside usePromptMutation —
  * a sibling subtree, unreachable by a plain hook. Mirroring the live state into

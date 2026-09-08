@@ -3,7 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useContextInspections } from "@/hooks/use-context-check";
-import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
+import type {
+  SessionMessage,
+  SessionToolCall,
+} from "@/hooks/use-session-messages";
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
 import {
@@ -15,10 +18,10 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { GoalEditor } from "./goal-editor";
-import { CodeMapPanel } from "./code-map-panel";
-import { InspectorPanel } from "./inspector-panel";
+import { CodeMapPanel } from "../conversation/code-map-panel";
+import { InspectorPanel } from "../session-panels/inspector-panel";
 
-import { TokenUsage } from "./token-usage";
+import { TokenUsage } from "../token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
 
 interface SessionTopbarProps {
@@ -109,7 +112,13 @@ export function SessionTopbar({
         systemPromptChars: systemPromptChars ?? 0,
         toolCalls: toolCalls ?? [],
       }),
-    [cacheReadRatePerMToken, contextWindow, messages, systemPromptChars, toolCalls],
+    [
+      cacheReadRatePerMToken,
+      contextWindow,
+      messages,
+      systemPromptChars,
+      toolCalls,
+    ],
   );
 
   function togglePanel(mode: PanelMode) {
@@ -121,7 +130,7 @@ export function SessionTopbar({
       {/* Title bar */}
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/40 px-6">
         {/* Left: session title */}
-        <h1 className="w-40 shrink-0 truncate text-sm font-medium text-foreground">
+        <h1 className="max-w-300 truncate text-sm font-medium text-foreground">
           {title ?? "Untitled session"}
         </h1>
 

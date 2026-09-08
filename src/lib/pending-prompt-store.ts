@@ -1,4 +1,4 @@
-import type { PromptEditorModel } from "@/components/prompt-editor";
+import type { PromptEditorModel } from "@/components/conversation/prompt-editor";
 
 /** The first prompt of a session, handed from /sessions/new to /sessions/[id]. */
 export type PendingPrompt = {

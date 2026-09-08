@@ -171,11 +171,11 @@ polish, and it has to survive the operator typing (§5).
 
 **Offsets.** `left: 20px`, `right: 20px`, `top: 40px` as specified. The bottom
 was not specified and is a judgement call: the overlay stops above the console
-bar rather than covering it. `AppConsole` is rendered in the root layout
+bar rather than covering it. `BottomBar` is rendered in the root layout
 outside `{children}` (`src/app/layout.tsx:72`) precisely so it stays put, and
 it hosts the agent timeline and terminal — covering it would hide controls
 while the operator is reviewing the output of the run those controls describe.
-`BAR_HEIGHT` is `h-6` (`src/components/app-console.tsx:35`), so `bottom: 24px`
+`CONSOLE_BAR_HEIGHT` is `24` (`src/components/bottom-panel.tsx`), so `bottom: 24px`
 when collapsed. Read it from the bottom-panel context rather than hard-coding,
 so an expanded panel does not end up underneath the overlay.
 

@@ -144,12 +144,12 @@ describe("consumers of session status", () => {
     readFileSync(join(process.cwd(), file), "utf8");
 
   // Wants every session: the sidebar surfaces ones the server render missed.
-  const listConsumers = ["src/components/sessions-list-client.tsx"];
+  const listConsumers = ["src/components/sidebar/sessions-list-client.tsx"];
 
   // Wants one session, already named in the URL.
   const singleConsumers = [
     "src/hooks/use-prompt-mutation.ts",
-    "src/components/header-actions.tsx",
+    "src/components/session/header-actions.tsx",
   ];
 
   it.each(listConsumers)("%s queries the list through its shared fetcher", (file) => {

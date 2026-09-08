@@ -35,10 +35,7 @@ import type {
 } from "react-otel-trace-waterfall";
 import { numberAttr, stringAttr } from "react-otel-trace-waterfall";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
-import {
-  recordedSpansToOtelSpans,
-  timelineSource,
-} from "@/lib/recorded-spans";
+import { recordedSpansToOtelSpans, timelineSource } from "@/lib/recorded-spans";
 import { workflowSnapshotToSpans } from "@/lib/workflow-spans";
 import type { WorkflowRun } from "@/hooks/use-workflow-runs";
 import { useNodesState, useReactFlow } from "@xyflow/react";

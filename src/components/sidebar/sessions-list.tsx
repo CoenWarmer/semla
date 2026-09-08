@@ -1,9 +1,9 @@
-import { SessionsListClient } from "@/components/sessions-list-client";
 import { requireUser } from "@/lib/api-helpers";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { sessionUsageTotals } from "@/lib/pi/session-usage-totals";
 import { listSessionMeta } from "@/lib/pi/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
+import { SessionsListClient } from "./sessions-list-client";
 
 export async function SessionsList() {
   // Through the shared helper, not a bare auth.getUser(): bound to loopback
@@ -12,17 +12,18 @@ export async function SessionsList() {
   // and in Postgres. Every other route already reads the user this way.
   const { supabase, user } = await requireUser();
 
+  // Disk records answer first, so the list survives a database outage. Rows
+  // that only Postgres knows about — sessions created before the records
+  // existed — are folded in behind them.
+  const onDisk = listSessionMeta().filter((meta) => meta.userId === user.id);
+  const seen = new Set(onDisk.map((meta) => meta.id));
+
   const { data: dbRows, error } = await supabase
     .from("sessions")
     .select("id, created_at, title, is_running")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  // Disk records answer first, so the list survives a database outage. Rows
-  // that only Postgres knows about — sessions created before the records
-  // existed — are folded in behind them.
-  const onDisk = listSessionMeta().filter((meta) => meta.userId === user.id);
-  const seen = new Set(onDisk.map((meta) => meta.id));
   const sessions = [
     ...onDisk.map((meta) => ({
       created_at: meta.createdAt,
@@ -62,5 +63,7 @@ export async function SessionsList() {
 
   // Handed down rather than sent with every project of every status poll: it is
   // one value for the whole machine, and this component is already on the server.
-  return <SessionsListClient sessions={rows} workspaceRoot={PI_WORKSPACE_ROOT} />;
+  return (
+    <SessionsListClient sessions={rows} workspaceRoot={PI_WORKSPACE_ROOT} />
+  );
 }

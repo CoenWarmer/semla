@@ -4,7 +4,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { QueryProvider } from "@/components/query-provider";
 import { PendingPromptProvider } from "@/components/pending-prompt-provider";
-import { HeaderActions } from "@/components/header-actions";
+import { HeaderActions } from "@/components/session/header-actions";
 import { BottomBar } from "@/components/bottom-bar";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";

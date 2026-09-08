@@ -4,7 +4,7 @@ import { startTransition, useOptimistic, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ItemGroup } from "@/components/ui/item";
-import { SessionItem } from "@/components/session-item";
+import { SessionItem } from "@/components/sidebar/session-item";
 import { formatSessionDate } from "@/lib/session-date";
 import {
   fetchSessionStatus,
@@ -33,9 +33,10 @@ export function mergeDiscoveredSessions(
   // layout that persists across navigation — so once the transition ends the
   // deleted row comes back from a list that has not been re-rendered, and the
   // poll would re-add it besides. Only a full page load cleared it.
-  const kept = removed.size === 0
-    ? rendered
-    : rendered.filter((session) => !removed.has(session.id));
+  const kept =
+    removed.size === 0
+      ? rendered
+      : rendered.filter((session) => !removed.has(session.id));
 
   const known = new Set(kept.map((session) => session.id));
   const discovered = status
@@ -128,7 +129,9 @@ export function SessionsListClient({
 
       let deletedOnServer = true;
       try {
-        const response = await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+        const response = await fetch(`/api/sessions/${id}`, {
+          method: "DELETE",
+        });
         deletedOnServer = response.ok;
         if (!response.ok) {
           console.error(`[sessions] delete failed: ${response.status}`);

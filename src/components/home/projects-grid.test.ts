@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { newSessionHref } from "@/components/projects-grid";
+import { newSessionHref } from "@/components/home/projects-grid";
 
 describe("newSessionHref", () => {
   it("points at a session that does not exist yet, carrying the project", () => {

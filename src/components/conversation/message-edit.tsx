@@ -26,8 +26,8 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import type { SessionMessage } from "@/hooks/use-session-messages";
-import { CopyMessageButton } from "@/components/message-copy";
-import { ForkMessageButton } from "@/components/message-fork";
+import { CopyMessageButton } from "@/components/conversation/message-copy";
+import { ForkMessageButton } from "@/components/conversation/message-fork";
 import { cn } from "@/lib/utils";
 
 interface EditableUserMessageProps {

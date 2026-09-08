@@ -4,8 +4,8 @@
  * and a synthetic fixture would not exercise the property-access tag name
  * case or a real tsconfig's module resolution.
  *
- * `session-topbar.tsx:218` renders `<InspectorPanel .../>`, and
- * `inspector-panel.tsx:86` is where `InspectorPanel` is declared. Both line
+ * `session/session-topbar.tsx:244` renders `<InspectorPanel .../>`, and
+ * `session-panels/inspector-panel.tsx:86` is where `InspectorPanel` is declared. Both line
  * numbers are asserted, so an edit to either file that moves them is meant to
  * break this test — the same contract call-graph-fixture.ts documents for its
  * own line numbers.
@@ -16,14 +16,14 @@ import { describe, expect, it } from "vitest";
 
 import { resolveJsxComponent, resolveJsxComponentChain } from "./jsx-component.ts";
 
-const TOPBAR = join(process.cwd(), "src/components/session-topbar.tsx");
+const TOPBAR = join(process.cwd(), "src/components/session/session-topbar.tsx");
 
 describe("resolveJsxComponent", () => {
   it("resolves a component name to its declaration", () => {
     expect(
       resolveJsxComponent({ componentName: "InspectorPanel", file: TOPBAR }),
     ).toMatchObject({
-      file: "src/components/inspector-panel.tsx",
+      file: "src/components/session-panels/inspector-panel.tsx",
       line: 86,
     });
   });
@@ -68,7 +68,7 @@ describe("resolveJsxComponentChain", () => {
         file: PAGE,
       }),
     ).toMatchObject({
-      file: "src/components/inspector-panel.tsx",
+      file: "src/components/session-panels/inspector-panel.tsx",
       line: 86,
     });
   });
@@ -80,7 +80,7 @@ describe("resolveJsxComponentChain", () => {
         file: PAGE,
       }),
     ).toMatchObject({
-      file: "src/components/session-topbar.tsx",
+      file: "src/components/session/session-topbar.tsx",
     });
   });
 
@@ -116,6 +116,6 @@ describe("resolveJsxComponentChain", () => {
         chain: ["ClientSessionComponent", "SessionTopbar", "InspectorPanel"],
         file: PAGE,
       }),
-    ).toMatchObject({ file: "src/components/inspector-panel.tsx", line: 86 });
+    ).toMatchObject({ file: "src/components/session-panels/inspector-panel.tsx", line: 86 });
   });
 });

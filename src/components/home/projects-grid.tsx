@@ -23,7 +23,10 @@ import {
 
 type SortKey = "staleness" | "name-asc" | "name-desc";
 
-function sortProjects(projects: WorkspaceProject[], sort: SortKey): WorkspaceProject[] {
+function sortProjects(
+  projects: WorkspaceProject[],
+  sort: SortKey,
+): WorkspaceProject[] {
   return [...projects].sort((a, b) => {
     if (sort === "name-asc") return a.name.localeCompare(b.name);
     if (sort === "name-desc") return b.name.localeCompare(a.name);
@@ -61,7 +64,9 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
 
   const query = filter.trim().toLowerCase();
   const visible = sortProjects(
-    query ? projects.filter((p) => p.name.toLowerCase().includes(query)) : projects,
+    query
+      ? projects.filter((p) => p.name.toLowerCase().includes(query))
+      : projects,
     sort,
   );
 
@@ -90,7 +95,9 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
       </div>
 
       {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects match &ldquo;{filter}&rdquo;.</p>
+        <p className="text-sm text-muted-foreground">
+          No projects match &ldquo;{filter}&rdquo;.
+        </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((project) => (
@@ -109,7 +116,9 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
                 className="absolute inset-0 rounded-[inherit]"
                 href={newSessionHref(project.name)}
               >
-                <span className="sr-only">Start a session in {project.name}</span>
+                <span className="sr-only">
+                  Start a session in {project.name}
+                </span>
               </Link>
               <CardHeader className="pointer-events-none relative">
                 <CardTitle>{project.name}</CardTitle>
@@ -123,7 +132,7 @@ export function ProjectsGrid({ projects }: { projects: WorkspaceProject[] }) {
                     that follow from that. */}
                 <span className="pointer-events-auto">
                   <GitStatusBadge
-                    className="-mx-1"
+                    className="-mx-1 max-w-45 truncate"
                     target={{ kind: "project", path: project.path }}
                   />
                 </span>

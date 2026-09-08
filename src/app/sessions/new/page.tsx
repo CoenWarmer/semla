@@ -1,5 +1,5 @@
 import { getPiRuntimeConfig } from "@/lib/pi/runtime-config";
-import { NewSessionClient } from "@/components/new-session-client";
+import { NewSessionClient } from "@/components/session/new-session-client";
 
 /**
  * A session that does not exist yet.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isOnSessionPage } from "@/components/sessions-list-client";
+import { isOnSessionPage } from "@/components/sidebar/sessions-list-client";
 
 const ID = "08dfc25e-9742-48fd-8f20-6784a3ea228c";
 
