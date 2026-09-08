@@ -220,6 +220,18 @@ const AGENT_OPTIONS: OptionShape = {
     option("retries", "number", true, "run retry count", [
       "finite values are floored and clamped to 0..3",
     ]),
+    option("compaction", "boolean", true, "inherited session/settings default", [
+      "overrides pi's own auto-compaction for this agent's session only",
+    ]),
+    option(
+      "onContextExhausted",
+      '"throw" | "partial"',
+      true,
+      '"throw"',
+      [
+        "\"partial\" resolves with a required complete:false marker instead of throwing AGENT_CONTEXT_EXHAUSTED",
+      ],
+    ),
   ],
 };
 const CHECKPOINT_OPTIONS: OptionShape = {
@@ -374,6 +386,9 @@ const capabilities: readonly CapabilityDescriptor[] = [
       "an explicit model, agentType model, tier, or phase model that resolves to an unavailable model throws MODEL_NOT_FOUND naming the source (e.g. the tier and what it resolved to) instead of falling back",
       "only the implicit default medium tier (no explicit model, tier, agentType, or phase model requested) degrades to the session default when unavailable, logging a one-time run-visible warning instead of throwing",
       "worktree isolation is best-effort; failure logs that isolation was ignored and continues without an isolated working directory",
+      "a subagent that runs out of context throws AGENT_CONTEXT_EXHAUSTED (nonrecoverable) unless onContextExhausted is \"partial\"",
+      "onContextExhausted: \"partial\" resolves with { complete: false, reason: \"context_exhausted\", text } instead of throwing",
+      "compaction overrides pi's own auto-compaction for this agent's session only; omitted leaves the inherited default unchanged",
     ],
     evidence: [
       "tests/workflow-runtime.test.ts",

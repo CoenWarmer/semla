@@ -55,6 +55,18 @@ export const WorkflowErrorCode = {
    * so retrying the same spec would fail identically every time.
    */
   MODEL_NOT_FOUND: "MODEL_NOT_FOUND",
+  /**
+   * The subagent ran out of context: pi's own compact-and-retry overflow
+   * recovery (docs/plans/subagent-context-pressure.md §2.2) already ran once
+   * for this session and still didn't fit. `recoverable` is false for the
+   * same reason PROVIDER_USAGE_LIMIT is above: retrying walks straight back
+   * into the same wall pi's own recovery attempt already hit, so a retry
+   * would either fail identically or (worse) silently succeed with less —
+   * looking like a normal run that simply produced a shorter answer. A
+   * workflow author who wants a partial result instead of this throw can opt
+   * in per agent() call via `{ onContextExhausted: "partial" }` (agent.ts).
+   */
+  AGENT_CONTEXT_EXHAUSTED: "AGENT_CONTEXT_EXHAUSTED",
   /** Agent execution failed. */
   AGENT_EXECUTION_ERROR: "AGENT_EXECUTION_ERROR",
   /** Run state persistence failed. */

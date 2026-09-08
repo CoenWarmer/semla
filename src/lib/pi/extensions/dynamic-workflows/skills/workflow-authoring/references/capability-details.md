@@ -22,6 +22,8 @@ Every exact fact below is projected from the installed extension's capability co
 - `agentType`: string (optional; must come from provided context; dynamic reference: agent-types)
 - `timeoutMs`: number | null (optional; default: run timeout; null disables)
 - `retries`: number (optional; default: run retry count; finite values are floored and clamped to 0..3)
+- `compaction`: boolean (optional; default: inherited session/settings default; overrides pi's own auto-compaction for this agent's session only)
+- `onContextExhausted`: "throw" | "partial" (optional; default: "throw"; "partial" resolves with a required complete:false marker instead of throwing AGENT_CONTEXT_EXHAUSTED)
 - Constraint: recoverable failures return null after retries; nonrecoverable failures throw
 - Constraint: schema noncompliance after bounded structured-output repair is nonrecoverable and bypasses agent retries
 - Constraint: per-agent retries override invocation retries; retries are floored and clamped to 0..3
@@ -30,6 +32,9 @@ Every exact fact below is projected from the installed extension's capability co
 - Constraint: an explicit model, agentType model, tier, or phase model that resolves to an unavailable model throws MODEL_NOT_FOUND naming the source (e.g. the tier and what it resolved to) instead of falling back
 - Constraint: only the implicit default medium tier (no explicit model, tier, agentType, or phase model requested) degrades to the session default when unavailable, logging a one-time run-visible warning instead of throwing
 - Constraint: worktree isolation is best-effort; failure logs that isolation was ignored and continues without an isolated working directory
+- Constraint: a subagent that runs out of context throws AGENT_CONTEXT_EXHAUSTED (nonrecoverable) unless onContextExhausted is "partial"
+- Constraint: onContextExhausted: "partial" resolves with { complete: false, reason: "context_exhausted", text } instead of throwing
+- Constraint: compaction overrides pi's own auto-compaction for this agent's session only; omitted leaves the inherited default unchanged
 
 <a id="parallel"></a>
 ## parallel

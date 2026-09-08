@@ -136,6 +136,58 @@ export function throwIfProviderLimit(
   );
 }
 
+/**
+ * True when pi's own overflow recovery (docs/plans/subagent-context-pressure.md
+ * §2.2) ran and failed — i.e. a compaction_end event whose `errorMessage` is set
+ * for an "overflow" reason. pi never throws this itself (it just returns `false`
+ * from `_checkCompaction` and lets the turn's stopReason stand), so this is the
+ * one place that failure becomes observable to the workflow layer, matching how
+ * throwIfProviderLimit is the one place a buried provider-limit message becomes
+ * observable.
+ */
+function hasFailedOverflowRecovery(signals: AgentContextSignals): boolean {
+  return signals.events.some(
+    (event) => event.reason === "overflow" && event.errorMessage !== undefined,
+  );
+}
+
+/**
+ * True when the subagent's own captured signals say it ran out of context:
+ * either pi's overflow-recovery compact-and-retry already ran once for this
+ * session and still failed (hasFailedOverflowRecovery), or the terminal
+ * assistant message stopped at "length" — the SDK's own signal (see
+ * pi-ai's isRecoverableLength/isContextOverflow) that the model's output was
+ * cut short by a limit, not a normal stop. Exported so a caller assembling
+ * the partial-result opt-in (agent()'s onContextExhausted: "partial") can
+ * reuse the exact same test rather than re-deriving it.
+ */
+export function isContextExhausted(signals: AgentContextSignals): boolean {
+  return signals.stopReason === "length" || hasFailedOverflowRecovery(signals);
+}
+
+/**
+ * If the subagent's captured context-pressure signals (agent-context-signals.ts,
+ * fed by the same session.subscribe(...) stream throwIfProviderLimit's caller
+ * already reads for stopReason) say the subagent ran out of context, throw a
+ * non-recoverable AGENT_CONTEXT_EXHAUSTED WorkflowError. Lives next to
+ * throwIfProviderLimit deliberately — both read terminal session metadata to
+ * turn a condition the SDK itself never throws into a workflow-visible failure
+ * (docs/plans/subagent-context-pressure.md §6). recoverable:false: retrying
+ * walks straight back into the same wall pi's own overflow recovery already hit
+ * once, per errors.ts's AGENT_CONTEXT_EXHAUSTED doc comment.
+ */
+export function throwIfContextExhausted(
+  signals: AgentContextSignals,
+  label?: string,
+): void {
+  if (!isContextExhausted(signals)) return;
+  throw new WorkflowError(
+    "Subagent ran out of context (compaction and retry could not recover)",
+    WorkflowErrorCode.AGENT_CONTEXT_EXHAUSTED,
+    { recoverable: false, agentLabel: label },
+  );
+}
+
 /** Minimal session surface resolveStructuredOutput needs (real session or a test double). */
 export interface StructuredSession {
   prompt(text: string): Promise<void>;
@@ -551,10 +603,64 @@ export interface AgentRunOptions<
    * omitted.
    */
   modelRegistry?: ModelRegistry;
+  /**
+   * Opt this single subagent's session into or out of pi's own auto-compaction
+   * (docs/plans/subagent-context-pressure.md §7). Applied as an in-memory
+   * settings override on the fresh SettingsManager this run builds — it never
+   * calls SettingsManager.setCompactionEnabled/save(), so it can't persist to
+   * this run's (or any other subagent's) settings.json and can't race a
+   * concurrent sibling agent() call. Omitted (the default): unchanged from
+   * today — the subagent inherits whatever compaction setting the real
+   * SettingsManager resolves from disk (§2.1's DEFAULT_COMPACTION_SETTINGS
+   * unless the user customized it). `false` is the one case §7 makes the case
+   * for: a long, irreducibly serial task (e.g. a build-fix loop) where
+   * dropping history is provably not lossy — keep it an explicit opt-in, not a
+   * default.
+   */
+  compaction?: boolean;
+  /**
+   * What run() does when the captured context signals (agent-context-signals.ts)
+   * say this subagent ran out of context — pi's own overflow-recovery
+   * compact-and-retry already ran once and still failed, or the terminal turn's
+   * stopReason was "length" (docs/plans/subagent-context-pressure.md §6).
+   * "throw" (the default): run() throws AGENT_CONTEXT_EXHAUSTED
+   * (recoverable:false — see errors.ts). "partial": run() instead RESOLVES with
+   * a {@link PartialAgentResult} — whatever assistant text this subagent
+   * produced, plus `complete: false`, a REQUIRED field (not an optional flag)
+   * so a caller that forgets to check it gets a type error or an obviously
+   * shaped value instead of silently treating a cut-off answer as a normal
+   * result. The orchestrator (the workflow script), not this subagent, decides
+   * what to do with a partial — re-decompose, widen the budget, or accept it.
+   */
+  onContextExhausted?: "throw" | "partial";
 }
 
-export type AgentRunResult<TSchemaDef extends TSchema | undefined> =
-  TSchemaDef extends TSchema ? Static<TSchemaDef> : string;
+/**
+ * The opt-in alternative to AGENT_CONTEXT_EXHAUSTED (see `onContextExhausted:
+ * "partial"` above). `complete` is REQUIRED and always `false` on this type —
+ * deliberately not an optional `incomplete?: true` — so this value can never
+ * be mistaken for a complete plain-string/schema result: a caller that reads
+ * `.complete` gets `false` here and `true`-or-absent nowhere else, and a
+ * caller that doesn't check it at all still receives a shape (`{ complete,
+ * reason, text }`) that is never a bare string or the schema's own shape.
+ */
+export interface PartialAgentResult {
+  /** Always false. The required marker — see this type's doc comment. */
+  complete: false;
+  /** Why run() couldn't finish. Only one reason exists today. */
+  reason: "context_exhausted";
+  /** Best-effort assistant text produced before context ran out. May be empty. */
+  text: string;
+}
+
+export type AgentRunResult<
+  TSchemaDef extends TSchema | undefined,
+  TOnContextExhausted extends "throw" | "partial" = "throw",
+> = TOnContextExhausted extends "partial"
+  ? (TSchemaDef extends TSchema ? Static<TSchemaDef> : string) | PartialAgentResult
+  : TSchemaDef extends TSchema
+    ? Static<TSchemaDef>
+    : string;
 
 /**
  * Orchestration tools ALWAYS denied to workflow subagents. The `workflow` and
@@ -789,10 +895,15 @@ export class WorkflowAgent {
     unlinkSync(probePath);
   }
 
-  async run<TSchemaDef extends TSchema | undefined = undefined>(
+  async run<
+    TSchemaDef extends TSchema | undefined = undefined,
+    TOnContextExhausted extends "throw" | "partial" = "throw",
+  >(
     prompt: string,
-    options: AgentRunOptions<TSchemaDef> = {},
-  ): Promise<AgentRunResult<TSchemaDef>> {
+    options: AgentRunOptions<TSchemaDef> & {
+      onContextExhausted?: TOnContextExhausted;
+    } = {},
+  ): Promise<AgentRunResult<TSchemaDef, TOnContextExhausted>> {
     const capture: StructuredOutputCapture<any> = {
       called: false,
       value: undefined,
@@ -924,15 +1035,29 @@ export class WorkflowAgent {
     // group under the project's session dir instead of scattering across
     // temporary worktree paths.
     const sessionManager = this.createSessionManager();
+    // Use real SettingsManager to inherit user's default provider/model settings.
+    // SettingsManager.inMemory() doesn't load ~/.pi/settings.json, so subagents
+    // would fall back to the first available model (e.g. openai-codex) which may
+    // not have valid auth, causing silent empty responses.
+    const settingsManager = SettingsManager.create(this.cwd, agentDir);
+    // Per-agent compaction opt-in/out (docs/plans/subagent-context-pressure.md
+    // §7 / AgentRunOptions.compaction). applyOverrides merges into this
+    // SettingsManager's already-resolved settings snapshot in memory and never
+    // calls save() — unlike setCompactionEnabled/setAutoCompactionEnabled, it
+    // cannot write to this run's settings.json (or race a concurrent sibling
+    // agent() call's own fresh SettingsManager instance, since each run() call
+    // builds its own). Omitted: no override, so getCompactionEnabled() falls
+    // through to whatever §2.1's real settings resolve to — unchanged default.
+    if (options.compaction !== undefined) {
+      settingsManager.applyOverrides({
+        compaction: { enabled: options.compaction },
+      });
+    }
     const { session } = await createAgentSession({
       cwd: runCwd,
       agentDir,
       sessionManager,
-      // Use real SettingsManager to inherit user's default provider/model settings.
-      // SettingsManager.inMemory() doesn't load ~/.pi/settings.json, so subagents
-      // would fall back to the first available model (e.g. openai-codex) which may
-      // not have valid auth, causing silent empty responses.
-      settingsManager: SettingsManager.create(this.cwd, agentDir),
+      settingsManager,
       customTools,
       // Shared per-run loader with no host extensions (#109) — see
       // getSharedResourceLoader. An injected resourceLoader (tests / embedders)
@@ -1029,6 +1154,31 @@ export class WorkflowAgent {
       // (schema path) or a silent empty-output null (non-schema path).
       throwIfProviderLimit(session.messages, options.label);
 
+      // Same idea as throwIfProviderLimit above, for a different terminal condition
+      // the SDK never throws: run out of context. Record the terminal stopReason
+      // into contextSignals now (not just in the finally block below) so this
+      // check — and the same contextSignals.stopReason a caller reads via
+      // onContextSignals — see the same value. See §6 of
+      // docs/plans/subagent-context-pressure.md and this file's
+      // throwIfContextExhausted/isContextExhausted.
+      recordStopReason(
+        contextSignals,
+        lastAssistantError(session.messages)?.stopReason,
+      );
+      if (isContextExhausted(contextSignals)) {
+        if (options.onContextExhausted === "partial") {
+          const partialText = options.schema
+            ? this.lastAssistantText(session.messages)
+            : this.finalAssistantText(session.messages);
+          return {
+            complete: false,
+            reason: "context_exhausted",
+            text: partialText,
+          } as AgentRunResult<TSchemaDef, TOnContextExhausted>;
+        }
+        throwIfContextExhausted(contextSignals, options.label);
+      }
+
       if (options.schema) {
         return (await resolveStructuredOutput(
           session,
@@ -1036,7 +1186,7 @@ export class WorkflowAgent {
           options.schema,
           options,
           (m) => this.lastAssistantText(m),
-        )) as AgentRunResult<TSchemaDef>;
+        )) as AgentRunResult<TSchemaDef, TOnContextExhausted>;
       }
 
       // Unstructured result: require assistant text AFTER the last tool result.
@@ -1054,7 +1204,7 @@ export class WorkflowAgent {
           },
         );
       }
-      return text as AgentRunResult<TSchemaDef>;
+      return text as AgentRunResult<TSchemaDef, TOnContextExhausted>;
     } finally {
       removeAbortListener?.();
       removeHistoryListener?.();

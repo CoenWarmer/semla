@@ -33,6 +33,15 @@ export interface CompactionEvent {
   willRetry?: boolean;
   tokensBefore?: number;
   estimatedTokensAfter?: number;
+  /**
+   * Only set on a compaction_end that itself failed (pi's own errorMessage,
+   * verbatim) — e.g. "Context overflow recovery failed after one
+   * compact-and-retry attempt." (docs/plans/subagent-context-pressure.md
+   * §2.2). Absent on every successful compaction. This is what
+   * agent.ts's context-exhaustion detector (next to throwIfProviderLimit)
+   * reads to tell a genuine ceiling apart from an ordinary compaction.
+   */
+  errorMessage?: string;
 }
 
 /**
@@ -73,6 +82,7 @@ export interface CompactionEventLike {
   reason?: string;
   willRetry?: boolean;
   result?: { tokensBefore?: number; estimatedTokensAfter?: number };
+  errorMessage?: string;
 }
 
 const KNOWN_REASONS: ReadonlySet<CompactionReason> = new Set([
@@ -110,6 +120,7 @@ export function recordCompactionSignal(
     entry.willRetry = event.willRetry;
     entry.tokensBefore = event.result?.tokensBefore;
     entry.estimatedTokensAfter = event.result?.estimatedTokensAfter;
+    entry.errorMessage = event.errorMessage;
     if (signals.events.length === 0) signals.events.push(entry);
   }
 }

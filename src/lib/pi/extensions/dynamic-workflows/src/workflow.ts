@@ -4,7 +4,7 @@ import vm from "node:vm";
 import type { Node } from "acorn";
 import { parse } from "acorn";
 import type { TSchema } from "typebox";
-import type { AgentUsage } from "./agent.ts";
+import type { AgentUsage, PartialAgentResult } from "./agent.ts";
 import {
   type AgentRunOptions,
   WorkflowAgent,
@@ -383,6 +383,26 @@ export interface AgentOptions<
   timeoutMs?: number | null;
   /** Retry attempts after a recoverable failure for this specific agent. */
   retries?: number;
+  /**
+   * Opt this single agent() call's subagent session into or out of pi's own
+   * auto-compaction (docs/plans/subagent-context-pressure.md §7). Omitted (the
+   * default): unchanged from today — the subagent inherits whatever
+   * compaction setting is configured (on by default). `false` is the narrow
+   * case §7 makes: a long, irreducibly serial task where dropping history is
+   * provably not lossy (e.g. a build-fix loop where only the current error
+   * matters). See AgentRunOptions.compaction (agent.ts) for the mechanism.
+   */
+  compaction?: boolean;
+  /**
+   * What this agent() call does when it runs out of context (§6 of the same
+   * plan). "throw" (the default): the call throws AGENT_CONTEXT_EXHAUSTED,
+   * which — like every other nonrecoverable failure — propagates out of
+   * agent() rather than becoming `null`. "partial": the call instead resolves
+   * with a {@link PartialAgentResult}: whatever text the subagent produced,
+   * plus a REQUIRED `complete: false` marker that can't be mistaken for a
+   * normal result. The orchestrating script decides what to do with it.
+   */
+  onContextExhausted?: "throw" | "partial";
 }
 
 /** Options for a human checkpoint() — a deterministic, journaled, replayable gate. */
@@ -900,6 +920,8 @@ export async function runWorkflow<T = unknown>(
               model: modelSpec,
               tier: agentOptions.tier,
               modelRegistry: options.modelRegistry,
+              compaction: agentOptions.compaction,
+              onContextExhausted: agentOptions.onContextExhausted,
               toolNames: agentDef?.tools,
               disallowedToolNames: agentDef?.disallowedTools,
               // Per-agent store tools track this agent's writes by the
@@ -1717,10 +1739,63 @@ export function parseWorkflowScript(script: string): {
   const meta = evaluateLiteral(declarator.init, "meta");
   validateMeta(meta);
 
+  // Only the meta export (checked above, as the first statement) is allowed.
+  // A script that adds a SECOND top-level export -- most commonly someone
+  // pulling `phases` (or another meta field) back out into its own `export
+  // const phases = [...]` -- must fail with a message that names the fix,
+  // not a generic parse error, since the correct move (nest it inside meta)
+  // isn't obvious from a bare syntax complaint.
+  const secondExport = (ast.body?.slice(1) ?? []).find(
+    (node: AnyNode) => node.type === "ExportNamedDeclaration" ||
+      node.type === "ExportDefaultDeclaration" ||
+      node.type === "ExportAllDeclaration",
+  ) as AnyNode | undefined;
+  if (secondExport) {
+    const exportedName = describeExportedName(secondExport);
+    const message = exportedName
+      ? `Unexpected second export "${exportedName}": workflow scripts may only export meta. Move it inside meta, e.g. export const meta = { name, description, ${exportedName}: [...] }.`
+      : `Unexpected second export: workflow scripts may only export meta. Move it inside meta, e.g. export const meta = { name, description, phases: [...] }.`;
+    throw new WorkflowError(message, WorkflowErrorCode.SCRIPT_VALIDATION_ERROR, {
+      recoverable: false,
+    });
+  }
+
   return {
     meta,
     body: script.slice(0, first.start) + script.slice(first.end),
   };
+}
+
+/**
+ * Best-effort name for a top-level export statement, used only to name the
+ * fix in the "second export" error message above. Degrades to undefined
+ * (rather than throwing) for shapes evaluateLiteral doesn't need to handle
+ * elsewhere, e.g. `export default ...` or `export * from ...`.
+ */
+function describeExportedName(node: AnyNode): string | undefined {
+  if (node.type === "ExportDefaultDeclaration") return "default";
+  if (node.type === "ExportAllDeclaration") return undefined;
+  const declaration = node.declaration as AnyNode | null | undefined;
+  if (declaration?.type === "VariableDeclaration") {
+    const id = (declaration.declarations?.[0] as AnyNode | undefined)?.id as
+      | AnyNode
+      | undefined;
+    if (id?.type === "Identifier") return id.name as string;
+    return undefined;
+  }
+  if (
+    declaration?.type === "FunctionDeclaration" ||
+    declaration?.type === "ClassDeclaration"
+  ) {
+    return (declaration.id as AnyNode | undefined)?.name as string | undefined;
+  }
+  const specifiers = node.specifiers as AnyNode[] | undefined;
+  const firstSpecifier = specifiers?.[0];
+  if (firstSpecifier) {
+    const exported = firstSpecifier.exported as AnyNode | undefined;
+    if (exported?.type === "Identifier") return exported.name as string;
+  }
+  return undefined;
 }
 
 function evaluateLiteral(node: AnyNode, path: string): unknown {
