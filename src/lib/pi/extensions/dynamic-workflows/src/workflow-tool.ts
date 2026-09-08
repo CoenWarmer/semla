@@ -35,13 +35,14 @@ const workflowToolSchema = Type.Object({
     Type.String({
       description: [
         "Raw JavaScript workflow script, with no Markdown fences. Required unless `name` is given.",
-        "First statement: export const meta = { name: 'short_snake_case', description: 'non-empty description' }. Add phases: [{ title: 'Phase' }] only when the workflow has named phases, and declare only phases it will use. With multiple phases, call phase('Exact Title') before each phase's work or set `phase` in the agent options.",
+        "First statement: export const meta = { name: 'short_snake_case', description: 'non-empty description', phases: [{ title: 'Phase' }] } — meta is the only top-level export allowed, and phases is a key inside that same object, never a separate export; include phases only when the workflow has named phases, and declare only phases it will use. With multiple phases, call phase('Exact Title') before each phase's work or set `phase` in the agent options.",
+        "Minimal valid example (one export, phases nested, one labeled agent call):\nexport const meta = { name: 'demo', description: 'demo workflow', phases: [{ title: 'Research' }] };\nphase('Research'); return await agent('Summarize the topic', { label: 'researcher' });",
         "Use `await workflow(savedName, childArgs)` to run a saved workflow inline; nesting is limited to one level and shares the parent run's concurrency, agent, and token limits.",
         "Optional quality helpers include verify(), judgePanel(), loopUntilDry(), and completenessCheck().",
         "Optional control helpers include retry() and gate(); budget exposes total, spent(), and remaining(), and phase('Name', { budget: N }) sets a phase token limit.",
         "The optional `agentType` option selects a named user or project definition that can bind tools, a model, and role instructions; use it only when its name and purpose are provided in context. Its bound model overrides `tier`; an explicit `model` overrides both.",
         "Use plain JavaScript only; imports, require(), filesystem modules, Date.now(), Math.random(), and new Date() are unavailable.",
-        "Use phase('Name'), agent(prompt, opts), parallel(arrayOfFunctions), pipeline(items, ...stages), log(message), args, cwd, process.cwd(), and budget. The workflow must call agent() at least once.",
+        "Use phase('Name'), agent(prompt, opts), parallel(arrayOfFunctions), pipeline(items, ...stages), log(message), args, cwd, process.cwd(), and budget. The workflow must call agent() at least once, and every agent() call needs a short unique label in opts, e.g. { label: 'researcher' }.",
         "parallel() requires functions, not promises, and returns results in input order: await parallel(items.map(item => () => agent(...))).",
         "pipeline(items, ...stages) runs stages sequentially for each item while items proceed concurrently; each stage receives (previousValue, originalItem, index).",
       ].join(" "),
