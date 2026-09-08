@@ -59,6 +59,27 @@ import { createWorktree, removeWorktree, type Worktree } from "./worktree.ts";
  */
 const fanoutScope = new AsyncLocalStorage<{ cancelled: boolean }>();
 
+/**
+ * Set (to `true`) around a single retry()/gate() attempt's `thunk()` call so
+ * an agent() made from inside it is recognized as a RETRY of the same
+ * logical step, not a fresh script-authored label collision. A retried
+ * agent must not hard-throw merely for being a retry — attempt 2 of a
+ * `retry(() => agent(prompt, { label: 'fix build' }))` loop reuses the same
+ * literal label the script wrote for attempt 1 by construction (the script
+ * has no attempt-numbered variable to put there, and forcing it to invent
+ * one just to satisfy this check would make retry() the one helper whose
+ * contract is "pass a label that varies" instead of "pass a label"). This
+ * scope makes agentImpl() disambiguate that reuse with uniqueRunLabel() (the
+ * same numeric-suffix mechanism verify()/judgePanel()/completenessCheck()
+ * use) rather than exempting it from uniqueness altogether — every agent()
+ * call still gets its own distinct label in onAgentStart/onAgentEnd/the task
+ * panel, which is what a plain boolean exemption would give up. Deliberately
+ * NOT read by the top-level label check for a plain script call outside a
+ * retry()/gate() thunk: that path has no store here and still hard-throws,
+ * so the user-facing uniqueness rule is unchanged for ordinary scripts.
+ */
+const retryAttemptScope = new AsyncLocalStorage<true>();
+
 export interface WorkflowMetaPhase {
   title: string;
   detail?: string;
@@ -414,6 +435,20 @@ export interface AgentOptions<
    * normal result. The orchestrating script decides what to do with it.
    */
   onContextExhausted?: "throw" | "partial";
+  /**
+   * Private escape hatch, set ONLY by this file's own built-in quality
+   * helpers (verify, judgePanel, completenessCheck) when they call agent()
+   * on the script's behalf — never part of the public AgentOptions surface a
+   * workflow script can reach (a script's object literal has no way to set
+   * an option this type doesn't declare, and even if it forged one, the
+   * point below still holds: it changes nothing about a *user* label's
+   * uniqueness requirement). Tells the label-uniqueness check in agent() to
+   * disambiguate a collision with uniqueRunLabel() (numeric suffix) instead
+   * of hard-throwing — because a helper regenerates the same base label on
+   * every call by construction ("verify 1", "judge 1.1", ...) and the
+   * script author never chose it, so there is nothing for them to fix.
+   */
+  __internalLabel?: true;
 }
 
 /** Options for a human checkpoint() — a deterministic, journaled, replayable gate. */
@@ -728,6 +763,17 @@ export async function runWorkflow<T = unknown>(
     // an enforced one instead of an unchecked convention. `shared.agentCount`
     // (not yet incremented at this point) numbers this as the Nth agent()
     // call attempted in this run, matching what the author sees in logs.
+    //
+    // `agentOptions.__internalLabel` (see uniqueRunLabel() below) is a private
+    // flag set ONLY by this file's own built-in helpers (verify, judgePanel,
+    // completenessCheck) — never reachable from a workflow script, since
+    // AgentOptions does not declare it and the vm sandbox only ever sees the
+    // public surface. It exempts a collision from the hard-throw below and
+    // instead disambiguates the label with a numeric suffix, because those
+    // helpers' labels are runtime-generated on the helper's behalf (the
+    // script never chose them and has no way to make them unique itself),
+    // whereas a script's own agent() call choosing a label is exactly the
+    // case this check exists to hold to a hard, unweakened rule.
     if (!requestedLabel) {
       throw new WorkflowError(
         `agent() call #${shared.agentCount + 1} is missing a label; add opts.label (e.g. { label: 'researcher' })`,
@@ -735,14 +781,20 @@ export async function runWorkflow<T = unknown>(
         { recoverable: false },
       );
     }
-    if (shared.usedLabels.has(requestedLabel)) {
+    const isRetryAttempt = retryAttemptScope.getStore() === true;
+    const disambiguateLabel = agentOptions.__internalLabel || isRetryAttempt;
+    if (shared.usedLabels.has(requestedLabel) && !disambiguateLabel) {
       throw new WorkflowError(
         `agent() label "${requestedLabel}" is already used in this run; give each agent() call a unique label`,
         WorkflowErrorCode.SCRIPT_VALIDATION_ERROR,
         { recoverable: false },
       );
     }
-    shared.usedLabels.add(requestedLabel);
+    const finalRequestedLabel = disambiguateLabel
+      ? uniqueRunLabel(shared.usedLabels, requestedLabel)
+      : requestedLabel;
+    shared.usedLabels.add(finalRequestedLabel);
+
 
     // Resolve a named agentType to its bound definition (tools/model/prompt).
     const agentDef = resolveAgentType(agentOptions.agentType, agentRegistry);
@@ -798,7 +850,7 @@ export async function runWorkflow<T = unknown>(
     // push slightly past total, then further agent() calls throw.)
     shared.agentCount++;
     const label =
-      requestedLabel || defaultAgentLabel(assignedPhase, shared.agentCount);
+      finalRequestedLabel || defaultAgentLabel(assignedPhase, shared.agentCount);
 
     // Longest-unchanged-prefix resume: replay a cached result only while the
     // prefix is still intact — this call's index is before the first changed/new
@@ -1312,7 +1364,11 @@ export async function runWorkflow<T = unknown>(
           (_v, i) => () =>
             agent(
               `Adversarially review whether the following is REAL/correct. Try to refute it; default to real=false if unsure.${lenses.length ? ` Focus lens: ${lenses[i % lenses.length]}.` : ""}\n\n${claim}`,
-              { label: `verify ${i + 1}`, schema: VERIFY_SCHEMA },
+              {
+                label: `verify ${i + 1}`,
+                schema: VERIFY_SCHEMA,
+                __internalLabel: true,
+              },
             ),
         ),
       )
@@ -1363,6 +1419,7 @@ export async function runWorkflow<T = unknown>(
                       {
                         label: `judge ${idx + 1}.${j + 1}`,
                         schema: JUDGE_SCHEMA,
+                        __internalLabel: true,
                       },
                     ),
                 ),
@@ -1449,25 +1506,21 @@ export async function runWorkflow<T = unknown>(
     },
     required: ["complete"],
   };
-  // Call-site counter, not shared.agentCount: this must vary by INVOCATION of
-  // completenessCheck itself (so a script calling it more than once per run,
-  // e.g. once per loopUntilDry round, gets a distinct label each time), not
-  // by however many other agent() calls happened to run first.
-  let completenessCheckCallCount = 0;
+  // Repeat invocations of completenessCheck itself within one run (e.g. once
+  // per loopUntilDry round) must not collide on the label "completeness
+  // critic" — the agent() label-uniqueness check below disambiguates this
+  // via __internalLabel/uniqueRunLabel(), the same mechanism verify() and
+  // judgePanel() use, rather than a bespoke call-count closure here.
   const completenessCheck = async (taskArgs: unknown, results: unknown) => {
     options.onRuntimeEvent?.({
       type: "quality",
       stage: "start",
       helper: "completenessCheck",
     });
-    completenessCheckCallCount++;
-    const label =
-      completenessCheckCallCount === 1
-        ? "completeness critic"
-        : `completeness critic ${completenessCheckCallCount}`;
+    const label = "completeness critic";
     const verdict = await agent(
       `Given the task and the results gathered so far, list what is still MISSING (modalities not covered, claims unverified, gaps). Be specific and concise.\n\nTask:\n${JSON.stringify(taskArgs)}\n\nResults so far:\n${JSON.stringify(results).slice(0, 4000)}`,
-      { label, schema: COMPLETENESS_SCHEMA },
+      { label, schema: COMPLETENESS_SCHEMA, __internalLabel: true },
     );
     options.onRuntimeEvent?.({
       type: "quality",
@@ -1489,7 +1542,10 @@ export async function runWorkflow<T = unknown>(
     const attempts = Math.max(1, opts.attempts ?? 3);
     let last: unknown;
     for (let i = 0; i < attempts; i++) {
-      last = await thunk(i);
+      // See retryAttemptScope's doc comment: an agent() made from this
+      // attempt's thunk gets its label disambiguated on reuse instead of
+      // hard-throwing, without weakening the check for anything outside it.
+      last = await retryAttemptScope.run(true, () => thunk(i));
       const accepted = !opts.until || opts.until(last);
       options.onRuntimeEvent?.({
         type: "control-attempt",
@@ -1517,7 +1573,8 @@ export async function runWorkflow<T = unknown>(
     let feedback: string | undefined;
     let last: unknown;
     for (let i = 0; i < attempts; i++) {
-      last = await thunk(feedback, i);
+      // See retryAttemptScope's doc comment above retry().
+      last = await retryAttemptScope.run(true, () => thunk(feedback, i));
       const verdict = await validator(last);
       const accepted = Boolean(verdict?.ok);
       options.onRuntimeEvent?.({
@@ -1954,6 +2011,26 @@ function createLimiter(limit: number) {
 
 function defaultAgentLabel(phase: string | undefined, index: number): string {
   return phase ? `${phase} agent ${index}` : `agent ${index}`;
+}
+
+/**
+ * Disambiguate `base` against the run's `usedLabels` set by appending a
+ * numeric suffix (" 2", " 3", ...) until it's unused, then return it
+ * WITHOUT reserving it — the caller (agent()) still does that single
+ * `usedLabels.add`, matching the reservation-is-atomic-with-the-agentCount
+ * comment right next to it. This is the one mechanism every built-in helper
+ * that generates its own label (verify, judgePanel, completenessCheck) goes
+ * through, rather than each helper carrying its own ad-hoc call-count
+ * closure — see the workflow.ts docblock's rationale for consolidating them.
+ * Short and human-readable is preserved: the base label is untouched on the
+ * first use, and a repeat is "verify 1", "verify 1 2", "verify 1 3", ... not
+ * some longer synthetic id.
+ */
+function uniqueRunLabel(usedLabels: Set<string>, base: string): string {
+  if (!usedLabels.has(base)) return base;
+  let n = 2;
+  while (usedLabels.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
 }
 
 /**
