@@ -377,7 +377,7 @@ export function ReviewPanel({
         >
           <ResizablePanelGroup orientation="vertical" className="h-full">
             <ResizablePanel
-              defaultSize={40}
+              defaultSize={15}
               minSize={15}
               className="overflow-y-auto py-2"
             >

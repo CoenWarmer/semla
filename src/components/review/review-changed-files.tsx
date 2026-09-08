@@ -212,19 +212,13 @@ export function ReviewChangedFiles({
     );
   }
 
-  // Only name the project when there is more than one; a single-project
-  // session does not need a heading repeating what the panel title says.
-  const showHeadings = withChanges.length > 1;
-
   return (
     <div className="flex flex-col gap-2">
       {withChanges.map((project) => (
         <div key={project.path}>
-          {showHeadings ? (
-            <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {project.name}
-            </p>
-          ) : null}
+          <p className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Changed files in {project.name}
+          </p>
 
           <div className="flex flex-col">
             {project.changedFiles.map((file) => (

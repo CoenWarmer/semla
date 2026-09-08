@@ -180,8 +180,7 @@ export function ReviewHunkList({
     return (
       <div className="flex flex-col gap-2 px-2 py-2">
         <p className="text-[11px] text-muted-foreground">
-          This file is new, so there is nothing to compare it against and no
-          hunks to choose between. Staging it adds the whole file.
+          This file is new.
         </p>
         <Button
           className={cn("h-6 self-start px-2 text-[11px]")}
