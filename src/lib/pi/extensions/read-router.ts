@@ -81,17 +81,49 @@ function shouldCompress(
   }
 }
 
+/**
+ * Why this returns a reason rather than just null.
+ *
+ * `complete()` does not throw when a provider has no credentials. It resolves
+ * — in about a millisecond — with a well-formed AssistantMessage carrying
+ * `stopReason: "error"`, `errorMessage: "Provider is not configured: x"`, no
+ * content and zero usage. A `try/catch` around it never fires, and joining
+ * that empty content yields `""`, which is indistinguishable from a model that
+ * genuinely had nothing to say.
+ *
+ * That is measured, not theoretical: it is why this extension compressed 0 of
+ * 7 eligible results in the session it was written in, with no log line. The
+ * default model was `anthropic/...` on a host holding only an `openrouter`
+ * key, `find()` returned the model because the *catalogue* has it, and every
+ * compression then failed open and silently.
+ *
+ * So the failure has to be *named* and reported. Callers surface it once per
+ * session; `stopReason` on the response is the only trustworthy signal, since
+ * `hasConfiguredAuth()` returns false even for a provider that completes
+ * successfully.
+ */
+type ModelOutcome =
+  | { ok: true; summary: string }
+  | { ok: false; reason: string };
+
 async function callModel(
   rawText: string,
   toolName: string,
   ctx: ExtensionContext,
   provider: string,
   modelId: string,
-): Promise<string | null> {
+): Promise<ModelOutcome> {
   const model = ctx.modelRegistry.find(provider, modelId);
-  if (!model) return null;
+  if (!model) {
+    return {
+      ok: false,
+      reason: `no model "${provider}/${modelId}" in the catalogue`,
+    };
+  }
+
+  let response;
   try {
-    const response = await ctx.modelRegistry.complete(model, {
+    response = await ctx.modelRegistry.complete(model, {
       systemPrompt: COMPRESSION_SYSTEM_PROMPT,
       messages: [
         {
@@ -101,20 +133,81 @@ async function callModel(
         },
       ],
     });
-    const text = response.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text" && "text" in c)
-      .map((c) => c.text)
-      .join("");
-    return text || null;
-  } catch {
-    return null;
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
+
+  // The check the original omitted. An unconfigured provider, a rate limit and
+  // an aborted request all arrive here rather than as a thrown error.
+  if (response.stopReason === "error") {
+    return { ok: false, reason: response.errorMessage ?? "model returned an error" };
+  }
+
+  const text = response.content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text" && "text" in c)
+    .map((c) => c.text)
+    .join("");
+
+  if (!text) return { ok: false, reason: "model returned no text" };
+  return { ok: true, summary: text };
 }
 
 function parseModel(modelSpec: string): { provider: string; modelId: string } {
   const slash = modelSpec.indexOf("/");
   if (slash === -1) return { provider: modelSpec, modelId: modelSpec };
   return { provider: modelSpec.slice(0, slash), modelId: modelSpec.slice(slash + 1) };
+}
+
+/**
+ * Which model to summarise with, preferring one the host can actually reach.
+ *
+ * An explicit `readRouterModel` is obeyed as given — a configured value is a
+ * decision, and silently substituting something else would be worse than
+ * failing. Otherwise the session's own provider wins over the hardcoded
+ * default: whatever model is driving the session is by definition configured,
+ * so a Haiku on that provider is reachable where `anthropic/...` may not be.
+ *
+ * Only the provider is borrowed, never the session's model id — that is the
+ * frontier model, and summarising cheap output with it would cost more than
+ * the context it saves.
+ *
+ * Two exclusions here were found by running this against a live catalogue
+ * rather than reasoned out. A reasoning model is rejected because pi sends
+ * `reasoning.effort: "none"` for a plain completion and OpenAI's o-series
+ * answers 400 `unsupported_value` — a summariser that cannot be called is
+ * worse than the default, since it fails on every result. And the name test is
+ * anchored: an unanchored `/mini/` matched `minimax/minimax-m1`, a different
+ * vendor's frontier model, which is the opposite of choosing something cheap.
+ */
+function chooseModel(
+  settings: { readRouterModel?: string },
+  ctx: ExtensionContext,
+): { provider: string; modelId: string } {
+  if (settings.readRouterModel) return parseModel(settings.readRouterModel);
+
+  const fallback = parseModel(DEFAULT_MODEL);
+  const sessionProvider = ctx.model?.provider;
+  if (!sessionProvider || sessionProvider === fallback.provider) return fallback;
+
+  // A same-provider Haiku, addressed as that provider spells it. Gateways
+  // prefix the vendor (openrouter: "anthropic/claude-haiku-4.5"), so the id is
+  // matched rather than constructed.
+  const candidate = ctx.modelRegistry
+    .getAll()
+    .filter((model) => model.provider === sessionProvider)
+    // `-mini`/`-flash` as a suffix or path segment, never as a substring of a
+    // vendor's name. Haiku is matched loosely because Anthropic only uses it
+    // for the cheap tier.
+    .filter((model) => /haiku|[-/](?:flash|mini)\b/i.test(model.id))
+    // A batch endpoint does not answer synchronously; `~` marks an alias.
+    .filter((model) => !/batch|^~/.test(model.id))
+    // Reasoning models reject the `reasoning.effort: "none"` pi sends here.
+    .filter((model) => !model.reasoning)
+    .sort((a, b) => a.id.length - b.id.length)[0];
+
+  return candidate
+    ? { modelId: candidate.id, provider: sessionProvider }
+    : fallback;
 }
 
 function contentHash(text: string): string {
@@ -130,6 +223,27 @@ export default function readRouterExtension(pi: ExtensionAPI) {
   const cache = new Map<string, string>(); // sha256(raw)[0:16] → summary
   const stats: Stats = { count: 0, originalChars: 0, compressedChars: 0 };
 
+  /**
+   * A compressor that never compresses must say so, once.
+   *
+   * This extension fails open by design: every failure path hands the raw
+   * result through, so a broken summariser costs context rather than
+   * correctness. The hazard is that this is *invisible* — the tuned
+   * thresholds, the spans and the shutdown line all read identically whether
+   * the model is unreachable or merely never triggered. One warning on the
+   * first failure is what separates the two, and `failures` is what keeps it
+   * from repeating on every tool call.
+   */
+  let failures = 0;
+  const reportFailure = (reason: string) => {
+    failures++;
+    if (failures > 1) return;
+    console.warn(
+      `[read-router] compression disabled for this session: ${reason}. ` +
+        "Tool results are passing through uncompressed.",
+    );
+  };
+
   pi.on(
     "tool_result",
     async (event: ToolResultEvent, ctx: ExtensionContext) => {
@@ -142,14 +256,18 @@ export default function readRouterExtension(pi: ExtensionAPI) {
 
       if (!shouldCompress(event.toolName, event.isError, rawText, thresholdLines, thresholdChars)) return;
 
-      const modelSpec = settings.readRouterModel ?? DEFAULT_MODEL;
-      const { provider, modelId } = parseModel(modelSpec);
+      const { provider, modelId } = chooseModel(settings, ctx);
+      const modelSpec = `${provider}/${modelId}`;
 
       const key = contentHash(rawText);
       let summary = cache.get(key);
       if (!summary) {
-        summary = (await callModel(rawText, event.toolName, ctx, provider, modelId)) ?? undefined;
-        if (!summary) return;
+        const outcome = await callModel(rawText, event.toolName, ctx, provider, modelId);
+        if (!outcome.ok) {
+          reportFailure(outcome.reason);
+          return;
+        }
+        summary = outcome.summary;
         cache.set(key, summary);
       }
 
@@ -184,8 +302,7 @@ export default function readRouterExtension(pi: ExtensionAPI) {
 
       const thresholdLines = settings.readRouterThresholdLines ?? 300;
       const thresholdChars = settings.readRouterThresholdChars ?? 3000;
-      const modelSpec = settings.readRouterModel ?? DEFAULT_MODEL;
-      const { provider, modelId } = parseModel(modelSpec);
+      const { provider, modelId } = chooseModel(settings, ctx);
 
       let anyChanged = false;
 
@@ -211,11 +328,13 @@ export default function readRouterExtension(pi: ExtensionAPI) {
           const key = contentHash(rawText);
           let summary = cache.get(key);
           if (!summary) {
-            summary = (await callModel(rawText, tm.toolName, ctx, provider, modelId)) ?? undefined;
-            if (!summary) {
+            const outcome = await callModel(rawText, tm.toolName, ctx, provider, modelId);
+            if (!outcome.ok) {
+              reportFailure(outcome.reason);
               result.push(msg);
               continue;
             }
+            summary = outcome.summary;
             cache.set(key, summary);
           }
           const compressed = buildCompressed(rawText, summary);
@@ -244,13 +363,25 @@ export default function readRouterExtension(pi: ExtensionAPI) {
   );
 
   pi.on("session_shutdown", () => {
-    if (stats.count === 0) return;
+    // A session that compressed nothing but tried is the case worth reporting:
+    // silence here is what made the original failure take a live investigation
+    // to find.
+    if (stats.count === 0) {
+      if (failures > 0) {
+        console.warn(
+          `[read-router] 0 compressions: ${failures} attempt(s) failed. ` +
+            "See the earlier warning for the reason.",
+        );
+      }
+      return;
+    }
     const pct =
       stats.originalChars > 0
         ? Math.round((1 - stats.compressedChars / stats.originalChars) * 100)
         : 0;
     console.info(
-      `[read-router] ${stats.count} compression(s): ${stats.originalChars} → ${stats.compressedChars} chars (${pct}% reduction)`,
+      `[read-router] ${stats.count} compression(s): ${stats.originalChars} → ${stats.compressedChars} chars (${pct}% reduction)` +
+        (failures > 0 ? `; ${failures} attempt(s) failed` : ""),
     );
   });
 }

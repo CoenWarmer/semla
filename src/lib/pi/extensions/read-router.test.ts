@@ -72,17 +72,30 @@ function makePi() {
 function makeCtx(
   complete: (...args: unknown[]) => unknown = () => ({
     content: [{ text: "SUMMARY", type: "text" }],
+    stopReason: "stop",
   }),
-  { modelFound = true }: { modelFound?: boolean } = {},
+  {
+    catalogue = [],
+    modelFound = true,
+    sessionProvider,
+  }: {
+    catalogue?: Array<{ id: string; provider: string; reasoning?: boolean }>;
+    modelFound?: boolean;
+    sessionProvider?: string;
+  } = {},
 ) {
   const completeSpy = vi.fn(complete);
   return {
     completeSpy,
     ctx: {
       cwd: "/repo",
+      // Undefined unless a test asks for one, which is the no-session-model
+      // case and must keep using the hardcoded default.
+      model: sessionProvider ? { id: "frontier", provider: sessionProvider } : undefined,
       modelRegistry: {
         complete: completeSpy,
         find: vi.fn(() => (modelFound ? { id: "m" } : undefined)),
+        getAll: vi.fn(() => catalogue),
       },
       sessionManager: { getSessionId: () => "session-1" },
     } as unknown as ExtensionContext,
@@ -235,11 +248,78 @@ describe("tool_result pass-through", () => {
   it("leaves the result alone when the summary comes back empty", async () => {
     const { pi, fire } = makePi();
     readRouterExtension(pi);
-    const { ctx } = makeCtx(() => ({ content: [{ text: "", type: "text" }] }));
+    const { ctx } = makeCtx(() => ({
+      content: [{ text: "", type: "text" }],
+      stopReason: "stop",
+    }));
 
     const result = await fire("tool_result", toolResult("read", lines(400)), ctx);
 
     expect(result).toBeUndefined();
+  });
+
+  /**
+   * The regression this whole file exists for.
+   *
+   * complete() does not throw for an unconfigured provider — it resolves with
+   * stopReason "error" and an empty content array. Measured against pi 0.84.2
+   * on a host with no `anthropic` key, where it made the extension compress 0
+   * of 7 eligible results without a single log line. A mock that only ever
+   * throws cannot reach this path, which is why the first version of these
+   * tests passed against broken code.
+   */
+  it("treats stopReason error as a failure, not as an empty summary", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { ctx } = makeCtx(() => ({
+      content: [],
+      errorMessage: "Provider is not configured: anthropic",
+      stopReason: "error",
+      usage: { input: 0, output: 0 },
+    }));
+
+    const result = await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(result).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("Provider is not configured: anthropic");
+  });
+
+  it("does not cache a failure as if it were a summary", async () => {
+    // A cached empty summary would poison every later result with the same
+    // bytes, and would also hide the failure from the warning path.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { ctx, completeSpy } = makeCtx(() => ({
+      content: [],
+      errorMessage: "nope",
+      stopReason: "error",
+    }));
+
+    const text = lines(400);
+    await fire("tool_result", toolResult("read", text), ctx);
+    await fire("tool_result", toolResult("read", text), ctx);
+
+    expect(completeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("warns once per session rather than once per tool call", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { ctx } = makeCtx(() => ({
+      content: [],
+      errorMessage: "Provider is not configured: anthropic",
+      stopReason: "error",
+    }));
+
+    for (let i = 0; i < 4; i++) {
+      await fire("tool_result", toolResult("read", lines(400 + i)), ctx);
+    }
+
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -401,6 +481,173 @@ describe("settings", () => {
   });
 });
 
+// ── Provider selection ────────────────────────────────────────────────────────
+
+/**
+ * The default model names the `anthropic` provider, and a host driving its
+ * session through a gateway need not have an `anthropic` key at all — that is
+ * exactly the configuration the extension was found broken on. The session's
+ * own provider is reachable by definition, so it is preferred.
+ */
+describe("provider selection", () => {
+  const openrouter = [
+    { id: "anthropic/claude-haiku-4.5", provider: "openrouter", reasoning: false },
+    { id: "anthropic/claude-haiku-4.5:batch", provider: "openrouter", reasoning: false },
+    { id: "anthropic/claude-opus-5", provider: "openrouter", reasoning: false },
+    { id: "anthropic/claude-3-haiku", provider: "openrouter", reasoning: false },
+    { id: "claude-haiku-4-5-20251001", provider: "anthropic", reasoning: false },
+  ];
+
+  it("borrows the session's provider when it differs from the default", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: openrouter,
+      sessionProvider: "openrouter",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    const [provider, modelId] = find.mock.calls[0] as [string, string];
+    expect(provider).toBe("openrouter");
+    // A cheap model, addressed the way that provider spells it.
+    expect(modelId).toMatch(/haiku/);
+    // Never a :batch id — those do not answer synchronously.
+    expect(modelId).not.toContain("batch");
+  });
+
+  it("rejects a batch id even when it would otherwise be the best match", async () => {
+    // The shortest-id tiebreak alone does not exclude these: a gateway can
+    // spell a batch variant more tersely than its interactive sibling, and a
+    // batch endpoint does not answer synchronously, so a summary would never
+    // arrive and every compression would silently fail open.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: [
+        { id: "haiku:batch", provider: "acme" },
+        { id: "claude-haiku-4.5", provider: "acme" },
+      ],
+      sessionProvider: "acme",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("acme", "claude-haiku-4.5");
+  });
+
+  it("skips reasoning models, which reject the request outright", async () => {
+    // Found live, not reasoned out: pi sends `reasoning.effort: "none"` for a
+    // plain completion and OpenAI's o-series answers 400 unsupported_value, so
+    // picking one fails on every single result.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: [
+        { id: "openai/o3-mini", provider: "acme", reasoning: true },
+        { id: "openai/gpt-4o-mini", provider: "acme", reasoning: false },
+      ],
+      sessionProvider: "acme",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("acme", "openai/gpt-4o-mini");
+  });
+
+  it("does not mistake a vendor named 'minimax' for a mini model", async () => {
+    // Also found live. An unanchored /mini/ matched minimax/minimax-m1 — a
+    // different vendor's frontier model, and the shortest id in the list.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: [
+        { id: "minimax/minimax-m1", provider: "acme", reasoning: false },
+        { id: "anthropic/claude-haiku-4.5", provider: "acme", reasoning: false },
+      ],
+      sessionProvider: "acme",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("acme", "anthropic/claude-haiku-4.5");
+  });
+
+  it("never borrows the session's own frontier model id", async () => {
+    // Summarising cheap output with the frontier model would cost more than the
+    // context it saves, which would make the extension worse than absent.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: openrouter,
+      sessionProvider: "openrouter",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect((find.mock.calls[0] as [string, string])[1]).not.toBe("frontier");
+    expect((find.mock.calls[0] as [string, string])[1]).not.toContain("opus");
+  });
+
+  it("keeps the default when the session is already on that provider", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: openrouter,
+      sessionProvider: "anthropic",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("anthropic", "claude-haiku-4-5-20251001");
+  });
+
+  it("keeps the default when the session provider has no cheap model", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: [{ id: "some-big-model", provider: "acme" }],
+      sessionProvider: "acme",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("anthropic", "claude-haiku-4-5-20251001");
+  });
+
+  it("obeys an explicit readRouterModel over the session provider", async () => {
+    // A configured value is a decision. Substituting something else silently
+    // would be worse than failing.
+    loadWorkflowSettings.mockReturnValue({ readRouterModel: "anthropic/claude-haiku-4-5-20251001" });
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, {
+      catalogue: openrouter,
+      sessionProvider: "openrouter",
+    });
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("anthropic", "claude-haiku-4-5-20251001");
+  });
+});
+
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
 describe("content-hash cache", () => {
@@ -466,6 +713,28 @@ describe("telemetry", () => {
     expect(
       resultText(await fire("tool_result", toolResult("read", lines(400)), ctx)),
     ).toContain("SUMMARY");
+  });
+
+  it("reports a failed-but-never-compressed session at shutdown", async () => {
+    // The signature of the original bug: thresholds fine, hooks fine, nothing
+    // compressed, nothing said.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(() => ({
+      content: [],
+      errorMessage: "Provider is not configured: anthropic",
+      stopReason: "error",
+    }));
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+    await fire("session_shutdown", {}, undefined);
+
+    expect(info).not.toHaveBeenCalled();
+    expect(
+      warn.mock.calls.some(([m]) => String(m).includes("0 compressions")),
+    ).toBe(true);
   });
 
   it("reports a reduction at shutdown, and says nothing when idle", async () => {
