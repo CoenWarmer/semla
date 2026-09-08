@@ -72,23 +72,55 @@ export function indexChanges(
 export const MAX_AUTO_EXPANDED = 40;
 
 /**
+ * Every directory above a file, as the tree's own keys.
+ *
+ * The file itself is not a directory and never appears. Walking the segments
+ * rather than the string means a path with a `..` in a name cannot produce a
+ * key that looks like an escape — the same reason `indexChanges` does.
+ */
+export function ancestorDirectoriesOf(fullPath: string): string[] {
+  const segments = fullPath.split("/");
+  const dirs: string[] = [];
+
+  for (let depth = segments.length - 1; depth > 0; depth -= 1) {
+    dirs.push(segments.slice(0, depth).join("/"));
+  }
+
+  return dirs;
+}
+
+/**
  * Directories to open so the changed files are visible without hunting.
  *
  * Scoped to one project: the tree shows the active project's root, and
  * expanding paths belonging to a repository that is not on screen would be
  * state nobody can see or collapse.
+ *
+ * `selectedPath` — project-relative, the file the panel opened on — is
+ * expanded to as well, and *survives the cap*. A file clicked in the
+ * conversation is usually not one the turn changed, so the changed-file
+ * expansion alone leaves its row inside collapsed folders: the tree then
+ * highlights a row that is never rendered, which reads as the tree having
+ * lost track of the open file. The cap exists to stop a wall of folders with
+ * no shape to read; a handful of directories leading to the one file the
+ * operator is looking at is the shape.
  */
 export function directoriesToExpand(
   index: ChangeIndex,
   projectPath: string,
+  selectedPath?: string | null,
 ): Set<string> {
+  const toSelection = selectedPath
+    ? ancestorDirectoriesOf(workspacePathOf(projectPath, selectedPath))
+    : [];
+
   const withinProject = [...index.directories.keys()].filter(
     (dir) => dir === projectPath || dir.startsWith(`${projectPath}/`),
   );
 
   if (withinProject.length > MAX_AUTO_EXPANDED) {
-    return new Set([projectPath]);
+    return new Set([projectPath, ...toSelection]);
   }
 
-  return new Set([projectPath, ...withinProject]);
+  return new Set([projectPath, ...withinProject, ...toSelection]);
 }

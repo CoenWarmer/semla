@@ -12,7 +12,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
 } from "lucide-react";
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, RefAttributes } from "react";
 import {
   createContext,
   useCallback,
@@ -215,11 +215,19 @@ const FileTreeFileContext = createContext<FileTreeFileContextType>({
   path: "",
 });
 
-export type FileTreeFileProps = HTMLAttributes<HTMLDivElement> & {
-  path: string;
-  name: string;
-  icon?: ReactNode;
-};
+/**
+ * `RefAttributes` because a caller needs the row element itself: the review
+ * tree scrolls the selected row into view as it mounts, and there is nothing
+ * else to hang that off — the row is rendered here, not by the caller. Under
+ * React 19 a ref is an ordinary prop on a function component, so this only has
+ * to be declared, not forwarded.
+ */
+export type FileTreeFileProps = HTMLAttributes<HTMLDivElement> &
+  RefAttributes<HTMLDivElement> & {
+    path: string;
+    name: string;
+    icon?: ReactNode;
+  };
 
 export const FileTreeFile = ({
   path,
@@ -227,6 +235,7 @@ export const FileTreeFile = ({
   icon,
   className,
   children,
+  ref,
   ...props
 }: FileTreeFileProps) => {
   const { selectedPath, onSelect } = useContext(FileTreeContext);
@@ -257,6 +266,7 @@ export const FileTreeFile = ({
         )}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
+        ref={ref}
         role="treeitem"
         tabIndex={0}
         {...props}

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ChangedFile, ProjectReview } from "@/lib/review-types";
 
 import {
+  ancestorDirectoriesOf,
   directoriesToExpand,
   indexChanges,
   MAX_AUTO_EXPANDED,
@@ -141,5 +142,59 @@ describe("directoriesToExpand", () => {
     const index = indexChanges([project("semla", many)]);
 
     expect(directoriesToExpand(index, "semla")).toEqual(new Set(["semla"]));
+  });
+
+  it("opens the path down to a selected file the turn did not change", () => {
+    // The case a chat click produces: the tree highlights a row that would
+    // otherwise be inside collapsed folders and never rendered.
+    const index = indexChanges([project("semla", [file("src/a.ts")])]);
+
+    expect(directoriesToExpand(index, "semla", "docs/plans/review.md")).toEqual(
+      new Set(["semla", "semla/src", "semla/docs", "semla/docs/plans"]),
+    );
+  });
+
+  it("keeps the selected file reachable even past the cap", () => {
+    // The cap is about a wall of folders with no shape; the directories
+    // leading to the one open file are the shape.
+    const many = Array.from({ length: MAX_AUTO_EXPANDED + 1 }, (_, i) =>
+      file(`pkg${i}/index.ts`),
+    );
+    const index = indexChanges([project("semla", many)]);
+
+    expect(directoriesToExpand(index, "semla", "src/lib/pi/git.ts")).toEqual(
+      new Set(["semla", "semla/src", "semla/src/lib", "semla/src/lib/pi"]),
+    );
+  });
+
+  it("is unchanged by a selection at the project root", () => {
+    const index = indexChanges([project("semla", [])]);
+
+    expect(directoriesToExpand(index, "semla", "README.md")).toEqual(
+      new Set(["semla"]),
+    );
+  });
+});
+
+describe("ancestorDirectoriesOf", () => {
+  it("lists every directory above a file, but not the file", () => {
+    expect(ancestorDirectoriesOf("semla/src/lib/git.ts")).toEqual([
+      "semla/src/lib",
+      "semla/src",
+      "semla",
+    ]);
+  });
+
+  it("treats a name containing dots as a name", () => {
+    // Segment-wise, so nothing here can compose a key that looks like an
+    // escape out of the project.
+    expect(ancestorDirectoriesOf("semla/..hidden/x.ts")).toEqual([
+      "semla/..hidden",
+      "semla",
+    ]);
+  });
+
+  it("has no ancestors for a bare name", () => {
+    expect(ancestorDirectoriesOf("README.md")).toEqual([]);
   });
 });

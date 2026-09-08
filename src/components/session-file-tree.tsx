@@ -79,6 +79,20 @@ export type MarkEntry = (entry: FileEntry) => FileTreeMark | null;
 export type SelectFile = (entry: FileEntry) => void;
 
 /**
+ * Bring a row into view without moving anything that already showed it.
+ *
+ * `block: "nearest"` is the whole point: it scrolls each scrollable ancestor
+ * only as far as it must, so a row that is already on screen does not move,
+ * and the page around the panel is not dragged along by a row deep inside an
+ * overflow container. A smooth behaviour is deliberately not asked for — this
+ * fires as the row mounts, and animating from wherever the tree happened to be
+ * reads as the panel scrolling by itself.
+ */
+const revealRow = (element: HTMLElement | null) => {
+  element?.scrollIntoView({ block: "nearest", inline: "nearest" });
+};
+
+/**
  * One entry in the tree, fetching its children only once it is expanded.
  *
  * Lazy by directory rather than depth-limited: the workspace root holds every
@@ -89,17 +103,34 @@ function FileTreeNode({
   entry,
   mark,
   onSelectFile,
+  revealPath,
   sessionId,
   expandedPaths,
 }: {
   entry: FileEntry;
   mark?: MarkEntry;
   onSelectFile?: SelectFile;
+  /** Workspace-relative path of the row to scroll to as it mounts. */
+  revealPath?: string | null;
   sessionId: string;
   expandedPaths: Set<string>;
 }) {
   const isExpanded = expandedPaths.has(entry.path);
   const marked = mark?.(entry) ?? null;
+  /**
+   * A ref callback rather than an effect, for the reason the rest of this
+   * repository avoids effects: `react/set-state-in-effect` is an error here
+   * and an effect that scrolls is the same shape of hidden side effect. It
+   * fires when the row mounts, which is exactly the moment the row the panel
+   * opened on becomes reachable — its parent folders having just been
+   * expanded, or its directory listing having just arrived.
+   *
+   * It does not fire when the selection moves to a row that is already
+   * mounted. That case needs no scrolling: the operator clicked it, so it was
+   * on screen.
+   */
+  const rowProps =
+    revealPath && entry.path === revealPath ? { ref: revealRow } : {};
   // Spread conditionally: an explicit `onClick: undefined` would override the
   // primitive's own handler with nothing and make the row inert.
   const fileProps = onSelectFile ? { onClick: () => onSelectFile(entry) } : {};
@@ -115,7 +146,12 @@ function FileTreeNode({
     // name without changing the primitive.
     if (!marked) {
       return (
-        <FileTreeFile name={entry.name} path={entry.path} {...fileProps} />
+        <FileTreeFile
+          name={entry.name}
+          path={entry.path}
+          {...fileProps}
+          {...rowProps}
+        />
       );
     }
 
@@ -125,6 +161,7 @@ function FileTreeNode({
         name={entry.name}
         path={entry.path}
         {...fileProps}
+        {...rowProps}
       >
         <span className="size-4 shrink-0" />
         <FileTreeIcon>
@@ -163,6 +200,7 @@ function FileTreeNode({
           expandedPaths={expandedPaths}
           mark={mark}
           onSelectFile={onSelectFile}
+          revealPath={revealPath}
           sessionId={sessionId}
         />
       ))}
@@ -177,6 +215,7 @@ export function SessionFileTree({
   onExpandedChange,
   onSelect,
   onSelectFile,
+  revealSelected = false,
   selectedPath,
   sessionId,
 }: {
@@ -188,6 +227,14 @@ export function SessionFileTree({
   onSelectFile?: SelectFile;
   onExpandedChange: (expanded: Set<string>) => void;
   onSelect: (path: string) => void;
+  /**
+   * Scroll the selected row into view as it mounts. Off by default: a tree
+   * the operator is browsing should not move under them, and only a caller
+   * that opens files from *outside* the tree — the review panel, from a click
+   * in the conversation — knows the selection did not come from a click on a
+   * row that was already visible.
+   */
+  revealSelected?: boolean;
   selectedPath: string | null;
   sessionId: string;
 }) {
@@ -206,6 +253,7 @@ export function SessionFileTree({
           expandedPaths={expandedPaths}
           mark={mark}
           onSelectFile={onSelectFile}
+          revealPath={revealSelected ? selectedPath : null}
           sessionId={sessionId}
         />
       ))}

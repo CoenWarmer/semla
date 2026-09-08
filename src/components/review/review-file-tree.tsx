@@ -241,16 +241,18 @@ export function ReviewFileTree({
   const debounced = useDebouncedValue(query.trim(), 150);
 
   /**
-   * Expanded once, from the turn's own changes.
+   * Expanded once, from the turn's own changes and the file the panel opened
+   * on.
    *
    * A lazy initialiser rather than an effect: this repository treats
    * `react/set-state-in-effect` as an error, and re-deriving the set on every
    * refetch would spring folders back open after the operator collapsed them.
-   * The panel remounts this component when the project changes, so switching
-   * repositories does re-expand.
+   * The panel remounts this component when the project changes — and, via its
+   * own `key`, when a new file is picked in the conversation — so both cases
+   * re-expand.
    */
   const [expanded, setExpanded] = useState(() =>
-    directoriesToExpand(index, project.path),
+    directoriesToExpand(index, project.path, selectedPath),
   );
 
   const root = useSessionFiles(sessionId, project.path);
@@ -324,6 +326,10 @@ export function ReviewFileTree({
             : entry.path,
         )
       }
+      // The selection here can come from outside the tree — a file name
+      // clicked in the conversation, or a hunk row in the bucket above — so
+      // the row it highlights is not necessarily one the operator can see.
+      revealSelected
       selectedPath={selectedPath ? `${prefix}${selectedPath}` : null}
       sessionId={sessionId}
     />
