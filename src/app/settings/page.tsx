@@ -13,6 +13,7 @@ import {
 import { getInstalledPiPackages } from "@/lib/pi/packages";
 import { ExtensionHealthCard } from "@/components/extension-health-card";
 import { SystemPromptEditor } from "@/components/system-prompt-editor";
+import { ModelTierEditor } from "@/components/model-tier-editor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,18 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <SystemPromptEditor />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow model tiers</CardTitle>
+          <CardDescription>
+            Route workflow subagents to small/medium/big models. Stored in a committed repo file (.pi/workflows/model-tiers.json).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ModelTierEditor />
         </CardContent>
       </Card>
 
