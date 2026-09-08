@@ -28,12 +28,43 @@ const DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001";
 const GREP_FIND_LINE_THRESHOLD = 40;
 // Lines at which ls output is compressed.
 const LS_LINE_THRESHOLD = 80;
+// Matches kept verbatim when truncating search output. Enough to be useful,
+// few enough to be worth doing — a 962-match `rg` is 100 KB of context.
+const SEARCH_KEEP_LINES = 40;
 
+/**
+ * Three of the instructions below are corrections to observed failures, not
+ * general good advice, and are worth keeping for that reason.
+ *
+ * The prompt used to say "extract only the values and lines relevant to the
+ * apparent task" for command output. The summariser cannot see the task — it
+ * receives one tool result and nothing else — so "apparent" invited it to
+ * invent one. Given `rg -n "export" src/lib/pi`, whose 60 matches spanned 11
+ * files, it inferred "summarise a TypeScript file", described the output as a
+ * single unnamed file, dropped every `file:line` prefix, and attributed
+ * symbols from several files to one. The prefixes are the entire point of
+ * `rg -n`, and the result was wrong rather than merely lossy.
+ *
+ * So: the task is no longer guessed at (callModel is given the actual command
+ * or path), and the model is told to describe an unfamiliar shape literally
+ * rather than forcing it into the code-file shape.
+ *
+ * Instructing it to preserve `file:line` prefixes was tried first and does not
+ * work. Told explicitly that locations are the payload, never to summarise
+ * them into prose and to drop matched source before dropping a location, the
+ * summariser still returned 0 of 14 filenames and no line numbers at all: it
+ * reliably flattens matches into a symbol list, because that is what a wall of
+ * `path:line:text` looks like to it. Search output is therefore truncated
+ * rather than summarised — see `truncateSearchOutput`. The lesson generalises:
+ * a prompt cannot be relied on to preserve structure the model does not value.
+ */
 const COMPRESSION_SYSTEM_PROMPT =
   "You are a precise code analyst. Given file content or command output, produce a concise factual summary for an AI coding agent. Return only facts — no preamble, no affirmations, no repetition of the question. " +
-  "For code files: state the file's purpose (one sentence), list public exports with signatures, and note non-obvious invariants. " +
-  "For command output: extract only the values and lines relevant to the apparent task. " +
-  "Aim for 20% of the original size. Use terse prose or bullet points.";
+  "Never invent, infer, or generalise beyond what the input states. If the input's structure is unclear, describe it literally rather than fitting it to a familiar shape. " +
+  "For file content: state the purpose (one sentence), list public exports with signatures, and note non-obvious invariants. " +
+  "For command output: report the values, paths, and identifiers it contains. Never describe multi-file output as though it came from one file, and never attribute a symbol to a file the input did not name. " +
+  "Aim for 20% of the original size, but correctness outranks the target: return the input unchanged rather than lose a path, a line number, or an identifier. " +
+  "Use terse prose or bullet points.";
 
 type Stats = {
   count: number;
@@ -81,6 +112,52 @@ function shouldCompress(
   }
 }
 
+/** `path:line:` or `path:line:col:`, the shape rg, grep -n and ripgrep emit. */
+const MATCH_LINE = /^[^\s:][^:]*:\d+:/;
+
+/**
+ * Whether output is a list of file locations rather than prose.
+ *
+ * Decided from the *text*, not the tool name, because `grep` reaches this
+ * extension as a `bash` result far more often than as a `grep` one — the agent
+ * types `rg -n …` into a shell. A tool-name check would have missed the exact
+ * case that exposed this.
+ *
+ * A simple majority is enough: ripgrep interleaves blank separators and
+ * `--context` lines, so requiring every line to match would reject real search
+ * output, while prose that is more than half `path:line:` is not prose.
+ */
+function isSearchOutput(rawText: string): boolean {
+  const lines = rawText.split("\n").filter((line) => line.trim());
+  if (lines.length < 2) return false;
+  const matches = lines.filter((line) => MATCH_LINE.test(line)).length;
+  return matches >= lines.length / 2;
+}
+
+/**
+ * Keep the head of a match list verbatim and say what was dropped.
+ *
+ * Truncation rather than summarisation, because for search output the
+ * locations *are* the payload: a `path:line` the agent can jump to is worth
+ * more than a description of what was found there, and the model will not
+ * preserve them (see COMPRESSION_SYSTEM_PROMPT). Head rather than a sample, so
+ * the kept lines stay in file order and the agent can pick up where the list
+ * stops.
+ *
+ * The tail note is load-bearing: silently dropping matches would let an agent
+ * conclude a symbol has no other references.
+ */
+function truncateSearchOutput(rawText: string, keepLines: number): string {
+  const lines = rawText.split("\n");
+  if (lines.length <= keepLines) return rawText;
+  const dropped = lines.length - keepLines;
+  return (
+    `[Compressed: ${rawText.length} chars → via read-router]\n\n` +
+    `${lines.slice(0, keepLines).join("\n")}\n` +
+    `… ${dropped} more match(es) not shown. Re-run with a narrower pattern or a \`| tail\` to see them.`
+  );
+}
+
 /**
  * Why this returns a reason rather than just null.
  *
@@ -106,9 +183,32 @@ type ModelOutcome =
   | { ok: true; summary: string }
   | { ok: false; reason: string };
 
+/**
+ * What the tool was actually asked to do, for the summariser's benefit.
+ *
+ * `event.input` holds the command or the path, and withholding it was what
+ * forced the model to guess the task from the output alone. A command is far
+ * more informative than the output it produced: `rg -n` says "these are
+ * locations" in a way that a wall of `path:line:text` evidently does not.
+ *
+ * Truncated because a heredoc or a long pipeline can be arbitrarily large, and
+ * this is context for the summary, not part of it.
+ */
+function describeInvocation(toolName: string, input: Record<string, unknown>): string {
+  const command = input.command ?? input.cmd;
+  if (typeof command === "string") {
+    const oneLine = command.replace(/\s+/g, " ").trim();
+    return `\`${oneLine.length > 300 ? `${oneLine.slice(0, 300)}…` : oneLine}\``;
+  }
+  const path = input.path ?? input.file ?? input.pattern;
+  if (typeof path === "string") return `\`${toolName} ${path}\``;
+  return `\`${toolName}\``;
+}
+
 async function callModel(
   rawText: string,
   toolName: string,
+  input: Record<string, unknown>,
   ctx: ExtensionContext,
   provider: string,
   modelId: string,
@@ -128,7 +228,9 @@ async function callModel(
       messages: [
         {
           role: "user" as const,
-          content: `Summarise this ${toolName} output:\n\n\`\`\`\n${rawText}\n\`\`\``,
+          content:
+            `The agent ran ${describeInvocation(toolName, input)} and received the output below. ` +
+            `Summarise it for the agent.\n\n\`\`\`\n${rawText}\n\`\`\``,
           timestamp: Date.now(),
         },
       ],
@@ -234,6 +336,37 @@ export default function readRouterExtension(pi: ExtensionAPI) {
    * first failure is what separates the two, and `failures` is what keeps it
    * from repeating on every tool call.
    */
+  /**
+   * Stats and span for one compression, however it was produced.
+   *
+   * `mode` distinguishes a model summary from a truncation in telemetry, so a
+   * session's spans show which path ran rather than implying every saving came
+   * from the model.
+   */
+  const recordCompression = (
+    rawText: string,
+    compressed: string,
+    toolName: string,
+    mode: string,
+    ctx: ExtensionContext,
+  ) => {
+    stats.count++;
+    stats.originalChars += rawText.length;
+    stats.compressedChars += compressed.length;
+
+    const sink = getSpanSink(ctx.sessionManager.getSessionId());
+    if (!sink) return;
+    const span = sink.openSpan({ name: "read_router.compress" });
+    span.setAttributes({
+      compressedChars: compressed.length,
+      model: mode,
+      originalChars: rawText.length,
+      ratio: rawText.length > 0 ? compressed.length / rawText.length : 1,
+      tool: toolName,
+    });
+    span.close();
+  };
+
   let failures = 0;
   const reportFailure = (reason: string) => {
     failures++;
@@ -256,13 +389,29 @@ export default function readRouterExtension(pi: ExtensionAPI) {
 
       if (!shouldCompress(event.toolName, event.isError, rawText, thresholdLines, thresholdChars)) return;
 
+      // Search output bypasses the model entirely: no cost, no latency, and
+      // the locations survive.
+      if (isSearchOutput(rawText)) {
+        const truncated = truncateSearchOutput(rawText, SEARCH_KEEP_LINES);
+        if (truncated === rawText) return;
+        recordCompression(rawText, truncated, event.toolName, "truncate", ctx);
+        return { content: [{ type: "text", text: truncated }] };
+      }
+
       const { provider, modelId } = chooseModel(settings, ctx);
       const modelSpec = `${provider}/${modelId}`;
 
       const key = contentHash(rawText);
       let summary = cache.get(key);
       if (!summary) {
-        const outcome = await callModel(rawText, event.toolName, ctx, provider, modelId);
+        const outcome = await callModel(
+          rawText,
+          event.toolName,
+          event.input,
+          ctx,
+          provider,
+          modelId,
+        );
         if (!outcome.ok) {
           reportFailure(outcome.reason);
           return;
@@ -272,23 +421,7 @@ export default function readRouterExtension(pi: ExtensionAPI) {
       }
 
       const compressed = buildCompressed(rawText, summary);
-
-      stats.count++;
-      stats.originalChars += rawText.length;
-      stats.compressedChars += compressed.length;
-
-      const sink = getSpanSink(ctx.sessionManager.getSessionId());
-      if (sink) {
-        const span = sink.openSpan({ name: "read_router.compress" });
-        span.setAttributes({
-          tool: event.toolName,
-          originalChars: rawText.length,
-          compressedChars: compressed.length,
-          ratio: rawText.length > 0 ? compressed.length / rawText.length : 1,
-          model: modelSpec,
-        });
-        span.close();
-      }
+      recordCompression(rawText, compressed, event.toolName, modelSpec, ctx);
 
       return { content: [{ type: "text", text: compressed }] };
     },
@@ -325,10 +458,27 @@ export default function readRouterExtension(pi: ExtensionAPI) {
             result.push(msg);
             continue;
           }
+          if (isSearchOutput(rawText)) {
+            const truncated = truncateSearchOutput(rawText, SEARCH_KEEP_LINES);
+            if (truncated === rawText) {
+              result.push(msg);
+              continue;
+            }
+            anyChanged = true;
+            recordCompression(rawText, truncated, tm.toolName, "truncate", ctx);
+            result.push({
+              ...msg,
+              content: [{ type: "text" as const, text: truncated }],
+            } as (typeof event.messages)[number]);
+            continue;
+          }
           const key = contentHash(rawText);
           let summary = cache.get(key);
           if (!summary) {
-            const outcome = await callModel(rawText, tm.toolName, ctx, provider, modelId);
+            // History carries no tool input, so the summariser gets the tool
+            // name alone here. Live results are the ones that matter, and they
+            // go through the hook above with their command intact.
+            const outcome = await callModel(rawText, tm.toolName, {}, ctx, provider, modelId);
             if (!outcome.ok) {
               reportFailure(outcome.reason);
               result.push(msg);
@@ -339,9 +489,7 @@ export default function readRouterExtension(pi: ExtensionAPI) {
           }
           const compressed = buildCompressed(rawText, summary);
           anyChanged = true;
-          stats.count++;
-          stats.originalChars += rawText.length;
-          stats.compressedChars += compressed.length;
+          recordCompression(rawText, compressed, tm.toolName, `${provider}/${modelId}`, ctx);
           result.push({
             ...msg,
             content: [{ type: "text" as const, text: compressed }],

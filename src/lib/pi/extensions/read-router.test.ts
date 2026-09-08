@@ -398,6 +398,121 @@ describe("tool_result thresholds", () => {
   );
 });
 
+// ── Search output ─────────────────────────────────────────────────────────
+
+/** `n` ripgrep-style matches spread over two files. */
+function matchLines(n: number): string {
+  return Array.from(
+    { length: n },
+    (_, i) => `src/lib/file${i % 2}.ts:${i + 1}:export const thing${i} = 1;`,
+  ).join("\n");
+}
+
+/**
+ * Search output is truncated, never summarised.
+ *
+ * Measured, not preferred: told explicitly to preserve every path and line
+ * number, to treat locations as the payload and to drop matched source before
+ * dropping a location, the summariser still returned 0 of 14 filenames and no
+ * line numbers for a real `rg -n` result. It flattens matches into a symbol
+ * list, and a `path:line` the agent cannot jump to is worse than no compression
+ * at all.
+ */
+describe("search output", () => {
+  it("truncates without calling the model at all", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire("tool_result", toolResult("bash", matchLines(200)), ctx);
+
+    expect(completeSpy).not.toHaveBeenCalled();
+    expect(resultText(result)).toMatch(/^\[Compressed: \d+ chars → via read-router\]/);
+  });
+
+  it("keeps paths and line numbers verbatim", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    const text = resultText(
+      await fire("tool_result", toolResult("bash", matchLines(200)), ctx),
+    );
+
+    expect(text).toContain("src/lib/file0.ts:1:");
+    expect(text).toContain("src/lib/file1.ts:2:");
+  });
+
+  it("says how many matches it dropped", async () => {
+    // Silently dropping matches would let an agent conclude a symbol has no
+    // further references.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    const text = resultText(
+      await fire("tool_result", toolResult("bash", matchLines(200)), ctx),
+    );
+
+    expect(text).toMatch(/… \d+ more match\(es\) not shown/);
+  });
+
+  it("detects search output from the text, not the tool name", async () => {
+    // `rg -n …` arrives as a bash result, which is how the original failure
+    // reached the summariser — a tool-name check would miss it entirely.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    await fire("tool_result", toolResult("bash", matchLines(200)), ctx);
+
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves a short match list alone", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    // Over bash's char threshold so it reaches the search path, but under the
+    // keep count — nothing to drop, so it must pass through unchanged.
+    const padded = `${matchLines(20)}\n${"# padding".repeat(400)}`;
+    const result = await fire("tool_result", toolResult("bash", padded), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("summarises prose that merely mentions a path", async () => {
+    // The majority test must not misfire on ordinary output containing one
+    // path:line reference.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const prose = `Checked src/a.ts:12 and found nothing.\n${"Ordinary prose line.\n".repeat(300)}`;
+    const result = await fire("tool_result", toolResult("bash", prose), ctx);
+
+    expect(completeSpy).toHaveBeenCalledTimes(1);
+    expect(resultText(result)).toContain("SUMMARY");
+  });
+
+  it("truncates search output in history too", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = (await fire(
+      "context",
+      contextEvent([toolResultMessage("bash", matchLines(200))]),
+      ctx,
+    )) as { messages: Array<{ content: Array<{ text: string }> }> };
+
+    expect(completeSpy).not.toHaveBeenCalled();
+    expect(result.messages[0].content[0].text).toContain("src/lib/file0.ts:1:");
+  });
+});
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 describe("settings", () => {
@@ -444,6 +559,49 @@ describe("settings", () => {
     expect(
       resultText(await fire("tool_result", toolResult("bash", "z".repeat(11)), ctx)),
     ).toContain("SUMMARY");
+  });
+
+  it("tells the summariser what the agent actually ran", async () => {
+    // The prompt used to say "extract lines relevant to the apparent task"
+    // while showing the model nothing but output, so it inferred a task. The
+    // command is in event.input and is far more informative than the bytes it
+    // produced.
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const event = toolResult("bash", `${"prose line\n".repeat(400)}`);
+    (event as unknown as { input: Record<string, unknown> }).input = {
+      command: "rg -n 'export' src/lib/pi | head -60",
+    };
+    await fire("tool_result", event, ctx);
+
+    const context = completeSpy.mock.calls[0][1] as {
+      messages: Array<{ content: string }>;
+    };
+    expect(context.messages[0].content).toContain("rg -n 'export' src/lib/pi");
+  });
+
+  it("names the file for a read, and survives an empty input", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const event = toolResult("read", lines(400));
+    (event as unknown as { input: Record<string, unknown> }).input = {
+      path: "src/lib/pi/extension-manifest.ts",
+    };
+    await fire("tool_result", event, ctx);
+
+    const first = completeSpy.mock.calls[0][1] as { messages: Array<{ content: string }> };
+    expect(first.messages[0].content).toContain("src/lib/pi/extension-manifest.ts");
+
+    // History carries no input; the tool name alone must still produce a
+    // well-formed prompt rather than "undefined".
+    await fire("context", contextEvent([toolResultMessage("read", lines(401))]), ctx);
+    const second = completeSpy.mock.calls[1][1] as { messages: Array<{ content: string }> };
+    expect(second.messages[0].content).not.toContain("undefined");
+    expect(second.messages[0].content).toContain("`read`");
   });
 
   it("splits provider/modelId on the first slash only", async () => {
