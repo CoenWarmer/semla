@@ -29,6 +29,7 @@ import glob
 import json
 import os
 import sys
+import time
 
 TAG = "[Compressed:"
 
@@ -55,15 +56,49 @@ def main() -> int:
 
     path = args.session
     if not path:
-        candidates = glob.glob(".semla-sessions/*.jsonl")
+        # `*.spans.jsonl` is a telemetry sidecar written alongside every
+        # transcript, and it is *newer* than the transcript it belongs to. Left
+        # in, it wins the mtime race, parses cleanly, contains no toolResults,
+        # and reports INCONCLUSIVE — a real session read as an empty one.
+        candidates = [
+            candidate
+            for candidate in glob.glob(".semla-sessions/*.jsonl")
+            if not candidate.endswith(".spans.jsonl")
+        ]
+        # The current session is the worst possible choice and the most likely
+        # one: it is being appended to as this runs, so it always wins the
+        # mtime race. It is also the session that cannot test a newly added
+        # extension, because extensions load once at session start — which is
+        # exactly how this extension's original failure was first mistaken for
+        # a bug in the extension rather than in the test setup.
+        current = os.environ.get("PI_SESSION_ID")
+        if current:
+            candidates = [c for c in candidates if current not in c]
         if not candidates:
-            print("no session files in .semla-sessions/", file=sys.stderr)
+            print("no other session files in .semla-sessions/", file=sys.stderr)
             return 2
-        path = max(candidates, key=os.path.getmtime)
+        candidates.sort(key=os.path.getmtime, reverse=True)
+        path = candidates[0]
+        # PI_SESSION_ID is only set *inside* an agent session, so a run from an
+        # ordinary terminal cannot filter the live session out that way — and
+        # the live session is the newest file. Show the alternatives and flag a
+        # file still being written, so a wrong pick is visible rather than
+        # reported as a result.
+        age = time.time() - os.path.getmtime(path)
+        if age < 120:
+            print(
+                f"warning: {path} was modified {int(age)}s ago and may be the "
+                "live session. Extensions load at session start, so the session "
+                "you are talking in cannot test a newly added one. Pass an "
+                "explicit path if this is wrong."
+            )
+            for other in candidates[1:4]:
+                print(f"  other recent: {other}")
 
     print(f"session: {path}")
 
     total = compressed = missed = 0
+    messages = 0
     saved_from = saved_to = 0
 
     with open(path, encoding="utf8") as handle:
@@ -74,6 +109,7 @@ def main() -> int:
                 continue
             if entry.get("type") != "message":
                 continue
+            messages += 1
             message = entry.get("message") or entry
             if message.get("role") != "toolResult":
                 continue
@@ -113,6 +149,15 @@ def main() -> int:
     if missed:
         print("\nFAIL: results crossed a threshold and were not compressed.")
         return 1
+    # A file with no messages at all is the wrong file, not a quiet session.
+    # Distinguished from INCONCLUSIVE because the remedy is different: pass the
+    # right path, rather than run a bigger prompt.
+    if not messages:
+        print(
+            "\nWRONG FILE: no messages found. Pass a session transcript, "
+            "not a .spans.jsonl sidecar or a .json summary."
+        )
+        return 2
     if not compressed:
         print("\nINCONCLUSIVE: nothing crossed a threshold. Read a bigger file.")
         return 3
