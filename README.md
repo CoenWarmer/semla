@@ -8,7 +8,7 @@ The core design principle is that every agent run should be inspectable, repeata
 
 ## Features
 
-- **Sessions** — Persistent conversations backed by Supabase. Resume any session from where it left off; full message history is retained across page reloads.
+- **Sessions** — Persistent conversations stored on disk, but backed by Supabase. Resume any session from where it left off; full message history is retained across page reloads.
 - **Workflow orchestration** — The agent can decompose tasks into parallel subagents. Progress is tracked in real time and surfaced in a panel alongside the conversation.
 - **Timeline view** — Workflows are rendered as an OTel-style trace waterfall: phases, agents, and conversation events on a shared time axis. Conversation messages appear as inline event markers that scroll the chat when clicked.
 - **Workspace project browser** — Semla scans the configured workspace root for git repositories and shows them on the home page as cards (branch, staleness). Clicking a card opens a new session pre-titled with the project name. A searchable combobox in the sidebar offers quick access to any repo.
@@ -16,7 +16,9 @@ The core design principle is that every agent run should be inspectable, repeata
 - **Agent transcript viewer** — Drill into any subagent's full transcript, including its prompt rendered as markdown.
 - **Model selection** — Models are loaded dynamically from the pi runtime; the active model is stored per user in user settings.
 - **System prompt editor** — Override the orchestrator's system prompt from the settings page without a redeploy.
-
+- **Wiki** — entities, concepts and decisions are gathered from code and git history by having Semla orient on your repo's. 
+- **Session branching** — visualise the conversation tree and branch off without affecting the context window of other branches.
+- **Code review** — see what code the agent is looking at live while it is doing it. Review its changes by being exposed to the code that the agent changes.
 ---
 
 ## Tech Stack
