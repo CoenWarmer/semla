@@ -297,6 +297,24 @@ describe("attributes", () => {
     });
   });
 
+  it("records a subagent's context-pressure signals", () => {
+    const { sink, telemetry } = setup();
+
+    telemetry.runStarted("r1", { background: false, name: "w" });
+    telemetry.agentStarted("r1", { callId: "c1", id: 1, label: "a" });
+    telemetry.agentEnded("r1", {
+      callId: "c1",
+      status: "done",
+      stopReason: "length",
+      compactions: 2,
+    });
+
+    expect(named(sink, "a")?.attributes).toMatchObject({
+      "semla.workflow.agent.stop_reason": "length",
+      "semla.workflow.agent.compactions": 2,
+    });
+  });
+
   it("omits optional attributes rather than writing undefined", () => {
     const { sink, telemetry } = setup();
 

@@ -39,6 +39,9 @@ export type LiveSnapshot = {
     status: string;
     tokens?: number;
     tokenUsage?: { cost?: number; total?: number };
+    stopReason?: string;
+    compactions?: number;
+    compactionReasons?: ("manual" | "threshold" | "overflow")[];
   }>;
   currentPhase?: string;
   description?: string;
@@ -164,6 +167,11 @@ export function mergeLiveSnapshot({
       startedAt: persisted?.startedAt ?? clock.firstSeenAt,
       status: agent.status as WorkflowAgentStatus,
       tokens: agent.tokens,
+      // Diagnostic-only; the manager reports these once the agent settles, the
+      // disk record is the only source before then — same precedence as cost.
+      stopReason: agent.stopReason ?? persisted?.stopReason,
+      compactions: agent.compactions ?? persisted?.compactions,
+      compactionReasons: agent.compactionReasons ?? persisted?.compactionReasons,
       turns: persisted?.history
         ? historyToTurns(persisted.history)
         : agent.history

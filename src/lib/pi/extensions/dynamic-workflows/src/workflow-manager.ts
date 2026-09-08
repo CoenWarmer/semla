@@ -940,6 +940,8 @@ export class WorkflowManager extends EventEmitter {
             cost: event.tokenUsage?.cost,
             status: event.result === null ? "error" : "done",
             totalTokens: event.tokenUsage?.total ?? event.tokens,
+            stopReason: event.stopReason,
+            compactions: event.compactions,
           });
           if (agent) {
             agent.status = event.result === null ? "error" : "done";
@@ -953,6 +955,10 @@ export class WorkflowManager extends EventEmitter {
             agent.tokens = event.tokens;
             if (event.tokenUsage) agent.tokenUsage = event.tokenUsage;
             if (event.model) agent.model = event.model;
+            // Diagnostic only — never feeds the status derivation above.
+            agent.stopReason = event.stopReason;
+            agent.compactions = event.compactions;
+            agent.compactionReasons = event.compactionReasons;
             // Real per-agent end time — only terminal agents get one; a still-
             // running agent's entry keeps endedAt undefined.
             const ts = managed.agentTimestamps.get(agent.id);

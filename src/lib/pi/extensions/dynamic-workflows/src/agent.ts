@@ -21,6 +21,12 @@ import {
 import type { Static, TSchema } from "typebox";
 import { Check, Convert } from "typebox/value";
 import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
+import {
+  type AgentContextSignals,
+  createEmptyAgentContextSignals,
+  recordCompactionSignal,
+  recordStopReason,
+} from "./agent-context-signals.ts";
 import { type AgentHistoryEntry, compactAgentHistory } from "./agent-history.ts";
 import { applyToolPolicy } from "./agent-registry.ts";
 import {
@@ -460,6 +466,16 @@ export interface AgentRunOptions<
    * (all-zero stats), so consumers keep their scalar fallback.
    */
   onUsage?: (usage: AgentUsage) => void;
+  /**
+   * Called once with this subagent's context-pressure signals (compaction
+   * count/reasons, last assistant stopReason), read from the session's own
+   * event stream right before disposal. Diagnostic only, per
+   * docs/plans/subagent-context-pressure.md §4.1: never changes what run()
+   * returns or throws, and (like onUsage) fires from the `finally` block so
+   * it reports on both the success and error paths. Best-effort — a failure
+   * reading signals is swallowed exactly like a failure reading usage.
+   */
+  onContextSignals?: (signals: AgentContextSignals) => void;
   /**
    * Model spec for this subagent: either `provider/modelId` (unambiguous) or a
    * bare `modelId`, parsed with the same grammar as Pi CLI's `--model`. When it
@@ -960,6 +976,7 @@ export class WorkflowAgent {
 
     let removeAbortListener: (() => void) | undefined;
     let removeHistoryListener: (() => void) | undefined;
+    let removeContextSignalListener: (() => void) | undefined;
     let lastHistoryEmit = 0;
     const emitHistory = () =>
       options.onHistory?.(compactAgentHistory(session.messages));
@@ -970,6 +987,13 @@ export class WorkflowAgent {
       lastHistoryEmit = now;
       emitHistory();
     };
+    // Diagnostic-only accumulator for §4.1's capture (context-pressure signals).
+    // Fed by the same session event stream as history, but via its own
+    // subscription rather than folding into maybeEmitHistory's throttle —
+    // recording a compaction event must never be dropped by the 250ms
+    // history throttle, and a subscribe() call here is independent of
+    // whether options.onHistory is even set.
+    const contextSignals = createEmptyAgentContextSignals();
     try {
       if (options.signal?.aborted) throw new Error("Subagent was aborted");
       if (options.signal) {
@@ -981,6 +1005,13 @@ export class WorkflowAgent {
       if (options.onHistory) {
         removeHistoryListener = session.subscribe(() => maybeEmitHistory());
       }
+      removeContextSignalListener = session.subscribe((event) => {
+        try {
+          recordCompactionSignal(contextSignals, event as { type: string });
+        } catch {
+          // Diagnostic only — never let a malformed event break the run.
+        }
+      });
 
       await session.prompt(
         this.buildPrompt(
@@ -1027,6 +1058,7 @@ export class WorkflowAgent {
     } finally {
       removeAbortListener?.();
       removeHistoryListener?.();
+      removeContextSignalListener?.();
       try {
         emitHistory();
       } catch {
@@ -1039,6 +1071,19 @@ export class WorkflowAgent {
           if (usage) options.onUsage(usage);
         } catch {
           // Usage is best-effort; never let stats failure mask the real result/error.
+        }
+      }
+      // Same contract as onUsage/history: diagnostic only, read before disposal,
+      // failure caught and ignored so it can never mask the real result/error.
+      if (options.onContextSignals) {
+        try {
+          recordStopReason(
+            contextSignals,
+            lastAssistantError(session.messages)?.stopReason,
+          );
+          options.onContextSignals(contextSignals);
+        } catch {
+          // Context signals are diagnostic only.
         }
       }
       session.dispose();

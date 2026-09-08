@@ -30,6 +30,14 @@ export type WorkflowAgentSnapshot = {
   tokens?: number;
   /** Per-turn history for Prompts / Tool calls sub-rows. Only present for completed agents. */
   turns?: AgentTurnSnapshot[];
+  /**
+   * Diagnostic-only context-pressure signals (see
+   * docs/plans/subagent-context-pressure.md §4). Never affects `status`
+   * above.
+   */
+  stopReason?: string;
+  compactions?: number;
+  compactionReasons?: ("manual" | "threshold" | "overflow")[];
 };
 
 export type WorkflowSnapshot = {

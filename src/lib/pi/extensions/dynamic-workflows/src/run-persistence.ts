@@ -42,6 +42,14 @@ export interface PersistedAgentState {
   tokenUsage?: AgentUsage;
   /** The model this agent ran on (provider/id), when known. */
   model?: string;
+  /**
+   * Diagnostic-only context-pressure signals (see
+   * docs/plans/subagent-context-pressure.md §4). Never affects `status`/
+   * `error`/`recoverable` above.
+   */
+  stopReason?: string;
+  compactions?: number;
+  compactionReasons?: ("manual" | "threshold" | "overflow")[];
 }
 
 export interface PersistedRunState {

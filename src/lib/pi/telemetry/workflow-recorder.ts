@@ -47,6 +47,13 @@ export type WorkflowTelemetry = {
       status: WorkflowAgentStatus;
       totalTokens?: number;
       turns?: number;
+      /**
+       * Diagnostic-only context-pressure signals (see
+       * docs/plans/subagent-context-pressure.md §4). Never affects `status`
+       * above.
+       */
+      stopReason?: string;
+      compactions?: number;
     },
   ) => void;
   agentStarted: (
@@ -210,7 +217,7 @@ export const createWorkflowTelemetry = (
       );
     },
 
-    agentEnded: (runId, { callId, cost, status, totalTokens, turns }) => {
+    agentEnded: (runId, { callId, compactions, cost, status, stopReason, totalTokens, turns }) => {
       const span = runs.get(runId)?.agents.get(callId);
       if (!span) return;
 
@@ -221,6 +228,12 @@ export const createWorkflowTelemetry = (
           : { "semla.workflow.agent.total_tokens": totalTokens }),
         ...(cost === undefined ? {} : { "semla.workflow.agent.cost": cost }),
         ...(turns === undefined ? {} : { "semla.workflow.agent.turns": turns }),
+        ...(stopReason === undefined
+          ? {}
+          : { "semla.workflow.agent.stop_reason": stopReason }),
+        ...(compactions === undefined
+          ? {}
+          : { "semla.workflow.agent.compactions": compactions }),
       });
       span.close(
         status === "done"

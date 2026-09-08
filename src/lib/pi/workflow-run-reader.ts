@@ -37,6 +37,14 @@ export type PersistedAgentState = {
   startedAt?: string;
   status: "done" | "error" | "queued" | "running" | "skipped";
   tokens?: number;
+  /**
+   * Diagnostic-only context-pressure signals (see
+   * docs/plans/subagent-context-pressure.md §4). Never affects `status`/
+   * `error` above.
+   */
+  stopReason?: string;
+  compactions?: number;
+  compactionReasons?: ("manual" | "threshold" | "overflow")[];
   /** Per-agent usage; the only place an agent's own cost is recorded. */
   tokenUsage?: {
     cacheRead?: number;

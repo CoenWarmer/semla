@@ -10,6 +10,7 @@ import {
   WorkflowAgent,
   type WorkflowAgentOptions,
 } from "./agent.ts";
+import type { AgentContextSignals } from "./agent-context-signals.ts";
 import type { AgentHistoryEntry } from "./agent-history.ts";
 import {
   type AgentDefinition,
@@ -305,6 +306,15 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
     error?: string;
     errorCode?: WorkflowErrorCode;
     recoverable?: boolean;
+    /**
+     * Diagnostic-only context-pressure signals (docs/plans/subagent-context-pressure.md
+     * §4). Never affects `result`/`error`/`recoverable` above — only ever adds
+     * information about how the subagent's own session behaved while producing
+     * whatever result/error it produced.
+     */
+    stopReason?: string;
+    compactions?: number;
+    compactionReasons?: AgentContextSignals["compactionReasons"];
   }) => void;
   onAgentHistory?: (event: {
     id: string;
@@ -813,6 +823,10 @@ export async function runWorkflow<T = unknown>(
       // estimate when the provider reports no usage (total === 0). Usage is reset
       // per retry attempt so a failed attempt does not double-count the next one.
       let usage: AgentUsage | undefined;
+      // Diagnostic-only context-pressure signals for this attempt (§4.1), reset
+      // per retry like `usage` so a failed attempt's counts never carry into the
+      // next one.
+      let contextSignals: AgentContextSignals | undefined;
       const recordTokens = (result: unknown): number => {
         const tokens =
           usage && usage.total > 0
@@ -833,6 +847,7 @@ export async function runWorkflow<T = unknown>(
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           usage = undefined;
+          contextSignals = undefined as AgentContextSignals | undefined;
           const externalSignal = options.signal;
           let onExternalAbort: (() => void) | undefined;
           let onRunFatal: (() => void) | undefined;
@@ -914,6 +929,9 @@ export async function runWorkflow<T = unknown>(
               onUsage: (u: AgentUsage) => {
                 usage = u;
               },
+              onContextSignals: (signals: AgentContextSignals) => {
+                contextSignals = signals;
+              },
               onHistory: (history: AgentHistoryEntry[]) => {
                 options.onAgentHistory?.({
                   id: deltaKey,
@@ -960,6 +978,9 @@ export async function runWorkflow<T = unknown>(
               tokenUsage: usage,
               worktree: runCwd,
               model: displayModel,
+              stopReason: contextSignals?.stopReason,
+              compactions: contextSignals?.compactions,
+              compactionReasons: contextSignals?.compactionReasons,
             });
             return result;
           } catch (error) {
@@ -1006,6 +1027,9 @@ export async function runWorkflow<T = unknown>(
               error: workflowError.message,
               errorCode: workflowError.code,
               recoverable: workflowError.recoverable,
+              stopReason: contextSignals?.stopReason,
+              compactions: contextSignals?.compactions,
+              compactionReasons: contextSignals?.compactionReasons,
             });
 
             if (workflowError.recoverable) {

@@ -239,6 +239,20 @@ export const SEMLA_TELEMETRY_SCHEMA = defineTelemetrySchema({
           description: "Cost in USD, as reported by the provider.",
           type: "number",
         },
+        "semla.workflow.agent.stop_reason": {
+          description:
+            "The last assistant message's stopReason for this subagent's " +
+            "session, when known. Diagnostic only — does not affect status.",
+          type: "string",
+          values: ["stop", "length", "toolUse", "error", "aborted", "deferred", "pending"],
+          cardinality: "low",
+        },
+        "semla.workflow.agent.compactions": {
+          description:
+            "How many compaction cycles this subagent's own session ran " +
+            "(manual + auto). See docs/plans/subagent-context-pressure.md.",
+          type: "number",
+        },
       },
       status: { default: "ok", errorWhen: "the agent call threw or was aborted" },
     },

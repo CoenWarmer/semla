@@ -60,6 +60,9 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     status: a.status,
     tokens: a.tokens,
     turns: a.history ? historyToTurns(a.history) : undefined,
+    stopReason: a.stopReason,
+    compactions: a.compactions,
+    compactionReasons: a.compactionReasons,
   }));
 
   return {
