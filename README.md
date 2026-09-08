@@ -11,30 +11,15 @@ The core design principle is that every agent run should be inspectable, repeata
 - **Sessions** — Persistent conversations stored on disk, but backed by Supabase. Resume any session from where it left off; full message history is retained across page reloads.
 - **Workflow orchestration** — The agent can decompose tasks into parallel subagents. Progress is tracked in real time and surfaced in a panel alongside the conversation.
 - **Timeline view** — Workflows are rendered as an OTel-style trace waterfall: phases, agents, and conversation events on a shared time axis. Conversation messages appear as inline event markers that scroll the chat when clicked.
-- **Workspace project browser** — Semla scans the configured workspace root for git repositories and shows them on the home page as cards (branch, staleness). Clicking a card opens a new session pre-titled with the project name. A searchable combobox in the sidebar offers quick access to any repo.
-- **Code map** — Ask about a piece of code and Semla resolves the call graph around it with the TypeScript type checker, then draws it in a panel: callers above callees, each node showing the `file:line` it was resolved to. Every edge is a call the checker traced to a declaration. The map states its own limits — where depth or the node cap stopped it, and every call it could not resolve — so it is never mistaken for the complete picture. TypeScript and JavaScript.
+- **Session branching** — visualise the conversation tree and branch off without affecting the context window of other branches.
 - **Cost traceability** — See the cost of turns, sessions, and the total lifecycle of the harness in the UI.
+- **Wiki** — build a knowledge graph of your repo's: entities, concepts and decisions are gathered from code and git history. 
+- **Code map** — Ask about a piece of code and Semla resolves the call graph around it with the TypeScript type checker, then draws it in a panel: callers above callees, each node showing the `file:line` it was resolved to. Every edge is a call the checker traced to a declaration. The map states its own limits — where depth or the node cap stopped it, and every call it could not resolve — so it is never mistaken for the complete picture. TypeScript and JavaScript.
 - **Agent transcript viewer** — Drill into any subagent's full transcript, including its prompt rendered as markdown.
 - **Model selection** — Models are loaded dynamically from the pi runtime; the active model is stored per user in user settings.
 - **System prompt editor** — Override the orchestrator's system prompt from the settings page without a redeploy.
-- **Wiki** — entities, concepts and decisions are gathered from code and git history by having Semla orient on your repo's. 
-- **Session branching** — visualise the conversation tree and branch off without affecting the context window of other branches.
 - **Code review** — see what code the agent is looking at live while it is doing it. Review its changes by being exposed to the code that the agent changes.
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js (App Router, Node.js runtime) |
-| Auth & persistence | Supabase (Postgres + Auth) |
-| Agent runtime | `@earendil-works/pi-coding-agent` |
-| Code intelligence | TypeScript 7 (`typescript/unstable` API and its native LSP); `@mrclrchtr/supi-code-intelligence` (LSP + tree-sitter) |
-| UI | Tailwind CSS, base-ui, shadcn components |
-| State | TanStack Query |
-| Workflow graph | React Flow (`@xyflow/react`) |
-| Timeline view | `react-otel-trace-waterfall` |
-
+- **MCP Server support** — Allow Semla to connect to MCP servers to extend functionality.
 ---
 
 ## Getting Started
@@ -42,7 +27,6 @@ The core design principle is that every agent run should be inspectable, repeata
 ### Prerequisites
 
 - Node.js 20+
-- A Supabase project with the sessions, user_settings, and workflow tables provisioned
 - An API key for the model provider (Anthropic, or any provider supported by the pi runtime)
 
 Language servers are **not** a separate prerequisite. TypeScript is served by
@@ -50,16 +34,6 @@ TypeScript 7, which answers LSP from the compiler binary itself, so `npm install
 is enough: Semla prepends `scripts/language-servers` and `node_modules/.bin` to
 the agent's PATH at boot, and the version code intelligence uses is the one this
 repository pins rather than whatever is installed on the machine.
-
-There is no `typescript-language-server` package any more. TypeScript 7 ships no
-tsserver, and supi looks for that binary by name, so
-`scripts/language-servers/typescript-language-server` is a small shim that execs
-`tsc --lsp -stdio`. Adding another language means adding its server as a
-devDependency and a line in `src/lib/pi/language-servers.ts`.
-
-Without a server, semantic navigation reports itself unavailable and falls back
-to structural evidence — the boot log says which servers resolved, so a thin
-answer is traceable to a cause.
 
 ### Install dependencies
 
@@ -145,30 +119,11 @@ src/
 ### Authentication
 
 Semla is single-user. Bound to loopback — the default — nothing off this machine
-can reach it, so no sign-in is required and the app keeps working when Supabase
-is unavailable. Binding anywhere else requires Supabase authentication.
-
-The policy comes from the bind address, not the request: a per-request
-"is this localhost?" test could only read the `Host` header, which the client
-sets. `SEMLA_BIND_HOST` drives the socket and the policy together, so exposing
-Semla turns authentication on in the same move.
+can reach it, so no sign-in is required.
 
 ### Isolation from the host
 
-Semla runs pi in-process as a pinned library, not the `pi` binary on your PATH.
-Extensions, skills and packages come from this repository, and credentials and
-the model catalog live in `~/.semla/agent` rather than `~/.pi/agent`. That
-directory is seeded once from the host so an existing pi install keeps working;
-after that, changes made with the `pi` CLI no longer affect Semla. Delete it to
-re-seed. In a container with no host install, credentials come from
-`PI_MODEL_API_KEY`.
-
-The model catalog is refreshed from the network once per server start, so a
-seeded snapshot does not go stale as providers add models. It is best-effort —
-if the fetch fails the catalog already on disk is used — and skipped entirely
-when `PI_OFFLINE` is set.
-
-The agent loop lives in `session-service.ts`. Each prompt streams events (assistant deltas, tool calls, workflow snapshots) over SSE to the client. Workflow progress is also polled from Supabase so background runs stay up to date after a page reload.
+Upcoming: run Semla inside a Docker container for extra security.
 
 ### MCP servers
 
@@ -199,17 +154,6 @@ that file deliberately. Example:
   }
 }
 ```
-
-If you want the shared, cross-tool config file back instead, set
-`PI_MCP_CONFIG_MODE` yourself (to anything other than `exclusive`) before
-starting Semla — an operator's own setting is never overridden.
-
-The settings page's extension health card shows how many servers the pinned
-file declares (and whether it fails to parse at all); actual connection status
-(connected / needs auth / failed) is only known inside a running session, since
-the package publishes it as an in-session event rather than anywhere a route
-handler can read without one. See `docs/plans/mcp-servers.md` for the full design
-and the spike it rests on.
 
 ---
 
