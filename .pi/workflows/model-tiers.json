@@ -1,7 +1,7 @@
 {
   "tiers": {
-    "small": "openrouter/anthropic/claude-haiku-4.5",
-    "medium": "openrouter/anthropic/claude-sonnet-4.5",
-    "big": "openrouter/anthropic/claude-opus-5"
+    "small": "openrouter/anthropic/claude-haiku-4.5:minimal",
+    "medium": "openrouter/anthropic/claude-sonnet-5:medium",
+    "big": "openrouter/anthropic/claude-opus-5:medium"
   }
 }
