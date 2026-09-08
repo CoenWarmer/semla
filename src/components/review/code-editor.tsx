@@ -29,6 +29,11 @@ import {
   monaco,
 } from "./monaco-setup";
 import {
+  registerDefinitionProvider,
+  uriForWorkspacePath,
+  type DefinitionProviderConfig,
+} from "./definition-provider";
+import {
   buildDecorations,
   firstChangedLine,
   hunkChangedLineRange,
@@ -83,6 +88,15 @@ function optionsFor(
 export interface CodeEditorProps {
   /** Project-relative path. Chooses the language and keys the model. */
   path: string;
+  /**
+   * Workspace-relative path of the project the file belongs to.
+   *
+   * Needed because a model is keyed by a workspace-relative Uri rather than by
+   * the project-relative path alone: two repositories in one session both have
+   * a `src/index.ts`, and one Uri for both would show the operator the wrong
+   * file's buffer. It is also the address Go to Definition answers in.
+   */
+  project: string;
   /** The file as it is on disk. Seeds the model the first time a path is seen. */
   value: string;
   /** The whole change since HEAD, which is what gets coloured. */
@@ -116,9 +130,19 @@ export interface CodeEditorProps {
    */
   onExplainLine?: (line: number) => void;
   onVisualizeLine?: (line: number) => void;
+  /**
+   * Everything Go to Definition needs, or omitted to leave the gesture off.
+   *
+   * Passed as one object because the pieces are only meaningful together, and
+   * because it is registered once for the editor's lifetime against refs — an
+   * individual callback changing identity must not re-register the provider,
+   * which would leave two answering the same position.
+   */
+  definition?: DefinitionProviderConfig | null;
 }
 
 export default function CodeEditor({
+  definition = null,
   hunks,
   onChange,
   onExplainLine,
@@ -126,6 +150,7 @@ export default function CodeEditor({
   onStageHunk,
   onVisualizeLine,
   path,
+  project,
   readOnly = false,
   reveal = null,
   staging = null,
@@ -153,13 +178,22 @@ export default function CodeEditor({
   const onExplainRef = useRef(onExplainLine);
   const onVisualizeRef = useRef(onVisualizeLine);
   const onStageHunkRef = useRef(onStageHunk);
+  const definitionRef = useRef(definition);
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
     onExplainRef.current = onExplainLine;
     onVisualizeRef.current = onVisualizeLine;
     onStageHunkRef.current = onStageHunk;
-  }, [onChange, onExplainLine, onSave, onStageHunk, onVisualizeLine]);
+    definitionRef.current = definition;
+  }, [
+    definition,
+    onChange,
+    onExplainLine,
+    onSave,
+    onStageHunk,
+    onVisualizeLine,
+  ]);
 
   // Create once. An entry dropped without dispose leaks the editor and every
   // model it holds, and this panel is opened and closed all day.
@@ -247,10 +281,39 @@ export default function CodeEditor({
       },
     });
 
+    /**
+     * Go to Definition, if the panel supplied the machinery for it.
+     *
+     * Registered once and delegating through the ref, so the provider Monaco
+     * holds is stable for the editor's life while the selection it closes over
+     * stays current. Registering per prop change would leave several providers
+     * answering the same position, and Monaco merges their answers.
+     *
+     * `null` is a real configuration: without it the gesture stays off, which
+     * is what a surface with no session context should do.
+     */
+    const definitionRegistration = definitionRef.current
+      ? registerDefinitionProvider({
+          current: () => definitionRef.current?.current() ?? null,
+          languages: definitionRef.current.languages,
+          onCrossFile: (workspacePath, line) =>
+            definitionRef.current?.onCrossFile(workspacePath, line),
+          onNotice: (message) => definitionRef.current?.onNotice(message),
+          readFile: async (workspacePath) =>
+            (await definitionRef.current?.readFile(workspacePath)) ?? null,
+          resolve: async (request) =>
+            (await definitionRef.current?.resolve(request)) ?? null,
+          toWorkspacePath: (projectPath, filePath) =>
+            definitionRef.current?.toWorkspacePath(projectPath, filePath) ??
+            `${projectPath}/${filePath}`,
+        })
+      : null;
+
     return () => {
       changeSubscription.dispose();
       explain.dispose();
       visualize.dispose();
+      definitionRegistration?.dispose();
       hunkGlyphsRef.current?.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
@@ -273,24 +336,41 @@ export default function CodeEditor({
     monaco.editor.setTheme(theme === "dark" ? DARK_THEME : LIGHT_THEME);
   }, [theme]);
 
-  // Swap the model when the file changes. `value` seeds a path the first time
-  // it is seen and is not written back over an existing model: by then the
-  // model may hold edits the operator has not saved, and the panel remounts
-  // this component when it genuinely wants to reload from disk.
+  /*
+   * Swap the model when the file changes. `value` seeds a path the first time
+   * it is seen and is not written back over an existing model: by then the
+   * model may hold edits the operator has not saved, and the panel remounts
+   * this component when it genuinely wants to reload from disk.
+   *
+   * **Models carry a Uri, and that is load-bearing rather than cosmetic.**
+   * Monaco resolves a definition's `Location` through its own model registry,
+   * so the file the operator is reading has to be registered under the same
+   * Uri the definition provider builds — otherwise a cmd+click within one file
+   * resolves to a Uri Monaco has never heard of. Keyed workspace-relative,
+   * because a project-relative key collides across repositories.
+   *
+   * A Uri already in the registry is adopted rather than recreated:
+   * `ensureModel` may have built it to answer a definition before the operator
+   * opened it, and `createModel` throws on a duplicate Uri.
+   */
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
     const models = modelsRef.current;
-    let model = models.get(path);
+    const workspacePath = `${project}/${path}`;
+    let model = models.get(workspacePath);
 
     if (!model) {
-      model = monaco.editor.createModel(value, languageForPath(path));
-      models.set(path, model);
+      const uri = uriForWorkspacePath(workspacePath);
+      model =
+        monaco.editor.getModel(uri) ??
+        monaco.editor.createModel(value, languageForPath(path), uri);
+      models.set(workspacePath, model);
     }
 
     editor.setModel(model);
-  }, [path, value]);
+  }, [path, project, value]);
 
   // Decorations follow the hunks. Monaco anchors these to the model, so they
   // shift with the operator's own edits rather than scattering — they go stale

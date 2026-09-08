@@ -68,6 +68,26 @@ import "monaco-editor/editor/contrib/multicursor/browser/multicursor.js";
 import "monaco-editor/editor/contrib/smartSelect/browser/smartSelect.js";
 import "monaco-editor/editor/contrib/cursorUndo/browser/cursorUndo.js";
 import "monaco-editor/editor/contrib/indentation/browser/indentation.js";
+/*
+ * Go to Definition, in two halves that are easy to mistake for one.
+ *
+ * `goToCommands` registers the *actions* — the menu item, F12, Alt+F12 — and
+ * `link/goToDefinitionAtPosition` registers the *gesture*: the cmd/ctrl-hover
+ * underline and the cmd+click itself. Importing only the first leaves a menu
+ * entry that works and a cmd+click that does nothing, which reads as the
+ * modifier key being broken rather than as a missing module. The peek widget
+ * `goToCommands` can open lives in peekView, which is why that is here too.
+ *
+ * This is an exception to the exclusion list below, and it is a checked one:
+ * nothing under contrib/gotoSymbol/ references `getWorker`, `EditorWorker` or
+ * `editorWorkerService`, so the worker guard is not being quietly relied on to
+ * look the other way. What Go to Definition needs is a DefinitionProvider,
+ * and definition-provider.ts registers one backed by the server's TypeScript
+ * checker — see that file for why the browser cannot answer this itself.
+ */
+import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands.js";
+import "monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js";
+import "monaco-editor/editor/contrib/peekView/browser/peekView.js";
 // The codicon font and its styles, as a module rather than as the raw .css
 // editor.main.js imports: the package's `exports` map rewrites every subpath
 // to a `.js` file, so a stylesheet cannot be reached through the package name
@@ -77,10 +97,16 @@ import "monaco-editor/features/codicon/register.js";
 /*
  * Left out deliberately, each because it needs something this panel does not
  * have: suggest, hover, parameterHints, inlayHints, codeAction, rename,
- * gotoSymbol, codelens, colorPicker, linkedEditing and stickyScroll all want a
- * language service; unicodeHighlighter and wordHighlighter want the editor web
- * worker. Adding one of those means answering monaco-setup's worker question
- * first — `getWorker` below throws a message saying so.
+ * codelens, colorPicker, linkedEditing and stickyScroll all want a language
+ * service; unicodeHighlighter and wordHighlighter want the editor web worker.
+ * Adding one of those means answering monaco-setup's worker question first —
+ * `getWorker` below throws a message saying so.
+ *
+ * `gotoSymbol` used to be on this list. It is in, above, because the one thing
+ * it needs — a DefinitionProvider — turned out to be answerable from the
+ * server, and because it needs no worker. The rest of the list is unchanged:
+ * hover is still out, so a cmd-hover shows the underline and the definition
+ * preview the gesture draws itself, not a type tooltip.
  */
 
 // The languages this repository and its neighbours are written in. Each is a

@@ -290,6 +290,43 @@ export function useSymbolAtLine(sessionId: string) {
   });
 }
 
+/**
+ * Resolving a definition, and reading a file that is not the one open.
+ *
+ * Both are plain functions rather than hooks: they are called from inside
+ * Monaco's definition provider, which is not a React context and cannot hold
+ * a mutation. `queryClient` is passed in so a file read for a definition
+ * populates — and reuses — the same cache the editor reads from.
+ */
+export type DefinitionAnswer = {
+  definition: {
+    path: string | null;
+    line: number;
+    name: string;
+    external: boolean;
+  } | null;
+  error?: string;
+};
+
+export async function fetchDefinition(
+  sessionId: string,
+  request: { project: string; path: string; line: number; character: number },
+): Promise<DefinitionAnswer | null> {
+  const res = await fetch(`/api/sessions/${sessionId}/review/definition`, {
+    body: JSON.stringify(request),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+
+  // A 4xx here is a position that cannot be resolved — a Markdown file, a
+  // project with no tsconfig — which is a fact about the file rather than a
+  // failure worth surfacing on a hover. `definition: null` is the same
+  // "nothing to go to" the gesture already handles.
+  if (!res.ok) return { definition: null };
+
+  return (await res.json()) as DefinitionAnswer;
+}
+
 export interface CodeMapAtLine {
   map: import("@/lib/code-map/types").CodeMap | null;
   symbol?: EnclosingSymbol;

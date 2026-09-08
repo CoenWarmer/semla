@@ -30,6 +30,7 @@ import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
 import { ReviewCommitNav } from "./review-commit-nav";
 import { ReviewEditorPane } from "./review-editor-pane";
+import { selectionForWorkspacePath } from "./review-definition-target";
 import { ReviewFileTree } from "./review-file-tree";
 import {
   ResizableHandle,
@@ -155,6 +156,42 @@ export function ReviewPanel({
     setChosen(next);
     setExpanded(next);
   }, []);
+
+  /**
+   * Open a workspace-relative path, which is how Go to Definition answers.
+   *
+   * A definition does not respect the panel's `{ project, path }` shape: it can
+   * land in another repository of the same session, or in `node_modules` of
+   * this one. Splitting it back apart needs the project list, which lives
+   * here, and a path in none of them cannot be opened at all — the file API
+   * resolves against a session's projects, so a bare workspace path outside
+   * them would be refused. Saying so is better than a click that appears to do
+   * nothing.
+   *
+   * Deliberately does not fold the hunk accordion open, unlike `selectFile`: a
+   * definition target is usually an unchanged file, and expanding an empty
+   * hunk list would read as the panel losing the row it had open.
+   */
+  const openWorkspacePath = useCallback(
+    (workspacePath: string, line: number) => {
+      const next = selectionForWorkspacePath(
+        review.data?.projects ?? [],
+        workspacePath,
+      );
+
+      if (!next) {
+        setResult({
+          message: `${workspacePath} is not inside a project this session is linked to, so it cannot be opened here.`,
+          ok: false,
+        });
+        return;
+      }
+
+      setChosen(next);
+      revealLine(line);
+    },
+    [review.data?.projects, revealLine],
+  );
 
   const selection = chosen ?? defaultSelection(review.data);
   const projects = review.data?.projects ?? [];
@@ -435,6 +472,7 @@ export function ReviewPanel({
                   return { ...previous, [key]: content };
                 })
               }
+              onOpenWorkspacePath={openWorkspacePath}
               onSave={onSave}
               onStage={onStage}
               reveal={reveal}

@@ -9,11 +9,14 @@
  * edits in it.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  fetchDefinition,
+  fileContentQueryKey,
   useCodeMapAtLine,
   useFileContent,
   useReviewHunks,
@@ -22,6 +25,8 @@ import {
   type CodeMapAtLine,
 } from "@/hooks/use-review";
 import { explainFunctionPrompt } from "@/lib/review-prompts";
+
+import { isReadOnlyPath } from "./review-definition-target";
 
 import { ReviewCodeMap } from "./review-code-map";
 
@@ -42,6 +47,7 @@ export function ReviewEditorPane({
   draft,
   onDraftChange,
   onExplain,
+  onOpenWorkspacePath,
   onSave,
   onStage,
   reveal,
@@ -81,6 +87,12 @@ export function ReviewEditorPane({
    * second caller, not a second implementation.
    */
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  /**
+   * Go to Definition landed in another file. The panel owns which file is
+   * open, so this hands the workspace-relative path up rather than switching
+   * the editor's model underneath itself.
+   */
+  onOpenWorkspacePath: (workspacePath: string, line: number) => void;
   selection: FileSelection;
   sessionId: string;
 }) {
@@ -105,6 +117,62 @@ export function ReviewEditorPane({
 
   const symbolAt = useSymbolAtLine(sessionId);
   const codeMapAt = useCodeMapAtLine(sessionId);
+
+  const queryClient = useQueryClient();
+
+  /**
+   * Everything Monaco's Go to Definition needs from this session.
+   *
+   * A single memoised object because `CodeEditor` registers the provider once,
+   * for the editor's lifetime, and reads it through a ref — so the identity is
+   * not what keeps it current, the closures are. `current` is a function
+   * rather than a value for the same reason: the provider is called long after
+   * registration, and must see the file open *then*.
+   *
+   * `readFile` goes through the query client rather than a bare fetch, so a
+   * definition target the operator subsequently opens is already cached, and a
+   * file opened first does not get read twice.
+   */
+  const definition = useMemo(
+    () => ({
+      current: () => ({ path: selection.path, project: selection.project }),
+      languages: ["typescript", "javascript"] as const,
+      onCrossFile: onOpenWorkspacePath,
+      onNotice: setNotice,
+      readFile: async (path: string) => {
+        try {
+          const data = await queryClient.fetchQuery({
+            queryFn: async () => {
+              const params = new URLSearchParams({ path });
+              const res = await fetch(
+                `/api/sessions/${sessionId}/files/content?${params}`,
+              );
+              if (!res.ok) throw new Error("Unable to read file");
+              return res.json() as Promise<{ content: string }>;
+            },
+            queryKey: fileContentQueryKey(sessionId, path),
+          });
+          return data.content;
+        } catch {
+          return null;
+        }
+      },
+      resolve: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+      }) => fetchDefinition(sessionId, request),
+      toWorkspacePath: workspacePath,
+    }),
+    [
+      onOpenWorkspacePath,
+      queryClient,
+      selection.path,
+      selection.project,
+      sessionId,
+    ],
+  );
 
   const status = hunks.data?.file.status;
   const unchanged = hunks.data === null;
@@ -275,6 +343,7 @@ export function ReviewEditorPane({
         ) : null}
 
         <ReviewEditor
+          definition={definition}
           hunks={hunks.data?.full?.hunks ?? []}
           onChange={(next) => onDraftChange(next, next !== onDisk)}
           onExplainLine={explainAt}
@@ -283,6 +352,13 @@ export function ReviewEditorPane({
           reveal={reveal}
           onSave={() => onSave(draft ?? onDisk, content.data?.sha)}
           path={selection.path}
+          project={selection.project}
+          // A declaration file or a dependency opened by Go to Definition is
+          // not this repository's to change: editing it would produce a diff
+          // the review panel cannot show and `npm ci` would erase.
+          readOnly={isReadOnlyPath(
+            workspacePath(selection.project, selection.path),
+          )}
           staging={staging}
           stagingBusy={busy}
           value={onDisk}
