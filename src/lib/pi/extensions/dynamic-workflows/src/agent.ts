@@ -725,7 +725,10 @@ export class WorkflowAgent {
    * on later calls.
    */
   private loadTierConfig(
-    loader: () => ModelTierConfig | null = loadModelTierConfig,
+    loader: () => ModelTierConfig | null = () =>
+      // Passing the cwd is what lets a repository ship its own tiers; without
+      // it only the home file is ever read, and the override is dead config.
+      loadModelTierConfig({ cwd: this.cwd }),
   ): ModelTierConfig | null {
     if (!this.tierConfigBox) {
       this.tierConfigBox = { value: loader() };

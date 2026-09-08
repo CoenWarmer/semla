@@ -57,6 +57,29 @@ export function getModelTierConfigPath(): string {
   return join(homedir(), MODEL_TIERS_FILE);
 }
 
+/**
+ * Path to a repository-local tier override, checked before the home file.
+ *
+ * Tiers name concrete `provider/model` specs, so they encode an assumption
+ * about which providers the operator is authenticated to. Kept only in
+ * `homedir()`, that assumption is invisible to the repository and shared with
+ * every other pi install on the machine — a checkout that needs openrouter
+ * inherits whatever the last project configured.
+ *
+ * A repo-local file makes the choice reviewable and contained: it travels with
+ * the checkout, and a clone of this repository routes subagents the same way
+ * without the operator configuring anything. `.pi/` is the right home for it
+ * because that is where the workflow extension already keeps project state
+ * (`.pi/agents/`, `.pi/worktrees/`).
+ *
+ * Note the one thing it must NOT hold: credentials. Unlike `~/.semla/agent`,
+ * which is outside the tree precisely because `auth.json` is in it, a tier
+ * config is only model names — safe to commit, and worth committing.
+ */
+export function getProjectModelTierConfigPath(cwd: string): string {
+  return join(cwd, MODEL_TIERS_FILE);
+}
+
 // ---------------------------------------------------------------------------
 // Capability signal
 // ---------------------------------------------------------------------------
@@ -239,9 +262,37 @@ function isValidTiersMap(value: unknown): value is Record<string, string> {
 /**
  * Load the model tier config from disk. Returns null if the file does not
  * exist or is unparseable (callers fall back to a default).
+ *
+ * With a `cwd`, a repo-local `.pi/workflows/model-tiers.json` is preferred
+ * over the home file. Whole-file precedence rather than a per-tier merge,
+ * because tiers are a set that has to stay ordered: merging a project `small`
+ * into a home config whose `medium` is cheaper would silently invert them, and
+ * `resolveAgentModelSpec` has no way to notice.
  */
-export function loadModelTierConfig(configPath?: string): ModelTierConfig | null {
-  const path = configPath ?? getModelTierConfigPath();
+export function loadModelTierConfig(
+  configPathOrOptions?: string | { configPath?: string; cwd?: string },
+): ModelTierConfig | null {
+  const options =
+    typeof configPathOrOptions === "string"
+      ? { configPath: configPathOrOptions }
+      : (configPathOrOptions ?? {});
+
+  const candidates = options.configPath
+    ? [options.configPath]
+    : [
+        ...(options.cwd ? [getProjectModelTierConfigPath(options.cwd)] : []),
+        getModelTierConfigPath(),
+      ];
+
+  for (const path of candidates) {
+    const config = readTierConfig(path);
+    if (config) return config;
+  }
+  return null;
+}
+
+/** Read one tier config file, or null when absent, corrupt, or degenerate. */
+function readTierConfig(path: string): ModelTierConfig | null {
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf-8");
