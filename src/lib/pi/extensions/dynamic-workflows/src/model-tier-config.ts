@@ -324,7 +324,9 @@ export function saveModelTierConfig(config: ModelTierConfig, configPath?: string
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  writeFileSync(path, JSON.stringify(config, null, 2), "utf-8");
+  // Trailing newline: the project file is committed, and a missing one makes
+  // git report "\ No newline at end of file" on every save.
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
