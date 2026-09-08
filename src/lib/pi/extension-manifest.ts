@@ -40,6 +40,7 @@ import {
 import askUserExtension from "@/lib/pi/extensions/ask-user";
 import codeMapExtension from "@/lib/pi/extensions/code-map";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
+import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
 import workflowExtension from "@/lib/pi/extensions/workflow";
 
@@ -49,6 +50,7 @@ export type ExtensionId =
   | "code-map"
   | "code-intelligence"
   | "install-guard"
+  | "read-router"
   | "wiki"
   | "wiki-ingest-bridge"
   | "mcp";
@@ -217,6 +219,18 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/install-guard-extension.ts.",
+  },
+  {
+    id: "read-router",
+    source: { factory: readRouterExtension, kind: "factory" },
+    // Intercepts tool results and rewrites context history. No tools provided
+    // and nothing depends on it, so it sits beside install-guard.
+    requires: [],
+    providesTools: [],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/read-router.ts.",
   },
   {
     id: "wiki",

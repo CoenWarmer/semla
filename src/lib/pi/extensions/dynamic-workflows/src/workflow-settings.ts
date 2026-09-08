@@ -53,6 +53,24 @@ export interface WorkflowSettings {
    * tool) so a subagent can't fan out through them.
    */
   excludeSubagentTools?: string[];
+  /**
+   * Enable/disable the read-router extension's tool-result compression.
+   * Default true (omitting the field also enables it).
+   */
+  readRouterEnabled?: boolean;
+  /**
+   * Model used for summarisation. Must be a "provider/modelId" string.
+   * Default "anthropic/claude-haiku-4-5-20251001".
+   */
+  readRouterModel?: string;
+  /**
+   * Minimum line count for a `read` result to be compressed. Default 300.
+   */
+  readRouterThresholdLines?: number;
+  /**
+   * Minimum char count for a `bash` result to be compressed. Default 3000.
+   */
+  readRouterThresholdChars?: number;
 }
 
 export interface WorkflowSettingsStore {
@@ -230,6 +248,16 @@ function normalizeSettings(value: unknown): WorkflowSettings {
     );
     if (names.length) settings.excludeSubagentTools = names;
   }
+  if (typeof raw.readRouterEnabled === "boolean") {
+    settings.readRouterEnabled = raw.readRouterEnabled;
+  }
+  if (typeof raw.readRouterModel === "string" && raw.readRouterModel.trim()) {
+    settings.readRouterModel = raw.readRouterModel.trim();
+  }
+  const readRouterThresholdLines = normalizeInteger(raw.readRouterThresholdLines, 1, 100_000);
+  if (readRouterThresholdLines !== undefined) settings.readRouterThresholdLines = readRouterThresholdLines;
+  const readRouterThresholdChars = normalizeInteger(raw.readRouterThresholdChars, 1, 10_000_000);
+  if (readRouterThresholdChars !== undefined) settings.readRouterThresholdChars = readRouterThresholdChars;
   return settings;
 }
 
