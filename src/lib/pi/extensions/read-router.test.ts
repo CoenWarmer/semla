@@ -1,0 +1,604 @@
+/**
+ * Tests for read-router.ts — the extension that replaces large tool results
+ * with a cheap-model summary before they enter the frontier model's context.
+ *
+ * The interesting property here is not that compression happens. It is that
+ * compression *does not* happen in the cases where a summary would be wrong:
+ * an `edit` result whose exact text the model needs, an error the model has to
+ * read verbatim, a summariser that failed or hung. Every one of those is a
+ * silent failure mode — the model receives *something* either way, and a
+ * summary in place of an error message reads as the tool having succeeded.
+ * So most of what follows asserts a pass-through.
+ *
+ * Both hooks are exercised through a fake `ExtensionAPI`, matching how the
+ * extension is wired at runtime, rather than by importing its private
+ * predicates. `shouldCompress` is not exported and should not be: the
+ * threshold policy is only meaningful in terms of what the hook returns.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type {
+  ContextEvent,
+  ExtensionContext,
+  ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
+
+const loadWorkflowSettings = vi.fn();
+const getSpanSink = vi.fn();
+
+vi.mock("./dynamic-workflows/src/workflow-settings", () => ({
+  loadWorkflowSettings: (...args: unknown[]) =>
+    loadWorkflowSettings(...args) as unknown,
+}));
+
+vi.mock("@/lib/pi/telemetry/sink-registry", () => ({
+  getSpanSink: (...args: unknown[]) => getSpanSink(...args) as unknown,
+}));
+
+const readRouterExtension = (await import("./read-router")).default;
+
+// ── Fakes ─────────────────────────────────────────────────────────────────────
+
+type Handler = (event: unknown, ctx: unknown) => unknown;
+
+/** A pi whose registered handlers can be fired directly. */
+function makePi() {
+  const handlers = new Map<string, Handler[]>();
+  const pi = {
+    on: vi.fn((event: string, handler: Handler) => {
+      const list = handlers.get(event) ?? [];
+      list.push(handler);
+      handlers.set(event, list);
+    }),
+    registerTool: vi.fn(),
+  } as unknown as Parameters<typeof readRouterExtension>[0];
+
+  return {
+    pi,
+    fire: async (event: string, payload: unknown, ctx: unknown) => {
+      const list = handlers.get(event) ?? [];
+      let last: unknown;
+      for (const handler of list) last = await handler(payload, ctx);
+      return last;
+    },
+  };
+}
+
+/**
+ * The slice of ExtensionContext the extension touches. `complete` is the one
+ * that matters: it stands in for the summariser, and its call count is how the
+ * cache is observed.
+ */
+function makeCtx(
+  complete: (...args: unknown[]) => unknown = () => ({
+    content: [{ text: "SUMMARY", type: "text" }],
+  }),
+  { modelFound = true }: { modelFound?: boolean } = {},
+) {
+  const completeSpy = vi.fn(complete);
+  return {
+    completeSpy,
+    ctx: {
+      cwd: "/repo",
+      modelRegistry: {
+        complete: completeSpy,
+        find: vi.fn(() => (modelFound ? { id: "m" } : undefined)),
+      },
+      sessionManager: { getSessionId: () => "session-1" },
+    } as unknown as ExtensionContext,
+  };
+}
+
+function toolResult(
+  toolName: string,
+  text: string,
+  isError = false,
+): ToolResultEvent {
+  return {
+    content: [{ text, type: "text" }],
+    input: {},
+    isError,
+    toolCallId: "call-1",
+    toolName,
+  } as unknown as ToolResultEvent;
+}
+
+/** Text of exactly `n` lines, wide enough to also clear a char threshold. */
+function lines(n: number): string {
+  return Array.from({ length: n }, (_, i) => `line ${i} ${"x".repeat(60)}`).join(
+    "\n",
+  );
+}
+
+function resultText(value: unknown): string | undefined {
+  const content = (value as { content?: Array<{ text?: string }> } | undefined)
+    ?.content;
+  return content?.[0]?.text;
+}
+
+// ── Setup ─────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  loadWorkflowSettings.mockReturnValue({});
+  getSpanSink.mockReturnValue(undefined);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  loadWorkflowSettings.mockReset();
+  getSpanSink.mockReset();
+});
+
+// ── Registration ──────────────────────────────────────────────────────────────
+
+describe("readRouterExtension", () => {
+  it("registers the three hooks it needs and no others", () => {
+    const { pi } = makePi();
+    readRouterExtension(pi);
+
+    const events = (pi.on as unknown as { mock: { calls: [string][] } }).mock
+      .calls.map(([event]) => event);
+    expect(new Set(events)).toEqual(
+      new Set(["tool_result", "context", "session_shutdown"]),
+    );
+  });
+});
+
+// ── What must never be compressed ────────────────────────────────────────────
+
+/**
+ * Each of these would be a correctness bug rather than a missed optimisation,
+ * and each fails silently: the model still receives content, just the wrong
+ * content. The `edit`/`write` cases are the sharpest — a summarised diff looks
+ * like a successful edit of something else.
+ */
+describe("tool_result pass-through", () => {
+  it.each([
+    ["edit", "an exact-content tool"],
+    ["write", "an exact-content tool"],
+  ])("never compresses %s (%s)", async (toolName) => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire("tool_result", toolResult(toolName, lines(5000)), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("never compresses an error result", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire(
+      "tool_result",
+      toolResult("bash", lines(5000), true),
+      ctx,
+    );
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not re-compress its own output", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const already = `[Compressed: 9999 chars → via read-router]\n\n${lines(1000)}`;
+    const result = await fire("tool_result", toolResult("read", already), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("ignores a tool it has no threshold for", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire(
+      "tool_result",
+      toolResult("some_mcp_tool", lines(5000)),
+      ctx,
+    );
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves the result alone when the summariser throws", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(() => {
+      throw new Error("provider down");
+    });
+
+    const result = await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("leaves the result alone when the model id resolves to nothing", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(undefined, { modelFound: false });
+
+    const result = await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("leaves the result alone when the summary comes back empty", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(() => ({ content: [{ text: "", type: "text" }] }));
+
+    const result = await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── Thresholds ────────────────────────────────────────────────────────────────
+
+describe("tool_result thresholds", () => {
+  it("compresses a read over the default 300-line threshold", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    const result = await fire("tool_result", toolResult("read", lines(301)), ctx);
+
+    expect(resultText(result)).toContain("SUMMARY");
+    expect(resultText(result)).toMatch(/^\[Compressed: \d+ chars → via read-router\]/);
+  });
+
+  it("leaves a read at the default threshold uncompressed", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    // 300 lines is not "> 300" — the boundary is exclusive, and a test that
+    // only checked 1 vs 5000 would not notice it moving.
+    const result = await fire("tool_result", toolResult("read", lines(300)), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("compresses bash on characters, not lines", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    // One line, over the 3000-char default: a line-based rule would miss this.
+    const result = await fire(
+      "tool_result",
+      toolResult("bash", "y".repeat(3001)),
+      ctx,
+    );
+
+    expect(resultText(result)).toContain("SUMMARY");
+  });
+
+  it("leaves short bash output alone", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire("tool_result", toolResult("bash", "ok"), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["grep", 41, 40],
+    ["find", 41, 40],
+    ["ls", 81, 80],
+  ])(
+    "compresses %s above its own line threshold but not at it",
+    async (toolName, over, at) => {
+      const { pi, fire } = makePi();
+      readRouterExtension(pi);
+      const { ctx } = makeCtx();
+
+      expect(
+        resultText(await fire("tool_result", toolResult(toolName, lines(over)), ctx)),
+      ).toContain("SUMMARY");
+
+      expect(
+        await fire("tool_result", toolResult(toolName, lines(at)), ctx),
+      ).toBeUndefined();
+    },
+  );
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+describe("settings", () => {
+  it("is off when readRouterEnabled is false", async () => {
+    loadWorkflowSettings.mockReturnValue({ readRouterEnabled: false });
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire("tool_result", toolResult("read", lines(5000)), ctx);
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("is on when the setting is absent entirely", async () => {
+    loadWorkflowSettings.mockReturnValue({});
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    expect(
+      resultText(await fire("tool_result", toolResult("read", lines(400)), ctx)),
+    ).toContain("SUMMARY");
+  });
+
+  it("honours a configured line threshold", async () => {
+    loadWorkflowSettings.mockReturnValue({ readRouterThresholdLines: 10 });
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    expect(
+      resultText(await fire("tool_result", toolResult("read", lines(11)), ctx)),
+    ).toContain("SUMMARY");
+  });
+
+  it("honours a configured char threshold for bash", async () => {
+    loadWorkflowSettings.mockReturnValue({ readRouterThresholdChars: 10 });
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    expect(
+      resultText(await fire("tool_result", toolResult("bash", "z".repeat(11)), ctx)),
+    ).toContain("SUMMARY");
+  });
+
+  it("splits provider/modelId on the first slash only", async () => {
+    // An OpenRouter-style id carries a slash of its own, and splitting on the
+    // last one would send the request to a provider named "anthropic/claude".
+    loadWorkflowSettings.mockReturnValue({
+      readRouterModel: "openrouter/anthropic/claude-haiku",
+    });
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(find).toHaveBeenCalledWith("openrouter", "anthropic/claude-haiku");
+  });
+
+  it("defaults to a model id the installed catalogue actually has", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+    const find = (ctx.modelRegistry as unknown as { find: ReturnType<typeof vi.fn> })
+      .find;
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    // Pinned deliberately: `find` returning undefined for a typo'd id makes the
+    // extension a silent no-op, which is indistinguishable from it being off.
+    expect(find).toHaveBeenCalledWith(
+      "anthropic",
+      "claude-haiku-4-5-20251001",
+    );
+  });
+});
+
+// ── Cache ─────────────────────────────────────────────────────────────────────
+
+describe("content-hash cache", () => {
+  it("summarises identical content once across calls", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const text = lines(400);
+    const first = await fire("tool_result", toolResult("read", text), ctx);
+    const second = await fire("tool_result", toolResult("read", text), ctx);
+
+    expect(completeSpy).toHaveBeenCalledTimes(1);
+    expect(resultText(second)).toBe(resultText(first));
+  });
+
+  it("summarises differing content separately", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+    await fire("tool_result", toolResult("read", lines(401)), ctx);
+
+    expect(completeSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── Telemetry ─────────────────────────────────────────────────────────────────
+
+describe("telemetry", () => {
+  it("emits a read_router.compress span with the ratio", async () => {
+    const span = { close: vi.fn(), setAttributes: vi.fn() };
+    const sink = { openSpan: vi.fn(() => span) };
+    getSpanSink.mockReturnValue(sink);
+
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    await fire("tool_result", toolResult("read", lines(400)), ctx);
+
+    expect(sink.openSpan).toHaveBeenCalledWith({ name: "read_router.compress" });
+    expect(span.setAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({ model: expect.any(String), tool: "read" }),
+    );
+    const attrs = span.setAttributes.mock.calls[0][0] as {
+      compressedChars: number;
+      originalChars: number;
+      ratio: number;
+    };
+    expect(attrs.compressedChars).toBeLessThan(attrs.originalChars);
+    expect(attrs.ratio).toBeLessThan(1);
+    expect(span.close).toHaveBeenCalled();
+  });
+
+  it("still compresses when there is no span sink", async () => {
+    getSpanSink.mockReturnValue(undefined);
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    expect(
+      resultText(await fire("tool_result", toolResult("read", lines(400)), ctx)),
+    ).toContain("SUMMARY");
+  });
+
+  it("reports a reduction at shutdown, and says nothing when idle", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const idle = makePi();
+    readRouterExtension(idle.pi);
+    await idle.fire("session_shutdown", {}, undefined);
+    expect(info).not.toHaveBeenCalled();
+
+    const busy = makePi();
+    readRouterExtension(busy.pi);
+    const { ctx } = makeCtx();
+    await busy.fire("tool_result", toolResult("read", lines(400)), ctx);
+    await busy.fire("session_shutdown", {}, undefined);
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toMatch(
+      /\[read-router\] 1 compression\(s\): \d+ → \d+ chars \(\d+% reduction\)/,
+    );
+  });
+});
+
+// ── The context hook ──────────────────────────────────────────────────────────
+
+function contextEvent(
+  messages: Array<Record<string, unknown>>,
+): ContextEvent {
+  return { messages, type: "context" } as unknown as ContextEvent;
+}
+
+function toolResultMessage(toolName: string, text: string, isError = false) {
+  return {
+    content: [{ text, type: "text" }],
+    isError,
+    role: "toolResult",
+    toolName,
+  };
+}
+
+describe("context hook", () => {
+  it("compresses history in place and leaves other roles untouched", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx();
+
+    const user = { content: "hello", role: "user" };
+    const result = (await fire(
+      "context",
+      contextEvent([user, toolResultMessage("read", lines(400))]),
+      ctx,
+    )) as { messages: Array<Record<string, unknown>> };
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]).toBe(user);
+    const compressed = result.messages[1] as {
+      content: Array<{ text: string }>;
+      role: string;
+      toolName: string;
+    };
+    expect(compressed.content[0].text).toContain("SUMMARY");
+    // The rest of the message must survive: a toolResult that loses its
+    // toolName or role is no longer answerable to its tool call.
+    expect(compressed.role).toBe("toolResult");
+    expect(compressed.toolName).toBe("read");
+  });
+
+  it("returns nothing when no message crosses a threshold", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire(
+      "context",
+      contextEvent([
+        { content: "hi", role: "user" },
+        toolResultMessage("read", lines(5)),
+      ]),
+      ctx,
+    );
+
+    // Undefined rather than an identical array, so pi does not replace the
+    // history with a copy of itself on every turn.
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("applies the same exclusions as the tool_result hook", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const result = await fire(
+      "context",
+      contextEvent([
+        toolResultMessage("edit", lines(500)),
+        toolResultMessage("bash", lines(500), true),
+      ]),
+      ctx,
+    );
+
+    expect(result).toBeUndefined();
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("shares the cache with the tool_result hook", async () => {
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx, completeSpy } = makeCtx();
+
+    const text = lines(400);
+    await fire("tool_result", toolResult("read", text), ctx);
+    await fire("context", contextEvent([toolResultMessage("read", text)]), ctx);
+
+    expect(completeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up rather than delaying a turn when the summariser hangs", async () => {
+    vi.useFakeTimers();
+    const { pi, fire } = makePi();
+    readRouterExtension(pi);
+    const { ctx } = makeCtx(() => new Promise(() => {}));
+
+    const pending = fire(
+      "context",
+      contextEvent([toolResultMessage("read", lines(400))]),
+      ctx,
+    );
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    // The whole point of the guard: a slow model must cost the turn nothing,
+    // and the model sees the uncompressed history instead.
+    expect(await pending).toBeUndefined();
+  });
+});
