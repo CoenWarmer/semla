@@ -302,6 +302,71 @@ which is the property the session-start check in §3.6 rests on.
 
 Stage 6 is the one that can be deferred without leaving anything half-built.
 
+## 4.1 Getting the tool actually used
+
+**The measurement, before anything was changed.** Across the 120 most recent
+recorded sessions in `.semla-sessions`:
+
+| tool | calls |
+|---|---|
+| `bash` | 4,004 |
+| `edit` | 535 |
+| `read` | 513 |
+| `code_find` | 2 |
+| every other `code_*` and `code_map` | 0 |
+
+63% of that bash is file inspection — `grep` 1,240, `sed -n` 574, `cat` 367,
+`find`/`ls` 249. The agent reads files through bash (941) more often than
+through the `read` tool (513), and searches almost exclusively with grep.
+
+**The conclusion that matters:** this is not a `code_search` problem. Seven
+specialised code tools already shipped, were described to the model, and are
+unused. A system-prompt bullet is exactly what did not work for them, so
+`code_search` needs something other than being described once, fifty turns
+before it is relevant.
+
+**What is not the goal.** Most of that grep is correct.
+`grep -rl "phase_bar_terminal_fix_2"` is an exact identifier, and semantic
+search over vectors scoring 0.24–0.40 is strictly worse at it. The target is
+only the exploratory subset: the query whose wording does not appear in the
+code.
+
+**Three levers, weakest first.**
+
+1. *Tool description and prompt guidelines.* Already written, and on the
+   evidence above, close to worthless on their own.
+2. *The default system prompt* gains one line distinguishing the four cases by
+   what you already know — exact string, symbol, or only the behaviour. Cheap,
+   and it reaches only sessions that have not overridden the prompt, since
+   `session-service.ts` takes the operator's saved prompt when there is one.
+3. *A contextual nudge*, which is the one with a mechanism behind it. Appended
+   to a `bash` tool result at the moment the search went wrong.
+
+**The nudge triggers on the result, not the command.** Deciding from the
+pattern whether a search was "exploratory" means guessing at intent, and
+guessing wrong means nagging someone who did the right thing. The result says
+it plainly: **no matches** means the agent guessed an identifier and guessed
+wrong, which is exactly the query the index answers; **more matches than can be
+read** means the pattern was too broad. A search that returned a workable
+number gets nothing, because nothing went wrong.
+
+Capped at three per session — a hint on every failed grep is noise, and noise
+is what a model learns to skip — suppressed for searches through
+`node_modules`, `.semla-sessions` and other non-source trees, and suppressed
+entirely when the project has no index.
+
+It is ordered after `read-router` through `requires`, so it appends to the
+already-truncated output instead of being fed into the summariser that
+compresses it. Pi chains `tool_result` handlers, passing each the previous
+one's content, which is what makes appending safe.
+
+**This is falsifiable, and should be falsified.** The table above is the
+baseline. Re-running that count after a few weeks of real sessions answers
+whether any of this worked; if `code_search` sits at 2 calls like `code_find`,
+the honest conclusion is that tool descriptions and nudges do not change tool
+selection, and the next lever is a harder one — routing `bash grep` through the
+index, or removing the agent's ability to grep at all.
+
 ## 5. Open questions
 
 - **Chunk budget, and what the first live run showed.** 600 tokens is a starting

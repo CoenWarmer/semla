@@ -192,7 +192,11 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
   {
     id: "code-search",
     source: { factory: codeSearchExtension, kind: "factory" },
-    requires: [],
+    // After read-router, so its bash nudge is appended to the already-truncated
+    // search output rather than being fed into the summariser that compresses
+    // it. Pi chains tool_result handlers in extension order, passing each the
+    // previous one's content.
+    requires: ["read-router"],
     // Every query is scoped to one project's index, and the write hook has to
     // know which project a written path belongs to. Without an anchor there is
     // no index to search and no project to attribute a write to.

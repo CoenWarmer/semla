@@ -22,6 +22,7 @@ import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+import { nudgeFor } from "@/lib/code-index/bash-nudge";
 import { resolveEmbedder } from "@/lib/code-index/credentials";
 import { projectKey } from "@/lib/code-index/index-paths";
 import { reindexPaths } from "@/lib/code-index/indexer";
@@ -62,15 +63,29 @@ const CodeSearchSchema = Type.Object(
 /** Tool names whose results mean a file on disk changed. */
 const WRITE_TOOLS = new Set(["edit", "write"]);
 
+/** Text content of a tool result, whatever shape it arrived in. */
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      typeof part === "object" && part !== null && "text" in part
+        ? String((part as { text: unknown }).text)
+        : "",
+    )
+    .join("\n");
+}
+
 export default function codeSearchExtension(pi: ExtensionAPI) {
   // Pi hands the factory process.cwd(), not the session's project; the real one
   // arrives on session_start. Searching the wrong root would silently answer
   // from another repository's index.
   let cwd = process.cwd();
   let queue: ReindexQueue | null = null;
+  let nudges = 0;
 
   pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
     cwd = resolve(ctx.cwd || process.cwd());
+    nudges = 0;
     queue?.dispose();
     queue = createReindexQueue({
       reindex: async (paths) => {
@@ -105,17 +120,58 @@ export default function codeSearchExtension(pi: ExtensionAPI) {
    * must not await: an embedding round-trip here would put network latency on
    * every file write and turn a rate limit into a failed edit.
    */
-  pi.on("tool_result", (event: unknown) => {
-    const detail = event as { toolName?: string; args?: { path?: string; file_path?: string } };
-    if (detail.toolName === undefined || !WRITE_TOOLS.has(detail.toolName)) return;
+  pi.on("tool_result", async (event: unknown) => {
+    const detail = event as {
+      toolName?: string;
+      content?: unknown;
+      args?: { path?: string; file_path?: string; command?: string };
+    };
+    if (detail.toolName === undefined) return;
 
-    const written = detail.args?.path ?? detail.args?.file_path;
-    if (typeof written !== "string" || written.length === 0) return;
+    if (WRITE_TOOLS.has(detail.toolName)) {
+      const written = detail.args?.path ?? detail.args?.file_path;
+      if (typeof written !== "string" || written.length === 0) return;
 
-    const relative = written.startsWith(cwd)
-      ? written.slice(cwd.length).replace(/^\//, "")
-      : written;
-    queue?.notifyWritten(relative);
+      const relative = written.startsWith(cwd)
+        ? written.slice(cwd.length).replace(/^\//, "")
+        : written;
+      queue?.notifyWritten(relative);
+      return;
+    }
+
+    /**
+     * Tell the agent the index exists, at the moment it would have helped.
+     *
+     * Measured across 120 recorded sessions before this was added: bash is
+     * 4,004 tool calls and 63% of that is file inspection, while every
+     * specialised code tool is ignored — `code_find` was called twice, supi's
+     * other five and `code_map` essentially never. A tool description read
+     * fifty turns earlier is what failed for those seven.
+     *
+     * It appends rather than replaces, and runs after read-router (declared
+     * through `requires` in the manifest) so it is added to the truncated
+     * output rather than fed into the summariser. Pi chains tool_result
+     * handlers, passing each one the previous handler's content.
+     */
+    if (detail.toolName !== "bash") return;
+    const command = detail.args?.command;
+    if (typeof command !== "string") return;
+
+    const store = createLocalVectorStore();
+    const head = await store.head(projectKey(cwd));
+
+    const nudge = nudgeFor({
+      command,
+      output: textOf(detail.content),
+      indexed: head !== null,
+      alreadyNudged: nudges,
+    });
+    if (nudge === null) return;
+
+    nudges++;
+    return {
+      content: [{ type: "text", text: `${textOf(detail.content)}${nudge}` }],
+    };
   });
 
   pi.registerTool({
