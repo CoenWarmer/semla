@@ -1,7 +1,7 @@
 export const meta = {
   name: "loop_until_done",
   description: "Discover unknown-cardinality findings until repeated successful rounds are dry",
-  phases: [{ title: "Discover" }],
+  phases: [{ title: "Discover", tier: "medium" }],
 };
 
 // ADAPT: choose the target, stable identity field, schema, dry-round rule, and maximum bound.

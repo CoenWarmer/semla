@@ -19,7 +19,7 @@ export interface ComprehensionScenario {
 }
 
 const ENVELOPE =
-  "Return one complete plain-JavaScript workflow. It must start with export const meta, call agent() at least once, use unique labels, and explicitly return JSON-serializable data. Do not use imports.";
+  "Return one complete plain-JavaScript workflow. It must start with export const meta, call agent() at least once, use unique labels, give every declared phase a tier (and every agent outside a phase its own tier), and explicitly return JSON-serializable data. Do not use imports.";
 
 /** Stable quick, core, and coverage scenarios available to provider and replay runs. */
 export const COMPREHENSION_SCENARIOS: readonly ComprehensionScenario[] = [
@@ -438,7 +438,7 @@ export async function runComprehensionScenario(
       persistLogs: false,
       args: { work: [{ id: "alpha" }, { id: "beta" }], phaseBudget: 100 },
       loadSavedWorkflow: () =>
-        `export const meta = { name: "comprehension_child", description: "deterministic child" }\nconst value = await agent("child:" + args.id, { label: "child:" + args.id })\nreturn { id: args.id, value }`,
+        `export const meta = { name: "comprehension_child", description: "deterministic child" }\nconst value = await agent("child:" + args.id, { label: "child:" + args.id, tier: "medium" })\nreturn { id: args.id, value }`,
       onRuntimeEvent: (event) => events.push({ ...event, index: timelineIndex++ }),
       onAgentStart: ({ label, phase, prompt }) => {
         calls.push({

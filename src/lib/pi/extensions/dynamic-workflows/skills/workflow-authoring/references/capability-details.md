@@ -16,8 +16,8 @@ Every exact fact below is projected from the installed extension's capability co
 - `label`: string (optional; default: derived from phase and call count)
 - `phase`: string (optional; default: current phase)
 - `schema`: plain JSON Schema (optional)
-- `model`: string (optional; highest-priority exact model selector)
-- `tier`: string (optional; configured route name; dynamic reference: model-routes)
+- `model`: string (optional; always displaced by the phase tier; the override is logged)
+- `tier`: string (optional; configured route name; required outside any phase; displaced by the phase tier inside one; dynamic reference: model-routes)
 - `isolation`: "worktree" (optional)
 - `agentType`: string (optional; must come from provided context; dynamic reference: agent-types)
 - `timeoutMs`: number | null (optional; default: run timeout; null disables)
@@ -28,9 +28,10 @@ Every exact fact below is projected from the installed extension's capability co
 - Constraint: schema noncompliance after bounded structured-output repair is nonrecoverable and bypasses agent retries
 - Constraint: per-agent retries override invocation retries; retries are floored and clamped to 0..3
 - Constraint: resume replays only the longest unchanged prefix; the first miss and every later call execute live
-- Constraint: selector priority is explicit model > agentType model > tier > phase model > metadata model > implicit medium > session default
-- Constraint: an explicit model, agentType model, tier, or phase model that resolves to an unavailable model throws MODEL_NOT_FOUND naming the source (e.g. the tier and what it resolved to) instead of falling back
-- Constraint: only the implicit default medium tier (no explicit model, tier, agentType, or phase model requested) degrades to the session default when unavailable, logging a one-time run-visible warning instead of throwing
+- Constraint: the declared tier of the phase an agent runs in selects its model; a call-site tier, model, agentType model, or phase/metadata model route is displaced and the override is logged naming the phase, the agent, the ignored value, and the winning tier
+- Constraint: an agent outside any declared phase must pass an explicit tier; there is no implicit default tier and a missing one is nonrecoverable
+- Constraint: an agent in a phase title that meta.phases never declared is nonrecoverable, because that phase has no tier
+- Constraint: a tier that resolves to an unavailable model throws MODEL_NOT_FOUND naming the source (e.g. the tier and what it resolved to) instead of falling back
 - Constraint: worktree isolation is best-effort; failure logs that isolation was ignored and continues without an isolated working directory
 - Constraint: a subagent that runs out of context throws AGENT_CONTEXT_EXHAUSTED (nonrecoverable) unless onContextExhausted is "partial"
 - Constraint: onContextExhausted: "partial" resolves with { complete: false, reason: "context_exhausted", text } instead of throwing
@@ -307,9 +308,10 @@ Every exact fact below is projected from the installed extension's capability co
 
 - Classification: `script-contract`
 - Support: `supported`
-- Signature: `export const meta = { name: string, description: string, phases?: Array<{ title: string; detail?: string; model?: string }>, model?: string }`
+- Signature: `export const meta = { name: string, description: string, phases?: Array<{ title: string; tier: string; detail?: string; model?: string }>, model?: string }`
 - Constraint: must be the first statement
 - Constraint: name and description must be nonblank strings
+- Constraint: every declared phase must name a tier that the operator's model-tiers.json defines; a missing or unknown tier is rejected at parse time, naming the phase and the valid tier names
 - Constraint: metadata must use literal values; expressions such as string concatenation and template interpolation are rejected
 - Constraint: the meta declaration is the only legal export because the remaining body executes inside an async function
 

@@ -25,9 +25,9 @@ export function generateAdversarialReviewWorkflow(): string {
   name: 'adversarial_review',
   description: 'Adversarial review: findings cross-checked by independent skeptics',
   phases: [
-    { title: 'Investigate' },
-    { title: 'Refute' },
-    { title: 'Consensus' },
+    { title: 'Investigate', tier: 'medium' },
+    { title: 'Refute', tier: 'medium' },
+    { title: 'Consensus', tier: 'big' },
   ],
 }
 
@@ -102,8 +102,8 @@ export function generateMultiPerspectiveWorkflow(topic: string, perspectives: st
   name: 'multi_perspective_analysis',
   description: ${JSON.stringify(`Analyze from ${perspectives.length} different perspectives`)},
   phases: [
-    { title: 'Perspective Analysis' },
-    { title: 'Synthesis' },
+    { title: 'Perspective Analysis', tier: 'medium' },
+    { title: 'Synthesis', tier: 'big' },
   ],
 };
 

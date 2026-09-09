@@ -1,7 +1,7 @@
 export const meta = {
   name: "generate_and_filter",
   description: "Generate divergent candidates, deterministically deduplicate, then apply a rubric",
-  phases: [{ title: "Generate" }, { title: "Filter" }],
+  phases: [{ title: "Generate", tier: "medium" }, { title: "Filter", tier: "small" }],
 };
 
 // ADAPT: choose the topic, rubric, candidate schema, and a task-appropriate batch bound.

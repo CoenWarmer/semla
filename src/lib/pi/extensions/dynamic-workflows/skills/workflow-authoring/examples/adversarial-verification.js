@@ -1,7 +1,7 @@
 export const meta = {
   name: "adversarial_verification",
   description: "Produce claims and challenge them in separate skeptical contexts",
-  phases: [{ title: "Produce" }, { title: "Verify" }],
+  phases: [{ title: "Produce", tier: "medium" }, { title: "Verify", tier: "medium" }],
 };
 
 // ADAPT: validate and bound topics; define the evidence standard and schemas.

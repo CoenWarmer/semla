@@ -19,20 +19,26 @@ export const MAX_DIFF_CHARS = 200_000;
  * The workflow expects `args` to be passed with shape:
  *   { diff: string, diffSource: string }
  *
- * Model tier routing follows the spec:
- *   Finders A/B/C → medium (correctness)
- *   Finders D/E/F → small  (cleanup)
- *   Finder  G     → big    (altitude / abstraction)
- *   Synthesis     → big
+ * Model tier routing follows the spec, expressed as PHASES rather than
+ * per-agent tiers: a phase's declared tier decides the model for every agent
+ * in it (see phase-tiers.ts), so the three finder groups are three phases that
+ * all run concurrently, each finder tagged with its own `phase`.
+ *   Find Correctness (A/B/C) → medium
+ *   Find Cleanup     (D/E/F) → small
+ *   Find Altitude    (G)     → big
+ *   Verify                   → medium
+ *   Report (synthesis)       → big
  */
 export function generateCodeReviewWorkflow(): string {
   return `export const meta = {
   name: 'code_review',
   description: 'Multi-angle parallel code review: 7 finder angles + verify pass → ranked findings',
   phases: [
-    { title: 'Find' },
-    { title: 'Verify' },
-    { title: 'Report' },
+    { title: 'Find Correctness', tier: 'medium' },
+    { title: 'Find Cleanup', tier: 'small' },
+    { title: 'Find Altitude', tier: 'big' },
+    { title: 'Verify', tier: 'medium' },
+    { title: 'Report', tier: 'big' },
   ],
 }
 
@@ -72,48 +78,48 @@ const diffBlock = '\\n\\n<diff source=\\"' + diffSource + '\\"' + (diffTruncated
   '\\n</diff>\\n'
 const base = 'Use the read/grep tools to pull in any additional file context you need.' + diffBlock
 
-phase('Find')
+phase('Find Correctness')
 const finders = await parallel([
   () => agent(
     'You are a line-by-line correctness scanner. Hunt ONLY for: inverted conditions, off-by-one errors, ' +
     'null/nil dereferences, wrong variable used, swallowed errors. For each candidate name the exact file, ' +
     'line number, a one-line summary, and the concrete failure scenario. Return ONLY issues you can justify ' +
     'with a line in the diff.' + base,
-    { label: 'A-line-scan', tier: 'medium', schema: candidateSchema }
+    { label: 'A-line-scan', phase: 'Find Correctness', schema: candidateSchema }
   ),
   () => agent(
     'You are a removed-behavior auditor. For every deleted line or block in the diff: name the invariant ' +
     'or contract it enforced, then find where (or prove) that contract is re-established elsewhere. ' +
     'Report only gaps where the invariant is NOT re-established.' + base,
-    { label: 'B-removed-behavior', tier: 'medium', schema: candidateSchema }
+    { label: 'B-removed-behavior', phase: 'Find Correctness', schema: candidateSchema }
   ),
   () => agent(
     'You are a cross-file call-site tracer. For each function/method whose signature or behavior changed ' +
     'in the diff: grep the codebase for callers, then check whether each call site is still correct after ' +
     'the change. Report only call sites that are now broken or need updating.' + base,
-    { label: 'C-cross-file-tracer', tier: 'medium', schema: candidateSchema }
+    { label: 'C-cross-file-tracer', phase: 'Find Correctness', schema: candidateSchema }
   ),
   () => agent(
     'You are a reuse finder. Identify new code in the diff that duplicates existing helpers, utilities, ' +
     'or patterns already present in the codebase. Propose the existing symbol that should be used instead.' + base,
-    { label: 'D-reuse', tier: 'small', schema: candidateSchema }
+    { label: 'D-reuse', phase: 'Find Cleanup', schema: candidateSchema }
   ),
   () => agent(
     'You are a simplification finder. Look for: redundant state that could be derived, copy-paste ' +
     'variation that could be a shared function, and dead code introduced by the diff.' + base,
-    { label: 'E-simplification', tier: 'small', schema: candidateSchema }
+    { label: 'E-simplification', phase: 'Find Cleanup', schema: candidateSchema }
   ),
   () => agent(
     'You are an efficiency finder. Identify: redundant I/O or network calls, sequential work that could ' +
     'be parallel, and blocking operations on the startup or hot path introduced by the diff.' + base,
-    { label: 'F-efficiency', tier: 'small', schema: candidateSchema }
+    { label: 'F-efficiency', phase: 'Find Cleanup', schema: candidateSchema }
   ),
   () => agent(
     'You are an altitude reviewer. Assess whether the change is made at the RIGHT abstraction level. ' +
     'Look for: bandaids on shared infrastructure that should be fixed at the root, fixes in the wrong ' +
     'layer (e.g. compensating in the UI for a data model problem), or the change solving a symptom ' +
     'rather than the cause.' + base,
-    { label: 'G-altitude', tier: 'big', schema: candidateSchema }
+    { label: 'G-altitude', phase: 'Find Altitude', schema: candidateSchema }
   ),
 ])
 
@@ -176,7 +182,7 @@ const synthesis = await agent(
   '1 sentence per finding with file, line, and the failure scenario. Note the total found vs shown. ' +
   'Correctness issues (A/B/C) come first, then cleanup (D/E/F), then altitude (G).\\n\\n' +
   'FINDINGS JSON:\\n' + JSON.stringify(top, null, 2),
-  { label: 'synthesis', tier: 'big' }
+  { label: 'synthesis' }
 )
 
 return { total: allCandidates.length, surviving: surviving.length, findings: top, report: synthesis, diffTruncated }`;

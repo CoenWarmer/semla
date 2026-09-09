@@ -47,7 +47,8 @@ await agent('do something');
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       "agent() call #1 is missing a label; add opts.label (e.g. { label: 'researcher' })",
     );
@@ -55,12 +56,13 @@ return null;`;
 
   it("throws a fix-naming message when two agent() calls share a label", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await agent('first', { label: 'researcher' });
-await agent('second', { label: 'researcher' });
+await agent('first', { label: 'researcher', tier: 'medium' });
+await agent('second', { label: 'researcher', tier: 'medium' });
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "researcher" is already used in this run; give each agent() call a unique label',
     );
@@ -68,12 +70,13 @@ return null;`;
 
   it("does not throw when every agent() call has a distinct label", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-const a = await agent('first', { label: 'researcher' });
-const b = await agent('second', { label: 'writer' });
+const a = await agent('first', { label: 'researcher', tier: 'medium' });
+const b = await agent('second', { label: 'writer', tier: 'medium' });
 return { a, b };`;
 
     const { result } = await runWorkflow(script, {
       agent: stubAgentRunner,
+        tierConfig: null,
       persistLogs: false,
     });
     expect(result).toEqual({ a: "ok", b: "ok" });
@@ -90,14 +93,15 @@ return { a, b };`;
 describe("repeat-call label collisions in built-in helpers", () => {
   it("verify() called twice in one run does not throw and gets distinct labels", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await verify('claim one', { reviewers: 1 });
-await verify('claim two', { reviewers: 1 });
+await verify('claim one', { reviewers: 1, tier: 'medium' });
+await verify('claim two', { reviewers: 1, tier: 'medium' });
 return null;`;
 
     const labels: string[] = [];
     await expect(
       runWorkflow(script, {
         agent: stubAgentRunner,
+        tierConfig: null,
         persistLogs: false,
         onAgentStart: (event) => labels.push(event.label),
       }),
@@ -107,14 +111,15 @@ return null;`;
 
   it("judgePanel() called twice in one run does not throw and gets distinct labels", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await judgePanel(['a'], { judges: 1 });
-await judgePanel(['b'], { judges: 1 });
+await judgePanel(['a'], { judges: 1, tier: 'medium' });
+await judgePanel(['b'], { judges: 1, tier: 'medium' });
 return null;`;
 
     const labels: string[] = [];
     await expect(
       runWorkflow(script, {
         agent: stubAgentRunner,
+        tierConfig: null,
         persistLogs: false,
         onAgentStart: (event) => labels.push(event.label),
       }),
@@ -127,13 +132,14 @@ return null;`;
 let calls = 0;
 const result = await retry(async () => {
   calls++;
-  return await agent('attempt ' + calls, { label: 'fix build' });
+  return await agent('attempt ' + calls, { label: 'fix build', tier: 'medium' });
 }, { attempts: 3, until: () => calls >= 2 });
 return { result, calls };`;
 
     const labels: string[] = [];
     const { result } = await runWorkflow(script, {
       agent: stubAgentRunner,
+        tierConfig: null,
       persistLogs: false,
       onAgentStart: (event) => labels.push(event.label),
     });
@@ -147,7 +153,7 @@ return { result, calls };`;
   it("a retry() whose EVERY attempt calls agent() with the same label disambiguates instead of throwing", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
 const result = await retry(async (attempt) => {
-  return await agent('attempt ' + attempt, { label: 'fix build' });
+  return await agent('attempt ' + attempt, { label: 'fix build', tier: 'medium' });
 }, { attempts: 3, until: (r) => false });
 return result;`;
 
@@ -155,6 +161,7 @@ return result;`;
     await expect(
       runWorkflow(script, {
         agent: stubAgentRunner,
+        tierConfig: null,
         persistLogs: false,
         onAgentStart: (event) => labels.push(event.label),
       }),
@@ -164,12 +171,13 @@ return result;`;
 
   it("a USER script with two same-labeled agent() calls outside retry/gate still throws", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await agent('first', { label: 'researcher' });
-await agent('second', { label: 'researcher' });
+await agent('first', { label: 'researcher', tier: 'medium' });
+await agent('second', { label: 'researcher', tier: 'medium' });
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "researcher" is already used in this run; give each agent() call a unique label',
     );
@@ -180,12 +188,13 @@ return null;`;
     // script has no way to reference the module-scoped Symbol that replaced
     // it, so setting this string property does nothing to exempt the call.
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await agent('first', { label: 'researcher', __internalLabel: true });
-await agent('second', { label: 'researcher', __internalLabel: true });
+await agent('first', { label: 'researcher', tier: 'medium', __internalLabel: true });
+await agent('second', { label: 'researcher', tier: 'medium', __internalLabel: true });
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "researcher" is already used in this run; give each agent() call a unique label',
     );
@@ -194,14 +203,15 @@ return null;`;
   it("two distinct user agent() calls with the same label throw even while a retry is in flight", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
 await retry(async () => {
-  await agent('first', { label: 'dup' });
-  await agent('second', { label: 'dup' });
+  await agent('first', { label: 'dup', tier: 'medium' });
+  await agent('second', { label: 'dup', tier: 'medium' });
   return true;
 }, { attempts: 1 });
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "dup" is already used in this run; give each agent() call a unique label',
     );
@@ -215,7 +225,8 @@ await retry(async () => {
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       "agent() call #1 is missing a label; add opts.label (e.g. { label: 'researcher' })",
     );
@@ -235,15 +246,16 @@ let attemptCount = 0;
 await retry(async () => {
   const n = attemptCount++;
   if (n === 0) {
-    await agent('probe', { label: 'probe' });
-    return await agent('fix', { label: 'fix build' });
+    await agent('probe', { label: 'probe', tier: 'medium' });
+    return await agent('fix', { label: 'fix build', tier: 'medium' });
   }
-  return await agent('fix', { label: 'fix build' });
+  return await agent('fix', { label: 'fix build', tier: 'medium' });
 }, { attempts: 2, until: () => false });
 return null;`;
 
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "fix build" is already used in this run; give each agent() call a unique label',
     );
@@ -255,9 +267,9 @@ return null;`;
   // just because the position was visited before.
   it("a retry() thunk whose label at a given position varies by attempt does not falsely exempt an unrelated collision", async () => {
     const script = `export const meta = { name: 'demo', description: 'demo' };
-await agent('unrelated', { label: 'attempt label 2' });
+await agent('unrelated', { label: 'attempt label 2', tier: 'medium' });
 await retry(async (attempt) => {
-  return await agent('x', { label: 'attempt label ' + attempt });
+  return await agent('x', { label: 'attempt label ' + attempt, tier: 'medium' });
 }, { attempts: 3, until: () => false });
 return null;`;
 
@@ -267,7 +279,8 @@ return null;`;
     // top-level call above, and this is NOT a retry of that call — it must
     // hard-throw, not silently disambiguate).
     await expect(
-      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+      runWorkflow(script, { agent: stubAgentRunner,
+        tierConfig: null, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "attempt label 2" is already used in this run; give each agent() call a unique label',
     );
@@ -283,7 +296,7 @@ let calls = 0;
 const outcome = await gate(
   async () => {
     calls++;
-    return await agent('attempt ' + calls, { label: 'fix build' });
+    return await agent('attempt ' + calls, { label: 'fix build', tier: 'medium' });
   },
   () => ({ ok: calls >= 2 }),
   { attempts: 3 },
@@ -293,6 +306,7 @@ return { outcome, calls };`;
     const labels: string[] = [];
     const { result } = await runWorkflow(script, {
       agent: stubAgentRunner,
+        tierConfig: null,
       persistLogs: false,
       onAgentStart: (event) => labels.push(event.label),
     });

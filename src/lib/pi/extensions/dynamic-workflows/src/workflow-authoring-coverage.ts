@@ -35,11 +35,11 @@ export const WORKFLOW_COMPREHENSION_SCENARIO_IDS = COMPREHENSION_SCENARIOS.map(
 export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   {
     path: "skills/workflow-authoring/SKILL.md",
-    sha256: "d0437e6a79328628148c005e7bdfc560a35b447becb2c3bbd0ed7df52488c881",
+    sha256: "70db131c84c67452f77ee980f150dc219cdc140735580c84bbcce77c49b17ea3",
   },
   {
     path: "skills/workflow-authoring/references/runtime.md",
-    sha256: "13b710424bc262a3951e9ad8f7387cdf4d630b89f27c07bbcbc6b47c37e24242",
+    sha256: "4688257f3bec34277425c5b8fa91e6bda13c40d8a183a8afa26976356ae5edb3",
   },
   {
     path: "skills/workflow-authoring/references/helpers.md",
@@ -63,11 +63,11 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   },
   {
     path: "skills/workflow-authoring/references/registry-ownership.md",
-    sha256: "425babf6fa5bd24fa0adef3d9b398661ad1e933d372b3989d22fe99e63f2c7ba",
+    sha256: "8afff748c7cab3a34c28b78382dda8a2a494d4829bf37ab06834c12b27bf049f",
   },
   {
     path: "skills/workflow-authoring/references/review.md",
-    sha256: "2bd97acb87a8f6e9514892cdf5c431305b3d8952ba9761c1c203c217b08c9e7d",
+    sha256: "da0bd2c0127a8085ef93c3e27abc8c1836e2d22e9f15b6faf2169724f5719836",
   },
   {
     path: "skills/workflow-authoring/references/debugging.md",
@@ -75,15 +75,15 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   },
   {
     path: "skills/workflow-authoring/examples/classify-and-act.js",
-    sha256: "23d0d9f37ee8648cd29ca526b0b23cf55bd3ac57efd02e1b93e227bcd0c18603",
+    sha256: "fb522cfd7e69ef40c09784ea2206262b18d63e5da61292714fda71616134de03",
   },
   {
     path: "skills/workflow-authoring/examples/tournament.js",
-    sha256: "3a90bd3055c5e38e13fd8d7447173fc2e6a141fbc33b9bcc8a84723b7ab9d2e6",
+    sha256: "48836f5b68931141cac5fccfab3bf7d73a748c4e18c361d27b7dc5cf7be24fee",
   },
   {
     path: "skills/workflow-authoring/examples/validated-gate.js",
-    sha256: "1cb4b3941ae61ebd1e12ada899f7d04678fe858a307c7fabc408603a4b9ba889",
+    sha256: "2ce1d221a7740c6719a53422d6b5690c8bd195ec22a299c80703f9192bec78bf",
   },
 ] as const;
 

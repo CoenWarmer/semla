@@ -259,7 +259,7 @@ const WIKI_REINDEX_SCRIPT = `
 export const meta = {
   name: "wiki-reindex",
   description: "Embed all stale wiki pages and prune deleted entries",
-  phases: [{ title: "Embed" }],
+  phases: [{ title: "Embed", tier: "small" }],
 };
 
 await agent(
@@ -492,7 +492,7 @@ const WIKI_INGEST_BATCH_SCRIPT = `
 export const meta = {
   name: "wiki-ingest",
   description: "Synthesize captured wiki sources into structured knowledge",
-  phases: [{ title: "Synthesize" }],
+  phases: [{ title: "Synthesize", tier: "medium" }],
 };
 
 await parallel(args.sources.map((source) => () =>

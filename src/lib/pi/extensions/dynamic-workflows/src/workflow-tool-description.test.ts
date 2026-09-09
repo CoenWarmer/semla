@@ -85,6 +85,8 @@ describe("workflow tool `script` description", () => {
     // second opinion in case the wrapping ever changes shape.)
     expect(code.match(/^export const meta/m)).not.toBeNull();
     expect(code).toContain("phases:");
+    // Every declared phase must name a tier, so the canonical example must too.
+    expect(code).toMatch(/tier:\s*'[^']+'/);
     expect(code).toMatch(/agent\([^)]*label:\s*'[^']+'/);
     expect(code.match(/\bexport\b/g)?.length).toBe(1);
 
@@ -92,9 +94,12 @@ describe("workflow tool `script` description", () => {
     // "meta is the first statement, and the only export" contract. Wrap it in
     // an async function body the same way runWorkflow does, since the example
     // uses a bare `return`.
-    const { meta } = parseWorkflowScript(code);
+    // tierConfig is pinned so the embedded example is validated against the
+    // built-in tier names rather than whatever model-tiers.json the machine
+    // running the test happens to have.
+    const { meta } = parseWorkflowScript(code, { tierConfig: null });
     expect(meta.name).toBe("demo");
     expect(meta.description).toBe("demo workflow");
-    expect(meta.phases).toEqual([{ title: "Research" }]);
+    expect(meta.phases).toEqual([{ title: "Research", tier: "medium" }]);
   });
 });

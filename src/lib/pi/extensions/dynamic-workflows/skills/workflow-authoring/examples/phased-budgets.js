@@ -1,7 +1,7 @@
 export const meta = {
   name: "phased_budgets",
   description: "Bound noisy work with named phase budgets and report shared token spending truthfully",
-  phases: [{ title: "Explore" }, { title: "Deliver" }],
+  phases: [{ title: "Explore", tier: "small" }, { title: "Deliver", tier: "medium" }],
 };
 
 // ADAPT: validate the work and choose phase budgets, prompts, and schemas; add invocation-level tokenBudget only when the user explicitly requests a cap.

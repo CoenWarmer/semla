@@ -1,7 +1,7 @@
 export const meta = {
   name: "pairwise_tournament",
   description: "Create bounded contenders and choose among them through pairwise judgments",
-  phases: [{ title: "Compete" }, { title: "Judge" }],
+  phases: [{ title: "Compete", tier: "medium" }, { title: "Judge", tier: "medium" }],
 };
 
 // ADAPT: choose the task, pairwise rubric, schemas, and a suitable contender bound.

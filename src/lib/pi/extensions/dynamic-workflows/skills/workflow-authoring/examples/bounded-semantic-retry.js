@@ -1,7 +1,7 @@
 export const meta = {
   name: "bounded_semantic_retry",
   description: "Separate recoverable transport retries from a visible bounded semantic attempt ledger",
-  phases: [{ title: "Attempt" }],
+  phases: [{ title: "Attempt", tier: "medium" }],
 };
 
 // ADAPT: define task-owned acceptance, prompts, bounds, and structured result fields.

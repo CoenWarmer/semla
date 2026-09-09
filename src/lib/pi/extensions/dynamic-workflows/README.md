@@ -50,17 +50,20 @@ The orchestration itself is plain JavaScript:
 export const meta = {
   name: 'auth_audit',
   description: 'Find routes missing auth checks and verify the findings',
-  phases: [{ title: 'Scan' }, { title: 'Review' }, { title: 'Verify' }],
+  phases: [
+    { title: 'Scan', tier: 'small' },
+    { title: 'Review', tier: 'medium' },
+    { title: 'Verify', tier: 'big' },
+  ],
 }
 
 phase('Scan')
-const files = await agent('List every route file under src/routes/.', { tier: 'small' })
+const files = await agent('List every route file under src/routes/.')
 
 phase('Review')
 const findings = await parallel(
   files.split('\n').filter(Boolean).map((file) =>
     () => agent(`Audit ${file} for missing auth checks.`, {
-      tier: 'medium',
       isolation: 'worktree',
     }),
   ),
@@ -69,14 +72,13 @@ const findings = await parallel(
 phase('Verify')
 return await agent(
   'Synthesize and double-check these findings:\n' + findings.join('\n\n'),
-  { tier: 'big' },
 )
 ```
 
 ## Why use it
 
 - **Real parallel orchestration** — fan out up to 16 concurrent and 1000 total subagents from one orchestration script.
-- **Per-agent model routing** — use `small`, `medium`, or `big` tiers, or choose an exact provider/model and thinking level.
+- **Per-phase model routing** — every phase declares the `small`, `medium`, or `big` tier its agents run on; an agent outside any phase passes its own `tier`.
 - **Journaled resume** — replay completed agents after interruption without rerunning them or spending their tokens again. The orchestrator can also resume with an **edited script** (`resumeFromRunId`): unchanged `agent()` calls replay from cache and only edited/new ones re-run — so a single bad prompt no longer means paying to re-run the whole workflow.
 - **Git worktree isolation** — let parallel agents edit safely on throwaway branches with `isolation: "worktree"`.
 - **Measured usage** — report real tokens and cost from each subagent session; add run, phase, or agent budgets only when you want them.

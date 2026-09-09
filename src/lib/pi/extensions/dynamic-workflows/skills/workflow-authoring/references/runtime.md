@@ -4,7 +4,7 @@ Use this page for routine scripts. Open the generated capability index only when
 
 ## Script envelope
 
-Start with the only legal export: `export const meta = { name, description, phases?: [{ title, detail?, model? }] }`. Values are nonblank literals; declare only used phases and call `phase()` before each phase's work. The remaining body already runs inside an async function: write helpers as ordinary declarations; `export default` and other exports are invalid. Return the result explicitly.
+Start with the only legal export: `export const meta = { name, description, phases?: [{ title, tier, detail?, model? }] }`. Values are nonblank literals; declare only used phases, give every one a `tier`, and call `phase()` before each phase's work. A phase with no tier, or an unknown tier name, is rejected at parse time before any agent runs. The remaining body already runs inside an async function: write helpers as ordinary declarations; `export default` and other exports are invalid. Return the result explicitly.
 
 The runtime supplies `agent`, `parallel`, `pipeline`, `workflow`, quality/control helpers, `phase`, `log`, `args`, `cwd`, restricted `process.cwd()`, and `budget`. Imports, `require()`, filesystem modules, `Date.now()`, `Math.random()`, and no-argument `new Date()` are unavailable. The Node VM realm is implementation substrate, not a security boundary or public API.
 
@@ -22,6 +22,6 @@ When JavaScript reads fields, pass a small plain JSON Schema. Schema noncomplian
 
 ## Routing and support
 
-Selector priority is explicit `model` > `agentType` model > `tier` > phase model > metadata model > implicit `medium` > session default. An unavailable EXPLICIT selector (`model`, `agentType` model, `tier`, or phase model) throws instead of falling back — catch it if the script needs to degrade gracefully. Only the implicit default `medium` tier an untagged agent falls into degrades to the session default when unavailable, with a one-time warning logged into the run. Use exact `model`, nonstandard `tier`, or `agentType` only when context supplies its name and purpose. Worktree isolation is best-effort. See [registry ownership](registry-ownership.md).
+Selector priority is the declared tier of the phase the agent runs in, then — only for an agent outside any phase — that call's own explicit `tier`, which is mandatory there. A phase tier is not overridable: a `tier`, `model`, `agentType` model, or phase/metadata model route on a call inside a phase is displaced and the override is logged into the run naming the phase, the agent, the ignored value, and the winning tier. Put an agent that needs a different model in its own phase. An unavailable tier throws instead of falling back — catch it if the script needs to degrade gracefully. Use exact `model`, nonstandard `tier`, or `agentType` only when context supplies its name and purpose. Worktree isolation is best-effort. See [registry ownership](registry-ownership.md).
 
 Generated entries marked `supported` are authoring API. `console` and whole-script Markdown fences are compatibility-only. VM realm facilities are internal. Active model routes and agent types are dynamic. Use `log()` in new scripts.

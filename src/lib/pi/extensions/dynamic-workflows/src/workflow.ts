@@ -31,6 +31,21 @@ import {
   parseModelRoutingFromMeta,
   resolveModelForPhase,
 } from "./model-routing.ts";
+import {
+  loadModelTierConfig,
+  type ModelTierConfig,
+} from "./model-tier-config.ts";
+import {
+  buildPhaseTierMap,
+  formatCallTierOverride,
+  formatPhaseTierOverride,
+  type IgnoredSelector,
+  phaseTierVocabulary,
+  type PhaseTierVocabulary,
+  requireCallTier,
+  undeclaredPhaseError,
+  validateMetaPhaseTiers,
+} from "./phase-tiers.ts";
 import { createAgentStoreTools, SharedStore } from "./shared-store.ts";
 import {
   WORKFLOW_CAPABILITY_CONTRACT,
@@ -142,6 +157,14 @@ export interface WorkflowMetaPhase {
   title: string;
   detail?: string;
   model?: string;
+  /**
+   * REQUIRED. The tier every agent in this phase runs on — a per-call `tier`
+   * or `model` does not override it (the conflict is logged, the phase wins).
+   * Validated at parse time against the operator's model-tiers.json, so an
+   * unknown or missing tier fails before any agent is dispatched. See
+   * phase-tiers.ts for why this is mandatory rather than defaulted.
+   */
+  tier: string;
 }
 
 export interface WorkflowMeta {
@@ -295,6 +318,13 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
   signal?: AbortSignal;
   /** Maximum number of agents allowed in this run. Default: 1000 */
   maxAgents?: number;
+  /**
+   * Tier config used to validate phase/call tiers. Omitted => read from disk
+   * (project `.pi/workflows/model-tiers.json`, then the home file); `null` =>
+   * treat as absent, so the built-in small/medium/big names apply. Injectable
+   * so a run's accepted tier names do not depend on the operator's machine.
+   */
+  tierConfig?: ModelTierConfig | null;
   /** Timeout per agent in milliseconds. null/omitted means no hard timeout. */
   agentTimeoutMs?: number | null;
   /** Whether to persist logs to disk. Default: true */
@@ -447,17 +477,19 @@ export interface AgentOptions<
   phase?: string;
   schema?: TSchemaDef;
   /**
-   * Run this agent on a specific model (`provider/modelId` or a bare `modelId`).
-   * The workflow author chooses per-agent models per the routing policy in the
-   * tool guidelines (e.g. a lighter model for exploration, the main model for
-   * analysis). When omitted, the session's main model is used.
+   * DEPRECATED as a selector. A phase's declared tier decides the model for
+   * every agent in that phase, and an agent outside a phase must name a tier
+   * — so a `model` here is always overridden. It is still accepted (and the
+   * override logged into the run) rather than rejected, so an older script
+   * degrades loudly instead of failing.
    */
   model?: string;
   /**
-   * Coarse model tier ("small" | "medium" | "big"), resolved from the user's
-   * model-tiers config (see /workflows-models). An explicit `model` takes
-   * precedence; a tier takes precedence over the phase model. When the tier has
-   * no configured entry it falls back to the session's main model.
+   * A tier name from the operator's model-tiers config (see
+   * /workflows-models). REQUIRED for an agent that runs outside any declared
+   * phase, and IGNORED (with a warning) for an agent inside one, whose phase
+   * tier always wins: a phase must cost what it declares, so an agent needing
+   * a different model belongs in its own phase.
    */
   tier?: string;
   isolation?: "worktree";
@@ -593,7 +625,22 @@ export async function runWorkflow<T = unknown>(
   options: WorkflowRunOptions = {},
 ): Promise<WorkflowRunResult<T>> {
   const started = Date.now();
-  const { meta, body } = parseWorkflowScript(script);
+  const baseCwdForTiers = options.cwd ?? process.cwd();
+  // One tier vocabulary for the whole run: the same names parseWorkflowScript
+  // validated meta.phases against are the ones agent() call sites are held to,
+  // so a script can never pass the parse gate and then fail at dispatch on a
+  // differently-read config.
+  const tierVocabulary = resolveTierVocabulary({
+    cwd: baseCwdForTiers,
+    tierConfig: options.tierConfig,
+  });
+  const { meta, body } = parseWorkflowScript(script, {
+    cwd: baseCwdForTiers,
+    tierConfig: options.tierConfig,
+  });
+  // Declared phase -> declared tier. Every agent inside a declared phase runs
+  // on this tier, whatever the call site asked for (see agentImpl).
+  const phaseTiers = buildPhaseTierMap(meta.phases);
   // Per-phase model routing from meta.phases[].model, with meta.model as the default.
   const routingConfig = parseModelRoutingFromMeta(meta.phases, meta.model);
   const maxAgents = options.maxAgents ?? MAX_AGENTS_PER_RUN;
@@ -602,7 +649,7 @@ export async function runWorkflow<T = unknown>(
       ? options.agentTimeoutMs
       : DEFAULT_AGENT_TIMEOUT_MS;
   const runId = options.runId ?? `run-${started.toString(36)}`;
-  const baseCwd = options.cwd ?? process.cwd();
+  const baseCwd = baseCwdForTiers;
   // Snapshot the agentType registry ONCE per run so two agent() calls can't
   // observe a mid-run edit (determinism); a later resume re-reads it.
   const agentRegistry = options.agentRegistry ?? loadAgentRegistry(baseCwd);
@@ -888,20 +935,66 @@ export async function runWorkflow<T = unknown>(
       );
     }
 
-    // Model precedence: explicit agentOptions.model > agentType.model > tier > phase model.
-    // The "explicit-level" model is opts.model, else the definition's model — either
-    // beats tier/phase. When only a tier is set, pass undefined here so the tier (not
-    // the phase model) decides inside WorkflowAgent.run().
-    const explicitModel = agentOptions.model ?? agentDef?.model;
-    const modelSpec =
-      explicitModel ??
-      (agentOptions.tier
-        ? undefined
-        : resolveModelForPhase(assignedPhase, routingConfig));
-    // For display in /workflows: the model this agent runs on — its explicit/phase
-    // spec, else the session's main model. The real resolved id overrides this via
-    // onModelResolved once the subagent session is created.
-    let displayModel = modelSpec ?? options.mainModel;
+    // Tier precedence, and it is deliberately NOT the old "most specific
+    // selector wins" chain:
+    //   1. the declared tier of the phase this agent runs in — always, even
+    //      when the call site named its own tier or model;
+    //   2. otherwise (no active phase at all) the call's own explicit tier,
+    //      which is mandatory: there is no implicit default left.
+    // Anything a phase tier displaces (a call tier, a call model, an
+    // agentType's model, a phase/meta model route) is logged rather than
+    // silently dropped — silent precedence is the defect this replaces.
+    const phaseTier = assignedPhase ? phaseTiers.get(assignedPhase) : undefined;
+    if (assignedPhase !== undefined && phaseTier === undefined) {
+      throw undeclaredPhaseError(
+        assignedPhase,
+        finalRequestedLabel,
+        tierVocabulary,
+      );
+    }
+    const effectiveTier =
+      phaseTier ??
+      requireCallTier(
+        agentOptions.tier,
+        finalRequestedLabel,
+        tierVocabulary,
+      );
+    const phaseRouteModel = resolveModelForPhase(assignedPhase, routingConfig);
+    const ignoredSelectors: IgnoredSelector[] = [];
+    if (
+      phaseTier !== undefined &&
+      typeof agentOptions.tier === "string" &&
+      agentOptions.tier !== phaseTier
+    ) {
+      ignoredSelectors.push({ kind: "tier", value: agentOptions.tier });
+    }
+    const displacedModel =
+      agentOptions.model ?? agentDef?.model ?? phaseRouteModel;
+    if (displacedModel) {
+      ignoredSelectors.push({ kind: "model", value: displacedModel });
+    }
+    for (const ignored of ignoredSelectors) {
+      log(
+        assignedPhase !== undefined
+          ? formatPhaseTierOverride({
+              phase: assignedPhase,
+              phaseTier: effectiveTier,
+              label: finalRequestedLabel,
+              ignored,
+            })
+          : formatCallTierOverride({
+              tier: effectiveTier,
+              label: finalRequestedLabel,
+              ignored,
+            }),
+      );
+    }
+    // Always undefined: the tier decides the model inside WorkflowAgent.run().
+    const modelSpec: string | undefined = undefined;
+    // For display in /workflows: the session's main model until the subagent
+    // session reports the model the tier actually resolved to, via
+    // onModelResolved.
+    let displayModel = options.mainModel;
 
     // Deterministic resume key: assigned at lexical call time, before the limiter,
     // so parallel()/pipeline() fan-out is reproducible for a fixed script.
@@ -909,6 +1002,7 @@ export async function runWorkflow<T = unknown>(
     const callHash = hashAgentCall(
       prompt,
       modelSpec,
+      effectiveTier,
       assignedPhase,
       agentOptions,
       agentDefinitionKey(agentDef),
@@ -1091,7 +1185,7 @@ export async function runWorkflow<T = unknown>(
                 resolvedIsolation,
               ),
               model: modelSpec,
-              tier: agentOptions.tier,
+              tier: effectiveTier,
               modelRegistry: options.modelRegistry,
               compaction: agentOptions.compaction,
               onContextExhausted: agentOptions.onContextExhausted,
@@ -1421,12 +1515,17 @@ export async function runWorkflow<T = unknown>(
     properties: { real: { type: "boolean" }, reason: { type: "string" } },
     required: ["real"],
   };
+  // The quality helpers make agent() calls on the script's behalf, so they
+  // take the same `tier` an agent() call would: mandatory when the helper is
+  // used outside any phase (there is no implicit default tier), ignored in
+  // favour of the phase tier when it is used inside one.
   const verify = async (
     item: unknown,
     opts: {
       reviewers?: number;
       threshold?: number;
       lens?: string | string[];
+      tier?: string;
     } = {},
   ) => {
     options.onRuntimeEvent?.({
@@ -1452,6 +1551,7 @@ export async function runWorkflow<T = unknown>(
               {
                 label: `verify ${i + 1}`,
                 schema: VERIFY_SCHEMA,
+                tier: opts.tier,
                 [INTERNAL_LABEL_BRAND]: true,
               },
             ),
@@ -1480,7 +1580,7 @@ export async function runWorkflow<T = unknown>(
   };
   const judgePanel = async (
     attempts: unknown[],
-    opts: { judges?: number; rubric?: string } = {},
+    opts: { judges?: number; rubric?: string; tier?: string } = {},
   ) => {
     options.onRuntimeEvent?.({
       type: "quality",
@@ -1504,6 +1604,7 @@ export async function runWorkflow<T = unknown>(
                       {
                         label: `judge ${idx + 1}.${j + 1}`,
                         schema: JUDGE_SCHEMA,
+                        tier: opts.tier,
                         [INTERNAL_LABEL_BRAND]: true,
                       },
                     ),
@@ -1596,7 +1697,11 @@ export async function runWorkflow<T = unknown>(
   // critic" — the agent() label-uniqueness check below disambiguates this
   // via INTERNAL_LABEL_BRAND/uniqueRunLabel(), the same mechanism verify() and
   // judgePanel() use, rather than a bespoke call-count closure here.
-  const completenessCheck = async (taskArgs: unknown, results: unknown) => {
+  const completenessCheck = async (
+    taskArgs: unknown,
+    results: unknown,
+    opts: { tier?: string } = {},
+  ) => {
     options.onRuntimeEvent?.({
       type: "quality",
       stage: "start",
@@ -1605,7 +1710,12 @@ export async function runWorkflow<T = unknown>(
     const label = "completeness critic";
     const verdict = await agent(
       `Given the task and the results gathered so far, list what is still MISSING (modalities not covered, claims unverified, gaps). Be specific and concise.\n\nTask:\n${JSON.stringify(taskArgs)}\n\nResults so far:\n${JSON.stringify(results).slice(0, 4000)}`,
-      { label, schema: COMPLETENESS_SCHEMA, [INTERNAL_LABEL_BRAND]: true },
+      {
+        label,
+        schema: COMPLETENESS_SCHEMA,
+        tier: opts.tier,
+        [INTERNAL_LABEL_BRAND]: true,
+      },
     );
     options.onRuntimeEvent?.({
       type: "quality",
@@ -1870,7 +1980,32 @@ export async function runWorkflow<T = unknown>(
   }
 }
 
-export function parseWorkflowScript(script: string): {
+/**
+ * Inputs for the phase-tier check, injectable so a caller (or a test) can pin
+ * the tier vocabulary instead of reading whatever is on the operator's disk.
+ * `tierConfig` takes precedence; passing `null` means "no config", which is
+ * distinct from omitting it (read from disk).
+ */
+export interface ParseWorkflowScriptOptions {
+  cwd?: string;
+  tierConfig?: ModelTierConfig | null;
+}
+
+/** The tier vocabulary a parse/run should validate against. */
+export function resolveTierVocabulary(
+  options: ParseWorkflowScriptOptions = {},
+): PhaseTierVocabulary {
+  const config =
+    options.tierConfig !== undefined
+      ? options.tierConfig
+      : loadModelTierConfig({ cwd: options.cwd ?? process.cwd() });
+  return phaseTierVocabulary(config);
+}
+
+export function parseWorkflowScript(
+  script: string,
+  options: ParseWorkflowScriptOptions = {},
+): {
   meta: WorkflowMeta;
   body: string;
 } {
@@ -1943,6 +2078,9 @@ export function parseWorkflowScript(script: string): {
 
   const meta = evaluateLiteral(declarator.init, "meta");
   validateMeta(meta);
+  // Earliest possible enforcement of the phase-tier rule: a phase with no
+  // (or an unknown) tier fails here, before a single agent is dispatched.
+  validateMetaPhaseTiers(meta.phases, resolveTierVocabulary(options));
 
   // Only the meta export (checked above, as the first statement) is allowed.
   // A script that adds a SECOND top-level export -- most commonly someone
@@ -2093,6 +2231,8 @@ function validateMeta(meta: unknown): asserts meta is WorkflowMeta {
         throw new Error("each meta phase must have a title string");
       }
     }
+    // Per-phase tiers are checked separately, in validateMetaPhaseTiers, so
+    // the message can name the tiers the operator's config actually offers.
   }
 }
 
@@ -2175,6 +2315,10 @@ function hashCheckpoint(
 function hashAgentCall(
   prompt: string,
   model: string | undefined,
+  // The tier this call actually runs on (phase tier, else the call's explicit
+  // tier) rather than the raw option: an edit that changes a phase's declared
+  // tier must invalidate the journal entry, and the raw option would not.
+  tier: string | undefined,
   phase: string | undefined,
   options: AgentOptions,
   agentDefKey: string | null,
@@ -2182,7 +2326,7 @@ function hashAgentCall(
   const identity = JSON.stringify({
     prompt,
     model: model ?? null,
-    tier: options.tier ?? null,
+    tier: tier ?? null,
     phase: phase ?? null,
     agentType: options.agentType ?? null,
     // Resolved definition (tools/model/prompt) so editing an agent .md invalidates

@@ -1,7 +1,7 @@
 export const meta = {
   name: "saved_nested_workflows",
   description: "Run bounded jobs sequentially through one context-supplied installed workflow",
-  phases: [{ title: "Prepare" }, { title: "Run saved workflow" }],
+  phases: [{ title: "Prepare", tier: "small" }, { title: "Run saved workflow", tier: "medium" }],
 };
 
 // ADAPT: accept only a saved workflow name supplied in context; never guess an installed name.

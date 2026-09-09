@@ -1,7 +1,7 @@
 export const meta = {
   name: "validated_gate",
   description: "Use validator feedback to steer bounded structured attempts through gate()",
-  phases: [{ title: "Validate" }],
+  phases: [{ title: "Validate", tier: "medium" }],
 };
 
 // ADAPT: replace the task, structured fields, and task-owned acceptance policy.

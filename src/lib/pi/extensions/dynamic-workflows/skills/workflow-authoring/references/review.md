@@ -5,7 +5,8 @@ Review author-visible behavior, not formatting preferences. When behavior depend
 ## Envelope and contract
 
 - Is literal `export const meta` the first statement, with a short unique name and useful description?
-- Are only used phases declared, and does each named phase begin at the intended boundary?
+- Are only used phases declared, does each declare a tier, and does each named phase begin at the intended boundary?
+- Does every agent that runs outside a phase pass its own `tier`, and does no agent inside a phase fight its phase's tier with its own `tier`/`model`?
 - Does the script call at least one agent and explicitly return JSON-serializable data?
 - Are imports and nondeterministic APIs absent?
 

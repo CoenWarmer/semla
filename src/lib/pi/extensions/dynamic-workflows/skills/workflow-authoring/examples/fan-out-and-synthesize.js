@@ -1,7 +1,7 @@
 export const meta = {
   name: "fan_out_and_synthesize",
   description: "Run bounded independent work, retain a complete coverage ledger, then synthesize",
-  phases: [{ title: "Fan out" }, { title: "Synthesize" }],
+  phases: [{ title: "Fan out", tier: "medium" }, { title: "Synthesize", tier: "big" }],
 };
 
 // ADAPT: validate and bound args.work for the task before invoking this workflow.

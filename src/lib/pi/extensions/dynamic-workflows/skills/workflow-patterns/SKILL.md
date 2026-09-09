@@ -34,6 +34,21 @@ from inside a script fails as an unknown saved workflow; use the top-level
 | `multi-perspective` | Analyze a topic from several independent perspectives in parallel, then synthesize | `{ topic: string, perspectives?: string[] }` — omit or give fewer than 2 to use the default set (technical, product, security, user experience, maintainability) |
 | `codebase-audit` | Run parallel checks against a codebase scope, then cross-validate and report | `{ scope: string, checks: string[] }` |
 
+## What each pattern costs
+
+Every phase of every built-in declares the model tier its agents run on, so
+the cost of a pattern is readable before it runs. The tiers resolve through
+the operator's `model-tiers.json` (repo-local `.pi/workflows/model-tiers.json`
+first, then `~/.pi/workflows/model-tiers.json`); `/workflows-models` edits them.
+
+| `name` | phase tiers |
+| --- | --- |
+| `deep-research` | Queries `small` · Gather `medium` · Verify `medium` · Report `big` |
+| `adversarial-review` | Investigate `medium` · Refute `medium` · Consensus `big` |
+| `code-review` | Find Correctness `medium` · Find Cleanup `small` · Find Altitude `big` · Verify `medium` · Report `big` |
+| `multi-perspective` | Perspective Analysis `medium` · Synthesis `big` |
+| `codebase-audit` | Individual Checks `medium` · Cross-Validation `medium` · Report `big` |
+
 ## Example
 
 ```json
@@ -48,4 +63,9 @@ all still apply.
 ## Writing a new workflow instead
 
 If the request doesn't fit one of these 5 shapes, author a script with
-`script` as usual — see the workflow-authoring skill.
+`script` as usual — see the workflow-authoring skill. One rule to carry over
+before you write anything: **every phase in `meta.phases` must declare a
+`tier`** (`{ title: 'Scan', tier: 'small' }`), and an agent that runs outside
+any phase must pass its own `tier`. A phase without one, or with a tier name
+the operator's `model-tiers.json` does not define, is rejected at parse time
+before a single subagent starts.

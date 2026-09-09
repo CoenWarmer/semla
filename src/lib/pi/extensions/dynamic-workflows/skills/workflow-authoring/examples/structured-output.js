@@ -1,7 +1,7 @@
 export const meta = {
   name: "structured_output",
   description: "Validate agent output with a plain JSON Schema before JavaScript consumes fields",
-  phases: [{ title: "Extract" }],
+  phases: [{ title: "Extract", tier: "medium" }],
 };
 
 // ADAPT: validate and bound work, then keep the schema as small as downstream JavaScript needs.

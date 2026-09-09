@@ -22,10 +22,10 @@ export function generateDeepResearchWorkflow(): string {
   name: 'deep_research',
   description: 'Deep research with real web search and cross-checked claims',
   phases: [
-    { title: 'Queries' },
-    { title: 'Gather' },
-    { title: 'Verify' },
-    { title: 'Report' },
+    { title: 'Queries', tier: 'small' },
+    { title: 'Gather', tier: 'medium' },
+    { title: 'Verify', tier: 'medium' },
+    { title: 'Report', tier: 'big' },
   ],
 }
 
@@ -112,9 +112,9 @@ export function generateCodebaseAuditWorkflow(scope: string, checks: string[]): 
   name: 'codebase_audit',
   description: ${JSON.stringify(`Codebase audit: ${displayScope}`)},
   phases: [
-    { title: 'Individual Checks' },
-    { title: 'Cross-Validation' },
-    { title: 'Report' },
+    { title: 'Individual Checks', tier: 'medium' },
+    { title: 'Cross-Validation', tier: 'medium' },
+    { title: 'Report', tier: 'big' },
   ],
 };
 

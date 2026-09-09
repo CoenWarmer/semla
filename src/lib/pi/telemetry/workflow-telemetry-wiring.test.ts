@@ -77,7 +77,7 @@ describe("reconfigureAfterReload keeps the recorder", () => {
     manager.reconfigureAfterReload({ loadSavedWorkflow: () => undefined });
 
     await manager.runSync(`
-export const meta = { name: 'after-reload', description: 'd', phases: [{ title: 'One' }] };
+export const meta = { name: 'after-reload', description: 'd', phases: [{ title: 'One', tier: 'medium' }] };
 phase('One');
 await agent('a', { label: 'solo' });
 return { ok: true };
@@ -107,7 +107,7 @@ return { ok: true };
     manager.reconfigureAfterReload({ loadSavedWorkflow: () => undefined });
 
     await manager.runSync(`
-export const meta = { name: 'reparent', description: 'd', phases: [{ title: 'One' }] };
+export const meta = { name: 'reparent', description: 'd', phases: [{ title: 'One', tier: 'medium' }] };
 phase('One');
 await agent('a', { label: 'solo' });
 return { ok: true };

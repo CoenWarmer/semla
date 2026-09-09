@@ -1,7 +1,7 @@
 export const meta = {
   name: "defensive_json_parsing",
   description: "Parse agent() text output as JSON defensively when schema isn't used, flagging unparseable results instead of reading undefined fields",
-  phases: [{ title: "Extract" }],
+  phases: [{ title: "Extract", tier: "small" }],
 };
 
 // Asking a model to "return STRICT JSON" in the prompt does not change what

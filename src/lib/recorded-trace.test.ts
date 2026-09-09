@@ -22,7 +22,7 @@ import { coversHostSession, recordedSpansToOtelSpans } from "@/lib/recorded-span
 const mockAgent = { run: async () => "mock result" } as any;
 
 const SCRIPT = `
-export const meta = { name: 'triage', description: 'd', phases: [{ title: 'Look' }] };
+export const meta = { name: 'triage', description: 'd', phases: [{ title: 'Look', tier: 'medium' }] };
 phase('Look');
 await parallel([() => agent('a', { label: 'scan' }), () => agent('b', { label: 'grep' })]);
 return { ok: true };

@@ -59,7 +59,7 @@ test("foreground run: agent appears as 'running' before it completes", async () 
 
   await manager.runSync(
     `export const meta = { name: "agent-status", description: "test workflow", phases: [] }
-     await agent("do the thing", { label: "worker" })
+     await agent("do the thing", { label: "worker", tier: "medium" })
      return {}`,
     undefined,
     {
@@ -85,8 +85,8 @@ test("foreground run: each spawned agent gets its own entry in the snapshot", as
 
   await manager.runSync(
     `export const meta = { name: "multi-agent", description: "test workflow", phases: [] }
-     await agent("task A", { label: "agent-a" })
-     await agent("task B", { label: "agent-b" })
+     await agent("task A", { label: "agent-a", tier: "medium" })
+     await agent("task B", { label: "agent-b", tier: "medium" })
      return {}`,
     undefined,
     {},
@@ -107,8 +107,8 @@ test("foreground run: parallel agents both appear in snapshot", async () => {
   await manager.runSync(
     `export const meta = { name: "parallel-agents", description: "test workflow", phases: [] }
      await parallel([
-       () => agent("alpha", { label: "alpha" }),
-       () => agent("beta",  { label: "beta"  }),
+       () => agent("alpha", { label: "alpha", tier: "medium" }),
+       () => agent("beta",  { label: "beta", tier: "medium" }),
      ])
      return {}`,
     undefined,
@@ -126,7 +126,7 @@ test("foreground run: agent label and phase are recorded in snapshot", async () 
   const manager = makeManager();
 
   await manager.runSync(
-    `export const meta = { name: "labeled", description: "test workflow", phases: [{ title: "Research" }] }
+    `export const meta = { name: "labeled", description: "test workflow", phases: [{ title: "Research", tier: "medium" }] }
      await agent("research task", { label: "researcher", phase: "Research" })
      return {}`,
     undefined,
@@ -153,7 +153,7 @@ test("background run: registers manager in globalThis after startInBackground", 
 
   const { runId, promise } = manager.startInBackground(
     `export const meta = { name: "bg-reg", description: "test workflow", phases: [] }
-     await agent("bg task", { label: "bg-worker" })
+     await agent("bg task", { label: "bg-worker", tier: "medium" })
      return {}`,
   );
 
@@ -169,7 +169,7 @@ test("background run: getSnapshot reflects agents after completion", async () =>
 
   const { runId, promise } = manager.startInBackground(
     `export const meta = { name: "bg-snapshot", description: "test workflow", phases: [] }
-     await agent("bg work", { label: "bg-agent" })
+     await agent("bg work", { label: "bg-agent", tier: "medium" })
      return {}`,
   );
 
@@ -190,8 +190,8 @@ test("background run: getSnapshot reflects agents after completion", async () =>
 
 // A two-agent script whose second call only runs if the agent cap allows it.
 const TWO_AGENT_SCRIPT = `export const meta = { name: "cap-check", description: "test workflow", phases: [] }
-     await agent("first", { label: "one" })
-     await agent("second", { label: "two" })
+     await agent("first", { label: "one", tier: "medium" })
+     await agent("second", { label: "two", tier: "medium" })
      return {}`;
 
 test("resume with a higher maxAgents enforces the NEW limit, not the old one", async () => {

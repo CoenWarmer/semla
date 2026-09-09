@@ -1,7 +1,7 @@
 export const meta = {
   name: "classify_and_act",
   description: "Classify bounded work before routing each item to an appropriate actor",
-  phases: [{ title: "Classify" }, { title: "Act" }],
+  phases: [{ title: "Classify", tier: "small" }, { title: "Act", tier: "medium" }],
 };
 
 // ADAPT: validate and bound items, categories, prompts, and schemas for the task.

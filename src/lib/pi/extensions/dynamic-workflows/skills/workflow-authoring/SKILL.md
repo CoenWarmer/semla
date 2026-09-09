@@ -17,12 +17,12 @@ Read only what the task needs:
 - **Helper task:** read [quality helpers](references/quality-helpers.md) only for `verify` or `judgePanel`, the [retry helper](references/retry-helper.md) only for `retry`, and [specialized helpers](references/specialized-helpers.md) only for `completenessCheck`, `loopUntilDry`, `gate`, or `checkpoint`.
 - **Review:** use the [review checklist](references/review.md), plus only the matching [quality](references/quality-helpers.md) or [specialized](references/specialized-helpers.md) helper contracts.
 - **Debug:** use the [debugging map](references/debugging.md).
-- **Routing:** read [registry ownership](references/registry-ownership.md) before using `model`, `tier`, phase models, or `agentType`; use environment-specific names only when context supplies them.
+- **Routing:** read [registry ownership](references/registry-ownership.md) before using `model`, `tier`, phase models, or `agentType`; the phase tier decides the model for every agent in the phase, and use environment-specific names only when context supplies them.
 - **Exact lookup or portability:** start with the generated [capability index](references/capabilities.md). Follow its exhaustive-facts pointer only for constraints or support boundaries. Use [versions](references/versions.md) when moving scripts between installations.
 
 ## Invariants
 
-- Start with literal `export const meta = { name, description }`; declare phases as an array of used `{ title }` objects and enter each named phase.
+- Start with literal `export const meta = { name, description }`; declare phases as an array of used `{ title, tier }` objects and enter each named phase. Every declared phase must name a tier, and an agent that runs outside any phase must pass its own `tier`.
 - Call `agent()` at least once, give every call a short unique `label`, and return plain JSON data explicitly.
 - Pair ordered results with stable work IDs before filtering. When one agent consumes another's selected result, include both its stable ID and actual data in the downstream prompt. Treat recoverable `null` as missing coverage and report it.
 - Bound fan-out, loops, retries, agents, and concurrency to the task. Treat invocation-level token and time caps as opt-in user constraints, not defaults.
