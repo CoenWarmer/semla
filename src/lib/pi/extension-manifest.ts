@@ -39,6 +39,7 @@ import {
 // Semla's own extensions, imported rather than pointed at. See ExtensionSource.
 import askUserExtension from "@/lib/pi/extensions/ask-user";
 import codeMapExtension from "@/lib/pi/extensions/code-map";
+import codeSearchExtension from "@/lib/pi/extensions/code-search";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
 import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
@@ -48,6 +49,7 @@ export type ExtensionId =
   | "workflow"
   | "ask-user"
   | "code-map"
+  | "code-search"
   | "code-intelligence"
   | "install-guard"
   | "read-router"
@@ -186,6 +188,20 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/code-map.ts.",
+  },
+  {
+    id: "code-search",
+    source: { factory: codeSearchExtension, kind: "factory" },
+    requires: [],
+    // Every query is scoped to one project's index, and the write hook has to
+    // know which project a written path belongs to. Without an anchor there is
+    // no index to search and no project to attribute a write to.
+    requiresProjectAnchor: true,
+    providesTools: ["code_search"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/code-search.ts.",
   },
   {
     id: "code-intelligence",

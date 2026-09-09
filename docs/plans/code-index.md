@@ -282,19 +282,25 @@ rather than a correctness one, and it is why it may be lossy on purpose.
 
 ## 4. What ships, in order
 
-1. `chunk.ts` + `fingerprint.ts` + `enumerate.ts` with tests — no network, no store.
-   Declaring `@mrclrchtr/supi-tree-sitter` at the root is a prerequisite and
-   needs an install, which `install-guard` blocks by design.
-2. `VectorStore` port, `store/local.ts`, and the shared conformance suite.
-3. `embed.ts` against OpenRouter, with a recorded-fixture test and no live call
-   in CI.
-4. `code_search` + the extension, registered in `EXTENSION_MANIFEST` with
-   `requiresProjectAnchor: true`.
-5. `/api/code-index` + the settings panel.
+1. ~~`chunk.ts` + `fingerprint.ts` + `enumerate.ts`~~ — **shipped.** AST chunking
+   via `web-tree-sitter` against the grammars `@mrclrchtr/supi-tree-sitter`
+   vendors; both declared at the root and pinned exactly.
+2. ~~`VectorStore` port, `store/local.ts`, the shared conformance suite~~ —
+   **shipped.**
+3. ~~`embed.ts` against OpenRouter~~ — **shipped**, with a stubbed fetch and no
+   live call in the suite.
+4. ~~`indexer.ts`, `search.ts`, `code_search` + the extension~~ — **shipped**,
+   registered in `EXTENSION_MANIFEST` with `requiresProjectAnchor: true`.
+5. `/api/code-index` + the settings panel — the opt-in surface. **Next.** Until
+   it exists there is no way to build an index except from code, so `code_search`
+   answers "this project has no code index" for every project.
 6. `store/pgvector.ts` + migration, against the same conformance suite.
 
-Stages 1–3 are decision-complete and independently testable. Stage 6 is the one
-that can be deferred without leaving anything half-built.
+Measured on `src/lib/code-index` itself: 26 files, 97 chunks, 3.3 s, $0.0008 for
+a full index; a re-run against the unchanged tree is **3 ms and no network**,
+which is the property the session-start check in §3.6 rests on.
+
+Stage 6 is the one that can be deferred without leaving anything half-built.
 
 ## 5. Open questions
 
