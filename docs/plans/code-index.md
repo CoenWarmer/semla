@@ -220,9 +220,53 @@ code-intelligence (`requiresProjectAnchor`), which exists because scanning the
 whole workspace root costs 75 seconds against 519 ms for one project — and the
 same ratio governs embedding cost and egress.
 
+## 3.6 When ingestion runs, and when it must not
+
+**Decision.** A full ingest runs only from an explicit opt-in, out of band of
+any turn. A *freshness check* runs at session start. A *top-up* of the diff runs
+at the turn boundary. Nothing embeds on the critical path of a prompt.
+
+**Why.** `extension-manifest.ts` already records the cost of the alternative:
+supi's code-intelligence stands up its workspace from a `session_start` handler
+at 519 ms for a project and 75 seconds for the workspace root — "paid on every
+turn, before the model sees the prompt, and not avoidable by deselecting tools,
+because tool selection happens after binding." A full ingest is twenty embedding
+round-trips, an order of magnitude worse. Cursor's "index on workspace open"
+model is not available to an architecture that binds extensions per turn.
+
+**The four moments.**
+
+| when | what runs | cost |
+|---|---|---|
+| server boot (`instrumentation.ts`) | reports which projects have an index; walks nothing | none |
+| operator opt-in (settings, or a `code_search` on an unindexed project) | **full ingest**, dispatched like `wiki-ingest-bridge` does — background workflow, agent notified on completion | ~20 requests, tens of seconds, ~2.4¢ for this repository |
+| session start on an indexed project | enumerate + fingerprint + tree root, compared to `head.merkleRoot`; embeds only the diff if it moved | 36 ms and no network when the root matches |
+| `code_search` | embeds the query only; local dot product; chunk text read from disk | ~50 ms |
+
+The session-start check is affordable *because* it is only hashing: 751 files in
+36 ms, measured. That is the whole reason `fingerprint.ts` exists as its own
+layer rather than as a step inside the ingest.
+
+**The unresolved case: the agent edits the code it is searching.** Semla's agent
+writes files, so the index goes stale inside the session that is using it — an
+edit at turn 3 invalidates a citation returned at turn 7. Two mechanisms are
+needed and they are not alternatives:
+
+- **The hash check is the safety net.** Every hit is verified against the file
+  on disk at query time and stale ones are marked, per §3.1 and §3.3. This is
+  what makes a mid-turn edit safe rather than silently wrong.
+- **The turn-boundary top-up is the convergence.** A `session_shutdown`-style
+  hook — `read-router.ts` and `workflow.ts` both already use one — runs the 36 ms
+  fingerprint and embeds the diff. A turn that touched three files costs one
+  request.
+
+Hooking the `edit`/`write` tools directly would be more current still, and is
+rejected for now: it puts embedding latency inside the tool call, which is the
+critical path this section exists to keep clear.
+
 ## 4. What ships, in order
 
-1. `chunk.ts` + `merkle.ts` + `enumerate.ts` with tests — no network, no store.
+1. `chunk.ts` + `fingerprint.ts` + `enumerate.ts` with tests — no network, no store.
    Declaring `@mrclrchtr/supi-tree-sitter` at the root is a prerequisite and
    needs an install, which `install-guard` blocks by design.
 2. `VectorStore` port, `store/local.ts`, and the shared conformance suite.
