@@ -42,7 +42,7 @@ export function ReviewCommitBar({
     <footer className="flex shrink-0 items-center gap-3 border-t px-3 py-2">
       <Input
         aria-label="Commit message"
-        className="h-8 flex-1 font-mono text-xs"
+        className="h-8 flex-1 font-mono text-xxs"
         onChange={(event) => onMessageChange(event.target.value)}
         onKeyDown={(event) => {
           // Enter commits, which is what a single-line message field in a
