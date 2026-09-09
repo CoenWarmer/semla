@@ -21,8 +21,9 @@
  * say whether it is citing a parsed declaration or a window of text.
  */
 
+import { chunkByAst } from "./ast-chunk";
 import { hashContent } from "./fingerprint";
-import { hasGrammar, type IndexLanguage } from "./languages";
+import { hasGrammar, isTestPath, type IndexLanguage } from "./languages";
 import type { Chunk } from "./types";
 
 /**
@@ -71,11 +72,16 @@ export interface ChunkFileInput {
  * Split one file. Returns [] for a file with no indexable content, which is a
  * normal outcome rather than a failure — an empty file, or one that is entirely
  * whitespace.
+ *
+ * Async because the AST strategy loads a wasm grammar. A language with no
+ * grammar, or a grammar that fails to load, falls back to line chunking and the
+ * chunks say `"lines"` — a chunk claiming `"ast"` was definitely parsed.
  */
-export function chunkFile(input: ChunkFileInput): Chunk[] {
-  // The AST strategy is not wired yet; until it is, a grammar-backed language
-  // is chunked by lines and says so, rather than claiming a parse it did not do.
-  void hasGrammar(input.language);
+export async function chunkFile(input: ChunkFileInput): Promise<Chunk[]> {
+  if (hasGrammar(input.language)) {
+    const parsed = await chunkByAst({ ...input, language: input.language });
+    if (parsed !== null) return parsed;
+  }
   return chunkByLines(input);
 }
 
@@ -203,6 +209,7 @@ function makeChunk(
     hash: hashContent(lines.slice(startLine - 1, endLine).join("\n")),
     fileHash: input.fileHash,
     strategy: "lines",
+    kind: isTestPath(input.path) ? "test" : "source",
   };
 }
 

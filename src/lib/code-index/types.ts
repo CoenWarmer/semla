@@ -12,6 +12,9 @@
 /** Stable per-project namespace: a slug of the directory name plus a path hash. */
 export type ProjectKey = string & { readonly __brand: "ProjectKey" };
 
+/** Implementation, or the tests that describe it. */
+export type ChunkKind = "source" | "test";
+
 /** How a file's chunks were produced, recorded per file rather than assumed. */
 export type ChunkStrategy =
   /** tree-sitter walked the AST and split between declarations. */
@@ -46,6 +49,20 @@ export interface Chunk {
    */
   fileHash: string;
   strategy: ChunkStrategy;
+  /**
+   * Whether this chunk is implementation or the tests that describe it.
+   *
+   * Measured, not anticipated: on the first two live runs, a test that
+   * *describes* a behaviour embedded as well as the code that *implements* it,
+   * and test files took the top rank for every conceptual query. Asked what
+   * prevents comparing vectors from two models, the best hit was
+   * `credentials.test.ts` rather than the dimension guard in `store/local.ts`.
+   *
+   * A test is often the right answer — "how is this meant to behave" is
+   * answered better by the test than the code — so this is a discriminator for
+   * the caller, not a reason to skip indexing them.
+   */
+  kind: ChunkKind;
 }
 
 /** A chunk with its vector. Unit-normalized, so a dot product is cosine. */

@@ -37,6 +37,7 @@ export function chunkAt(
     hash: `hash-${path}-${startLine}`,
     fileHash: `file-${path}`,
     strategy: "ast",
+    kind: "source",
     vector,
     ...overrides,
   };

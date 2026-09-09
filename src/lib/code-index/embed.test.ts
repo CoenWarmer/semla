@@ -251,6 +251,7 @@ describe("attachVectors", () => {
     hash: `h-${path}`,
     fileHash: `f-${path}`,
     strategy: "lines",
+    kind: "source",
   });
 
   it("pairs chunks with vectors positionally", () => {

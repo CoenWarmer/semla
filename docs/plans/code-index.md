@@ -321,9 +321,26 @@ that can be deferred without leaving anything half-built.
      threshold that separates a good hit from a bad one. A hybrid merge with
      ripgrep (§2.6) matters more than it looked like it would.
 
-  The cheap thing to try first is a chunk *header*: embedding
-  `path` + enclosing symbol alongside the text, so the vector carries some
-  location semantics. Standard practice, and it costs nothing per chunk.
+  **Both were then fixed and re-measured, twice.** With AST chunking (docblocks
+  folded into the declaration they document, 52/76 chunks carrying a symbol)
+  and a `kind: source | test` discriminator on every chunk, the same three
+  queries went from **0 of 3** returning the right implementation at rank 1 to
+  **2 of 3**, with all three top hits correct on two of them:
+
+  | query | before | after |
+  |---|---|---|
+  | where is staleness decided | `reindex-queue.ts` header comment | `IndexHead`, `ReindexQueue`, `Fingerprints` |
+  | what stops cross-model comparison | `credentials.test.ts` | `createLocalVectorStore`, `decodeVectors`, `VectorStore` |
+  | how do failures avoid the writer | `reindex-queue.ts` header comment | still wrong — returns `fingerprintFiles` |
+
+  Two things remain open. The third query still misses, because its answer is a
+  `catch` block inside a function large enough to be split, so no chunk holds
+  the whole idea. And scores are still flat — 0.24 to 0.40 across good and bad
+  hits alike — so there is no similarity threshold that separates them, which
+  makes the ripgrep merge in §2.6 load-bearing rather than a refinement.
+
+  Still untried, and cheap: a chunk *header* embedding `path` and the enclosing
+  symbol alongside the text, so the vector carries location semantics.
 - **Does the wiki's page-level embedding become redundant?** Both would embed
   the same repository through different lenses. They should probably share the
   `Embedder` and the credential, and stay separate stores.

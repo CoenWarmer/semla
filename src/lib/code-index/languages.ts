@@ -87,3 +87,18 @@ export function languageOf(path: string): IndexLanguage | null {
 export function hasGrammar(language: IndexLanguage): language is GrammarLanguage {
   return GRAMMARS.has(language);
 }
+
+/**
+ * Test files, by the conventions this repository and its neighbours use.
+ *
+ * Kept as a path rule rather than a content heuristic: a file's name is stable,
+ * cheap, and the same answer every run, where "does it import vitest" changes
+ * with an edit and would reclassify chunks mid-session.
+ */
+export function isTestPath(path: string): boolean {
+  return (
+    /\.(test|spec)\.[a-z]+$/i.test(path) ||
+    /(^|\/)(__tests__|__mocks__|tests?)\//i.test(path) ||
+    /(^|\/)conformance\.[a-z]+$/i.test(path)
+  );
+}
