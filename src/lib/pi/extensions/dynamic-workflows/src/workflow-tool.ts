@@ -84,7 +84,7 @@ const workflowToolSchema = Type.Object({
   toolset: Type.Optional(
     Type.String({
       description:
-        "Name of a host-registered toolset to give this run's agents instead of the default coding tools. Use `wiki` for workflows that capture sources or write wiki pages — without it, subagents have no wiki tools. Ignored when `name` is given, since a built-in carries its own.",
+        "Name of a host-registered toolset to give this run's agents instead of the default coding tools. Use `wiki` for workflows that capture sources or write wiki pages — without it, subagents have no wiki tools. Ignored when `name` is given, since a built-in carries its own. With `resumeFromRunId`, this overrides the prior run's toolset for the resumed execution; omit it to keep the prior run's toolset instead.",
     }),
   ),
   background: Type.Optional(
@@ -96,31 +96,31 @@ const workflowToolSchema = Type.Object({
   maxAgents: Type.Optional(
     Type.Number({
       description:
-        "Maximum number of agents allowed in this run. Default: 1000; this is a safety ceiling, not a target. Set a lower limit for dynamic or exploratory fan-out, and reserve large fan-outs for explicit user intent.",
+        "Maximum number of agents allowed in this run. Default: 1000; this is a safety ceiling, not a target. Set a lower limit for dynamic or exploratory fan-out, and reserve large fan-outs for explicit user intent. With `resumeFromRunId`, this overrides the prior run's cap for the resumed execution; omit it to keep the prior run's cap instead.",
     }),
   ),
   concurrency: Type.Optional(
     Type.Number({
       description:
-        "Maximum concurrent agents for this run. Clamped to the runtime maximum. Use when provider/transport stability matters.",
+        "Maximum concurrent agents for this run. Clamped to the runtime maximum. Use when provider/transport stability matters. With `resumeFromRunId`, this overrides the prior run's value for the resumed execution; omit it to keep the prior run's value instead.",
     }),
   ),
   agentRetries: Type.Optional(
     Type.Number({
       description:
-        "Retry attempts for recoverable agent failures such as timeout, connection failure, or empty assistant output. Default 0 unless configured.",
+        "Retry attempts for recoverable agent failures such as timeout, connection failure, or empty assistant output. Default 0 unless configured. With `resumeFromRunId`, this overrides the prior run's value for the resumed execution; omit it to keep the prior run's value instead.",
     }),
   ),
   agentTimeoutMs: Type.Optional(
     Type.Number({
       description:
-        "Timeout per agent in milliseconds. Omit to use configured `defaultAgentTimeoutMs`; without one, there is no hard timeout. Set only when the user asks to bound time.",
+        "Timeout per agent in milliseconds. Omit to use configured `defaultAgentTimeoutMs`; without one, there is no hard timeout. Set only when the user asks to bound time. With `resumeFromRunId`, this overrides the prior run's value for the resumed execution; omit it to keep the prior run's value instead.",
     }),
   ),
   tokenBudget: Type.Optional(
     Type.Number({
       description:
-        "Optional user-requested soft spend gate, not a planning target. Do not set `tokenBudget` unless the user explicitly supplies a cap or asks you to choose one; never infer or invent one from task size. If omitted, the configured `defaultTokenBudget` applies; without one, the run is unlimited. Reaching the gate blocks later `agent()` calls; concurrent in-flight work can overshoot.",
+        "Optional user-requested soft spend gate, not a planning target. Do not set `tokenBudget` unless the user explicitly supplies a cap or asks you to choose one; never infer or invent one from task size. If omitted, the configured `defaultTokenBudget` applies; without one, the run is unlimited. Reaching the gate blocks later `agent()` calls; concurrent in-flight work can overshoot. With `resumeFromRunId`, this overrides the prior run's budget for the resumed execution; omit it to keep the prior run's budget instead.",
     }),
   ),
   resumeFromRunId: Type.Optional(
@@ -129,6 +129,7 @@ const workflowToolSchema = Type.Object({
         "Resume a prior run (this ID) with an edited `script` instead of starting a new run.",
         "Unchanged agent() calls replay from that run's cache; the first changed/new call onward re-runs.",
         "Calls match by position: keep earlier good calls identical and in order. Always background.",
+        "Any of `maxAgents`, `concurrency`, `agentRetries`, `agentTimeoutMs`, `tokenBudget`, or `toolset` passed alongside this overrides the prior run's value for the resumed execution; each one omitted keeps inheriting the prior run's value for that option.",
       ].join(" "),
     }),
   ),
@@ -254,9 +255,25 @@ export function createWorkflowTool(
       // detached and its result is delivered back into the conversation).
       if (params.resumeFromRunId) {
         const runId = params.resumeFromRunId;
+        // Forward every run-level option the caller supplied on THIS call so it
+        // wins over the persisted value (see resume()'s doc comment) —
+        // maxAgents/concurrency/agentRetries/agentTimeoutMs/tokenBudget/toolset
+        // were previously dropped here entirely, so a resume always silently
+        // replayed the prior run's config no matter what the caller asked for.
+        // `params.<field>` is undefined exactly when the caller omitted it —
+        // normalizeWorkflowToolArgs()/the tool schema apply no defaults to these
+        // fields before execute() sees them — so passing them through as-is
+        // preserves "omitted → inherit persisted value" without needing a
+        // separate sentinel.
         const resumed = await manager.resume(runId, {
           script,
           args: params.args,
+          maxAgents: params.maxAgents,
+          concurrency: params.concurrency,
+          agentRetries: params.agentRetries,
+          agentTimeoutMs: params.agentTimeoutMs,
+          tokenBudget: params.tokenBudget,
+          toolset: invocationToolset,
         });
         if (!resumed) {
           throw new Error(resumeFailureText(manager, runId));

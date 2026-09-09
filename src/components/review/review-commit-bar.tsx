@@ -38,26 +38,8 @@ export function ReviewCommitBar({
   const staged = stagedCount(project);
   const canCommit = staged > 0 && message.trim().length > 0 && !busy;
 
-  /**
-   * Why the button is off, in the order the operator can act on. Unsaved
-   * edits come first: they are the one condition where committing would
-   * succeed and still not include what is on screen.
-   */
-  const blocker =
-    unsavedCount > 0
-      ? `${unsavedCount} unsaved ${unsavedCount === 1 ? "edit" : "edits"} — save before committing`
-      : staged === 0
-        ? "Stage some hunks to commit"
-        : message.trim().length === 0
-          ? "A commit needs a message"
-          : null;
-
-  return (
+  return staged > 0 ? (
     <footer className="flex shrink-0 items-center gap-3 border-t px-3 py-2">
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {staged} staged
-      </span>
-
       <Input
         aria-label="Commit message"
         className="h-8 flex-1 font-mono text-xs"
@@ -84,14 +66,10 @@ export function ReviewCommitBar({
         </span>
       ) : null}
 
-      {blocker ? (
-        <span className="shrink-0 text-xs text-muted-foreground">{blocker}</span>
-      ) : null}
-
       <Button disabled={!canCommit} onClick={onCommit} size="sm">
         {busy ? <Spinner className="size-3.5" /> : null}
         Commit
       </Button>
     </footer>
-  );
+  ) : null;
 }

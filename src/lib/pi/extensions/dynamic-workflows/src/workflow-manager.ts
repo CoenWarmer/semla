@@ -1363,8 +1363,30 @@ export class WorkflowManager extends EventEmitter {
    * this keeps the existing single-arg `resume(runId)` callers (e.g. the
    * UsageLimitScheduler) unchanged. `opts.args` overrides the persisted args
    * only when provided; otherwise the persisted args are kept.
+   *
+   * `opts.maxAgents`/`concurrency`/`agentRetries`/`agentTimeoutMs`/`tokenBudget`/
+   * `toolset` follow the same rule as `opts.args`: a caller-supplied value (i.e.
+   * explicitly present in `opts`, not merely non-undefined after some upstream
+   * default was applied) WINS over the persisted start-time value for this
+   * resumed execution; an omitted field keeps inheriting the persisted value
+   * exactly as before this option existed. This is what lets a run that died on
+   * "Agent limit exceeded" actually raise the limit on resume instead of
+   * silently replaying the old one (see workflow-tool.ts's resumeFromRunId
+   * branch, the only caller that threads these through today).
    */
-  async resume(runId: string, opts?: { script?: string; args?: unknown }): Promise<boolean> {
+  async resume(
+    runId: string,
+    opts?: {
+      script?: string;
+      args?: unknown;
+      maxAgents?: number;
+      concurrency?: number;
+      agentRetries?: number;
+      agentTimeoutMs?: number | null;
+      tokenBudget?: number | null;
+      toolset?: string;
+    },
+  ): Promise<boolean> {
     // Guard: refuse to resume a run that is already running, or one that was
     // intentionally aborted (pause/stop/Esc). Paused and failed runs can restart.
     const active = this.runs.get(runId);
@@ -1432,15 +1454,30 @@ export class WorkflowManager extends EventEmitter {
       // (legacy runs without one resume unbudgeted — never re-apply the current
       // default to a run that predates it) and the toolset tag executeRun
       // re-resolves so e.g. a resumed /deep-research keeps its web tools.
-      tokenBudget: persisted.tokenBudget !== undefined ? persisted.tokenBudget : null,
-      toolset: persisted.toolset,
+      //
+      // Every one of these six fields now checks `opts.<field> !== undefined`
+      // FIRST: an explicitly caller-supplied value on THIS resume call wins over
+      // the persisted start-time value, exactly like `opts.args` above. Only
+      // when the caller did not supply it does the persisted/legacy fallback
+      // chain (unchanged from before this fix) apply. See the resume() doc
+      // comment for why "supplied" must mean "present in opts", not "non-
+      // undefined after some upstream default" — the caller (workflow-tool.ts)
+      // is responsible for only forwarding fields the model actually passed.
+      tokenBudget:
+        opts?.tokenBudget !== undefined
+          ? opts.tokenBudget
+          : persisted.tokenBudget !== undefined
+            ? persisted.tokenBudget
+            : null,
+      toolset: opts?.toolset !== undefined ? opts.toolset : persisted.toolset,
       // Restore the same start-time execution context for the other four
       // per-run knobs (see ManagedRun doc comments) — same rationale as
-      // tokenBudget: never re-resolve against the manager's CURRENT defaults.
+      // tokenBudget: never re-resolve against the manager's CURRENT defaults
+      // unless the caller explicitly asked to.
       // maxAgents: legacy/never-set runs resume with no cap carried forward
       // (runWorkflow's own MAX_AGENTS_PER_RUN default applies), exactly as if
       // maxAgents had never been passed at all.
-      maxAgents: persisted.maxAgents,
+      maxAgents: opts?.maxAgents !== undefined ? opts.maxAgents : persisted.maxAgents,
       // agentTimeoutMs: unlike tokenBudget, a legacy run's real timeout at
       // start was never "no timeout" by omission — it was always
       // this.defaultAgentTimeoutMs, because pre-A1 resume() never threaded
@@ -1451,13 +1488,28 @@ export class WorkflowManager extends EventEmitter {
       // resume behavior. So — deliberately unlike tokenBudget's null
       // fallback — legacy runs resume with the manager's CURRENT default,
       // matching the only semantics such a run ever had.
-      agentTimeoutMs: persisted.agentTimeoutMs !== undefined ? persisted.agentTimeoutMs : this.defaultAgentTimeoutMs,
+      agentTimeoutMs:
+        opts?.agentTimeoutMs !== undefined
+          ? opts.agentTimeoutMs
+          : persisted.agentTimeoutMs !== undefined
+            ? persisted.agentTimeoutMs
+            : this.defaultAgentTimeoutMs,
       // concurrency/agentRetries have no "explicit opt-out sentinel" the way
       // tokenBudget's null does — a legacy run without a persisted value falls
       // back to the manager's current values, matching how this execution
       // resolved unset concurrency/agentRetries before this fix ever existed.
-      concurrency: persisted.concurrency !== undefined ? persisted.concurrency : this.concurrency,
-      agentRetries: persisted.agentRetries !== undefined ? persisted.agentRetries : this.defaultAgentRetries,
+      concurrency:
+        opts?.concurrency !== undefined
+          ? opts.concurrency
+          : persisted.concurrency !== undefined
+            ? persisted.concurrency
+            : this.concurrency,
+      agentRetries:
+        opts?.agentRetries !== undefined
+          ? opts.agentRetries
+          : persisted.agentRetries !== undefined
+            ? persisted.agentRetries
+            : this.defaultAgentRetries,
       // Fresh per-resume: agents (and any prior timing) are rebuilt live as
       // onAgentStart/onAgentEnd fire again for this attempt (see `agents: []`
       // above); the journal, not this map, is what makes replayed agents cheap.

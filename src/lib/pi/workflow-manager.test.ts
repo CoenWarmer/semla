@@ -181,3 +181,145 @@ test("background run: getSnapshot reflects agents after completion", async () =>
   assert.equal(snapshot.agents[0].label, "bg-agent");
   assert.equal(snapshot.agents[0].status, "done");
 });
+
+// ---------------------------------------------------------------------------
+// resume() run-option precedence: an option explicitly supplied on the
+// RESUMING call must win over the persisted value; an omitted option must
+// keep inheriting it. See workflow-manager.ts's resume() doc comment.
+// ---------------------------------------------------------------------------
+
+// A two-agent script whose second call only runs if the agent cap allows it.
+const TWO_AGENT_SCRIPT = `export const meta = { name: "cap-check", description: "test workflow", phases: [] }
+     await agent("first", { label: "one" })
+     await agent("second", { label: "two" })
+     return {}`;
+
+test("resume with a higher maxAgents enforces the NEW limit, not the old one", async () => {
+  const manager = makeManager();
+
+  // Start capped at 1 agent: the second agent() call breaches the cap and the
+  // run fails with AGENT_LIMIT_EXCEEDED — this is the exact reported bug
+  // ("Agent limit exceeded (6)... Use maxAgents option to increase the limit").
+  const { runId, promise } = manager.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    maxAgents: 1,
+  });
+  await assert.rejects(promise, /Agent limit exceeded \(1\)/);
+
+  const persistedAfterFailure = manager.getPersistence().load(runId);
+  assert.equal(persistedAfterFailure?.status, "failed");
+  assert.equal(persistedAfterFailure?.maxAgents, 1, "the failed run's cap of 1 must be what's on disk");
+
+  // Resume with an explicitly higher cap: this must win over the persisted 1,
+  // so both agents complete this time. Reverting the fix (resume() ignoring
+  // opts.maxAgents) makes this call reject again with the same "(1)" message.
+  const resumed = await manager.resume(runId, { maxAgents: 5 });
+  assert.ok(resumed, "resume should succeed");
+
+  const finished = await waitForTerminal(manager, runId);
+  assert.equal(finished.status, "completed", "raising maxAgents on resume must let the second agent run");
+  assert.equal(finished.agents.length, 2);
+  assert.deepEqual(
+    finished.agents.map((a) => a.label).sort(),
+    ["one", "two"],
+  );
+});
+
+test("resume without maxAgents still inherits the prior run's value", async () => {
+  const manager = makeManager();
+
+  const { runId, promise } = manager.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    maxAgents: 1,
+  });
+  await assert.rejects(promise, /Agent limit exceeded \(1\)/);
+
+  // No maxAgents on this resume call: the persisted cap of 1 must still apply,
+  // so the second agent breaches it again — inheritance must not break.
+  const resumed = await manager.resume(runId, {});
+  assert.ok(resumed, "resume should succeed");
+
+  const finished = await waitForTerminal(manager, runId);
+  assert.equal(finished.status, "failed", "omitting maxAgents on resume must keep enforcing the persisted cap");
+  assert.match(finished.error ?? "", /Agent limit exceeded \(1\)/);
+});
+
+test("resume with a higher tokenBudget enforces the NEW budget, not the old one", async () => {
+  const manager = makeManager();
+
+  // A tiny starting budget: the first agent's estimated token cost alone
+  // exhausts it, so the second agent() call throws TOKEN_BUDGET_EXHAUSTED.
+  const { runId, promise } = manager.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    tokenBudget: 1,
+  });
+  await assert.rejects(promise, /token budget exhausted/);
+
+  const persistedAfterFailure = manager.getPersistence().load(runId);
+  assert.equal(persistedAfterFailure?.tokenBudget, 1);
+
+  // A generous explicit budget on resume must win over the persisted 1.
+  const resumed = await manager.resume(runId, { tokenBudget: 1_000_000 });
+  assert.ok(resumed, "resume should succeed");
+
+  const finished = await waitForTerminal(manager, runId);
+  assert.equal(finished.status, "completed", "raising tokenBudget on resume must let the second agent run");
+  assert.equal(finished.agents.length, 2);
+});
+
+test("resume without tokenBudget still inherits the prior run's value", async () => {
+  const manager = makeManager();
+
+  const { runId, promise } = manager.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    tokenBudget: 1,
+  });
+  await assert.rejects(promise, /token budget exhausted/);
+
+  const resumed = await manager.resume(runId, {});
+  assert.ok(resumed, "resume should succeed");
+
+  const finished = await waitForTerminal(manager, runId);
+  assert.equal(finished.status, "failed", "omitting tokenBudget on resume must keep enforcing the persisted budget");
+  assert.match(finished.error ?? "", /token budget exhausted/);
+});
+
+test("a non-resume run's maxAgents behaviour is unaffected by the resume fix", async () => {
+  const manager = makeManager();
+
+  const { promise } = manager.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    maxAgents: 1,
+  });
+  await assert.rejects(promise, /Agent limit exceeded \(1\)/);
+
+  const manager2 = makeManager();
+  const { runId: runId2, promise: promise2 } = manager2.startInBackground(TWO_AGENT_SCRIPT, undefined, {
+    maxAgents: 5,
+  });
+  await promise2;
+  const snapshot = manager2.getSnapshot(runId2);
+  assert.equal(snapshot?.agents.length, 2, "a fresh (non-resume) run with a sufficient cap still completes both agents");
+});
+
+/**
+ * Poll the live in-memory run until `runId` reaches a terminal status
+ * (completed/failed/aborted). resume() runs its execution detached (fire
+ * and forget), so there is no promise to await directly the way
+ * startInBackground()'s return value gives one; getRun() keeps the settled
+ * ManagedRun (including its real WorkflowError) around for a handful of
+ * terminal runs — see DEFAULT_MAX_TERMINAL_RUNS_IN_MEMORY — which easily
+ * covers one run per test.
+ */
+async function waitForTerminal(
+  manager: ReturnType<typeof makeManager>,
+  runId: string,
+): Promise<{ status: string; agents: Array<{ label: string }>; error?: string }> {
+  for (let i = 0; i < 200; i++) {
+    const managed = manager.getRun(runId);
+    if (managed && (managed.status === "completed" || managed.status === "failed" || managed.status === "aborted")) {
+      return {
+        status: managed.status,
+        agents: managed.snapshot.agents,
+        error: managed.error?.message,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`run ${runId} did not reach a terminal status in time`);
+}
