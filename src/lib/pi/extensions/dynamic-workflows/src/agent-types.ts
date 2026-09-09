@@ -54,9 +54,10 @@ export interface WorkflowAgentOptions {
   modelRegistry?: ModelRegistry;
   /**
    * Persist each subagent transcript as a real pi session file under the
-   * standard sessions directory (keyed by the runner's project cwd), instead
-   * of the default in-memory session that is discarded when the run ends.
-   * Default: false (current behavior).
+   * same per-project directory the main session uses (PI_SESSION_DIR, i.e.
+   * `<project>/.semla-sessions/`), keyed by the runner's project cwd, instead
+   * of an in-memory session discarded when the run ends. Default: true—an
+   * explicit `false` here, or in project/user workflow settings, disables it.
    */
   persistAgentSessions?: boolean;
 }

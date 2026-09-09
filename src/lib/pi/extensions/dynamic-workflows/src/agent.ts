@@ -51,6 +51,7 @@ import {
   buildSharedResourceLoader,
   buildSubagentTools,
   createSubagentSessionManager,
+  resolvePersistAgentSessions,
   subagentExcludedTools,
 } from "./agent-session.ts";
 import type {
@@ -134,7 +135,10 @@ export class WorkflowAgent {
     this.baseTools = options.tools?.length ? options.tools : createCodingTools(this.cwd);
     this.excludeTools = options.excludeTools ?? [];
     this.sessionOptions = options.session ?? {};
-    this.persistAgentSessions = options.persistAgentSessions ?? false;
+    // Default true: subagent sessions persist to disk unless a settings file
+    // or an explicit caller override turns this off (see WorkflowAgentOptions
+    // and workflow-settings.ts's persistAgentSessions doc for the full chain).
+    this.persistAgentSessions = resolvePersistAgentSessions(options.persistAgentSessions);
     this.instructions = options.instructions;
     this.mainModel = options.mainModel;
     this.sharedRegistry = options.modelRegistry;
@@ -274,6 +278,9 @@ export class WorkflowAgent {
     // per-call runCwd: agents working in short-lived git worktrees should still
     // group under the project's session dir instead of scattering across
     // temporary worktree paths.
+    // sessionDir is left at its default (PI_SESSION_DIR) so this subagent's
+    // transcript lands in the exact directory the main session's files use —
+    // see createSubagentSessionManager's docblock.
     const sessionManager = createSubagentSessionManager(
       this.cwd,
       this.persistAgentSessions,

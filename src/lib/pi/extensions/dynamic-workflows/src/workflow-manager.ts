@@ -5,6 +5,7 @@
 import { EventEmitter } from "node:events";
 import type { ModelRegistry, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { WorkflowAgent } from "./agent.ts";
+import { resolvePersistAgentSessions } from "./agent-session.ts";
 // Relative, and type-only: erased at build time, so this module gains no
 // runtime dependency on the host and would still load under jiti.
 import type { WorkflowTelemetry } from "../../../telemetry/workflow-recorder";
@@ -256,7 +257,8 @@ export interface WorkflowManagerOptions {
   excludeSubagentTools?: string[];
   /**
    * Persist each subagent transcript as a real pi session file under the
-   * standard sessions directory. Default false (in-memory, discarded).
+   * project's session directory. Default true (in-memory, discarded, only
+   * with an explicit `false`).
    */
   persistAgentSessions?: boolean;
   /**
@@ -456,7 +458,9 @@ export class WorkflowManager extends EventEmitter {
     this.excludeSubagentTools = options.excludeSubagentTools;
     if (options.telemetry) this.telemetry = options.telemetry;
     this.turnSpanId = options.turnSpanId;
-    this.persistAgentSessions = options.persistAgentSessions ?? false;
+    // Default true: see agent.ts's WorkflowAgent constructor and
+    // workflow-settings.ts's persistAgentSessions doc for the full chain.
+    this.persistAgentSessions = resolvePersistAgentSessions(options.persistAgentSessions);
     this.maxTerminalRunsInMemory = options.maxTerminalRunsInMemory ?? DEFAULT_MAX_TERMINAL_RUNS_IN_MEMORY;
     this.persistence = createRunPersistence(this.cwd);
     this.recoverStaleRuns();
@@ -554,7 +558,10 @@ export class WorkflowManager extends EventEmitter {
     // call site is the same trap costing `toolsets`.
     if (options.telemetry) this.telemetry = options.telemetry;
     if (options.turnSpanId !== undefined) this.turnSpanId = options.turnSpanId;
-    this.persistAgentSessions = options.persistAgentSessions ?? false;
+    // Default true — must match the constructor's default above, or a reload
+    // without an explicit setting would silently revert an on-by-default run
+    // to in-memory sessions.
+    this.persistAgentSessions = resolvePersistAgentSessions(options.persistAgentSessions);
   }
 
   /** Set the session's main model (provider/id). Used to auto-tier explore agents. */

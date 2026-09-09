@@ -25,6 +25,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
+import { PI_SESSION_DIR } from "../../../runtime-config.ts";
 import { applyToolPolicy } from "./agent-registry.ts";
 import { WorkflowError, WorkflowErrorCode } from "./errors.ts";
 import {
@@ -140,9 +141,32 @@ export function assertSessionDirWritable(dir: string): void {
 }
 
 /**
+ * Resolves the effective persistAgentSessions default: true unless the
+ * caller (workflow settings, WorkflowAgentOptions, or a
+ * WorkflowManagerReloadOptions refresh) explicitly said false. Every
+ * `?? false` fallback along that chain used to independently decide "off by
+ * default"; a single shared resolver keeps the constructor, the reload path,
+ * and the host wiring in workflow.ts from drifting out of sync with each
+ * other the way three separate literals eventually would.
+ */
+export function resolvePersistAgentSessions(value: boolean | undefined): boolean {
+  return value ?? true;
+}
+
+/**
  * Session manager for one subagent run. File-backed (persisted under the
- * standard sessions dir, keyed by the runner's project cwd — never a
- * per-call worktree cwd) when persistAgentSessions is on; in-memory otherwise.
+ * SAME per-project directory the main Semla session uses — PI_SESSION_DIR,
+ * i.e. `<project>/.semla-sessions/` — keyed by the runner's project cwd,
+ * never a per-call worktree cwd) when persistAgentSessions is on; in-memory
+ * otherwise.
+ *
+ * Passing `sessionDir` explicitly matters: SessionManager.create(cwd) with no
+ * second argument falls through to pi's own default
+ * (~/.pi/agent/sessions/<encoded-cwd>/), which is a different directory than
+ * the one the main session writes to (session-service.ts wires the main
+ * session via SessionManager.open(file, PI_SESSION_DIR, ...)). Passing the
+ * same constant here is what keeps a subagent's transcript alongside the run
+ * that spawned it, discoverable from the same directory listing.
  *
  * SessionManager.create() only creates the session directory — the SDK writes
  * the session file lazily (synchronous fs calls, uncaught) on the first
@@ -155,10 +179,11 @@ export function assertSessionDirWritable(dir: string): void {
 export function createSubagentSessionManager(
   cwd: string,
   persistAgentSessions: boolean,
+  sessionDir: string = PI_SESSION_DIR,
 ): SessionManager {
   if (!persistAgentSessions) return SessionManager.inMemory();
   try {
-    const manager = SessionManager.create(cwd);
+    const manager = SessionManager.create(cwd, sessionDir);
     assertSessionDirWritable(manager.getSessionDir());
     warnPersistSecretsOnce(manager.getSessionDir());
     return manager;

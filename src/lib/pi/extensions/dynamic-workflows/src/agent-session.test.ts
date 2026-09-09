@@ -9,18 +9,24 @@
  * structured_output, lets systemTools bypass that filter, rejects a
  * non-object schema, and skips rebuilding coding tools when the call's cwd
  * matches the run's own; and createSubagentSessionManager returns an
- * in-memory manager when told not to persist. The unwritable-session-dir
- * degrade path is documented as skipped below rather than faked.
+ * in-memory manager when told not to persist, and otherwise persists into
+ * the explicit sessionDir it's given (the project's `.semla-sessions/`, not
+ * pi's own default sessions dir). The unwritable-session-dir degrade path
+ * is documented as skipped below rather than faked.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildSubagentTools,
   createSubagentSessionManager,
   DEFAULT_EXCLUDED_SUBAGENT_TOOLS,
   mergeRelocatedCodingTools,
+  resolvePersistAgentSessions,
   subagentExcludedTools,
 } from "./agent-session.ts";
 import type { StructuredOutputCapture } from "./structured-output.ts";
@@ -162,20 +168,85 @@ describe("buildSubagentTools", () => {
   });
 });
 
+describe("resolvePersistAgentSessions", () => {
+  it("defaults to true when no settings/options value is given", () => {
+    expect(resolvePersistAgentSessions(undefined)).toBe(true);
+  });
+
+  it("honors an explicit false, overriding the default", () => {
+    expect(resolvePersistAgentSessions(false)).toBe(false);
+  });
+
+  it("honors an explicit true", () => {
+    expect(resolvePersistAgentSessions(true)).toBe(true);
+  });
+});
+
 describe("createSubagentSessionManager", () => {
   it("returns an in-memory manager when persistAgentSessions is false", () => {
     const manager = createSubagentSessionManager("/some/cwd", false);
     expect(manager.isPersisted()).toBe(false);
   });
 
+  describe("with an explicit sessionDir", () => {
+    let tempCwd: string;
+    let tempSessionDir: string;
+
+    afterEach(() => {
+      rmSync(tempCwd, { recursive: true, force: true });
+      rmSync(tempSessionDir, { recursive: true, force: true });
+    });
+
+    it("persists into the given sessionDir rather than pi's own default", () => {
+      tempCwd = mkdtempSync(join(tmpdir(), "agent-session-cwd-"));
+      tempSessionDir = mkdtempSync(join(tmpdir(), "agent-session-dir-"));
+
+      const manager = createSubagentSessionManager(tempCwd, true, tempSessionDir);
+
+      expect(manager.isPersisted()).toBe(true);
+      expect(manager.getSessionDir()).toBe(tempSessionDir);
+    });
+  });
+
   // The unwritable-session-dir degrade path (createSubagentSessionManager's
-  // catch branch) is intentionally not exercised here: createSubagentSessionManager
-  // takes only a project cwd and derives the session directory itself via
-  // SessionManager.create(cwd), which resolves against the real default
-  // session location (~/.pi/agent/sessions/<encoded-cwd>/ or PI_CODING_AGENT_DIR).
-  // There is no parameter to redirect that to a temp dir, so reaching the
-  // catch branch deterministically would mean either chmod'ing a directory
-  // this test doesn't own, or mocking SessionManager.create/assertSessionDirWritable
+  // catch branch) is intentionally not exercised here: reaching it
+  // deterministically would mean either chmod'ing a directory this test
+  // doesn't own (unreliable when the test runner is root, which ignores
+  // permission bits) or mocking SessionManager.create/assertSessionDirWritable
   // — both brittle against a function whose contract is "never throw", not
   // against its internals. Skipped rather than written unreliable.
+
+  describe("default sessionDir (no explicit third argument)", () => {
+    let tempWorkspace: string;
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+      rmSync(tempWorkspace, { recursive: true, force: true });
+    });
+
+    it("resolves to the project's .semla-sessions, matching the main session's PI_SESSION_DIR", async () => {
+      // PI_SESSION_DIR is computed once at module load from
+      // process.env.PI_SESSION_DIR (see runtime-config.ts). Stub the env var
+      // to a temp directory and reload both modules so the constant picks it
+      // up, rather than writing into this repository's real .semla-sessions/.
+      tempWorkspace = mkdtempSync(join(tmpdir(), "agent-session-workspace-"));
+      const expectedSessionDir = join(tempWorkspace, ".semla-sessions");
+      vi.stubEnv("PI_SESSION_DIR", expectedSessionDir);
+      vi.resetModules();
+
+      const { PI_SESSION_DIR: reloadedSessionDir } = await import(
+        "../../../runtime-config.ts"
+      );
+      const { createSubagentSessionManager: reloadedCreate } = await import(
+        "./agent-session.ts"
+      );
+
+      expect(reloadedSessionDir).toBe(expectedSessionDir);
+
+      const manager = reloadedCreate(tempWorkspace, true);
+
+      expect(manager.getSessionDir()).toBe(expectedSessionDir);
+    });
+  });
 });

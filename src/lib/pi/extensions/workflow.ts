@@ -15,6 +15,7 @@ import {
   WORKFLOW_EXTENSION_VERSION,
   type WorkflowReloadRuntime,
 } from "./dynamic-workflows/src/extension-reload";
+import { resolvePersistAgentSessions } from "./dynamic-workflows/src/agent-session";
 import { registerBuiltinWorkflows } from "./dynamic-workflows/src/builtin-commands";
 import {
   createEffortState,
@@ -160,7 +161,10 @@ export function buildManagerOptions(cwd: string, storage: WorkflowStorage) {
     defaultTokenBudget: settings.defaultTokenBudget ?? null,
     concurrency: settings.defaultConcurrency,
     defaultAgentRetries: settings.defaultAgentRetries,
-    persistAgentSessions: settings.persistAgentSessions,
+    // Default true: every project persists full subagent transcripts to
+    // <project>/.semla-sessions/ unless a user/project settings file says
+    // otherwise. See workflow-settings.ts's persistAgentSessions doc.
+    persistAgentSessions: resolvePersistAgentSessions(settings.persistAgentSessions),
   };
 }
 
