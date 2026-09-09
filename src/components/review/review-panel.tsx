@@ -200,7 +200,6 @@ export function ReviewPanel({
     projects[0];
 
   const changed = review.data ? totalChangedFiles(review.data) : 0;
-  const unsavedCount = Object.keys(drafts).length;
   const busy = stage.isPending || commit.isPending || save.isPending;
 
   // When the operator selects a commit, filter the changed-files list to only
@@ -496,7 +495,6 @@ export function ReviewPanel({
         onMessageChange={setMessage}
         project={activeProject}
         result={result}
-        unsavedCount={unsavedCount}
       />
     </>
   );

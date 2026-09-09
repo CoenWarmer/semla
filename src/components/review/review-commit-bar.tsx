@@ -25,7 +25,6 @@ export function ReviewCommitBar({
   onMessageChange,
   project,
   result,
-  unsavedCount,
 }: {
   busy: boolean;
   message: string;
@@ -33,7 +32,6 @@ export function ReviewCommitBar({
   onMessageChange: (message: string) => void;
   project: ProjectReview | undefined;
   result: { ok: boolean; message: string } | null;
-  unsavedCount: number;
 }) {
   const staged = stagedCount(project);
   const canCommit = staged > 0 && message.trim().length > 0 && !busy;
