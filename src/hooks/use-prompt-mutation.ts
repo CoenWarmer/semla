@@ -125,6 +125,32 @@ type StreamHandlers = {
   onSessionStatus: (isRunning: boolean) => void;
 };
 
+/**
+ * What `onSettled` calls to hand the client back onto the live stream when
+ * the turn that just ended was not actually the end of the server's work.
+ *
+ * The POST body stream `mutationFn` reads from is a one-shot: it closes the
+ * instant this turn's model loop goes idle, even when the server is about to
+ * carry on without us — a background workflow starting its next phase, or
+ * spawning its next agent (see #13). `serverIsRunning` is the last
+ * `session-status` push that same stream delivered before closing, so a
+ * `true` here means the server is still going with no listener left on this
+ * tab. `reconnectToStream` is the same path a page loaded mid-turn already
+ * uses to attach to that live stream — it self-guards against a second
+ * concurrent subscription, so calling it is safe even if one happens to
+ * already be open.
+ *
+ * Exported as a standalone function (rather than inlined in `onSettled`) so
+ * the wiring can be pinned by a test without a DOM: the hook itself needs
+ * React to run at all, but this decision does not.
+ */
+export const reconnectIfStillRunning = (
+  serverIsRunning: boolean,
+  reconnectToStream: () => void,
+): void => {
+  if (serverIsRunning) reconnectToStream();
+};
+
 const readPiStream = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   handlers: StreamHandlers,
@@ -753,6 +779,12 @@ export const usePromptMutation = (
       });
 
       setListRunning(false);
+
+      // See reconnectIfStillRunning's own doc comment for why this is needed
+      // at all: the POST stream this mutation just read from is a one-shot,
+      // and does not survive a background workflow continuing past this turn.
+      reconnectIfStillRunning(serverIsRunning, reconnectToStream);
+
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });
     },
