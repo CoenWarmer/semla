@@ -7,6 +7,7 @@ import {
   readWorkflowRun,
   type PersistedAgentState,
 } from "./workflow-run-reader";
+import { readAgentHistoryFromTranscript } from "./workflow-agent-transcript";
 import { getActiveManager } from "./workflow-manager-registry";
 import { historyToTurns, mergeLiveSnapshot, type LiveSnapshot } from "./workflow-snapshot-merge";
 
@@ -123,6 +124,13 @@ export type AgentDetail = {
   endedAt?: string;
   error?: string;
   history: PersistedAgentState["history"];
+  /**
+   * Which record `history` came from. "run-file" is the 40-entry / 20k-char
+   * tail, which for a long agent is a window onto its final seconds rather
+   * than an account of the run — worth saying out loud in the UI instead of
+   * presenting two very different things under one heading.
+   */
+  historySource: "transcript" | "run-file";
   id: number;
   label: string;
   model?: string;
@@ -137,7 +145,16 @@ export type AgentDetailResult =
   | { agent: AgentDetail; workflowName: string; reason?: undefined }
   | { reason: "run-not-found" | "agent-not-found" };
 
-/** Look up a single agent's detail from a run's on-disk state. */
+/**
+ * Look up a single agent's detail from a run's on-disk state.
+ *
+ * Prefers the agent's own persisted transcript over the run file's `history`.
+ * The two are not the same record: `history` is a bounded tail rebuilt on
+ * every emit, so for anything long it describes the end of the run and not the
+ * run. The fallback is kept because it is the only record that exists for runs
+ * written before subagent transcripts were persisted, and for any agent whose
+ * session degraded to in-memory.
+ */
 export function getAgentDetail(
   runId: string,
   agentId: number,
@@ -148,12 +165,15 @@ export function getAgentDetail(
   const agent = runState.agents.find((a) => a.id === agentId);
   if (!agent) return { reason: "agent-not-found" };
 
+  const transcript = readAgentHistoryFromTranscript(runId, agent.label);
+
   return {
     agent: {
       cost: agent.tokenUsage?.cost,
       endedAt: agent.endedAt,
       error: agent.error,
-      history: agent.history ?? [],
+      history: transcript ?? agent.history ?? [],
+      historySource: transcript ? "transcript" : "run-file",
       id: agent.id,
       label: agent.label,
       model: agent.model,

@@ -1,6 +1,12 @@
-export type AgentHistoryRole = "user" | "assistant" | "tool";
+export type AgentHistoryRole = "user" | "assistant" | "tool" | "system";
 
-export type AgentHistoryKind = "text" | "thinking" | "toolCall" | "toolResult" | "error";
+export type AgentHistoryKind =
+  | "text"
+  | "thinking"
+  | "toolCall"
+  | "toolResult"
+  | "error"
+  | "compaction";
 
 export interface AgentHistoryEntry {
   role: AgentHistoryRole;
@@ -13,6 +19,8 @@ export interface AgentHistoryEntry {
   diff?: string;
   isError?: boolean;
   timestamp?: number;
+  /** Context size immediately before a compaction. Only set on that kind. */
+  tokensBefore?: number;
 }
 
 export interface AgentHistoryOptions {
@@ -43,6 +51,30 @@ export function compactAgentHistory(messages: unknown[], options: AgentHistoryOp
     if (role === "user") {
       const text = textFromContent(message.content);
       if (text.trim()) entries.push({ role: "user", kind: "text", text, timestamp });
+      continue;
+    }
+
+    // Pi records a compaction as its own transcript entry type rather than a
+    // message, so it only reaches this function when a caller reading a
+    // persisted transcript normalises it into this shape (see
+    // workflow-agent-transcript.ts). A live session's `messages` array never
+    // contains one — by the time it is compacted, the entries it replaced are
+    // simply gone from that array.
+    //
+    // Handled here rather than spliced in afterwards so a compaction keeps its
+    // position in the sequence and is bounded by the same budget as the
+    // entries around it. Position is the whole point: an appended transcript
+    // retains what came before a compaction as well as after, so without a
+    // marker the two read as one continuous conversation the agent never had.
+    if (role === "compaction") {
+      entries.push({
+        role: "system",
+        kind: "compaction",
+        text: typeof message.summary === "string" ? message.summary : "",
+        tokensBefore:
+          typeof message.tokensBefore === "number" ? message.tokensBefore : undefined,
+        timestamp,
+      });
       continue;
     }
 

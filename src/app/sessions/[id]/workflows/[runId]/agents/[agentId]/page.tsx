@@ -1,7 +1,7 @@
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
-import { readWorkflowRun, type AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import { getAgentDetail } from "@/lib/pi/workflow-service";
 import { TokenUsage } from "@/components/token-usage";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,7 +14,36 @@ const statusColors: Record<string, string> = {
   skipped: "text-muted-foreground",
 };
 
+/** Tokens the agent was carrying when it compacted, e.g. "128,000 tokens". */
+function formatTokens(tokens: number | undefined): string | null {
+  return typeof tokens === "number" ? `${tokens.toLocaleString()} tokens` : null;
+}
+
 function HistoryEntry({ entry }: { entry: AgentHistoryEntry }) {
+  // Everything above this point left the agent's context here. Rendered as a
+  // rule across the transcript rather than another message, because it is a
+  // boundary between two things the agent could not see at once — and the
+  // transcript keeps both sides, so without it they read as one conversation.
+  if (entry.kind === "compaction") {
+    const dropped = formatTokens(entry.tokensBefore);
+    return (
+      <div className="flex items-center gap-3 py-2">
+        <div className="h-px flex-1 bg-amber-500/40" />
+        <div className="text-center">
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-500">
+            Context compacted
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {dropped
+              ? `Everything above was summarised away; the agent was carrying ${dropped}.`
+              : "Everything above was summarised away and the agent could no longer see it."}
+          </p>
+        </div>
+        <div className="h-px flex-1 bg-amber-500/40" />
+      </div>
+    );
+  }
+
   if (entry.kind === "toolCall") {
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-mono">
@@ -88,18 +117,15 @@ export default async function AgentDetailPage({
     notFound();
   }
 
-  const runState = readWorkflowRun(PI_WORKSPACE_ROOT, runId);
+  // Same lookup the API route makes, so both surfaces resolve the transcript
+  // identically rather than this page re-deriving it from the run file.
+  const detail = getAgentDetail(runId, parseInt(agentId, 10));
 
-  if (!runState) {
+  if ("reason" in detail) {
     notFound();
   }
 
-  const numericId = parseInt(agentId, 10);
-  const agent = runState.agents.find((a) => a.id === numericId);
-
-  if (!agent) {
-    notFound();
-  }
+  const { agent, workflowName } = detail;
 
   const durationMs =
     agent.startedAt && agent.endedAt
@@ -121,7 +147,7 @@ export default async function AgentDetailPage({
 
       <div className="space-y-1">
         <p className="text-muted-foreground text-xs uppercase tracking-wide">
-          {runState.workflowName}
+          {workflowName}
           {agent.phase ? ` · ${agent.phase}` : ""}
         </p>
         <h1 className="text-2xl font-semibold">{agent.label}</h1>
@@ -134,7 +160,7 @@ export default async function AgentDetailPage({
           )}
           <TokenUsage
             className="text-muted-foreground"
-            cost={agent.tokenUsage?.cost}
+            cost={agent.cost}
             tokens={agent.tokens}
           />
           {durationMs !== undefined && (
@@ -159,9 +185,18 @@ export default async function AgentDetailPage({
       )}
 
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Transcript
-        </p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Transcript
+          </p>
+          {history.length > 0 && agent.historySource === "run-file" && (
+            <p className="text-xs text-muted-foreground">
+              Partial — no session transcript was persisted for this agent, so
+              this is the run file&rsquo;s last {history.length}{" "}
+              {history.length === 1 ? "entry" : "entries"}.
+            </p>
+          )}
+        </div>
         {history.length === 0 ? (
           <p className="text-muted-foreground text-sm">No transcript available.</p>
         ) : (

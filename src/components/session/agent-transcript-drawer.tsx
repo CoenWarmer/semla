@@ -17,6 +17,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
+import type { AgentDetail } from "@/lib/pi/workflow-service";
 import { TokenUsage } from "@/components/token-usage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -25,21 +26,17 @@ const DRAWER_WIDTH_DEFAULT = 520
 const DRAWER_WIDTH_MIN = 320
 const DRAWER_WIDTH_MAX = 1000
 
+/**
+ * The route's response, described by the type the route actually returns.
+ *
+ * `agent` used to be restated here field by field, which is why this drawer
+ * kept rendering without `historySource` after the route grew it: a hand-copied
+ * shape does not fail to compile when the real one gains a member, it just
+ * quietly stops carrying it. Type-only, so the server module it names is erased
+ * and never bundled into this client component.
+ */
 type AgentData = {
-  agent: {
-    cost?: number;
-    endedAt?: string;
-    error?: string;
-    history: AgentHistoryEntry[];
-    id: number;
-    label: string;
-    model?: string;
-    phase?: string;
-    prompt: string;
-    startedAt?: string;
-    status: string;
-    tokens?: number;
-  };
+  agent: AgentDetail;
   runId: string;
   workflowName: string;
 };
@@ -47,6 +44,24 @@ type AgentData = {
 function HistoryEntryRow({ entry }: { entry: AgentHistoryEntry }) {
   const isUser = entry.role === "user";
   const isTool = entry.kind === "toolCall" || entry.kind === "toolResult";
+
+  // The point in the transcript where the agent lost sight of everything above
+  // it. See the same branch in the agent detail page for why it is a rule
+  // rather than a message.
+  if (entry.kind === "compaction") {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <div className="h-px flex-1 bg-amber-500/40" />
+        <span className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-500">
+          Context compacted
+          {typeof entry.tokensBefore === "number"
+            ? ` · ${entry.tokensBefore.toLocaleString()} tokens`
+            : ""}
+        </span>
+        <div className="h-px flex-1 bg-amber-500/40" />
+      </div>
+    );
+  }
 
   // Collapsed by default: reasoning explains why a turn went the way it did,
   // and is often longer than the turn itself.
@@ -71,9 +86,13 @@ function HistoryEntryRow({ entry }: { entry: AgentHistoryEntry }) {
         <span className="text-muted-foreground">
           {entry.kind === "toolCall" ? `▶ ${entry.toolName}` : `◀ ${entry.toolName ?? "result"}`}
         </span>
+        {/* Scrolled rather than clipped, matching the agent detail page: the
+            drawer stays skimmable either way, but a hard slice put a second
+            truncation on top of a record that exists precisely so nothing is
+            truncated, with no way to reach the rest. */}
         {entry.text && (
-          <pre className="mt-1 whitespace-pre-wrap break-words text-foreground/80">
-            {entry.text.length > 500 ? entry.text.slice(0, 500) + "…" : entry.text}
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words text-foreground/80">
+            {entry.text}
           </pre>
         )}
       </div>
@@ -205,6 +224,14 @@ export function AgentTranscriptDrawer({
 
           {agent?.history && agent.history.length > 0 && (
             <div className="flex flex-col gap-3">
+              {agent.historySource === "run-file" && (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
+                  Partial — no session transcript was persisted for this agent,
+                  so this is the run file&rsquo;s last {agent.history.length}{" "}
+                  {agent.history.length === 1 ? "entry" : "entries"}, not the
+                  whole run.
+                </p>
+              )}
               {agent.history.map((entry, i) => (
                 <HistoryEntryRow key={i} entry={entry} />
               ))}
