@@ -484,6 +484,19 @@ export function ClientSessionComponent({
       // either way — it is the URL's concern, not this submission's.
       const leafId = forkedAt ?? viewingLeafId ?? undefined;
       setForkedAt(null);
+      // Submitting a prompt while the review panel is on screen must not close
+      // it. `shouldOpenReview`'s `sessionRunning` guard exists to stop the
+      // panel *appearing* over a turn in progress, but this turn is about to
+      // start with the panel already open — and an operator who is reading a
+      // review while asking a question has not finished reading it.
+      //
+      // Recorded here, in the event handler, rather than derived: the flag is
+      // the "the operator asked for this" signal, and submitting while open is
+      // exactly that. Promoting it makes an auto-opened panel as durable as a
+      // button-opened one, which is the only difference the operator could not
+      // have predicted. Closing still dismisses (see `closeReview`), so this
+      // cannot strand the panel open.
+      if (reviewOpen) setReviewManuallyOpened(true);
       await promptMutateAsync({
         leafId,
         model,
@@ -491,7 +504,7 @@ export function ClientSessionComponent({
         tools,
       });
     },
-    [forkedAt, promptMutateAsync, viewingLeafId],
+    [forkedAt, promptMutateAsync, reviewOpen, viewingLeafId],
   );
 
   /**

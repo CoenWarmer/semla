@@ -137,3 +137,46 @@ describe("shouldOpenReview", () => {
     ).toBe(true);
   });
 });
+
+/**
+ * The contract client-session-component's `handleSubmit` relies on when it
+ * promotes `manuallyOpened` for an already-open panel (search: reviewOpen).
+ *
+ * These pin the *precondition* for that fix, not the fix: `manuallyOpened` is
+ * the only signal that survives `sessionRunning`, which is why the component
+ * has to set it before a turn starts. They would still pass if the promotion
+ * were removed — the promotion itself is in a component, and this repository
+ * has no DOM test environment to render one. Verified by hand instead; see the
+ * commit message.
+ */
+describe("shouldOpenReview across the start of a new turn", () => {
+  it("keeps a manually opened panel open once a turn starts", () => {
+    expect(
+      shouldOpenReview({
+        manuallyOpened: true,
+        review: review(),
+        sessionRunning: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("still refuses to open a panel nobody opened, mid-turn", () => {
+    expect(
+      shouldOpenReview({
+        manuallyOpened: false,
+        review: review(),
+        sessionRunning: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps it open across a turn that has not reported changes yet", () => {
+    expect(
+      shouldOpenReview({
+        manuallyOpened: true,
+        review: review({ changedThisTurn: false }),
+        sessionRunning: true,
+      }),
+    ).toBe(true);
+  });
+});
