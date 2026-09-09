@@ -83,6 +83,26 @@ describe("resolveFileToken", () => {
     });
   });
 
+  it("strips a redundant project qualifier in a single-project session", () => {
+    // Regression: this used to return `semla` + `semla/src/foo.ts`, a path
+    // that does not exist, because the qualifier was only stripped in the
+    // multi-project branch. See resolveFileToken's doc comment.
+    const qualified = { line: 42, rawPath: "semla/src/foo.ts" };
+    expect(resolveFileToken(qualified, ["semla"])).toEqual({
+      line: 42,
+      path: "src/foo.ts",
+      project: "semla",
+    });
+  });
+
+  it("leaves a first segment that is not the sole project's slug alone", () => {
+    expect(resolveFileToken(token, ["semla"])).toEqual({
+      line: 42,
+      path: "src/foo.ts",
+      project: "semla",
+    });
+  });
+
   it("refuses to guess among multiple attached projects for a bare path", () => {
     expect(resolveFileToken(token, ["semla", "catalog-info"])).toBeNull();
   });

@@ -91,6 +91,25 @@ export function parseFilePathToken(text: string): ParsedFileToken | null {
 }
 
 /**
+ * Splits a leading project-slug segment off `rawPath`, if it names one of
+ * `projectSlugs`.
+ *
+ * `rest.length > 0` is the load-bearing condition: without it a token that
+ * is *only* a slug would resolve to an empty path. It also means a file at
+ * a project's root can never be mistaken for a qualifier, since a bare
+ * `semla` is not path-shaped enough for `parseFilePathToken` to have
+ * accepted it in the first place.
+ */
+function splitProjectQualifier(
+  rawPath: string,
+  projectSlugs: readonly string[],
+): { project: string; path: string } | null {
+  const [first, ...rest] = rawPath.split("/");
+  if (!first || rest.length === 0 || !projectSlugs.includes(first)) return null;
+  return { path: rest.join("/"), project: first };
+}
+
+/**
  * Which attached project a parsed token belongs to, and the path within it.
  *
  * A session may have more than one project attached (see
@@ -100,6 +119,17 @@ export function parseFilePathToken(text: string): ParsedFileToken | null {
  * returns null rather than guessing — the caller's only chance to refuse
  * before `elementTarget.request()` opens the wrong repository's file under
  * a right-looking name.
+ *
+ * The qualifier is stripped *before* the single-project shortcut, not only
+ * in the ambiguous branch. It used to be the other way round, and a
+ * project-qualified path in a single-project session then resolved to the
+ * slug plus the still-qualified path — `semla` + `semla/src/lib/foo.ts`,
+ * a file that does not exist. It failed silently, because the token parses
+ * and the link renders as clickable; only the click went nowhere. Models
+ * are told to qualify when several projects are attached, which they cannot
+ * reliably detect, so the habit leaked into sessions with one — making the
+ * qualified form work in every session is what keeps the instruction from
+ * being a trap.
  */
 export function resolveFileToken(
   token: ParsedFileToken,
@@ -107,14 +137,12 @@ export function resolveFileToken(
 ): { project: string; path: string; line: number | null } | null {
   if (projectSlugs.length === 0) return null;
 
+  const qualified = splitProjectQualifier(token.rawPath, projectSlugs);
+  if (qualified) return { line: token.line, ...qualified };
+
   if (projectSlugs.length === 1) {
     const [project] = projectSlugs;
     return { line: token.line, path: token.rawPath, project };
-  }
-
-  const [first, ...rest] = token.rawPath.split("/");
-  if (first && rest.length > 0 && projectSlugs.includes(first)) {
-    return { line: token.line, path: rest.join("/"), project: first };
   }
 
   return null;
