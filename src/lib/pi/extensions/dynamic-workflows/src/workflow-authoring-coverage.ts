@@ -47,7 +47,7 @@ export const WORKFLOW_AUTHORING_FROZEN_FILES = [
   },
   {
     path: "skills/workflow-authoring/references/specialized-helpers.md",
-    sha256: "16d600b0bbc64909584252e48fc86788d0149c619e56d7aa74fdda0ec3756e14",
+    sha256: "3995e2374cc042ec2a9507b683f7550c8bd5750ccbccbb3eb9c28cae8ac6ec09",
   },
   {
     path: "skills/workflow-authoring/references/lifecycle.md",

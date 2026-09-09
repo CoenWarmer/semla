@@ -41,6 +41,7 @@ export interface OptionShape {
     | "phase-options"
     | "verify-options"
     | "judge-panel-options"
+    | "completeness-check-options"
     | "loop-until-dry-options"
     | "retry-options"
     | "gate-options";
@@ -263,6 +264,17 @@ const VERIFY_OPTIONS: OptionShape = {
     ]),
     option("threshold", "number", true, "0.5"),
     option("lens", "string | string[]", true),
+    option(
+      "tier",
+      "string",
+      true,
+      null,
+      [
+        "configured route name for the reviewer subagents this call dispatches",
+        "required outside any phase; displaced by the phase tier inside one, same as agent()",
+      ],
+      "model-routes",
+    ),
   ],
 };
 const JUDGE_PANEL_OPTIONS: OptionShape = {
@@ -272,6 +284,33 @@ const JUDGE_PANEL_OPTIONS: OptionShape = {
       "authors should provide a finite integer; runtime clamps below 1",
     ]),
     option("rubric", "string", true, '"overall quality and correctness"'),
+    option(
+      "tier",
+      "string",
+      true,
+      null,
+      [
+        "configured route name for the judge subagents this call dispatches",
+        "required outside any phase; displaced by the phase tier inside one, same as agent()",
+      ],
+      "model-routes",
+    ),
+  ],
+};
+const COMPLETENESS_CHECK_OPTIONS: OptionShape = {
+  id: "completeness-check-options",
+  options: [
+    option(
+      "tier",
+      "string",
+      true,
+      null,
+      [
+        "configured route name for the critic subagent this call dispatches",
+        "required outside any phase; displaced by the phase tier inside one, same as agent()",
+      ],
+      "model-routes",
+    ),
   ],
 };
 const LOOP_UNTIL_DRY_OPTIONS: OptionShape = {
@@ -428,7 +467,7 @@ const capabilities: readonly CapabilityDescriptor[] = [
   }),
   runtimeGlobal("verify", {
     signature:
-      "verify(item: unknown, options?: { reviewers?: number; threshold?: number; lens?: string | string[] }) => Promise<{ real: boolean; realCount: number; total: number; votes: Array<{ real: boolean; reason?: string }> }>",
+      "verify(item: unknown, options?: { reviewers?: number; threshold?: number; lens?: string | string[]; tier?: string }) => Promise<{ real: boolean; realCount: number; total: number; votes: Array<{ real: boolean; reason?: string }> }>",
     discovery: DiscoveryPlacement.WORKFLOW_AUTHORING_SKILL,
     optionShape: "verify-options",
     constraints: [
@@ -440,7 +479,7 @@ const capabilities: readonly CapabilityDescriptor[] = [
   }),
   runtimeGlobal("judgePanel", {
     signature:
-      "judgePanel(attempts: unknown[], options?: { judges?: number; rubric?: string }) => Promise<{ index: number; attempt: unknown; score: number; judgments: Array<{ score: number; reason?: string }> } | undefined>",
+      "judgePanel(attempts: unknown[], options?: { judges?: number; rubric?: string; tier?: string }) => Promise<{ index: number; attempt: unknown; score: number; judgments: Array<{ score: number; reason?: string }> } | undefined>",
     discovery: DiscoveryPlacement.WORKFLOW_AUTHORING_SKILL,
     optionShape: "judge-panel-options",
     constraints: [
@@ -465,8 +504,9 @@ const capabilities: readonly CapabilityDescriptor[] = [
   }),
   runtimeGlobal("completenessCheck", {
     signature:
-      "completenessCheck(taskArgs: unknown, results: unknown) => Promise<{ complete: boolean; missing?: string[] } | null>",
+      "completenessCheck(taskArgs: unknown, results: unknown, options?: { tier?: string }) => Promise<{ complete: boolean; missing?: string[] } | null>",
     discovery: DiscoveryPlacement.WORKFLOW_AUTHORING_SKILL,
+    optionShape: "completeness-check-options",
     constraints: [
       "only the first 4,000 characters of serialized result evidence are sent to the critic",
       "missing is optional and recoverable critic failure returns null",
@@ -723,6 +763,7 @@ export const WORKFLOW_CAPABILITY_DEFINITION: WorkflowCapabilityDefinition = {
     PHASE_OPTIONS,
     VERIFY_OPTIONS,
     JUDGE_PANEL_OPTIONS,
+    COMPLETENESS_CHECK_OPTIONS,
     LOOP_UNTIL_DRY_OPTIONS,
     RETRY_OPTIONS,
     GATE_OPTIONS,

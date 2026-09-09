@@ -87,7 +87,7 @@ export function validateMetaPhaseTiers(
     const tier = phase.tier;
     if (tier === undefined) {
       throw scriptError(
-        `meta phase ${named} does not declare a tier. Every phase must declare one, e.g. { title: ${JSON.stringify(title || "Phase")}, tier: ${JSON.stringify(vocabulary.names[0] ?? "medium")} }: a phase costs what it declares, and an agent that needs a different model belongs in its own phase. ${describeValidTiers(vocabulary)}.`,
+        `meta phase ${named} does not declare a tier. Every phase must declare one, e.g. { title: ${JSON.stringify(title || named)}, tier: ${JSON.stringify(vocabulary.names[0] ?? "medium")} }: a phase costs what it declares, and an agent that needs a different model belongs in its own phase. ${describeValidTiers(vocabulary)}.`,
       );
     }
     if (typeof tier !== "string" || !tier.trim()) {

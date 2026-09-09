@@ -73,11 +73,12 @@ Every exact fact below is projected from the installed extension's capability co
 
 - Classification: `runtime-global`
 - Support: `supported`
-- Signature: `verify(item: unknown, options?: { reviewers?: number; threshold?: number; lens?: string \| string[] }) => Promise<{ real: boolean; realCount: number; total: number; votes: Array<{ real: boolean; reason?: string }> }>`
+- Signature: `verify(item: unknown, options?: { reviewers?: number; threshold?: number; lens?: string \| string[]; tier?: string }) => Promise<{ real: boolean; realCount: number; total: number; votes: Array<{ real: boolean; reason?: string }> }>`
 - Option shape: `verify-options`
 - `reviewers`: number (optional; default: 2; authors should provide a finite integer; runtime clamps below 1)
 - `threshold`: number (optional; default: 0.5)
 - `lens`: string | string[] (optional)
+- `tier`: string (optional; configured route name for the reviewer subagents this call dispatches; required outside any phase; displaced by the phase tier inside one, same as agent(); dynamic reference: model-routes)
 - Constraint: reviewer failures are omitted; successful votes form the denominator in realCount / total
 - Constraint: threshold comparison is inclusive and real is false when no reviewer succeeds
 - Constraint: multiple lenses cycle across reviewers
@@ -87,10 +88,11 @@ Every exact fact below is projected from the installed extension's capability co
 
 - Classification: `runtime-global`
 - Support: `supported`
-- Signature: `judgePanel(attempts: unknown[], options?: { judges?: number; rubric?: string }) => Promise<{ index: number; attempt: unknown; score: number; judgments: Array<{ score: number; reason?: string }> } \| undefined>`
+- Signature: `judgePanel(attempts: unknown[], options?: { judges?: number; rubric?: string; tier?: string }) => Promise<{ index: number; attempt: unknown; score: number; judgments: Array<{ score: number; reason?: string }> } \| undefined>`
 - Option shape: `judge-panel-options`
 - `judges`: number (optional; default: 3; authors should provide a finite integer; runtime clamps below 1)
 - `rubric`: string (optional; default: "overall quality and correctness")
+- `tier`: string (optional; configured route name for the judge subagents this call dispatches; required outside any phase; displaced by the phase tier inside one, same as agent(); dynamic reference: model-routes)
 - Constraint: failed judgments are omitted and each candidate score averages successful judgments only
 - Constraint: a candidate with no successful judgments scores 0
 - Constraint: highest mean score wins with stable input index as the tie-break; empty input returns undefined
@@ -116,7 +118,9 @@ Every exact fact below is projected from the installed extension's capability co
 
 - Classification: `runtime-global`
 - Support: `supported`
-- Signature: `completenessCheck(taskArgs: unknown, results: unknown) => Promise<{ complete: boolean; missing?: string[] } \| null>`
+- Signature: `completenessCheck(taskArgs: unknown, results: unknown, options?: { tier?: string }) => Promise<{ complete: boolean; missing?: string[] } \| null>`
+- Option shape: `completeness-check-options`
+- `tier`: string (optional; configured route name for the critic subagent this call dispatches; required outside any phase; displaced by the phase tier inside one, same as agent(); dynamic reference: model-routes)
 - Constraint: only the first 4,000 characters of serialized result evidence are sent to the critic
 - Constraint: missing is optional and recoverable critic failure returns null
 - Constraint: large evidence sets must be chunked or summarized before relying on the advisory verdict

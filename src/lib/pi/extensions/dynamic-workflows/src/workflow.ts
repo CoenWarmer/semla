@@ -664,11 +664,17 @@ export async function runWorkflow<T = unknown>(
 
   const state: RuntimeState = {
     logs: [],
-    // When the script declares meta.phases, default the current phase to the
-    // first one so agents created before any explicit phase() call still group
-    // under a declared phase instead of an orphan "(no phase)" bucket. An
-    // explicit phase() (or agent({ phase })) overrides this.
-    phases: meta.phases?.[0]?.title ? [meta.phases[0].title] : [],
+    // Seed with the FULL declared phase list, in declaration order — not just
+    // the first one. result.phases answers "what phases did this run's
+    // declaration commit to", matching every other .phases surface in this
+    // codebase (workflow-manager.ts's snapshot, display.ts's
+    // createWorkflowSnapshot): all of them derive from meta.phases, never from
+    // what actually dispatched. Without this, agents that only ever set
+    // { phase: 'X' } in agent options (never calling the phase() mutator)
+    // leave state.phases missing those titles, even though meta.phases
+    // declared and cost-committed to them. See workflow-authoring decision on
+    // result.phases divergence (2024, item 5).
+    phases: meta.phases?.map((p) => p.title) ?? [],
     currentPhase: meta.phases?.[0]?.title,
     phaseBudgets: new Map(),
     callSeq: 0,

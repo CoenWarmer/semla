@@ -56,6 +56,32 @@ import {
  * Returns undefined when nothing applies, so the session default is used.
  *
  * `loadConfig` is injectable for testing; it defaults to reading from disk.
+ *
+ * BRANCH 3 IS UNREACHABLE FROM THE ONLY PRODUCTION CALL CHAIN, but is kept
+ * (docblock and body both) rather than deleted, because "only production
+ * caller" is not "only caller": `resolveAgentModelSpec` is exported and
+ * exercised directly, with no tier and no model, by `agent-models.test.ts`
+ * (see "an untagged agent defaults to the configured medium tier" and its
+ * neighbors) — a legitimate second world, testing this function's behavior
+ * in isolation from any one caller's invariant, that a docblock describing
+ * only the workflow-reachable branches would misrepresent.
+ *
+ * Within the actual production call chain — `resolveSubagentModel` (below),
+ * called only from `WorkflowAgent.run()` (agent.ts), constructed only inside
+ * `runWorkflow()` (workflow.ts); `options.agent` is a test-only injection
+ * point, never supplied by any production caller — branch 3 cannot execute.
+ * Since ad62fe5 made every phase's tier mandatory, and made every
+ * out-of-phase agent's own tier mandatory too, `workflow.ts`'s dispatch
+ * always resolves an `effectiveTier` before calling down into this function
+ * (from the phase's declared tier, or from `requireCallTier`, which throws
+ * rather than returning undefined) — so `options.tier` is always set by the
+ * time a workflow-originated call reaches here, and branch 2 always applies
+ * instead. `modelSpec` is also hard-coded to `undefined` at the one workflow
+ * dispatch site that calls into this chain (workflow.ts, agentImpl), so
+ * branch 1 is likewise never taken from that path; both branches exist for
+ * `resolveSubagentModel`'s own callers-in-isolation (tests) and for any
+ * future non-workflow caller, not because either is reachable today from
+ * `runWorkflow()`.
  */
 export function resolveAgentModelSpec(
   options: { model?: string; tier?: string },

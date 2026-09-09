@@ -591,7 +591,7 @@ export class WorkflowManager extends EventEmitter {
     args?: unknown,
     exec: ExecOptions = {},
   ): { runId: string; promise: Promise<WorkflowRunResult> } {
-    const parsed = parseWorkflowScript(script);
+    const parsed = parseWorkflowScript(script, { cwd: this.cwd });
     const slug = parsed.meta.name
       ? parsed.meta.name
           .toLowerCase()
@@ -731,7 +731,7 @@ export class WorkflowManager extends EventEmitter {
 
   /** Build a fresh managed run with an empty snapshot. */
   private createManaged(script: string, args?: unknown): ManagedRun {
-    const parsed = parseWorkflowScript(script);
+    const parsed = parseWorkflowScript(script, { cwd: this.cwd });
     const slug = parsed.meta.name
       ? parsed.meta.name
           .toLowerCase()

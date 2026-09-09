@@ -36,6 +36,7 @@ const workflowToolSchema = Type.Object({
       description: [
         "Raw JavaScript workflow script, with no Markdown fences. Required unless `name` is given.",
         "First statement: export const meta = { name: 'short_snake_case', description: 'non-empty description', phases: [{ title: 'Phase', tier: 'medium' }] } — meta is the only top-level export allowed, and phases is a key inside that same object, never a separate export; declare only phases it will use, and give EVERY phase a tier (a phase without one is rejected before anything runs). With multiple phases, call phase('Exact Title') before each phase's work or set `phase` in the agent options.",
+        "The standard tier set is small, medium, and big — 'medium' above is only an example value — but the operator's own model-tiers.json is authoritative and may define a different set entirely; a tier name not in that config is rejected at parse time naming the valid names.",
         "Minimal valid example (one export, phases nested and tiered, one labeled agent call):\nexport const meta = { name: 'demo', description: 'demo workflow', phases: [{ title: 'Research', tier: 'medium' }] };\nphase('Research'); return await agent('Summarize the topic', { label: 'researcher' });",
         "Use `await workflow(savedName, childArgs)` to run a saved workflow inline; nesting is limited to one level and shares the parent run's concurrency, agent, and token limits.",
         "Optional quality helpers include verify(), judgePanel(), loopUntilDry(), and completenessCheck().",
@@ -246,7 +247,7 @@ export function createWorkflowTool(
         // WorkflowManagerOptions.toolsets), so a typo degrades rather than throws.
         invocationToolset = params.toolset;
       }
-      const parsed = parseWorkflowScript(script);
+      const parsed = parseWorkflowScript(script, { cwd });
 
       // Iteration / cached-prefix reuse: resume a prior run with THIS (edited)
       // script instead of creating a brand-new run. Unchanged agent() calls

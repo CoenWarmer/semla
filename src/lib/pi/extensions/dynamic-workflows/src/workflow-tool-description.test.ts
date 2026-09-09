@@ -43,6 +43,15 @@ describe("workflow tool `script` description", () => {
     expect(description).toContain("never a separate export");
   });
 
+  it("names the standard tier vocabulary and states the operator's config is authoritative", () => {
+    // The example above only ever shows 'medium' as a literal value; without
+    // naming the full set a calling model has no way to know 'small'/'big'
+    // exist, or that an operator's model-tiers.json can replace all three.
+    expect(description).toContain("standard tier set is small, medium, and big");
+    expect(description).toContain("model-tiers.json is authoritative");
+    expect(description).toContain("rejected at parse time naming the valid names");
+  });
+
   it("tells the author every agent() call needs a short unique label", () => {
     const agentGuidanceIndex = description.indexOf("agent(prompt, opts)");
     expect(agentGuidanceIndex).toBeGreaterThan(-1);
