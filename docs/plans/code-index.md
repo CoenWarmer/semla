@@ -242,6 +242,7 @@ model is not available to an architecture that binds extensions per turn.
 | operator opt-in (settings, or a `code_search` on an unindexed project) | **full ingest**, dispatched like `wiki-ingest-bridge` does — background workflow, agent notified on completion | ~20 requests, tens of seconds, ~2.4¢ for this repository |
 | session start on an indexed project | enumerate + fingerprint + tree root, compared to `head.merkleRoot`; embeds only the diff if it moved | 36 ms and no network when the root matches |
 | `code_search` | embeds the query only; local dot product; chunk text read from disk | ~50 ms |
+| an `edit` / `write` tool call | enqueues the path; reindex runs after the tool returns | none on the write itself |
 
 The session-start check is affordable *because* it is only hashing: 751 files in
 36 ms, measured. That is the whole reason `fingerprint.ts` exists as its own
@@ -255,14 +256,29 @@ needed and they are not alternatives:
 - **The hash check is the safety net.** Every hit is verified against the file
   on disk at query time and stale ones are marked, per §3.1 and §3.3. This is
   what makes a mid-turn edit safe rather than silently wrong.
-- **The turn-boundary top-up is the convergence.** A `session_shutdown`-style
-  hook — `read-router.ts` and `workflow.ts` both already use one — runs the 36 ms
-  fingerprint and embeds the diff. A turn that touched three files costs one
-  request.
+- **The write-triggered reindex is the convergence.** Chosen by the operator
+  over a turn-boundary top-up: the index should be current within the turn that
+  changed the code, not one turn later, because the agent searches for code it
+  just wrote.
 
-Hooking the `edit`/`write` tools directly would be more current still, and is
-rejected for now: it puts embedding latency inside the tool call, which is the
-critical path this section exists to keep clear.
+**A write triggers the reindex; it does not wait for it.** The `tool_result`
+hook that sees an `edit` or `write` enqueues the path and returns. Awaiting an
+embedding round-trip there would put network latency inside every file write —
+the critical path this section exists to keep clear — and would make a rate
+limit or a dropped connection into a failed edit. Three properties make
+fire-and-forget safe rather than merely fast:
+
+- **Coalesced by path, debounced.** An agent rewriting one file five times in a
+  turn costs one embedding request, not five.
+- **A failure never reaches the writer.** The edit has already succeeded; an
+  embedding error is recorded and the path left dirty, never thrown.
+- **The queue is best-effort; the fingerprint check is the guarantee.** Anything
+  the queue drops — a crash, an exhausted retry, a write during shutdown — is
+  found by the session-start comparison in §3.6 and by the query-time hash
+  check in §3.1. Neither depends on the queue having worked.
+
+That last point is what makes the queue's own reliability a performance concern
+rather than a correctness one, and it is why it may be lossy on purpose.
 
 ## 4. What ships, in order
 
