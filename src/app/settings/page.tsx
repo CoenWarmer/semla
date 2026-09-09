@@ -14,6 +14,7 @@ import { getInstalledPiPackages } from "@/lib/pi/packages";
 import { ExtensionHealthCard } from "@/components/settings/extension-health-card";
 import { SystemPromptEditor } from "@/components/settings/system-prompt-editor";
 import { ModelTierEditor } from "@/components/settings/model-tier-editor";
+import { CodeIndexPanel } from "@/components/settings/code-index-panel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +82,8 @@ export default async function SettingsPage() {
           <ModelTierEditor />
         </CardContent>
       </Card>
+
+      <CodeIndexPanel />
 
       <ExtensionHealthCard />
 

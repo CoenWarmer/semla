@@ -11,6 +11,15 @@
  * Parsers and languages are cached per process. Loading a grammar is reading
  * and instantiating a wasm module — tens of milliseconds — and an index run
  * parses hundreds of files in one language.
+ *
+ * `next build` warns here: "Dynamic filesystem access causes tracing of the
+ * whole project". That is expected and not a defect. The grammar path is chosen
+ * at runtime from the file's language, so Turbopack cannot know which of the
+ * fifteen `.wasm` files will be read and widens its output file tracing to
+ * cover the project. Semla runs from its own checkout rather than a traced
+ * serverless bundle, so the widened trace costs nothing; naming the grammars
+ * statically to silence it would mean importing wasm through the bundler, which
+ * is the thing this module exists to avoid.
  */
 
 import { join } from "node:path";
