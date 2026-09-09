@@ -77,6 +77,11 @@ export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
     phases: runState.phases,
     runId,
     runningCount: agents.filter((a) => a.status === "running").length,
+    // Disk-only branch: there is no live manager for this run (post-reload,
+    // or a run this process never held), so the persisted run's own status
+    // is the only lifecycle signal available — carry it through so the phase
+    // bar can tell a finished run from a live one. See WorkflowSnapshot.runStatus.
+    runStatus: runState.status,
     startedAt: runState.startedAt,
     tokenUsage: runState.tokenUsage
       ? { cost: runState.tokenUsage.cost, total: runState.tokenUsage.total }

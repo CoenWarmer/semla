@@ -698,6 +698,7 @@ export function ClientSessionComponent({
       sessionId={sessionId}
       sessionMissing={sessionMissing}
       viewingLeafId={viewingLeafId}
+      workflowSnapshot={snapshot}
     />
   );
 

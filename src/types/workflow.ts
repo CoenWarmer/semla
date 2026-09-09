@@ -52,6 +52,18 @@ export type WorkflowSnapshot = {
   phases: string[];
   runId?: string;
   runningCount: number;
+  /**
+   * The persisted run's own lifecycle status (see `RunStatus` in
+   * workflow-run-reader.ts), when this snapshot was built from a run file —
+   * i.e. after a page reload with no live in-memory manager for the run. Only
+   * set there: while a manager is live, `runningCount`/agent statuses are
+   * direct, current evidence and take priority (see
+   * workflow-phase-progress.ts), so a live snapshot leaves this undefined
+   * rather than duplicating a value that could go stale while still "live".
+   * Undefined/absent must never be read as "running" — see
+   * `deriveWorkflowPhaseProgress`.
+   */
+  runStatus?: "pending" | "running" | "paused" | "completed" | "failed" | "aborted";
   startedAt?: string;
   tokenUsage?: {
     cost?: number;

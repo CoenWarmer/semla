@@ -197,6 +197,13 @@ export function mergeLiveSnapshot({
     phases: live.phases,
     runId,
     runningCount: live.runningCount,
+    // The manager keeps a terminal run's live object around briefly (see
+    // recordTerminalRun/eviction) — the getActiveManager() lookup that routed
+    // us here can still succeed for a run that already finished. Disk's own
+    // status is the truth for the run's lifecycle either way; the manager's
+    // `live.agents`/`runningCount` remain the source for per-agent detail
+    // while it's still around.
+    runStatus: disk?.status,
     startedAt: disk?.startedAt ?? earliestStart,
     tokenUsage: live.tokenUsage
       ? { cost: live.tokenUsage.cost, total: live.tokenUsage.total }

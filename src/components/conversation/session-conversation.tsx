@@ -33,11 +33,13 @@ import { ForkMessageButton } from "./message-fork";
 import { GoalEditor } from "../session/goal-editor";
 import { PromptEditor } from "./prompt-editor";
 import { SessionActivityLine } from "@/components/conversation/session-activity-line";
+import { WorkflowPhaseBar } from "@/components/conversation/workflow-phase-bar";
 import { SessionStepsStrip } from "./session-steps-strip";
 import type { ConversationItem } from "@/lib/session-steps";
 import { isLiveRoundMessageId } from "@/lib/live-tool-calls";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { WorkflowSnapshot } from "@/types/workflow";
 
 export function SessionConversation({
   activeTool,
@@ -65,6 +67,7 @@ export function SessionConversation({
   sessionId,
   sessionMissing,
   viewingLeafId,
+  workflowSnapshot,
 }: {
   activeTool: string | undefined;
   conversation: ConversationItem[];
@@ -98,6 +101,8 @@ export function SessionConversation({
   sessionId: string;
   sessionMissing: boolean;
   viewingLeafId: string | null;
+  /** Present for workflow runs; used to render the phase-progress bar. */
+  workflowSnapshot: WorkflowSnapshot | null | undefined;
 }) {
   const router = useRouter();
 
@@ -169,6 +174,7 @@ export function SessionConversation({
             below. Passing one signal to both is what stops the stop button
             and this line disagreeing about whether anything is happening.
           */}
+          <WorkflowPhaseBar snapshot={workflowSnapshot} />
           <SessionActivityLine
             active={isActive}
             activeTool={activeTool}
