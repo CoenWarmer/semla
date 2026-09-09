@@ -9,10 +9,11 @@
  * - An all-cleared PUT is rejected with a clear message rather than writing a degenerate map
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
+import { getModelTierConfigPath } from "@/lib/pi/extensions/dynamic-workflows/src/model-tier-config.ts";
 import { GET, PUT } from "./route";
 
 // Mock requireUser to avoid Next.js request context dependency in unit tests.
@@ -68,11 +69,13 @@ describe("GET /api/model-tiers", () => {
    *
    * It also made the suite non-hermetic. With a real home config present, four
    * tests failed; they had only ever passed because an earlier run of these
-   * tests deleted the developer's file.
+   * tests deleted the developer's file. Writing the home file is safe now only
+   * because `getModelTierConfigPath()` resolves under PI_WORKFLOW_HOME, which
+   * vitest.setup.ts points at a temp directory — hence no save-and-restore
+   * around the operator's own config, and no `homedir()` in this file.
    */
   it("does not fall back to the user-level config", async () => {
-    const home = join(homedir(), ".pi", "workflows", "model-tiers.json");
-    const existing = existsSync(home) ? readFileSync(home, "utf-8") : null;
+    const home = getModelTierConfigPath();
     mkdirSync(dirname(home), { recursive: true });
     writeFileSync(
       home,
@@ -80,17 +83,12 @@ describe("GET /api/model-tiers", () => {
       "utf-8",
     );
 
-    try {
-      // cwd is the temp dir, which has no project config.
-      const data = (await (await GET()).json()) as {
-        exists: boolean;
-        tiers: Record<string, string> | null;
-      };
-      expect(data).toEqual({ exists: false, tiers: null });
-    } finally {
-      if (existing === null) rmSync(home, { force: true });
-      else writeFileSync(home, existing, "utf-8");
-    }
+    // cwd is the temp dir, which has no project config.
+    const data = (await (await GET()).json()) as {
+      exists: boolean;
+      tiers: Record<string, string> | null;
+    };
+    expect(data).toEqual({ exists: false, tiers: null });
   });
 
   it("returns the current tiers when config exists", async () => {

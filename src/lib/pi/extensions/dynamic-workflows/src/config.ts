@@ -26,11 +26,29 @@ export const WORKFLOW_SAVED_DIR = ".pi/workflows/saved";
 /** User-level saved workflows directory. */
 export const USER_WORKFLOW_SAVED_DIR = "~/.pi/workflows/saved";
 
-/** User-level model tiers config file, relative to the home directory. */
-export const MODEL_TIERS_FILE = ".pi/workflows/model-tiers.json";
+/**
+ * Root of user-level workflow state, relative to the home directory.
+ *
+ * Only ever join this onto a home directory via `workflowHomeDir()`, which
+ * applies the PI_WORKFLOW_HOME override. Anything that spells out
+ * `homedir()` itself opts out of that override, and silently: it keeps
+ * working, against the operator's real state, which is how the tier config
+ * came to be written by the test suite.
+ */
+export const WORKFLOW_HOME_RELATIVE_DIR = ".pi/workflows";
+
+/** Basename of the model tiers config, shared by its user and project locations. */
+export const MODEL_TIERS_FILENAME = "model-tiers.json";
+
+/**
+ * Project-relative model tiers config, joined onto a cwd. The user-level path
+ * is not this constant — see `getModelTierConfigPath()`, which derives it from
+ * `workflowHomeDir()` so it can be redirected.
+ */
+export const MODEL_TIERS_FILE = `${WORKFLOW_HOME_RELATIVE_DIR}/${MODEL_TIERS_FILENAME}`;
 
 /** User-level workflow extension settings file, relative to the home directory. */
-export const WORKFLOW_SETTINGS_FILE = ".pi/workflows/settings.json";
+export const WORKFLOW_SETTINGS_FILE = `${WORKFLOW_HOME_RELATIVE_DIR}/settings.json`;
 
 /** Default keyword that arms workflows mode from interactive input. */
 export const DEFAULT_KEYWORD_TRIGGER_WORD = "workflow";

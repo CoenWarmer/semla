@@ -9,9 +9,12 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { WORKFLOW_RUNS_DIR, WORKFLOW_SAVED_DIR } from "./config.ts";
+import {
+  WORKFLOW_HOME_RELATIVE_DIR,
+  WORKFLOW_RUNS_DIR,
+  WORKFLOW_SAVED_DIR,
+} from "./config.ts";
 
-export const WORKFLOW_HOME_RELATIVE_DIR = ".pi/workflows";
 export const WORKFLOW_PROJECTS_SUBDIR = "projects";
 
 export interface WorkflowProjectPaths {

@@ -14,10 +14,10 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { listAvailableModels } from "./agent.ts";
-import { MODEL_TIERS_FILE } from "./config.ts";
+import { MODEL_TIERS_FILE, MODEL_TIERS_FILENAME } from "./config.ts";
+import { workflowHomeDir } from "./workflow-paths.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,9 +52,25 @@ export interface RankableModel {
 // Configuration path
 // ---------------------------------------------------------------------------
 
-/** Path to the model tiers JSON config file (~/.pi/workflows/model-tiers.json). */
+/**
+ * Path to the user-level model tiers config (~/.pi/workflows/model-tiers.json).
+ *
+ * Derived from `workflowHomeDir()` rather than `homedir()` so that the
+ * PI_WORKFLOW_HOME override reaches it. It did not, and the consequence was
+ * not a stale path but a write: `route.test.ts` overwrites this file to prove
+ * the API route ignores it, restoring the operator's own copy in a `finally`.
+ * A save-and-restore around the developer's live config only holds while the
+ * process does; a crash, a `--bail`, or a second test file running in another
+ * worker leaves `home/should-not-appear` behind as their real configuration,
+ * which routes every tiered subagent at a model that does not exist.
+ *
+ * Reading it was the quieter half of the same problem. Every tier test that
+ * exercised the home fallback was asserting against whatever this machine
+ * happened to have, so those tests only ever passed because an earlier run of
+ * route.test.ts had deleted the file.
+ */
 export function getModelTierConfigPath(): string {
-  return join(homedir(), MODEL_TIERS_FILE);
+  return join(workflowHomeDir(), MODEL_TIERS_FILENAME);
 }
 
 /**
