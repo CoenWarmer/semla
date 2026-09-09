@@ -83,7 +83,7 @@ return { a, b };`;
 // Built-in quality helpers (verify, judgePanel, completenessCheck) generate
 // their own agent() labels on the script's behalf. Calling one of them more
 // than once in a run must not hard-throw the way a script reusing a literal
-// label does — see uniqueRunLabel()/AgentOptions.__internalLabel in
+// label does — see uniqueRunLabel()/AgentOptions[INTERNAL_LABEL_BRAND] in
 // workflow.ts. retry()/gate() re-invoking a thunk that itself calls agent()
 // with the SAME literal label (the common case: the script has no per-attempt
 // label to give it) must not throw either — see retryAttemptScope.
@@ -172,6 +172,52 @@ return null;`;
       runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
     ).rejects.toThrow(
       'agent() label "researcher" is already used in this run; give each agent() call a unique label',
+    );
+  });
+
+  it("a USER script that forges the internal-marker property name still throws on a duplicate label", async () => {
+    // __internalLabel was the OLD (forgeable) property name; a workflow
+    // script has no way to reference the module-scoped Symbol that replaced
+    // it, so setting this string property does nothing to exempt the call.
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+await agent('first', { label: 'researcher', __internalLabel: true });
+await agent('second', { label: 'researcher', __internalLabel: true });
+return null;`;
+
+    await expect(
+      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+    ).rejects.toThrow(
+      'agent() label "researcher" is already used in this run; give each agent() call a unique label',
+    );
+  });
+
+  it("two distinct user agent() calls with the same label throw even while a retry is in flight", async () => {
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+await retry(async () => {
+  await agent('first', { label: 'dup' });
+  await agent('second', { label: 'dup' });
+  return true;
+}, { attempts: 1 });
+return null;`;
+
+    await expect(
+      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+    ).rejects.toThrow(
+      'agent() label "dup" is already used in this run; give each agent() call a unique label',
+    );
+  });
+
+  it("a USER script agent() call with no label still throws even while a retry is in flight", async () => {
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+await retry(async () => {
+  return await agent('no label here');
+}, { attempts: 1 });
+return null;`;
+
+    await expect(
+      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+    ).rejects.toThrow(
+      "agent() call #1 is missing a label; add opts.label (e.g. { label: 'researcher' })",
     );
   });
 });
