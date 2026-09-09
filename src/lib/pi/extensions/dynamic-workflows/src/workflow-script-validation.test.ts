@@ -220,4 +220,88 @@ return null;`;
       "agent() call #1 is missing a label; add opts.label (e.g. { label: 'researcher' })",
     );
   });
+
+  // Bug 11: the retry-exemption tracker used to key purely on ordinal call
+  // position within an attempt's thunk, never on the label itself, so a
+  // thunk whose control flow differs between attempts could land a
+  // genuinely DIFFERENT logical call on a position an earlier attempt had
+  // already reached — and the position-only check silently disambiguated
+  // it as if it were a retry, instead of hard-throwing against the real
+  // label collision. The fix keys the exemption on (position, label)
+  // together, so this must still hard-throw.
+  it("a retry() thunk whose call sequence differs across attempts still throws on a genuine label collision", async () => {
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+let attemptCount = 0;
+await retry(async () => {
+  const n = attemptCount++;
+  if (n === 0) {
+    await agent('probe', { label: 'probe' });
+    return await agent('fix', { label: 'fix build' });
+  }
+  return await agent('fix', { label: 'fix build' });
+}, { attempts: 2, until: () => false });
+return null;`;
+
+    await expect(
+      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+    ).rejects.toThrow(
+      'agent() label "fix build" is already used in this run; give each agent() call a unique label',
+    );
+  });
+
+  // Same drift, but the label itself (not just the call count) varies with
+  // the attempt index at a given position — a genuinely different call at
+  // that position must not be silently treated as a retry-of-the-same-call
+  // just because the position was visited before.
+  it("a retry() thunk whose label at a given position varies by attempt does not falsely exempt an unrelated collision", async () => {
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+await agent('unrelated', { label: 'attempt label 2' });
+await retry(async (attempt) => {
+  return await agent('x', { label: 'attempt label ' + attempt });
+}, { attempts: 3, until: () => false });
+return null;`;
+
+    // attempt 0 -> label "attempt label 0" (first use, fine)
+    // attempt 1 -> label "attempt label 1" (first use, fine)
+    // attempt 2 -> label "attempt label 2" (already used by the unrelated
+    // top-level call above, and this is NOT a retry of that call — it must
+    // hard-throw, not silently disambiguate).
+    await expect(
+      runWorkflow(script, { agent: stubAgentRunner, persistLogs: false }),
+    ).rejects.toThrow(
+      'agent() label "attempt label 2" is already used in this run; give each agent() call a unique label',
+    );
+  });
+
+  // Regression guard: a gate() whose validator keeps rejecting must still
+  // exempt a genuine same-position, same-label repeat across attempts (the
+  // identity-based tracker must not become stricter than the old positional
+  // one for the case it was already correctly handling).
+  it("a gate() that re-runs the same-labeled agent() across attempts does not throw", async () => {
+    const script = `export const meta = { name: 'demo', description: 'demo' };
+let calls = 0;
+const outcome = await gate(
+  async () => {
+    calls++;
+    return await agent('attempt ' + calls, { label: 'fix build' });
+  },
+  () => ({ ok: calls >= 2 }),
+  { attempts: 3 },
+);
+return { outcome, calls };`;
+
+    const labels: string[] = [];
+    const { result } = await runWorkflow(script, {
+      agent: stubAgentRunner,
+      persistLogs: false,
+      onAgentStart: (event) => labels.push(event.label),
+    });
+    const { outcome, calls } = result as {
+      outcome: { ok: boolean; value: unknown };
+      calls: number;
+    };
+    expect(calls).toBe(2);
+    expect(outcome).toMatchObject({ ok: true, value: "ok" });
+    expect(labels).toEqual(["fix build", "fix build 2"]);
+  });
 });

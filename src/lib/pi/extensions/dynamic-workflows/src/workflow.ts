@@ -82,17 +82,26 @@ const INTERNAL_LABEL_BRAND: unique symbol = Symbol();
  *
  * `position` counts agent() calls made from the current attempt's `thunk()`
  * in call order (reset to 0 at the start of each attempt by retry()/gate()).
- * `seenPositions` accumulates across ALL attempts of this one retry()/gate()
- * invocation (never reset). A call is a genuine retry-of-the-same-call only
- * when its ordinal position was already reached by an EARLIER attempt — i.e.
- * `seenPositions.has(position)` before this call adds it. Two agent() calls
- * made from the SAME attempt at two different positions are never confused:
- * each has a distinct, not-yet-seen position on that attempt's first pass, so
- * neither is exempt and a shared label between them still hard-throws.
+ * `seenPositions` maps each ordinal position to the LABEL the first attempt
+ * to reach it used, and accumulates across ALL attempts of this one
+ * retry()/gate() invocation (never reset). A call is a genuine retry-of-
+ * the-same-call only when its position was already reached by an EARLIER
+ * attempt AND that earlier attempt used the exact same label — position
+ * alone is not identity, because a thunk whose control flow or label varies
+ * by attempt can land a completely different logical call on a position an
+ * earlier attempt happened to occupy (e.g. attempt 0 calls `agent('probe',
+ * ...)` at position 0 then `agent('fix build', ...)` at position 1, while
+ * attempt 1 skips the probe and calls `agent('fix build', ...)` straight at
+ * position 0 — same position as the probe, but a different call entirely,
+ * and it must still hard-throw against the label "fix build" already used
+ * at position 1). Two agent() calls made from the SAME attempt at two
+ * different positions are never confused: each has a distinct, not-yet-seen
+ * position on that attempt's first pass, so neither is exempt and a shared
+ * label between them still hard-throws.
  */
 interface RetryAttemptTracker {
   position: number;
-  seenPositions: Set<number>;
+  seenPositions: Map<number, string>;
 }
 
 /**
@@ -116,6 +125,16 @@ interface RetryAttemptTracker {
  * read by the top-level label check for a plain script call outside a
  * retry()/gate() thunk: that path has no store here and still hard-throws,
  * so the user-facing uniqueness rule is unchanged for ordinary scripts.
+ *
+ * The exemption is keyed on (position, label) together, not position alone:
+ * a repeat attempt is only "the same logical call" if it lands on a position
+ * an earlier attempt reached AND supplies the identical label that earlier
+ * attempt used there. A thunk whose control flow or label depends on the
+ * attempt index can otherwise put two genuinely distinct agent() calls on
+ * the same ordinal slot across attempts (see RetryAttemptTracker's doc
+ * comment for the worked example); keying on the label too means such a
+ * mismatch falls through to the normal hard-throw/collision rules instead of
+ * being silently treated as a retry.
  */
 const retryAttemptScope = new AsyncLocalStorage<RetryAttemptTracker>();
 
@@ -826,16 +845,27 @@ export async function runWorkflow<T = unknown>(
     const isInternalHelperLabel = agentOptions[INTERNAL_LABEL_BRAND] === true;
     // A retry/gate attempt only exempts a REPEAT of the same logical call —
     // identified by its ordinal position among agent() calls made from the
-    // current attempt's thunk, not by its label — so it's a genuine retry
-    // exactly when an EARLIER attempt already reached this same position.
+    // current attempt's thunk TOGETHER WITH its label, not by position
+    // alone — so it's a genuine retry exactly when an EARLIER attempt
+    // already reached this same position AND used this same label there.
     // See RetryAttemptTracker's doc comment: two agent() calls made from the
     // SAME attempt always get distinct, not-yet-seen positions, so they are
-    // never wrongly exempted even if they share a label.
+    // never wrongly exempted even if they share a label; and two calls from
+    // DIFFERENT attempts that land on the same position but carry different
+    // labels (a thunk whose control flow or label varies with the attempt
+    // index) are never wrongly exempted either, because the label is part of
+    // the identity check.
     const retryTracker = retryAttemptScope.getStore();
+    const seenLabelAtPosition = retryTracker?.seenPositions.get(
+      retryTracker.position,
+    );
     const isRetryOfSameCall =
       retryTracker !== undefined &&
-      retryTracker.seenPositions.has(retryTracker.position);
-    retryTracker?.seenPositions.add(retryTracker.position);
+      seenLabelAtPosition !== undefined &&
+      seenLabelAtPosition === requestedLabel;
+    if (retryTracker && seenLabelAtPosition === undefined) {
+      retryTracker.seenPositions.set(retryTracker.position, requestedLabel);
+    }
     if (retryTracker) retryTracker.position++;
     const disambiguateLabel = isInternalHelperLabel || isRetryOfSameCall;
     if (shared.usedLabels.has(requestedLabel) && !disambiguateLabel) {
@@ -1603,7 +1633,7 @@ export async function runWorkflow<T = unknown>(
     // a repeat of the same position from a first-time call at a new one.
     const tracker: RetryAttemptTracker = {
       position: 0,
-      seenPositions: new Set(),
+      seenPositions: new Map(),
     };
     for (let i = 0; i < attempts; i++) {
       tracker.position = 0;
@@ -1641,7 +1671,7 @@ export async function runWorkflow<T = unknown>(
     // see retry()'s comment above and RetryAttemptTracker's doc comment.
     const tracker: RetryAttemptTracker = {
       position: 0,
-      seenPositions: new Set(),
+      seenPositions: new Map(),
     };
     for (let i = 0; i < attempts; i++) {
       tracker.position = 0;
