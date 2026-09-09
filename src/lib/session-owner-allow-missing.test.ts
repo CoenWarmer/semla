@@ -12,6 +12,13 @@
  * refuses, because acting on one that does not exist is a bug rather than an
  * empty answer — a mistake this test caught while it was being written, with
  * `allowMissing` applied to the handler that writes a context inspection.
+ *
+ * 801cec3 (disk-first session creation) added two more polls to that list:
+ * `/messages` and `/turn-graph`, both read by their panels on mount for the
+ * same reason as `/status` and `/spans` — the session their first prompt
+ * creates does not exist yet when the poll fires. Both are pure reads, scoped
+ * by the same missing id, so there is nothing to leak and nothing to act on;
+ * the six-entry list below is the current, not the original, set.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -113,10 +120,19 @@ describe("which handlers may allow a missing session", () => {
   it("is exactly the read-only polls a pending session makes", () => {
     expect([...tolerant].sort()).toEqual([
       "GET src/app/api/sessions/[id]/context-check/route.ts",
+      // Both added in 801cec3, disk-first session creation: a session
+      // created by its own first prompt is polled by its page before that
+      // prompt has finished creating it, so these must answer emptily
+      // rather than 404 during that window, same as /status and /spans.
+      "GET src/app/api/sessions/[id]/messages/route.ts",
       // The trace the panel loads on mount, for the same reason as /status:
       // a session created by its own first prompt is read before it exists.
       "GET src/app/api/sessions/[id]/spans/route.ts",
       "GET src/app/api/sessions/[id]/status/route.ts",
+      // Added alongside /messages in 801cec3, same disk-first polling
+      // reason: the turn graph panel loads on mount before the session
+      // that its first prompt creates exists.
+      "GET src/app/api/sessions/[id]/turn-graph/route.ts",
       "GET src/app/api/tools/route.ts",
     ]);
   });
