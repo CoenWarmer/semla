@@ -68,6 +68,35 @@ export const MCP_PACKAGE_DIR = join(
 
 export const MCP_EXTENSION_PATH = join(MCP_PACKAGE_DIR, "index.ts");
 
+/**
+ * @mrclrchtr/supi-tree-sitter, for its vendored grammars only.
+ *
+ * The code index parses source with `web-tree-sitter` directly and loads the
+ * fifteen `.wasm` grammars this package vendors under `resources/grammars`. It
+ * does **not** import the package's own API, and that is deliberate: the
+ * package publishes TypeScript source with no `dist`, `src/language.ts` locates
+ * its grammars from `import.meta.url`, and `structural-worker-client.ts` spawns
+ * a worker the same way. Bundling either through Turbopack rewrites that URL
+ * and both silently stop resolving — the hazard the extension-source decision
+ * in AGENTS.md describes. Treating it as a data dependency and passing paths we
+ * compute ourselves sidesteps all of it.
+ *
+ * `supi-code-intelligence` keeps its own nested copy at the same version. That
+ * duplication is left alone rather than deduped: its grammar loading is the
+ * `import.meta.url` kind, so it is safer resolving relative to itself.
+ *
+ * One constant, for the reason WIKI_PACKAGE_DIR is one constant.
+ */
+export const TREE_SITTER_PACKAGE_DIR = join(
+  process.cwd(),
+  "node_modules/@mrclrchtr/supi-tree-sitter",
+);
+
+export const TREE_SITTER_GRAMMAR_DIR = join(
+  TREE_SITTER_PACKAGE_DIR,
+  "resources/grammars",
+);
+
 // Semla's own extensions. Anchored to the server's cwd like the wiki paths
 // above: PI_WORKSPACE_ROOT is the repo the agent operates *on*, not the repo
 // these files live in.
