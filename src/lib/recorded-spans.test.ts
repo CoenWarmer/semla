@@ -185,6 +185,25 @@ describe("recordedSpansToOtelSpans", () => {
       "look for bugs",
     );
   });
+
+  it("carries a subagent's context-pressure signals through to the mapped span (docs/plans/subagent-context-pressure.md \u00a74.4)", () => {
+    const clock = { ms: 1_000 };
+    const { sink, telemetry } = recordRun(clock);
+    telemetry.agentEnded("run-1", {
+      callId: "call-b",
+      status: "done",
+      stopReason: "length",
+      compactions: 2,
+    });
+
+    const mapped = recordedSpansToOtelSpans(sink.spans(), { now: clock.ms });
+    const agent = mapped.find((span) => span.name === "review:perf");
+
+    expect(agent?.attributes?.["semla.workflow.agent.stop_reason"]).toBe(
+      "length",
+    );
+    expect(agent?.attributes?.["semla.workflow.agent.compactions"]).toBe(2);
+  });
 });
 
 /** Shapes the recorder cannot produce, but a wire format can. */

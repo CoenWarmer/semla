@@ -19,7 +19,30 @@ const RUNS_DIR = join(
   "runs",
 );
 
-const MINIMAL_RUN = {
+type MinimalRunAgent = {
+  id: number;
+  label: string;
+  prompt: string;
+  startedAt: string;
+  endedAt: string;
+  status: string;
+  stopReason?: string;
+  compactions?: number;
+  compactionReasons?: string[];
+};
+
+type MinimalRun = {
+  agents: MinimalRunAgent[];
+  phases: string[];
+  runId: string;
+  startedAt: string;
+  completedAt: string;
+  status: string;
+  updatedAt: string;
+  workflowName: string;
+};
+
+const MINIMAL_RUN: MinimalRun = {
   agents: [
     {
       id: 1,
@@ -39,7 +62,7 @@ const MINIMAL_RUN = {
   workflowName: "cute_animals",
 };
 
-function writeRun(runId: string, ext: ".json" | ".tson", content = MINIMAL_RUN) {
+function writeRun(runId: string, ext: ".json" | ".tson", content: MinimalRun = MINIMAL_RUN) {
   mkdirSync(RUNS_DIR, { recursive: true });
   writeFileSync(join(RUNS_DIR, `${runId}${ext}`), JSON.stringify({ ...content, runId }));
 }
@@ -120,4 +143,38 @@ test("finds a run keyed under a different cwd than the caller's", () => {
 
 test("still returns null for a run that is nowhere", () => {
   expect(readWorkflowRun(TEST_CWD, "run-that-never-existed")).toBeNull();
+});
+
+// docs/plans/subagent-context-pressure.md §4.4: "A run's JSON ... either
+// carries stopReason / compactions per agent afterwards, or it does not."
+test("an agent's stopReason/compactions/compactionReasons survive a round-trip", () => {
+  writeRun("run-context-signals", ".json", {
+    ...MINIMAL_RUN,
+    agents: [
+      {
+        ...MINIMAL_RUN.agents[0],
+        stopReason: "length",
+        compactions: 2,
+        compactionReasons: ["threshold", "overflow"],
+      },
+    ],
+  });
+
+  const result = readWorkflowRun(TEST_CWD, "run-context-signals");
+
+  assert.ok(result, "should return a result");
+  assert.equal(result.agents[0].stopReason, "length");
+  assert.equal(result.agents[0].compactions, 2);
+  assert.deepEqual(result.agents[0].compactionReasons, ["threshold", "overflow"]);
+});
+
+test("an agent with no context-pressure signals recorded round-trips without them", () => {
+  writeRun("run-no-context-signals", ".json");
+
+  const result = readWorkflowRun(TEST_CWD, "run-no-context-signals");
+
+  assert.ok(result, "should return a result");
+  assert.equal(result.agents[0].stopReason, undefined);
+  assert.equal(result.agents[0].compactions, undefined);
+  assert.equal(result.agents[0].compactionReasons, undefined);
 });
