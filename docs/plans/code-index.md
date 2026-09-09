@@ -298,9 +298,32 @@ that can be deferred without leaving anything half-built.
 
 ## 5. Open questions
 
-- **Chunk budget.** 600 tokens is a starting guess, not a measured one. Worth an
-  eval once stage 4 lands: the retrieval quality question is whether a chunk
-  should be one function or one function plus its imports.
+- **Chunk budget, and what the first live run showed.** 600 tokens is a starting
+  guess. The pipeline was run end to end against `src/lib/code-index/` itself on
+  2026-09-09 — 20 files, 63 chunks, 26,814 tokens, $0.00054, 2.6 s to embed, and
+  a 1–3 ms local scan. It works, and the retrieval is **mediocre**, in three
+  ways worth fixing before this is worth trusting:
+
+  1. **Docblock chunks match everything.** This repository writes very large
+     docblocks, so the first chunk of most files is mostly prose and ranks for
+     any conceptual query. Asked where staleness is decided, the top hit was
+     `reindex-queue.ts`'s header comment rather than `fingerprint.ts`'s
+     `diffFingerprints`. The AST chunker should help directly, by cutting at
+     declarations so a docblock travels with the thing it documents instead of
+     forming a chunk of its own.
+  2. **Tests crowd out implementation.** Half the files indexed were `.test.ts`,
+     and a test that *describes* a behaviour embeds as well as the code that
+     *implements* it. Asked what prevents comparing vectors from two models, the
+     top hit was `credentials.test.ts`, not the dimension guard in
+     `store/local.ts`. Worth either a rank penalty for test files or a
+     `kind: "test" | "source"` on the chunk so the caller can ask for one.
+  3. **Scores are flat.** Everything landed in 0.32–0.50, so there is no
+     threshold that separates a good hit from a bad one. A hybrid merge with
+     ripgrep (§2.6) matters more than it looked like it would.
+
+  The cheap thing to try first is a chunk *header*: embedding
+  `path` + enclosing symbol alongside the text, so the vector carries some
+  location semantics. Standard practice, and it costs nothing per chunk.
 - **Does the wiki's page-level embedding become redundant?** Both would embed
   the same repository through different lenses. They should probably share the
   `Embedder` and the credential, and stay separate stores.
