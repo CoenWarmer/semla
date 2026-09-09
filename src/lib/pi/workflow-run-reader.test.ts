@@ -1,23 +1,20 @@
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, test } from "vitest";
 
+import { workflowProjectPaths } from "./extensions/dynamic-workflows/src/workflow-paths.ts";
 import { readWorkflowRun } from "./workflow-run-reader.ts";
 
-// A fake cwd whose runs dir we can compute deterministically and clean up.
-// The actual files land under ~/.pi/workflows/projects/semla-test-reader-.../
-// because workflowRunsDir() always roots at homedir().
+// These fixtures land under the temp PI_WORKFLOW_HOME that vitest.setup.ts
+// installs, not the operator's real one — which is where an earlier version of
+// this file left them, permanently.
+//
+// The runs dir is derived rather than spelled out: it used to be a literal
+// path ending in the hash "semla-test-reader-fdc772a2fcc0", which is only
+// correct for as long as nobody edits TEST_CWD.
 const TEST_CWD = "/tmp/semla-test-reader";
-const RUNS_DIR = join(
-  homedir(),
-  ".pi",
-  "workflows",
-  "projects",
-  "semla-test-reader-fdc772a2fcc0",
-  "runs",
-);
+const RUNS_DIR = workflowProjectPaths(TEST_CWD).runsDir;
 
 type MinimalRunAgent = {
   id: number;

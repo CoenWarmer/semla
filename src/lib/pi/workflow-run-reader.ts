@@ -1,26 +1,31 @@
 /**
- * Read pi-dynamic-workflows run files directly from the filesystem without
- * importing the full @quintinshaw/pi-dynamic-workflows package, which pulls in
- * transitive dependencies (@earendil-works/pi-ai) that are not installed.
+ * Read workflow run files directly from the filesystem, without going through
+ * the WorkflowManager that wrote them — the panel and the API read runs this
+ * process never held.
  *
- * The path logic mirrors workflow-paths.ts and run-persistence.ts from the
- * pi-dynamic-workflows dist — kept in sync manually.
+ * The path derivation used to be copied here, "kept in sync manually" with
+ * workflow-paths.ts, because dynamic-workflows was an external package whose
+ * import pulled in dependencies that were not installed. It is vendored in
+ * this tree now, and workflow-paths.ts imports nothing but node builtins and
+ * its own constants, so the copy bought nothing and cost the guarantee that a
+ * reader and a writer agree on where a run lives.
  */
-import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join } from "node:path";
+import type { AgentHistoryEntry } from "./extensions/dynamic-workflows/src/agent-history.ts";
+import {
+  workflowProjectPaths,
+  workflowProjectsDir,
+} from "./extensions/dynamic-workflows/src/workflow-paths.ts";
 
-export type AgentHistoryEntry = {
-  diff?: string;
-  isError?: boolean;
-  kind: "error" | "text" | "thinking" | "toolCall" | "toolResult";
-  path?: string;
-  role: "assistant" | "tool" | "user";
-  text: string;
-  timestamp?: number;
-  toolName?: string;
-};
+/**
+ * Re-exported, not restated. This file used to declare its own structurally
+ * identical copy, for the same reason it carried its own path derivation: the
+ * producer lived in a package that could not be imported. A copy like that
+ * does not fail to compile when the real type gains a member — it silently
+ * stops carrying it, and the errors surface in the consumers rather than here.
+ */
+export type { AgentHistoryEntry };
 
 export type PersistedAgentState = {
   callId?: string;
@@ -94,29 +99,8 @@ export function extractWorkflowDescription(
   return m?.[1];
 }
 
-function sanitize(value: string): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "project"
-  );
-}
-
-function workflowProjectsDir(): string {
-  return join(homedir(), ".pi", "workflows", "projects");
-}
-
 function workflowRunsDir(cwd: string): string {
-  const projectPath = resolve(cwd);
-  const slug = sanitize(basename(projectPath) || "project");
-  const hash = createHash("sha256")
-    .update(projectPath)
-    .digest("hex")
-    .slice(0, 12);
-  const key = `${slug}-${hash}`;
-  return join(workflowProjectsDir(), key, "runs");
+  return workflowProjectPaths(cwd).runsDir;
 }
 
 /**

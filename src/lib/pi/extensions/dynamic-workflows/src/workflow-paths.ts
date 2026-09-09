@@ -24,8 +24,29 @@ export interface WorkflowProjectPaths {
   legacySavedDir: string;
 }
 
+/**
+ * Root of all workflow state, overridable via PI_WORKFLOW_HOME.
+ *
+ * The override exists because the project key is derived from the cwd while
+ * the root was not: a test running against a `mkdtemp` cwd got an isolated
+ * key and then wrote it into the operator's real home, where it outlived the
+ * temp directory it described. Nothing ever collected those. One run of the
+ * suite leaves a directory per temp cwd, and by the time this was noticed
+ * `~/.pi/workflows/projects` held 1,931 of them — 127 MB, all but one of them
+ * describing a path that no longer exists. The per-directory retention cap in
+ * run-persistence.ts cannot help, because each of those holds a single run and
+ * the cap is 300 per project.
+ *
+ * Read on each call rather than captured at import so a test can point it
+ * somewhere disposable in a `beforeEach` without controlling module load order.
+ */
 export function workflowHomeDir(): string {
-  return join(homedir(), WORKFLOW_HOME_RELATIVE_DIR);
+  return process.env.PI_WORKFLOW_HOME ?? join(homedir(), WORKFLOW_HOME_RELATIVE_DIR);
+}
+
+/** Parent of every per-project state directory. */
+export function workflowProjectsDir(): string {
+  return join(workflowHomeDir(), WORKFLOW_PROJECTS_SUBDIR);
 }
 
 export function workflowUserSavedDir(): string {
@@ -41,7 +62,7 @@ export function workflowProjectKey(cwd: string): string {
 
 export function workflowProjectPaths(cwd: string): WorkflowProjectPaths {
   const key = workflowProjectKey(cwd);
-  const rootDir = join(workflowHomeDir(), WORKFLOW_PROJECTS_SUBDIR, key);
+  const rootDir = join(workflowProjectsDir(), key);
   return {
     key,
     rootDir,
