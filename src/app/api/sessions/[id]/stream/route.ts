@@ -79,15 +79,23 @@ export async function GET(
         }
       }, 30_000);
 
-      const { unsubscribe } = subscribeToSessionStream(id, (event) => {
-        send(event);
-        const e = event as Record<string, unknown>;
-        if (e.type === "complete" || e.type === "error") {
+      // Closing follows the store's own lifetime, not a "complete"/"error"
+      // event's contents. Those types used to mean "the stream is over"
+      // because a stream's lifetime was exactly one prompt turn — but a turn
+      // that hands off to a background workflow now keeps the store open past
+      // its own "complete", and a turn that errors while a workflow it
+      // started keeps running must not drop the connection either. The
+      // store's own close (session-service.ts on settle/idle,
+      // background-continuation.ts once delivery finishes) is the one signal
+      // that actually means nobody is coming back.
+      const { unsubscribe } = subscribeToSessionStream(
+        id,
+        (event) => send(event),
+        () => {
           clearInterval(heartbeat);
-          unsubscribe();
           close();
-        }
-      });
+        },
+      );
 
       request.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);

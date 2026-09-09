@@ -62,6 +62,16 @@ export type PiSessionEvent =
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { message: string; type: "error" }
   | { title: string; type: "title-updated" }
+  /**
+   * Whether a turn is in flight for this session, pushed over the same
+   * stream that now stays open across a background handoff — see
+   * background-continuation.ts, the only place besides session-service.ts
+   * that publishes it. Replaces the client's separate 5s `/status` poll for
+   * this one field; that endpoint still exists for `exists`/`projects` and
+   * as an initial read, but no longer needs to be asked on a timer to learn
+   * whether a turn ended.
+   */
+  | { type: "session-status"; isRunning: boolean }
   | { type: "complete" };
 
 /** Publishes an event to both the SSE stream and the caller's handler. */

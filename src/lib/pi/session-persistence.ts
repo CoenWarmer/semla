@@ -343,7 +343,12 @@ export const fetchPersistedEntries = async (piSessionId: string) => {
 export const finalizeBackgroundRun = async (
   semlaSessionId: string,
   runId: string,
-  status: "completed" | "failed" = "completed",
+  // No default: a caller that has not decided the run is actually finished
+  // (and which of "completed"/"failed" it finished as) must not be able to
+  // fall through into marking it "completed" by omission. That status is the
+  // one fetchStuckBackgroundRuns never looks for, so an accidental write here
+  // makes the run unrecoverable.
+  status: "completed" | "failed",
 ) => {
   upsertWorkflowRun(semlaSessionId, runId, { status });
 

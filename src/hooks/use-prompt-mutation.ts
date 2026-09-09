@@ -28,10 +28,6 @@ import {
   type LiveRound,
 } from "@/lib/live-rounds";
 import {
-  clearsDeadStreamLatch,
-  shouldReconnect,
-} from "@/lib/session-reconnect";
-import {
   fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
   sessionStatusKey,
@@ -95,6 +91,8 @@ type PiStreamEvent =
   | { map: CodeMap; type: "code-map" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
+  /** See session-events.ts — the wire shape this mirrors. */
+  | { type: "session-status"; isRunning: boolean }
   | { type: "complete" };
 
 // Flip to true to trace the prompt lifecycle in the browser console: every
@@ -124,6 +122,7 @@ type StreamHandlers = {
   onTitleUpdated: (title: string) => void;
   onError: (message: string) => void;
   onWikiTool: (toolName: string) => void;
+  onSessionStatus: (isRunning: boolean) => void;
 };
 
 const readPiStream = async (
@@ -180,6 +179,8 @@ const readPiStream = async (
         handlers.onWorkflowStarted(piEvent);
       } else if (piEvent.type === "title-updated") {
         handlers.onTitleUpdated(piEvent.title);
+      } else if (piEvent.type === "session-status") {
+        handlers.onSessionStatus(piEvent.isRunning);
       } else if (piEvent.type === "complete") {
         // nothing — loop will end on done
       } else if (piEvent.type === "error") {
@@ -334,15 +335,33 @@ export const usePromptMutation = (
     [queryClient, messagesKey, sessionId],
   );
   const reconnectAbortRef = useRef<AbortController | null>(null);
-  // Set when a reattach is told this session has no stream. The status poll is a
-  // cache and goes on saying "running" for a few seconds after a turn ends, so
-  // without this memory the recovery effect refires on every settle and spins.
-  // A ref, not state: it must be readable by the effect on the same tick it is
-  // written, and nothing renders from it.
-  const streamKnownDeadRef = useRef(false);
-  // The previous poll reading, so a turn starting can be told from one that was
-  // already running when this page mounted.
-  const wasServerRunningRef = useRef(false);
+  /**
+   * The server's own view of whether a turn is in flight for this session,
+   * now pushed over the stream rather than polled.
+   *
+   * This used to be a `useQuery` on a 5s `refetchInterval` against
+   * `/status`, with a `streamKnownDead` latch (session-reconnect.ts) papering
+   * over the gap between a turn actually ending and that poll noticing —
+   * without the latch, every reattach's 404 refired the recovery effect for
+   * as long as the stale cache kept answering "running", which was the eight
+   * reattach-in-1.15s spin that mechanism's own doc comment describes.
+   *
+   * A push event closes that gap directly: `session-status` now arrives the
+   * instant `setSessionRunning` changes on the server (session-service.ts,
+   * background-continuation.ts), on the same stream this hook is already
+   * subscribed to for everything else. There is nothing left to be stale
+   * about, so `shouldReconnect`/`clearsDeadStreamLatch` and the effect that
+   * called them are gone rather than kept as dead code — see
+   * session-reconnect.ts's own history for why a latch modelling a gap that no
+   * longer exists would only mislead the next reader.
+   *
+   * Seeded from `initialIsRunning` (the server-rendered page's own read),
+   * which is also what still decides whether to reconnect on mount — a page
+   * loaded mid-turn has no stream open yet to have told it anything.
+   */
+  const [serverIsRunning, setServerIsRunning] = useState(
+    () => initialIsRunning ?? false,
+  );
 
   // Stable handlers object — state setters are guaranteed stable by React,
   // so this memo never needs to re-run. A factory function (the previous shape)
@@ -429,6 +448,19 @@ export const usePromptMutation = (
           setWikiActive(true);
         }
       },
+      onSessionStatus: (isRunning) => {
+        setServerIsRunning(isRunning);
+        // Keep the cache the header badges and the sidebar read in step with
+        // the same push, so a component that only reads sessionStatusKey
+        // (session-agents-panel.tsx, header-actions.tsx) does not need its own
+        // poll to learn it — those still fetch it once on mount, but no longer
+        // need to ask again on a timer for this field.
+        queryClient.setQueryData<SingleSessionStatus>(
+          sessionStatusKey(sessionId),
+          (prev) => (prev ? { ...prev, isRunning } : prev),
+        );
+        setListRunning(isRunning);
+      },
     }),
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -467,15 +499,17 @@ export const usePromptMutation = (
 
         if (!response.ok || !response.body) {
           // Stream not active — server restarted or turn already finished.
-          // Remember it: the status poll is a cache and will keep reporting this
-          // turn as running for a few seconds yet, and asking again every time
-          // the effect settles is what turned one stale reading into eight
-          // requests.
-          streamKnownDeadRef.current = true;
+          // No latch needed to keep this from spinning: unlike the old status
+          // poll, `serverIsRunning` is not a cache that goes on repeating a
+          // stale reading on its own timer — it only ever changes again when a
+          // fresh event (a real `session-status` push, or a new mount's
+          // `initialIsRunning`) says so, so setting it false here does not
+          // provoke another reattach on its own.
+          setServerIsRunning(false);
 
           // Correct the cached reading too, so the rest of the UI stops showing
           // a turn that has demonstrably ended rather than waiting for the next
-          // poll. The route clears the stored flag; this is the local view of it.
+          // fetch. The route clears the stored flag; this is the local view of it.
           queryClient.setQueryData<SingleSessionStatus>(
             sessionStatusKey(sessionId),
             (prev) => (prev ? { ...prev, isRunning: false } : prev),
@@ -538,23 +572,24 @@ export const usePromptMutation = (
   }, [initialIsRunning, reconnectToStream]);
 
   /**
-   * What the server says about this session, which is the only way to notice a
-   * stream that has gone away.
+   * Whether this session has a record on disk at all, and this hook's initial
+   * read of `isRunning` for a page that did not already know it (see
+   * `serverIsRunning`'s own doc comment — that field is otherwise seeded from
+   * `initialIsRunning` and kept current by the `session-status` push).
    *
-   * The client cannot tell a dropped stream from a finished turn — both are
-   * simply an absence of events — so this is the second opinion. It reads the
-   * running flag from disk and is reconciled against the process actually
-   * working on the session, so it does not report a turn a restart ended.
+   * Fetched once, not polled: `exists` does not change once a session is
+   * created, and `isRunning` here is only a fallback for the gap between mount
+   * and the first push — the mid-turn reconnect effect below covers that gap
+   * on `initialIsRunning` already, and once a stream is open the push is the
+   * source of truth.
    */
   const { data: sessionStatus } = useQuery({
     queryKey: sessionStatusKey(sessionId),
     queryFn: () => fetchSingleSessionStatus(sessionId),
-    refetchInterval: 5_000,
   });
 
-  const serverIsRunning = sessionStatus?.isRunning ?? false;
   /**
-   * Undefined until the first poll answers, and while it is undefined the page
+   * Undefined until the first fetch answers, and while it is undefined the page
    * must not claim anything: a `?new=1` page is legitimately promptable before
    * its session exists.
    */
@@ -759,29 +794,6 @@ export const usePromptMutation = (
       streamingTextLength: liveTextLength,
     });
   }, [inst, mutation.status, mutation.isPending, liveTextLength]);
-
-  useEffect(() => {
-    // A turn the server has only just started re-arms the latch: the stream this
-    // page was told was gone is not the stream a new turn opens.
-    if (clearsDeadStreamLatch(wasServerRunningRef.current, serverIsRunning)) {
-      streamKnownDeadRef.current = false;
-    }
-    wasServerRunningRef.current = serverIsRunning;
-
-    if (
-      !shouldReconnect({
-        serverIsRunning,
-        isPending: mutation.isPending,
-        isReconnecting,
-        streamKnownDead: streamKnownDeadRef.current,
-      })
-    ) {
-      return;
-    }
-
-    trace("stream-recovery:reattach");
-    reconnectToStream();
-  }, [serverIsRunning, isReconnecting, mutation.isPending, reconnectToStream]);
 
   return {
     activeTool,

@@ -106,6 +106,7 @@ import {
   closeSessionStream,
   isSessionStreamActive,
   openSessionStream,
+  publishSessionRunning,
   publishToSessionStream,
 } from "@/lib/pi/session-stream-store";
 import { stampWikiRepo } from "@/lib/pi/session-wiki-stamp";
@@ -244,6 +245,14 @@ export const stopPiSession = async (semlaSessionId: string): Promise<boolean> =>
   }
 
   detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+  // Told over the still-open stream too, not only on disk — the page watching
+  // this session hears it immediately rather than waiting for its next
+  // /status fetch or the 5s workflow-runs reconciliation poll. Closing the
+  // stream itself is left to whichever of runPiPrompt's or
+  // runBackgroundContinuation's own `finally` actually unwinds as a result of
+  // this abort: closing it here too would race an in-flight turn that is still
+  // partway through emitting its own terminal event.
+  publishSessionRunning(semlaSessionId, false);
   return true;
 };
 
@@ -317,6 +326,7 @@ export const runPiPrompt = async ({
 
   openSessionStream(semlaSessionId);
   detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
+  publishSessionRunning(semlaSessionId, true);
 
   const emit: EmitSessionEvent = (event) => {
     publishToSessionStream(semlaSessionId, event);
@@ -640,7 +650,11 @@ export const runPiPrompt = async ({
         },
         { triggerTurn: false },
       );
-      detach(semlaSessionId, "finalize run", finalizeBackgroundRun(semlaSessionId, run_id));
+      detach(
+        semlaSessionId,
+        "finalize run",
+        finalizeBackgroundRun(semlaSessionId, run_id, "completed"),
+      );
       sessionLog(semlaSessionId, "recovered stuck bg run", { run: run_id });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -762,9 +776,10 @@ export const runPiPrompt = async ({
 
     /**
      * Decided here rather than below, because the turn span's fate depends on
-     * it and the final flush has to happen before `closeSessionStream` — after
-     * that, emitted spans reach nobody. Only the *decision* moves; the branch
-     * that acts on it is unchanged, further down.
+     * it, and — since it also decides whether the stream stays open across
+     * this turn's own end — the final flush has to happen before the
+     * `settled`/`idle` branches close it. Only the *decision* moves; the
+     * branch that acts on it is unchanged, further down.
      */
     const decision = decideContinuation({
       findUnfinishedRun: () =>
@@ -797,7 +812,6 @@ export const runPiPrompt = async ({
     }
     // Clear the bridge run notifier so a stale reference can't fire after turn end.
     clearSlot(BRIDGE_RUN_STARTED);
-    closeSessionStream(semlaSessionId);
     stampWikiRepo(semlaSessionId, turnRepoSlugs(), turnStartedAt);
 
     if (decision.kind === "settled") {
@@ -808,22 +822,37 @@ export const runPiPrompt = async ({
         detach(
           semlaSessionId,
           "finalize run",
-          finalizeBackgroundRun(semlaSessionId, decision.runId),
+          finalizeBackgroundRun(semlaSessionId, decision.runId, "completed"),
         );
         releaseBackgroundSession(decision.runId);
       } else {
         session.dispose();
       }
       detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+      publishSessionRunning(semlaSessionId, false);
+      // Nothing left to watch, so this is the end of the stream's life —
+      // unlike the `watch` branch below, where ownership passes to the
+      // continuation instead.
+      publishToSessionStream(semlaSessionId, { type: "complete" });
+      closeSessionStream(semlaSessionId);
     } else if (decision.kind === "watch") {
       // Keep the session alive to receive background workflow progress and the
       // final report turn that pi delivers when the workflow completes.
       // is_running stays true until runBackgroundContinuation clears it.
+      //
+      // The stream stays open too, on purpose — it used to close here
+      // unconditionally, before runBackgroundContinuation was even started,
+      // which is what forced the client onto a 5s DB poll for the rest of the
+      // workflow's life (see that module's own doc comment). Ownership of the
+      // stream passes to the continuation below exactly as ownership of the
+      // session file does; the continuation's own `finally` is what closes
+      // it once there is truly nothing left to report.
       if (decision.rearmed) {
         sessionLog(semlaSessionId, "re-arming continuation for an earlier run", {
           run: decision.runId,
         });
         detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
+        publishSessionRunning(semlaSessionId, true);
       }
 
       // Ownership of this session's file passes to the continuation, which
@@ -845,9 +874,10 @@ export const runPiPrompt = async ({
         session,
         spans: {
           endTurn: (outcome) => host.turnEnded(outcome),
-          // The same flush. Its `emit` is a no-op once the stream is closed,
-          // but the append is not — which is how a background run's spans
-          // reach the file the next page load reads.
+          // The same flush. Its `emit` now reaches the still-open stream, which
+          // is how a background run's progress and completion reach the
+          // client without the 5s poll that used to be the only path once the
+          // stream had already closed here.
           flush: flushSpans,
         },
       });
@@ -866,6 +896,9 @@ export const runPiPrompt = async ({
       sessionLog(semlaSessionId, "session disposed");
       session.dispose();
       detach(semlaSessionId, "clear running", setSessionRunning(semlaSessionId, false));
+      publishSessionRunning(semlaSessionId, false);
+      publishToSessionStream(semlaSessionId, { type: "complete" });
+      closeSessionStream(semlaSessionId);
     }
 
     if (!handedOffToContinuation) turnSlot.finish();

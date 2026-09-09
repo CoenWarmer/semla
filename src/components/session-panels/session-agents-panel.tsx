@@ -61,11 +61,14 @@ export function SessionAgentsPanel() {
     queryFn: () => fetchSessionSpans(sessionId ?? ""),
     staleTime: Number.POSITIVE_INFINITY,
   });
+  // No refetchInterval: usePromptMutation's onSessionStatus handler pushes
+  // isRunning into this same cache key the instant the server's own flag
+  // changes (see session-events.ts's "session-status" event), so a client-side
+  // poll here would only ever confirm what the push already delivered.
   const statusQuery = useQuery({
     enabled: !!sessionId,
     queryKey: sessionStatusKey(sessionId ?? ""),
     queryFn: () => fetchSingleSessionStatus(sessionId ?? ""),
-    refetchInterval: 5_000,
   });
 
   const snapshot = snapshotQuery.data ?? undefined;
