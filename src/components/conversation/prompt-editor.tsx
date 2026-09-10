@@ -36,6 +36,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useMcpStatus } from "@/hooks/use-mcp-status";
 import { useModels, type PiModel } from "@/hooks/use-models";
+import {
+  useReadRouterSetting,
+  useUpdateReadRouterSetting,
+} from "@/hooks/use-read-router-setting";
 import { useTools } from "@/hooks/use-tools";
 import {
   useUpdateUserSettings,
@@ -45,6 +49,7 @@ import {
 import {
   CheckIcon,
   FoldVerticalIcon,
+  RouteIcon,
   ServerIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -224,6 +229,8 @@ export function PromptEditor({
   } = useUserSettings();
   const { data: piTools } = useTools(sessionId);
   const { data: mcpStatus } = useMcpStatus();
+  const readRouter = useReadRouterSetting();
+  const updateReadRouter = useUpdateReadRouterSetting();
 
   const { error: updateUserSettingsError, mutate: updateUserSettings } =
     useUpdateUserSettings();
@@ -236,6 +243,7 @@ export function PromptEditor({
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
+  const readRouterEnabled = readRouter.data?.enabled ?? true;
 
   const toolPickerRef = useRef<HTMLDivElement>(null);
 
@@ -427,6 +435,28 @@ export function PromptEditor({
               <span>Compact</span>
             </PromptInputButton>
           )}
+          <PromptInputButton
+            aria-pressed={readRouterEnabled}
+            className={cn(
+              readRouterEnabled && "bg-muted text-foreground",
+            )}
+            disabled={
+              readRouter.isPending ||
+              readRouter.isError ||
+              updateReadRouter.isPending
+            }
+            onClick={() => updateReadRouter.mutate(!readRouterEnabled)}
+            title={
+              readRouter.isError
+                ? readRouter.error.message
+                : readRouterEnabled
+                  ? "Disable read-router tool-result compression"
+                  : "Enable read-router tool-result compression"
+            }
+          >
+            <RouteIcon size={16} />
+            <span>Read router {readRouterEnabled ? "on" : "off"}</span>
+          </PromptInputButton>
           <div className="relative" ref={toolPickerRef}>
             <PromptInputButton
               aria-expanded={toolPickerOpen}
