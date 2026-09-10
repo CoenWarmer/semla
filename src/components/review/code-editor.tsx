@@ -469,12 +469,25 @@ export default function CodeEditor({
     editor.revealLineNearTop(line, monaco.editor.ScrollType.Immediate);
   }, [hunks, path]);
 
-  // Asked for a specific line — a hunk row was clicked.
+  /**
+   * Asked for a specific line — a hunk row was clicked, or the panel opened
+   * on a file link.
+   *
+   * `Immediate` rather than `Smooth`. A file link remounts the whole panel
+   * (see `initialTarget` in review-panel.tsx), so the reveal is usually
+   * requested on the same commit that created the editor — and there a scroll
+   * animation races the editor's first layout and loses. It stops wherever it
+   * had reached and nothing revives it, because this effect only re-runs when
+   * `reveal` changes. A link to line 172 of a 397-line file landed on 79, one
+   * to line 445 landed on 36, and the distance moved varied from click to
+   * click. Files short enough to fit the viewport hid it, since revealing a
+   * line already on screen scrolls nowhere.
+   */
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !reveal) return;
 
-    editor.revealLineNearTop(reveal.line, monaco.editor.ScrollType.Smooth);
+    editor.revealLineNearTop(reveal.line, monaco.editor.ScrollType.Immediate);
     editor.setPosition({ column: 1, lineNumber: reveal.line });
   }, [reveal]);
 
