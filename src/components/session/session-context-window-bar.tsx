@@ -75,7 +75,7 @@ export function SessionContextWindowBar({
     <div className="group relative shrink-0">
       {/* Collapsed — always in-flow, defines the strip's height */}
       <div
-        className={`flex h-2 w-full overflow-hidden border-b border-border/40 bg-muted${
+        className={`flex h-1 w-full overflow-hidden border-b border-border/40 bg-muted${
           windowKnown ? "" : " opacity-40"
         }`}
       >
