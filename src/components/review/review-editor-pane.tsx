@@ -314,10 +314,14 @@ export function ReviewEditorPane({
         </div>
       ) : null}
 
+      <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+        <span className="text-xs">{selection.path}</span>
+      </div>
+
       {dirty ? (
         <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
           <span className="text-xs text-muted-foreground">
-            Unsaved edits in {selection.path}
+            Unsaved edits
           </span>
           <Button
             className="ml-auto h-6 px-2 text-[11px]"
