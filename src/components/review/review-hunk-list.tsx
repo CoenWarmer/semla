@@ -80,7 +80,9 @@ function HunkRow({
       </button>
 
       <Button
-        aria-label={direction === "stage" ? "Stage this hunk" : "Unstage this hunk"}
+        aria-label={
+          direction === "stage" ? "Stage this hunk" : "Unstage this hunk"
+        }
         className="size-6 shrink-0"
         disabled={busy}
         onClick={onApply}
@@ -102,6 +104,7 @@ function Group({
   busy,
   diff,
   direction,
+  onlyShowStaged = false,
   onApply,
   onReveal,
   title,
@@ -109,6 +112,7 @@ function Group({
   busy: boolean;
   diff: FileDiff | null;
   direction: "stage" | "unstage";
+  onlyShowStaged?: boolean;
   onApply: (hunks: number[]) => void;
   onReveal: (line: number) => void;
   title: string;
@@ -124,20 +128,22 @@ function Group({
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-2 px-2 pb-0.5">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {title}
-        </p>
-        <Button
-          className="ml-auto h-5 px-1.5 text-[10px]"
-          disabled={busy}
-          onClick={() => onApply(hunks.map((hunk) => hunk.index))}
-          size="sm"
-          variant="ghost"
-        >
-          {direction === "stage" ? "Stage all" : "Unstage all"}
-        </Button>
-      </div>
+      {onlyShowStaged ? null : (
+        <div className="flex items-center gap-2 px-2 pb-0.5">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {title}
+          </p>
+          <Button
+            className="ml-auto h-5 px-1.5 text-[10px]"
+            disabled={busy}
+            onClick={() => onApply(hunks.map((hunk) => hunk.index))}
+            size="sm"
+            variant="ghost"
+          >
+            {direction === "stage" ? "Stage all" : "Unstage all"}
+          </Button>
+        </div>
+      )}
 
       {hunkless ? (
         <p className="px-2 pb-1 text-[11px] text-muted-foreground">
@@ -163,6 +169,7 @@ function Group({
 
 export function ReviewHunkList({
   busy,
+  onlyShowStaged = false,
   onReveal,
   onStage,
   staged,
@@ -170,6 +177,7 @@ export function ReviewHunkList({
   untracked,
 }: {
   busy: boolean;
+  onlyShowStaged?: boolean;
   onReveal: (line: number) => void;
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
   staged: FileDiff | null;
@@ -179,9 +187,7 @@ export function ReviewHunkList({
   if (untracked) {
     return (
       <div className="flex flex-col gap-2 px-2 py-2">
-        <p className="text-[11px] text-muted-foreground">
-          This file is new.
-        </p>
+        <p className="text-[11px] text-muted-foreground">This file is new.</p>
         <Button
           className={cn("h-6 self-start px-2 text-[11px]")}
           disabled={busy}
@@ -201,19 +207,21 @@ export function ReviewHunkList({
     <div className="flex flex-col gap-3 py-2">
       <Group
         busy={busy}
-        diff={unstaged}
-        direction="stage"
-        onApply={(hunks) => onStage(hunks, "stage")}
-        onReveal={onReveal}
-        title="Not staged"
-      />
-      <Group
-        busy={busy}
         diff={staged}
         direction="unstage"
+        onlyShowStaged
         onApply={(hunks) => onStage(hunks, "unstage")}
         onReveal={onReveal}
         title="Staged"
+      />
+      <Group
+        busy={busy}
+        diff={unstaged}
+        direction="stage"
+        onlyShowStaged={onlyShowStaged}
+        onApply={(hunks) => onStage(hunks, "stage")}
+        onReveal={onReveal}
+        title="Not staged"
       />
       {nothing && !staged && !unstaged ? (
         <p className="px-2 text-[11px] text-muted-foreground">

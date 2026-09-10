@@ -31,11 +31,19 @@ import {
   TONE_CLASS,
 } from "./review-file-display";
 import { ReviewHunkList } from "./review-hunk-list";
+import { ReviewStagedFiles } from "./review-staged-files";
 
 export interface FileSelection {
   project: string;
   path: string;
 }
+
+/** Stage or unstage hunks of a specific file, identified rather than assumed. */
+export type StageFileHunks = (
+  file: FileSelection,
+  hunks: number[],
+  direction: "stage" | "unstage",
+) => void;
 
 /** The hunks of one expanded file, fetched only while it is open. */
 function ExpandedHunks({
@@ -47,7 +55,7 @@ function ExpandedHunks({
 }: {
   busy: boolean;
   onReveal: (line: number) => void;
-  onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStage: StageFileHunks;
   selection: FileSelection;
   sessionId: string;
 }) {
@@ -89,7 +97,7 @@ function ExpandedHunks({
     <ReviewHunkList
       busy={busy}
       onReveal={onReveal}
-      onStage={onStage}
+      onStage={(hunks, direction) => onStage(selection, hunks, direction)}
       staged={hunks.data.staged}
       unstaged={hunks.data.unstaged}
       untracked={hunks.data.untracked}
@@ -97,7 +105,7 @@ function ExpandedHunks({
   );
 }
 
-function FileRow({
+export function FileRow({
   busy,
   expanded,
   file,
@@ -112,7 +120,7 @@ function FileRow({
   expanded: boolean;
   file: ChangedFile;
   onReveal: (line: number) => void;
-  onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStage: StageFileHunks;
   onToggle: () => void;
   project: string;
   selected: boolean;
@@ -161,7 +169,7 @@ function FileRow({
       </button>
 
       {expanded ? (
-        <div className="pl-3">
+        <div className="pl-1 border rounded mb-3">
           <ExpandedHunks
             busy={busy}
             onReveal={onReveal}
@@ -195,7 +203,7 @@ export function ReviewChangedFiles({
    * to remember to also do.
    */
   onSelect: (selection: FileSelection) => void;
-  onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStage: StageFileHunks;
   projects: readonly ProjectReview[];
   selected: FileSelection | null;
   sessionId: string;
@@ -213,36 +221,55 @@ export function ReviewChangedFiles({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 px-2">
       {withChanges.map((project) => (
         <div key={project.path}>
-          <p className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="pb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Changed files in {project.name}
           </p>
 
+          <ReviewStagedFiles
+            busy={busy}
+            files={project.changedFiles}
+            onReveal={onReveal}
+            onSelect={onSelect}
+            onStage={onStage}
+            project={project.path}
+            sessionId={sessionId}
+          />
+
           <div className="flex flex-col">
-            {project.changedFiles.map((file) => (
-              <FileRow
-                busy={busy}
-                expanded={
-                  expanded?.project === project.path &&
-                  expanded.path === file.path
-                }
-                file={file}
-                key={`${project.path}/${file.path}`}
-                onReveal={onReveal}
-                onStage={onStage}
-                onToggle={() =>
-                  onSelect({ path: file.path, project: project.path })
-                }
-                project={project.path}
-                selected={
-                  selected?.project === project.path &&
-                  selected.path === file.path
-                }
-                sessionId={sessionId}
-              />
-            ))}
+            <span className="text-[10px] uppercase font-medium text-muted-foreground">
+              To review
+            </span>
+            {/* A file entirely staged has nothing left to review here — it
+                already has its own row in ReviewStagedFiles above, and a
+                second row here with no unstaged hunks to show would just be
+                an empty accordion. */}
+            {project.changedFiles
+              .filter((file) => file.unstaged || !file.staged)
+              .map((file) => (
+                <FileRow
+                  busy={busy}
+                  expanded={
+                    expanded?.project === project.path &&
+                    expanded.path === file.path
+                  }
+                  file={file}
+                  key={`${project.path}/${file.path}`}
+                  onReveal={onReveal}
+                  onStage={onStage}
+                  onToggle={() =>
+                    onSelect({ path: file.path, project: project.path })
+                  }
+                  project={project.path}
+                  selected={
+                    selected?.project === project.path &&
+                    selected.path === file.path
+                  }
+                  sessionId={sessionId}
+                />
+              ))}
           </div>
 
           {project.omitted > 0 ? (
