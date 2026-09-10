@@ -12,8 +12,21 @@ import {
 export type ElementTarget = {
   path: string;
   project: string;
-  /** The line the fiber's debug stack named, so the editor can jump to it. */
-  line: number;
+  /**
+   * The line to jump to, or undefined when the caller named a file but no
+   * line inside it.
+   *
+   * Optional rather than defaulted to 1, because "open this file" and "open
+   * this file at line 1" are different requests and the panel acts on them
+   * differently: with no line it leaves the editor's own
+   * open-on-the-first-hunk behaviour alone (see `firstChangedLine` in
+   * `code-editor.tsx`), which is the useful place to land in a file under
+   * review. A `?? 1` here collapsed the two — the element picker always has
+   * a real line, so nothing noticed until markdown file links became a
+   * second caller and every unqualified `[foo](src/foo.ts)` started
+   * scrolling to the top of the file instead.
+   */
+  line?: number;
   /**
    * Whether `line` is the exact clicked position, or only the nearest named
    * component's own declaration line — see `LocatedElement` in

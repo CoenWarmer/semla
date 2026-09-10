@@ -32,6 +32,7 @@ import { ReviewCommitNav } from "./review-commit-nav";
 import { ReviewEditorPane } from "./review-editor-pane";
 import { selectionForWorkspacePath } from "./review-definition-target";
 import { ReviewFileTree } from "./review-file-tree";
+import { initialReveal, type Reveal } from "./review-initial-reveal";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -80,7 +81,13 @@ export function ReviewPanel({
   initialTarget?: {
     project: string;
     path: string;
-    line: number;
+    /**
+     * Absent when the caller named a file but no line in it — see
+     * `ElementTarget.line`. The panel then asks for no reveal at all, so the
+     * editor opens on the file's first hunk rather than being scrolled to
+     * the top.
+     */
+    line?: number;
     /**
      * Whether `line` is the exact clicked position, or only the nearest
      * resolvable component's own declaration line. `"component"` is shown
@@ -132,8 +139,8 @@ export function ReviewPanel({
    * row, and a content-search hit in the sidebar — and the second also changes
    * which file is open, so the request has to outlive the pane it lands in.
    */
-  const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(
-    () => (initialTarget ? { line: initialTarget.line, nonce: 1 } : null),
+  const [reveal, setReveal] = useState<Reveal | null>(() =>
+    initialReveal(initialTarget),
   );
 
   // The counter is what makes asking for the same line twice two requests

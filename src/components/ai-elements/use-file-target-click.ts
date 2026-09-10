@@ -35,7 +35,10 @@ export function useFileTargetClick(sessionId: string, token: ParsedFileToken | n
   const handleClick = useCallback(() => {
     if (!target) return;
     elementTarget.request({
-      line: target.line ?? 1,
+      // Forwarded as undefined rather than 1 when the token named no line:
+      // see `ElementTarget.line`. A bare `[foo](src/foo.ts)` should open the
+      // file, not jump to its first line.
+      line: target.line ?? undefined,
       path: target.path,
       precision: "exact",
       project: target.project,
