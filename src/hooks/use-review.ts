@@ -165,15 +165,22 @@ async function post<T>(url: string, body: unknown): Promise<T> {
  * hunks are on which side, committing changes both that and the branch state
  * the header badges show.
  */
-function invalidateAfterWrite(
+export function invalidateAfterWrite(
   queryClient: ReturnType<typeof useQueryClient>,
   sessionId: string,
-) {
-  void queryClient.invalidateQueries({ queryKey: reviewQueryKey(sessionId) });
-  void queryClient.invalidateQueries({
-    queryKey: ["review", sessionId, "hunks"],
-  });
-  void queryClient.invalidateQueries({ queryKey: ["git-status"] });
+): Promise<void> {
+  // Awaited by the mutations below, so a mutation's success does not
+  // resolve until the review state it invalidated has actually refetched —
+  // otherwise a caller that reacts to `onSuccess` (or awaits `mutateAsync`)
+  // can render against the stale `staged` count for one more frame, which is
+  // exactly the window where the commit bar's visibility check runs.
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: reviewQueryKey(sessionId) }),
+    queryClient.invalidateQueries({
+      queryKey: ["review", sessionId, "hunks"],
+    }),
+    queryClient.invalidateQueries({ queryKey: ["git-status"] }),
+  ]).then(() => undefined);
 }
 
 export interface StageRequest {
@@ -245,12 +252,13 @@ export function useSaveFile(sessionId: string) {
       if (!res.ok) throw new Error(payload.error ?? "Unable to save");
       return payload;
     },
-    onSuccess: (_data, request) => {
-      invalidateAfterWrite(queryClient, sessionId);
-      void queryClient.invalidateQueries({
-        queryKey: fileContentQueryKey(sessionId, request.path),
-      });
-    },
+    onSuccess: (_data, request) =>
+      Promise.all([
+        invalidateAfterWrite(queryClient, sessionId),
+        queryClient.invalidateQueries({
+          queryKey: fileContentQueryKey(sessionId, request.path),
+        }),
+      ]).then(() => undefined),
   });
 }
 
