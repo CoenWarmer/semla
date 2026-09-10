@@ -520,7 +520,7 @@ export function ReviewPanel({
       {/* The glow says the panel is being driven by the agent, which is worth
           saying because the editor moving on its own is otherwise
           indistinguishable from the panel losing the operator's place. */}
-      <div className={cn("flex h-full flex-col", following && "semla-following")}>
+      <div className={cn("flex grow flex-col", following && "semla-following")}>
         {accesses.length > 0 ? (
           <ReviewScrubber
             accesses={accesses}
