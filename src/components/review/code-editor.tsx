@@ -45,6 +45,7 @@ import {
 } from "./review-auto-scroll";
 import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
+import type { AccessHighlight } from "./review-panel-request";
 
 const CLASS_FOR_KIND = {
   "added-line": "semla-review-added-line",
@@ -143,9 +144,18 @@ export interface CodeEditorProps {
    * which would leave two answering the same position.
    */
   definition?: DefinitionProviderConfig | null;
+  /**
+   * The lines the agent read or wrote here, to mark in the gutter.
+   *
+   * Distinct from `hunks`, which say what *changed*: the point of the scrubber
+   * is that most of what an agent looks at it does not change, and there is no
+   * diff to show for it.
+   */
+  access?: AccessHighlight | null;
 }
 
 export default function CodeEditor({
+  access = null,
   definition = null,
   hunks,
   onChange,
@@ -166,6 +176,17 @@ export default function CodeEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef =
     useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  /**
+   * The agent's read/write marks, in a collection of their own.
+   *
+   * Separate from the diff decorations because the two answer different
+   * questions and change at different times — a `set()` on one collection
+   * replaces everything in it, so sharing would mean the scrubber wiping the
+   * turn's diff colours every time an arrow was pressed.
+   */
+  const accessRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(
+    null,
+  );
   const hunkGlyphsRef = useRef<HunkBracketWidgets | null>(null);
   const stagingBusyRef = useRef(stagingBusy);
   /**
@@ -241,6 +262,7 @@ export default function CodeEditor({
 
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
+    accessRef.current = editor.createDecorationsCollection([]);
     hunkGlyphsRef.current = new HunkBracketWidgets(editor, (index, direction) => {
       if (stagingBusyRef.current) return;
       onStageHunkRef.current?.([index], direction);
@@ -332,6 +354,7 @@ export default function CodeEditor({
       modelsRef.current.clear();
       editorRef.current = null;
       decorationsRef.current = null;
+      accessRef.current = null;
       hunkGlyphsRef.current = null;
     };
   }, []);
@@ -411,6 +434,60 @@ export default function CodeEditor({
       })),
     );
   }, [hunks, path]);
+
+  /**
+   * Mark the lines the agent read or wrote.
+   *
+   * A gutter stripe and a faint wash rather than anything stronger: this sits
+   * on top of the diff colours, and a read of a file the turn also changed must
+   * not obscure what changed about it.
+   *
+   * A range whose `end` is null ran to the end of the file *at the time*, so it
+   * is clamped to the model's current length — the same clamp the diff
+   * decorations need, and for the same reason: an out-of-range decoration is a
+   * thrown error in Monaco.
+   */
+  useEffect(() => {
+    const editor = editorRef.current;
+    const collection = accessRef.current;
+    const model = editor?.getModel();
+    if (!editor || !collection || !model) return;
+
+    if (!access || access.ranges.length === 0) {
+      collection.set([]);
+      return;
+    }
+
+    const lineCount = model.getLineCount();
+    const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
+    const className =
+      access.kind === "write"
+        ? "semla-access-write-line"
+        : "semla-access-read-line";
+    const hover = access.inferred
+      ? `${access.kind === "write" ? "Written" : "Read"} by the agent — inferred from a shell command`
+      : `${access.kind === "write" ? "Written" : "Read"} by the agent`;
+
+    collection.set(
+      access.ranges.map((range) => ({
+        options: {
+          className,
+          hoverMessage: { value: hover },
+          isWholeLine: true,
+          linesDecorationsClassName:
+            access.kind === "write"
+              ? "semla-access-write-gutter"
+              : "semla-access-read-gutter",
+        },
+        range: new monaco.Range(
+          clamp(range.start),
+          1,
+          clamp(range.end ?? lineCount),
+          model.getLineMaxColumn(clamp(range.end ?? lineCount)),
+        ),
+      })),
+    );
+  }, [access, path]);
 
   // A button in the gutter of every hunk this diff can stage or unstage on
   // its own — see review-hunk-bracket-widgets.ts for why this is a real

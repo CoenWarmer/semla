@@ -13,6 +13,16 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
 import { retainBackgroundSession } from "@/lib/pi/background-sessions";
+import { accessesFromToolCall } from "@/lib/pi/file-access/access-from-tool-call";
+import {
+  existenceCache,
+  toFileAccess,
+} from "@/lib/pi/file-access/access-paths";
+import {
+  MAIN_AGENT,
+  workspaceForSession,
+} from "@/lib/pi/file-access/access-timeline";
+import { LIVE_TURN_ID } from "@/lib/pi/file-access/access-types";
 import { detach, sessionLog } from "@/lib/pi/session-log";
 import {
   asWorkflowSnapshot,
@@ -110,6 +120,29 @@ export const createTurnEventRouter = ({
   // attach the project it aimed at.
   const pendingWrittenPaths = new Map<string, string>();
 
+  /**
+   * Each in-flight call's arguments, for the file-access derivation.
+   *
+   * The same bridging problem as `pendingWrittenPaths`, for a different reason:
+   * arguments arrive on the start event, `details` on the end, and a `read`'s
+   * offset and an `edit`'s changed line are one each.
+   */
+  const pendingArgs = new Map<string, unknown>();
+
+  /**
+   * Where a live access's path resolves.
+   *
+   * `agentCwd` comes from the turn rather than from `workspaceForSession`'s own
+   * derivation of it, so a live access and its persisted twin cannot disagree
+   * about what a relative path meant — the turn's is the one the agent actually
+   * ran in.
+   */
+  const accessWorkspace = {
+    ...workspaceForSession(semlaSessionId),
+    agentCwd,
+  };
+  const accessExists = existenceCache();
+
   // Which assistant round trip is currently streaming. A turn is not one
   // model reply — `message_start`/`message_end` bracket each round trip the
   // model makes (text, then a tool call, then more text, ...), and each
@@ -192,6 +225,11 @@ export const createTurnEventRouter = ({
     // Held until the call ends, because only the end says whether it worked.
     const written = writtenPath(event.toolName, event.args);
     if (written) pendingWrittenPaths.set(event.toolCallId, written);
+
+    // Held for the same reason the file-access derivation runs at tool end:
+    // the arguments are only on the start event and the `details` only on the
+    // end, and both are needed to say which lines were touched.
+    pendingArgs.set(event.toolCallId, event.args);
   };
 
   const onToolEnd = (
@@ -239,6 +277,63 @@ export const createTurnEventRouter = ({
             () => setSessionRepos(piRuntimeSessionId, turnRepoSlugs()),
           ),
         );
+      }
+    }
+
+    /**
+     * What this call read or wrote, for the review panel's follow mode.
+     *
+     * Only on success: a failed `read` opened nothing, and following the agent
+     * onto a path it could not open is worse than not following it.
+     *
+     * Detached from correctness — a derivation that throws must not fail the
+     * turn — but not detached in time: it is emitted on the same event as
+     * `tool-end`, so the panel learns about a read at the moment it happened
+     * rather than at the end of the turn.
+     */
+    const args = pendingArgs.get(event.toolCallId);
+    pendingArgs.delete(event.toolCallId);
+    if (!isError) {
+      try {
+        const raw = accessesFromToolCall({
+          arguments: args,
+          details: (event.result as { details?: unknown } | null | undefined)
+            ?.details,
+          id: event.toolCallId,
+          name: event.toolName,
+        });
+
+        if (raw.length > 0) {
+          emit({
+            accesses: raw.map((access, index) =>
+              toFileAccess(
+                access,
+                {
+                  agent: MAIN_AGENT,
+                  at: new Date().toISOString(),
+                  id:
+                    raw.length > 1
+                      ? `${event.toolCallId}#${index}`
+                      : event.toolCallId,
+                  turnId: LIVE_TURN_ID,
+                },
+                accessWorkspace,
+                accessExists,
+              ),
+            ),
+            type: "file-access",
+          });
+        }
+      } catch (error) {
+        // The shell parser runs over whatever the model typed and the
+        // resolution step touches the filesystem, so neither is guaranteed
+        // total. Losing a scrubber stop is a cosmetic failure; losing the turn
+        // that produced it is not, and the history endpoint re-derives all of
+        // this from disk once the entry is persisted.
+        sessionLog(semlaSessionId, "file-access derivation failed", {
+          error: error instanceof Error ? error.message : String(error),
+          tool: event.toolName,
+        });
       }
     }
 

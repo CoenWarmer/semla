@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldOpenReview } from "./review-open.ts";
+import {
+  openingWrite,
+  shouldFollowOpen,
+  shouldOpenReview,
+} from "./review-open.ts";
+import type { FileAccess } from "./pi/file-access/access-types.ts";
 import type { ProjectReview, SessionReview } from "./review-types.ts";
 
 const project = (overrides: Partial<ProjectReview> = {}): ProjectReview => ({
@@ -176,6 +181,95 @@ describe("shouldOpenReview across the start of a new turn", () => {
         manuallyOpened: true,
         review: review({ changedThisTurn: false }),
         sessionRunning: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+const access = (overrides: Partial<FileAccess> = {}): FileAccess => ({
+  agent: { id: "main", label: "Main" },
+  at: "2026-01-01T10:00:00.000Z",
+  confidence: "exact",
+  id: "call-1",
+  kind: "write",
+  missing: false,
+  path: "src/a.ts",
+  project: "semla",
+  ranges: [],
+  tool: "edit",
+  turnId: "u1",
+  ...overrides,
+});
+
+describe("openingWrite", () => {
+  it("ignores reads, which are most of what an agent does", () => {
+    // Forty reads to answer a question changed nothing. A panel appearing for
+    // each would be closed once and never read again.
+    expect(
+      openingWrite([access({ kind: "read" }), access({ kind: "read" })]),
+    ).toBeNull();
+  });
+
+  it("takes the newest write", () => {
+    expect(
+      openingWrite([
+        access({ id: "first" }),
+        access({ kind: "read", id: "between" }),
+        access({ id: "last" }),
+      ])?.id,
+    ).toBe("last");
+  });
+
+  it("skips a write the panel could not show, rather than stopping there", () => {
+    // Agents write to /tmp and to files outside every linked project. Treating
+    // one as the newest write would open the panel on nothing.
+    expect(
+      openingWrite([
+        access({ id: "openable" }),
+        access({ id: "outside", project: null }),
+        access({ id: "deleted", missing: true }),
+      ])?.id,
+    ).toBe("openable");
+  });
+});
+
+describe("shouldFollowOpen", () => {
+  it("opens on a write while following", () => {
+    expect(
+      shouldFollowOpen({
+        dismissedId: null,
+        followMode: true,
+        write: access(),
+      }),
+    ).toBe(true);
+  });
+
+  it("stays shut with following off", () => {
+    expect(
+      shouldFollowOpen({ dismissedId: null, followMode: false, write: access() }),
+    ).toBe(false);
+  });
+
+  // Otherwise the agent's next edit reopens what the operator just closed, and
+  // the close button does nothing.
+  it("does not reopen on the write it was closed on", () => {
+    expect(
+      shouldFollowOpen({
+        dismissedId: "call-1",
+        followMode: true,
+        write: access({ id: "call-1" }),
+      }),
+    ).toBe(false);
+  });
+
+  // A boolean would not do: a later edit is a genuinely new event, and the
+  // operator closing one panel is not a statement about the next one.
+  it("opens again on a later write", () => {
+    expect(
+      shouldFollowOpen({
+        dismissedId: "call-1",
+        followMode: true,
+        write: access({ id: "call-2" }),
       }),
     ).toBe(true);
   });

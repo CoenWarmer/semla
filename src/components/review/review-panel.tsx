@@ -11,10 +11,15 @@
  */
 
 import { XIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useFileAccess } from "@/hooks/use-file-access";
+import {
+  revealLineFor,
+  type AccessStep,
+} from "@/lib/pi/file-access/access-sequence";
 import {
   useCommitReview,
   useReview,
@@ -22,8 +27,14 @@ import {
   useStageHunks,
   workspacePath,
 } from "@/hooks/use-review";
+import {
+  followModeEnabled,
+  useUpdateFollowMode,
+  useUserSettings,
+} from "@/hooks/use-user-settings";
 import { isEmptyReview, totalChangedFiles } from "@/lib/review-types";
 import type { SessionReview } from "@/lib/review-types";
+import { useSessionLiveAccesses } from "@/lib/session-live-state";
 import { cn } from "@/lib/utils";
 
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
@@ -32,7 +43,13 @@ import { ReviewCommitNav } from "./review-commit-nav";
 import { ReviewEditorPane } from "./review-editor-pane";
 import { selectionForWorkspacePath } from "./review-definition-target";
 import { ReviewFileTree } from "./review-file-tree";
-import { initialReveal, type Reveal } from "./review-initial-reveal";
+import {
+  activeRequest,
+  nextReveal,
+  type PanelRequest,
+  type PanelTarget,
+} from "./review-panel-request";
+import { ReviewScrubber } from "./review-scrubber";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -63,40 +80,14 @@ function defaultSelection(
 }
 
 export function ReviewPanel({
-  initialTarget,
+  leafId,
   onClose,
   onExplain,
   sessionId,
+  target,
 }: {
-  /**
-   * Open on this file and line rather than the anchor project's first change.
-   *
-   * Consulted only for the panel's *initial* state — see the `key` this is
-   * meant to be paired with on the caller's side (`ClientSessionComponent`),
-   * which remounts the panel when a new target arrives so this is read again
-   * rather than only once ever. Reading it in an effect instead would mean
-   * setting state from that effect, which is the `react/set-state-in-effect`
-   * error this repository treats as fatal.
-   */
-  initialTarget?: {
-    project: string;
-    path: string;
-    /**
-     * Absent when the caller named a file but no line in it — see
-     * `ElementTarget.line`. The panel then asks for no reveal at all, so the
-     * editor opens on the file's first hunk rather than being scrolled to
-     * the top.
-     */
-    line?: number;
-    /**
-     * Whether `line` is the exact clicked position, or only the nearest
-     * resolvable component's own declaration line. `"component"` is shown
-     * as a notice rather than presented as if the panel scrolled to the
-     * exact spot clicked — see `LocatedElement` in `element-locator.ts` for
-     * why the element picker sometimes cannot do better than that.
-     */
-    precision?: "exact" | "component";
-  } | null;
+  /** The branch being viewed, so the scrubber describes the same conversation. */
+  leafId?: string | null;
   onClose: () => void;
   /**
    * Ask the agent something. Routed up rather than handled here: the session
@@ -105,25 +96,31 @@ export function ReviewPanel({
    */
   onExplain: (prompt: string) => void;
   sessionId: string;
+  /**
+   * Open on this file and line rather than the anchor project's first change.
+   *
+   * Read on every render, not just on mount: the panel is a controlled
+   * component now, because the scrubber changes the target several times a
+   * second and the remount this used to require would throw away drafts, the
+   * hunk accordion and the commit message each time. The precedence between
+   * this and the panel's own navigation lives in review-panel-request.ts.
+   */
+  target?: PanelTarget | null;
 }) {
   const review = useReview(sessionId);
 
-  const [chosen, setChosen] = useState<FileSelection | null>(() =>
-    initialTarget
-      ? { path: initialTarget.path, project: initialTarget.project }
-      : null,
-  );
   /**
-   * The one changed file whose hunks are folded open, or null when none is.
-   * Accordion, not independent per row: opening one closes whatever was open
-   * before it, so the sidebar never has to scroll past several expanded
-   * hunk lists to find the next file.
+   * Where the panel has navigated itself — a sidebar click, a scrubber step.
+   *
+   * Stale by construction once a newer `target` arrives, which is what removes
+   * the need to sync the prop into state from an effect.
    */
-  const [expanded, setExpanded] = useState<FileSelection | null>(() =>
-    initialTarget
-      ? { path: initialTarget.path, project: initialTarget.project }
-      : null,
+  const [ownRequest, setOwnRequest] = useState<PanelRequest | null>(null);
+  const chosenRequest = useMemo(
+    () => activeRequest(ownRequest, target),
+    [ownRequest, target],
   );
+
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(
     null,
   );
@@ -132,23 +129,28 @@ export function ReviewPanel({
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
     null,
   );
+
   /**
-   * A line for the editor to scroll to.
+   * Navigate the panel, starting from whatever it is showing now.
    *
-   * Owned here rather than in the pane because two things ask for it: a hunk
-   * row, and a content-search hit in the sidebar — and the second also changes
-   * which file is open, so the request has to outlive the pane it lands in.
+   * Stamping `overNonce` here rather than at each call site is what keeps the
+   * precedence rule in one place: every self-made request is automatically
+   * marked as having been made against the current external target.
    */
-  const [reveal, setReveal] = useState<Reveal | null>(() =>
-    initialReveal(initialTarget),
+  const revise = useCallback(
+    (change: (base: PanelRequest) => Partial<PanelRequest>) =>
+      setOwnRequest((previous) => {
+        const base = activeRequest(previous, target);
+        return { ...base, ...change(base), overNonce: target?.nonce ?? 0 };
+      }),
+    [target],
   );
 
   // The counter is what makes asking for the same line twice two requests
   // rather than one unchanged prop.
   const revealLine = useCallback(
-    (line: number) =>
-      setReveal((previous) => ({ line, nonce: (previous?.nonce ?? 0) + 1 })),
-    [],
+    (line: number) => revise((base) => ({ reveal: nextReveal(base, line) })),
+    [revise],
   );
 
   const stage = useStageHunks(sessionId);
@@ -159,10 +161,20 @@ export function ReviewPanel({
   // sidebar — one click, not two. A null selection (the project-tab switch
   // when a project has no changed files) closes the accordion too, since
   // there is nothing left to have open.
-  const selectFile = useCallback((next: FileSelection | null) => {
-    setChosen(next);
-    setExpanded(next);
-  }, []);
+  //
+  // The agent's read highlight is dropped: it described the file the scrubber
+  // was on, and leaving it behind would mark lines of a file the agent may
+  // never have opened.
+  const selectFile = useCallback(
+    (next: FileSelection | null) =>
+      revise(() => ({
+        expanded: next,
+        highlight: null,
+        precision: null,
+        selection: next,
+      })),
+    [revise],
+  );
 
   /**
    * Open a workspace-relative path, which is how Go to Definition answers.
@@ -194,13 +206,151 @@ export function ReviewPanel({
         return;
       }
 
-      setChosen(next);
-      revealLine(line);
+      revise((base) => ({
+        highlight: null,
+        precision: null,
+        reveal: nextReveal(base, line),
+        selection: next,
+      }));
     },
-    [review.data?.projects, revealLine],
+    [review.data?.projects, revise],
   );
 
-  const selection = chosen ?? defaultSelection(review.data);
+  /**
+   * Following is a saved preference, unpinned for this panel by an arrow.
+   *
+   * Two pieces of state rather than one because they answer different
+   * questions. `followMode` is what the operator wants sessions to do and
+   * outlives the panel; `unpinned` is "I have stepped away from the agent for
+   * now", which must not rewrite that preference — an arrow press would
+   * otherwise turn following off everywhere, permanently.
+   */
+  const settings = useUserSettings().data;
+  const updateFollowMode = useUpdateFollowMode();
+  const [unpinned, setUnpinned] = useState(false);
+  const following = !unpinned && followModeEnabled(settings);
+
+  /**
+   * Open a stop from the scrubber.
+   *
+   * Does not fold the hunk accordion open, for the same reason a definition
+   * target does not: most files the agent *read* have no hunks, and expanding
+   * an empty list reads as the sidebar losing the row it had.
+   */
+  const openStep = useCallback(
+    (step: AccessStep) => {
+      // Stepping by hand is a statement that the operator wants to be
+      // somewhere specific, which is the opposite of following. It unpins for
+      // this panel only: an arrow press is not a change of preference, so the
+      // saved setting is left alone and the Follow button re-pins.
+      setUnpinned(true);
+      revise((base) => {
+        const line = revealLineFor(step);
+        return {
+          highlight: {
+            inferred: step.confidence === "inferred",
+            kind: step.kind,
+            ranges: step.ranges,
+          },
+          precision: null,
+          reveal: line === null ? null : nextReveal(base, line),
+          selection: { path: step.path, project: step.project },
+        };
+      });
+    },
+    [revise],
+  );
+
+  const fileAccess = useFileAccess(sessionId, leafId ?? null);
+  const liveAccesses = useSessionLiveAccesses(sessionId).data;
+
+  /**
+   * The most recent live access the panel can actually open.
+   *
+   * Walked backwards rather than taking the last one outright: the agent reads
+   * `node_modules` and deleted paths too, and following it onto one of those
+   * would blank the editor mid-turn. Holding on the last openable file is what
+   * "follow the agent" means in practice.
+   */
+  const followAccess = useMemo(() => {
+    if (!following || !liveAccesses) return null;
+
+    for (let index = liveAccesses.length - 1; index >= 0; index -= 1) {
+      const access = liveAccesses[index]!;
+      if (access.project !== null && !access.missing) return access;
+    }
+    return null;
+  }, [following, liveAccesses]);
+
+  /**
+   * Following is a mode, not a copy of state.
+   *
+   * The displayed file is *derived* from the newest live access while it is on,
+   * so nothing has to push a target into state as events arrive —
+   * `react/set-state-in-effect` is an error here, and a synced copy would be a
+   * second source of truth for which file is open.
+   */
+  const followRequest = useMemo((): PanelRequest | null => {
+    if (!followAccess) return null;
+
+    const first = followAccess.ranges[0];
+    return {
+      expanded: null,
+      highlight: {
+        inferred: followAccess.confidence === "inferred",
+        kind: followAccess.kind,
+        ranges: followAccess.ranges,
+      },
+      // A follow request is not made "against" any target; it outranks both.
+      overNonce: -1,
+      precision: null,
+      // The object's identity is what makes the editor scroll, so a memo keyed
+      // on the access is enough — the number itself only has to be a line.
+      reveal: first ? { line: first.start, nonce: first.start } : null,
+      selection: {
+        path: followAccess.path,
+        project: followAccess.project!,
+      },
+    };
+  }, [followAccess]);
+
+  /**
+   * Turning follow off leaves the panel where the agent left it.
+   *
+   * Without this the derived follow request stops applying and the editor jumps
+   * back to whatever was open before, which reads as the panel losing the file
+   * the operator was just watching.
+   */
+  const changeFollowing = useCallback(
+    (next: boolean) => {
+      if (!next && followRequest) {
+        revise(() => ({
+          highlight: followRequest.highlight,
+          precision: null,
+          reveal: followRequest.reveal,
+          selection: followRequest.selection,
+        }));
+      }
+
+      // The button, unlike an arrow, is the operator stating a preference, so
+      // it is saved. Clearing `unpinned` is what makes it re-pin after a step.
+      setUnpinned(false);
+      updateFollowMode.mutate(next);
+    },
+    [followRequest, revise, updateFollowMode],
+  );
+
+  // Following outranks everything: it is a mode the operator switched on, and
+  // while it is on the panel's job is to be wherever the agent is.
+  const request = followRequest ?? chosenRequest;
+
+  const { expanded, highlight, reveal } = request;
+  const selection = request.selection ?? defaultSelection(review.data);
+
+  const accesses = useMemo(
+    () => [...(fileAccess.data?.accesses ?? []), ...(liveAccesses ?? [])],
+    [fileAccess.data?.accesses, liveAccesses],
+  );
   const projects = review.data?.projects ?? [];
   const activeProject =
     projects.find((project) => project.path === selection?.project) ??
@@ -367,7 +517,19 @@ export function ReviewPanel({
         </div>
       </header>
 
-      {initialTarget?.precision === "component" && (
+      {accesses.length > 0 ? (
+        <ReviewScrubber
+          accesses={accesses}
+          agents={fileAccess.data?.agents ?? []}
+          following={following}
+          onFollowingChange={changeFollowing}
+          onStep={openStep}
+          selection={selection}
+          turns={fileAccess.data?.turns ?? []}
+        />
+      ) : null}
+
+      {request.precision === "component" && (
         <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
           <span className="text-xs text-muted-foreground">
             Opened on the nearest component Semla could resolve — not
@@ -400,13 +562,16 @@ export function ReviewPanel({
                     // Toggle: clicking the already-expanded file's row
                     // closes it again rather than being a no-op, since it
                     // is already the open editor selection.
-                    setExpanded((previous) =>
-                      previous?.project === next.project &&
-                      previous.path === next.path
-                        ? null
-                        : next,
-                    );
-                    setChosen(next);
+                    revise((base) => ({
+                      expanded:
+                        base.expanded?.project === next.project &&
+                        base.expanded.path === next.path
+                          ? null
+                          : next,
+                      highlight: null,
+                      precision: null,
+                      selection: next,
+                    }));
                   }}
                   onStage={onStage}
                   projects={
@@ -463,6 +628,16 @@ export function ReviewPanel({
         <main className="min-w-0 flex-1">
           {selection ? (
             <ReviewEditorPane
+              access={
+                // Only while the highlight describes the file on screen: the
+                // operator can move off a scrubber stop with the sidebar, and
+                // the marks must not follow them onto another file.
+                highlight &&
+                request.selection?.path === selection.path &&
+                request.selection.project === selection.project
+                  ? highlight
+                  : null
+              }
               busy={busy}
               draft={drafts[draftKey(selection)] ?? null}
               onExplain={onExplain}

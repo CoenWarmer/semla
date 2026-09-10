@@ -82,6 +82,19 @@ export function readAllSessionEntries(
   return parseSessionFile(sessionFilePath(semlaSessionId, dir));
 }
 
+/**
+ * The same parse, for a file addressed by path rather than by session id.
+ *
+ * Workflow subagents write real pi session files under pi's own
+ * `<timestamp>_<id>.jsonl` naming, so they are readable by exactly this parser
+ * but not nameable by session id. See workflow-agent-transcript.ts.
+ */
+export function readSessionEntriesFromPath(
+  path: string,
+): SessionFileEntry[] | null {
+  return parseSessionFile(path);
+}
+
 function parseSessionFile(path: string): SessionFileEntry[] | null {
   try {
     if (statSync(path).size === 0) return null;

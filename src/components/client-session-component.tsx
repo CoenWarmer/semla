@@ -9,7 +9,12 @@ import {
 } from "@/hooks/use-session-messages";
 import { mergeToolCalls } from "@/lib/live-tool-calls";
 import { liveRoundMessages } from "@/lib/live-rounds";
-import { shouldOpenReview } from "@/lib/review-open";
+import {
+  openingWrite,
+  shouldFollowOpen,
+  shouldOpenReview,
+} from "@/lib/review-open";
+import { followModeEnabled, useUserSettings } from "@/hooks/use-user-settings";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,
@@ -21,6 +26,7 @@ import {
   sessionRunningKey,
   sessionWorkflowComputedSnapshotKey,
   useSessionAgentSelection,
+  useSessionLiveAccesses,
   useSessionPendingScroll,
 } from "@/lib/session-live-state";
 import type { WorkflowSnapshot } from "@/types/workflow";
@@ -391,6 +397,21 @@ export function ClientSessionComponent({
    */
   const elementTarget = useElementTarget();
 
+  /**
+   * The live write that may put the panel on screen, and the one already
+   * dismissed.
+   *
+   * Held here rather than in the panel because the panel does not exist while
+   * it is closed, which is precisely the state this decides.
+   */
+  const userSettings = useUserSettings();
+  const liveAccesses = useSessionLiveAccesses(sessionId).data;
+  const [dismissedWriteId, setDismissedWriteId] = useState<string | null>(null);
+  const followWrite = useMemo(
+    () => openingWrite(liveAccesses ?? []),
+    [liveAccesses],
+  );
+
   // Derived, never set from an effect. `react/set-state-in-effect` is an
   // error in this repository, and the panel is genuinely open *because of* the
   // state rather than because something once happened to it. A picked element
@@ -401,7 +422,13 @@ export function ClientSessionComponent({
       manuallyOpened: reviewManuallyOpened,
       review: reviewQuery.data,
       sessionRunning: isActive,
-    }) || elementTarget.target !== null;
+    }) ||
+    elementTarget.target !== null ||
+    shouldFollowOpen({
+      dismissedId: dismissedWriteId,
+      followMode: followModeEnabled(userSettings.data),
+      write: followWrite,
+    });
 
   // Closing is also dismissing. Without recording the state as seen, the next
   // refetch would find it unreviewed and open the panel straight back up.
@@ -418,9 +445,18 @@ export function ClientSessionComponent({
   const closeReview = useCallback(() => {
     setReviewManuallyOpened(false);
     elementTarget.clear();
+    // Closing a follow-opened panel mid-turn has to stick, or the agent's next
+    // edit reopens it and the close button is useless. Recording the write
+    // rather than a flag is what still lets a *later* edit open it again.
+    setDismissedWriteId(followWrite?.id ?? null);
     const seen = reviewQuery.data?.fingerprint;
     if (seen) dismissReviewMutate(seen);
-  }, [dismissReviewMutate, elementTarget, reviewQuery.data?.fingerprint]);
+  }, [
+    dismissReviewMutate,
+    elementTarget,
+    followWrite?.id,
+    reviewQuery.data?.fingerprint,
+  ]);
   const agentSelection = useSessionAgentSelection(sessionId);
   const selectedAgent = agentSelection.data;
 
@@ -750,16 +786,16 @@ export function ClientSessionComponent({
               defaultSize={45}
               minSize={20}
             >
+              {/* No remount key: the panel is controlled, and remounting it
+                  for each new pick would discard unsaved drafts, the hunk
+                  accordion and the commit message — which the scrubber, which
+                  retargets several times a second, would do constantly. */}
               <ReviewPanel
-                // Remounts the panel for each new pick, which is what makes
-                // `initialTarget` apply again — see its doc comment on
-                // ReviewPanel. A plain open/close toggle has no such key
-                // because there is only ever one "open" to render.
-                key={elementTarget.target?.nonce ?? "manual"}
-                initialTarget={elementTarget.target}
+                leafId={viewingLeafId}
                 onClose={closeReview}
                 onExplain={handleExplain}
                 sessionId={sessionId}
+                target={elementTarget.target}
               />
             </ResizablePanel>
             <ResizableHandle withHandle />

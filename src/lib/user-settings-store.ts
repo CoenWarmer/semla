@@ -21,12 +21,23 @@ export const SEMLA_STATE_DIR =
 export interface UserSettings {
   defaultModelId: string | null;
   defaultModelProvider: string | null;
+  /**
+   * Whether the review panel follows the agent's reads and writes.
+   *
+   * `null` means on. Unlike its two neighbours this one has no Postgres
+   * column and is deliberately not mirrored: nothing server-side reads it, so
+   * a mirror would be a migration bought for a preference that only decides
+   * where one panel scrolls. The disk copy is the only copy, which is also the
+   * copy the other two settings are read from first.
+   */
+  followMode: boolean | null;
   systemPrompt: string | null;
 }
 
 const EMPTY: UserSettings = {
   defaultModelId: null,
   defaultModelProvider: null,
+  followMode: null,
   systemPrompt: null,
 };
 

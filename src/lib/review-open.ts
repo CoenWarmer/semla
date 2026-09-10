@@ -12,6 +12,7 @@
  * dismissed reflexively and stops being read at all.
  */
 
+import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import { isEmptyReview, type SessionReview } from "@/lib/review-types";
 
 export interface ReviewOpenInput {
@@ -45,4 +46,57 @@ export function shouldOpenReview({
   if (isEmptyReview(review)) return false;
 
   return review.changedThisTurn;
+}
+
+/**
+ * The newest live access that may open a closed panel, or null.
+ *
+ * Only a write qualifies. Reads are the overwhelming majority of what an agent
+ * does — a turn that opens forty files to answer a question changed nothing,
+ * and a panel that appeared for each of them would be closed once and never
+ * read again. Reads still *navigate* a panel that is already open, which is
+ * where following earns its keep.
+ *
+ * This is a deliberate exception to the argument in `shouldOpenReview`'s
+ * docblock above, that a mid-turn panel describes a tree the agent is still
+ * writing to. That is true and the operator overruled it for writes: watching
+ * the edit land is the point. Do not "fix" this back — `sessionRunning` still
+ * guards the automatic open, and this disjunct is the only way past it.
+ *
+ * Unopenable writes are skipped rather than stopping the search: the agent
+ * writes to `/tmp` and to files outside every linked project, and neither can
+ * be shown here, so treating one as the newest write would open an empty panel.
+ */
+export function openingWrite(
+  accesses: readonly FileAccess[],
+): FileAccess | null {
+  for (let index = accesses.length - 1; index >= 0; index -= 1) {
+    const access = accesses[index]!;
+    if (access.kind === "write" && access.project !== null && !access.missing) {
+      return access;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether a live write should have the panel on screen.
+ *
+ * `dismissedId` is the access the operator last closed the panel on, not a
+ * boolean: a later write is a genuinely new event and should open the panel
+ * again, while the one already dismissed must not reopen on the next refetch.
+ * Tool call ids are unique across turns, so this survives the live-access list
+ * being cleared when a turn ends.
+ */
+export function shouldFollowOpen({
+  dismissedId,
+  followMode,
+  write,
+}: {
+  dismissedId: string | null;
+  followMode: boolean;
+  write: FileAccess | null;
+}): boolean {
+  if (!followMode || !write) return false;
+  return write.id !== dismissedId;
 }

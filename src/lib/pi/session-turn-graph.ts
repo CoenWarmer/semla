@@ -96,8 +96,14 @@ export type TurnGraph = {
   truncated: boolean;
 };
 
-/** Synthetic id for entries preceding the first user message, if any exist. */
-const ROOT_TURN_ID = "\u2039root\u203a";
+/**
+ * Synthetic id for entries preceding the first user message, if any exist.
+ *
+ * Exported because the file-access timeline scopes accesses by the same turn
+ * id, and a second spelling of the synthetic root would silently orphan every
+ * access made before the first prompt.
+ */
+export const ROOT_TURN_ID = "\u2039root\u203a";
 
 const isUserMessage = (entry: SessionFileEntry): boolean =>
   entry.type === "message" &&

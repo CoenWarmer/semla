@@ -32,6 +32,7 @@ import { ReviewCodeMap } from "./review-code-map";
 
 import type { FileSelection } from "./review-changed-files";
 import { ReviewEditor } from "./review-editor";
+import type { AccessHighlight } from "./review-panel-request";
 
 /** A message pane, for the cases where there is no file to open. */
 function Notice({ children }: { children: React.ReactNode }) {
@@ -43,6 +44,7 @@ function Notice({ children }: { children: React.ReactNode }) {
 }
 
 export function ReviewEditorPane({
+  access,
   busy,
   draft,
   onDraftChange,
@@ -54,6 +56,14 @@ export function ReviewEditorPane({
   selection,
   sessionId,
 }: {
+  /**
+   * The lines the agent read or wrote in this file, from the scrubber.
+   *
+   * Passed straight through. The pane does not interpret it — the decision of
+   * which stop is showing belongs to the panel, and this is only the editor's
+   * route to it.
+   */
+  access: AccessHighlight | null;
   busy: boolean;
   /** The operator's unsaved content for this file, or null if untouched. */
   draft: string | null;
@@ -347,6 +357,7 @@ export function ReviewEditorPane({
         ) : null}
 
         <ReviewEditor
+          access={access}
           definition={definition}
           hunks={hunks.data?.full?.hunks ?? []}
           onChange={(next) => onDraftChange(next, next !== onDisk)}

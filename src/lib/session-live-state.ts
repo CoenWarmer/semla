@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 import type { LiveRound } from "@/lib/live-rounds";
 import type { CodeMap } from "@/lib/code-map/types";
+import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 export const sessionWorkflowSnapshotKey = (sessionId: string) =>
@@ -31,6 +32,17 @@ export const sessionRunningKey = (sessionId: string) =>
 
 export const sessionCodeMapKey = (sessionId: string) =>
   ["session-code-map", sessionId] as const;
+
+/**
+ * Files the running turn has read or written, as the events arrive.
+ *
+ * Kept apart from the history endpoint's timeline rather than merged into it:
+ * these are attributed to `LIVE_TURN_ID` because the entries they describe are
+ * not persisted yet, and writing them into the fetched timeline would leave the
+ * cache holding records whose turn ids never resolve.
+ */
+export const sessionLiveAccessesKey = (sessionId: string) =>
+  ["session-live-accesses", sessionId] as const;
 
 export const sessionActiveToolKey = (sessionId: string) =>
   ["session-active-tool", sessionId] as const;
@@ -75,6 +87,14 @@ export const useSessionCodeMap = (sessionId: string) =>
     enabled: !!sessionId,
     queryKey: sessionCodeMapKey(sessionId),
     queryFn: (): CodeMap | null => null,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+export const useSessionLiveAccesses = (sessionId: string) =>
+  useQuery({
+    enabled: !!sessionId,
+    queryKey: sessionLiveAccessesKey(sessionId),
+    queryFn: (): FileAccess[] => [],
     staleTime: Number.POSITIVE_INFINITY,
   });
 

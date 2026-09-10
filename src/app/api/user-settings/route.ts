@@ -5,10 +5,17 @@ import {
   type UserSettings,
 } from "@/lib/user-settings-store";
 
-/** The column names the settings UI already expects. */
+/**
+ * The column names the settings UI already expects.
+ *
+ * `follow_mode` is not one of them — it has no Postgres column, so it rides
+ * along only on the disk-backed answer. A client reading the database fallback
+ * sees it absent, which `followModeEnabled` reads as the default.
+ */
 const toRow = (settings: UserSettings) => ({
   default_model_id: settings.defaultModelId,
   default_model_provider: settings.defaultModelProvider,
+  follow_mode: settings.followMode,
   system_prompt: settings.systemPrompt,
 });
 
@@ -35,15 +42,19 @@ export async function GET() {
       throw error;
     }
 
-    if (data) {
-      writeUserSettings(user.id, {
-        defaultModelId: data.default_model_id,
-        defaultModelProvider: data.default_model_provider,
-        systemPrompt: data.system_prompt,
-      });
-    }
+    if (!data) return Response.json({ settings: null });
 
-    return Response.json({ settings: data });
+    // Answered from the record just seeded rather than from `data`, so the
+    // response carries `follow_mode` — a column the select cannot name.
+    return Response.json({
+      settings: toRow(
+        writeUserSettings(user.id, {
+          defaultModelId: data.default_model_id,
+          defaultModelProvider: data.default_model_provider,
+          systemPrompt: data.system_prompt,
+        }),
+      ),
+    });
   } catch (error) {
     return handleRouteError(error, "Unable to load user settings.");
   }
@@ -53,14 +64,16 @@ export async function PUT(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     defaultModelId?: unknown;
     defaultModelProvider?: unknown;
+    followMode?: unknown;
     systemPrompt?: unknown;
   } | null;
 
   const hasModel =
     body?.defaultModelId !== undefined || body?.defaultModelProvider !== undefined;
   const hasSystemPrompt = body?.systemPrompt !== undefined;
+  const hasFollowMode = typeof body?.followMode === "boolean";
 
-  if (!hasModel && !hasSystemPrompt) {
+  if (!hasModel && !hasSystemPrompt && !hasFollowMode) {
     return Response.json({ error: "Nothing to update." }, { status: 400 });
   }
 
@@ -88,8 +101,16 @@ export async function PUT(request: Request) {
       ...(hasModel
         ? { defaultModelId: defaultModelId as string, defaultModelProvider: defaultModelProvider as string }
         : {}),
+      ...(hasFollowMode ? { followMode: body?.followMode as boolean } : {}),
       ...(hasSystemPrompt ? { systemPrompt: systemPrompt ?? null } : {}),
     });
+
+    // A follow-mode-only save has nothing to mirror, and an upsert naming no
+    // column but the key would touch `updated_at` for a field Postgres does
+    // not hold.
+    if (!hasModel && !hasSystemPrompt) {
+      return Response.json({ settings: toRow(saved) });
+    }
 
     const { data, error } = await supabase
       .from("user_settings")
@@ -115,7 +136,13 @@ export async function PUT(request: Request) {
       return Response.json({ settings: toRow(saved) });
     }
 
-    return Response.json({ settings: data });
+    // `data` is the mirror's echo and has no `follow_mode` column, so the
+    // field is taken from the disk write that is authoritative for it. Without
+    // this a model save would answer with it absent and reset the client's
+    // copy to the default.
+    return Response.json({
+      settings: { ...data, follow_mode: saved.followMode },
+    });
   } catch (error) {
     return handleRouteError(error, "Unable to save settings.");
   }

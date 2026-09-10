@@ -164,6 +164,42 @@ export function findAgentTranscript(
 }
 
 /**
+ * Every subagent transcript in a directory, by `session_info` name.
+ *
+ * `findAgentTranscript` is O(directory) per *miss*, and its cache only helps
+ * after a hit. A caller resolving a whole run's agents at once would pay that
+ * scan once per agent — this directory already holds two hundred transcripts,
+ * so eight agents is eight full passes and several megabytes of header probes.
+ * One pass answers all of them, and seeds the same cache so later single
+ * lookups are free.
+ */
+export function indexAgentTranscripts(
+  sessionDir: string = PI_SESSION_DIR,
+): Map<string, string> {
+  const index = new Map<string, string>();
+
+  let files: string[];
+  try {
+    files = readdirSync(sessionDir);
+  } catch {
+    return index;
+  }
+
+  for (const file of files) {
+    if (!file.endsWith(".jsonl")) continue;
+
+    const path = join(sessionDir, file);
+    const name = sessionNameOf(path);
+    if (!name) continue;
+
+    index.set(name, path);
+    pathCache.set(`${sessionDir}\u0000${name}`, path);
+  }
+
+  return index;
+}
+
+/**
  * Parse a persisted subagent transcript into the same entry shape the run
  * file's `history` uses.
  *

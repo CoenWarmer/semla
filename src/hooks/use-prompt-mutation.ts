@@ -39,9 +39,11 @@ import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
   sessionActiveToolKey,
   sessionCodeMapKey,
+  sessionLiveAccessesKey,
   sessionLiveRoundsKey,
   sessionLiveToolCallsKey,
   sessionWorkflowSnapshotKey,
@@ -89,6 +91,7 @@ type PiStreamEvent =
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
+  | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { title: string; type: "title-updated" }
   /** See session-events.ts — the wire shape this mirrors. */
@@ -118,6 +121,7 @@ type StreamHandlers = {
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
   onSpans: (spans: readonly RecordedSpan[]) => void;
   onCodeMap: (map: CodeMap) => void;
+  onFileAccess: (accesses: readonly FileAccess[]) => void;
   onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
   onTitleUpdated: (title: string) => void;
   onError: (message: string) => void;
@@ -201,6 +205,8 @@ const readPiStream = async (
         handlers.onWorkflowSnapshot(piEvent.snapshot);
       } else if (piEvent.type === "code-map") {
         handlers.onCodeMap(piEvent.map);
+      } else if (piEvent.type === "file-access") {
+        handlers.onFileAccess(piEvent.accesses);
       } else if (piEvent.type === "workflow-started") {
         handlers.onWorkflowStarted(piEvent);
       } else if (piEvent.type === "title-updated") {
@@ -446,6 +452,15 @@ export const usePromptMutation = (
       onCodeMap: (map) => {
         setCodeMap(map);
         queryClient.setQueryData(sessionCodeMapKey(sessionId), map);
+      },
+      onFileAccess: (accesses) => {
+        queryClient.setQueryData(
+          sessionLiveAccessesKey(sessionId),
+          (previous: FileAccess[] | undefined) => [
+            ...(previous ?? []),
+            ...accesses,
+          ],
+        );
       },
       onWorkflowStarted: (event) => {
         const snapshot: WorkflowSnapshot = {
@@ -776,6 +791,15 @@ export const usePromptMutation = (
       // the router, the persist queue and the recovery path must agree on.
       void queryClient.invalidateQueries({
         queryKey: reviewQueryKey(sessionId),
+      });
+
+      // The live accesses were attributed to `LIVE_TURN_ID` because nothing was
+      // persisted yet. Now it is, so the refetched timeline carries the same
+      // reads under their real turn — and keeping the live copies as well would
+      // show every file the turn touched twice.
+      queryClient.setQueryData(sessionLiveAccessesKey(sessionId), []);
+      void queryClient.invalidateQueries({
+        queryKey: ["file-access", sessionId],
       });
 
       setListRunning(false);

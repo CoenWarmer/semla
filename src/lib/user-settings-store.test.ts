@@ -53,6 +53,34 @@ describe("user settings on disk", () => {
     expect(readUserSettings(USER, d)!.systemPrompt).toBeNull();
   });
 
+  // Follow mode is saved from the review panel, the other two from the
+  // settings screen. It is also the one field with no Postgres column, so the
+  // disk record is the only thing standing between it and being lost.
+  it("merges follow mode without clearing the model or the prompt", () => {
+    const d = dir();
+    writeUserSettings(
+      USER,
+      { defaultModelId: "m", defaultModelProvider: "p", systemPrompt: "be terse" },
+      d,
+    );
+
+    writeUserSettings(USER, { followMode: false }, d);
+
+    const settings = readUserSettings(USER, d)!;
+    expect(settings.followMode).toBe(false);
+    expect(settings.defaultModelId).toBe("m");
+    expect(settings.systemPrompt).toBe("be terse");
+  });
+
+  // Which is what `followModeEnabled` reads as on, so a record written before
+  // the field existed follows the agent rather than sitting still.
+  it("leaves follow mode null for a record saved before it existed", () => {
+    const d = dir();
+    writeUserSettings(USER, { systemPrompt: "be terse" }, d);
+
+    expect(readUserSettings(USER, d)!.followMode).toBeNull();
+  });
+
   it("keeps users apart, so an exposed instance cannot leak a prompt", () => {
     const d = dir();
     writeUserSettings(USER, { systemPrompt: "mine" }, d);

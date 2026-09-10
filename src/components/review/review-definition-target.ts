@@ -14,40 +14,26 @@
  */
 
 import type { ProjectReview } from "@/lib/review-types";
+import { splitWorkspacePath } from "@/lib/workspace-path";
 
 import type { FileSelection } from "./review-changed-files";
 
 /**
  * Which project a workspace-relative path belongs to, and its path within it.
  *
- * Segment-wise rather than a string prefix: `semla` prefixes `semla-wiki`, and
- * a check that accepts a sibling repository because its name starts the same
- * way is not a check — the same rule `resolveInsideRoot` states on the server.
- *
- * The longest match wins, so a session that has both a monorepo and one of its
- * packages linked resolves to the package. Null when the path is in none of
- * them, which is an ordinary outcome: a definition can resolve into a
- * dependency outside every linked project.
+ * The rule itself lives in `workspace-path.ts` because the file-access timeline
+ * resolves the same question on the server, and two implementations of "which
+ * project is this in" would eventually disagree — as a scrubber step that opens
+ * nothing. This adapts it to the panel's `ProjectReview[]`.
  */
 export function selectionForWorkspacePath(
   projects: readonly ProjectReview[],
   workspacePath: string,
 ): FileSelection | null {
-  let best: FileSelection | null = null;
-
-  for (const project of projects) {
-    const prefix = `${project.path}/`;
-    if (!workspacePath.startsWith(prefix)) continue;
-
-    const path = workspacePath.slice(prefix.length);
-    if (!path) continue;
-
-    if (!best || project.path.length > best.project.length) {
-      best = { path, project: project.path };
-    }
-  }
-
-  return best;
+  return splitWorkspacePath(
+    projects.map((project) => project.path),
+    workspacePath,
+  );
 }
 
 /**

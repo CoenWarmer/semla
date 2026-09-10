@@ -17,8 +17,9 @@
  * `/messages` and `/turn-graph`, both read by their panels on mount for the
  * same reason as `/status` and `/spans` — the session their first prompt
  * creates does not exist yet when the poll fires. Both are pure reads, scoped
- * by the same missing id, so there is nothing to leak and nothing to act on;
- * the six-entry list below is the current, not the original, set.
+ * by the same missing id, so there is nothing to leak and nothing to act on.
+ * `/file-access` joined them for the same reason. The list below is the
+ * current, not the original, set.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -120,6 +121,11 @@ describe("which handlers may allow a missing session", () => {
   it("is exactly the read-only polls a pending session makes", () => {
     expect([...tolerant].sort()).toEqual([
       "GET src/app/api/sessions/[id]/context-check/route.ts",
+      // The review panel's scrubber loads this on mount, and the panel opens
+      // during the first turn — so it is read before the session that turn
+      // creates exists. A pure read of one session's own transcript, scoped
+      // by the same missing id: nothing to leak, nothing to act on.
+      "GET src/app/api/sessions/[id]/file-access/route.ts",
       // Both added in 801cec3, disk-first session creation: a session
       // created by its own first prompt is polled by its page before that
       // prompt has finished creating it, so these must answer emptily

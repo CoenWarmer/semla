@@ -692,3 +692,103 @@ describe("model round trip spans", () => {
     );
   });
 });
+
+/**
+ * Derived here rather than on the client because the client cannot: `getParams`
+ * keeps only scalar arguments and `tool-end` carries no `details`, so an edit's
+ * changed line never reaches the browser. Deriving in two places would also let
+ * the follow mode and the history disagree about what the agent just did.
+ */
+describe("file access", () => {
+  const accessEvents = (emitted: PiSessionEvent[]) =>
+    emitted.filter((e) => e.type === "file-access");
+
+  it("reports what a read opened, with the lines it asked for", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(
+      toolStart({ args: { limit: 40, offset: 100, path: "src/a.ts" } }),
+    );
+    router.onSessionEvent(toolEnd());
+
+    const [reported] = accessEvents(emitted);
+    expect(reported?.accesses).toMatchObject([
+      {
+        confidence: "exact",
+        kind: "read",
+        ranges: [{ end: 139, start: 100 }],
+        tool: "read",
+      },
+    ]);
+  });
+
+  it("pairs the start event's arguments with the end event's details", () => {
+    // The whole reason this runs at tool *end*: the path is only on the start
+    // and `firstChangedLine` only on the end.
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(
+      toolStart({ args: { path: "src/a.ts" }, toolName: "edit" }),
+    );
+    router.onSessionEvent(
+      toolEnd({ result: { details: { firstChangedLine: 42 } }, toolName: "edit" }),
+    );
+
+    expect(accessEvents(emitted)[0]?.accesses).toMatchObject([
+      { kind: "write", ranges: [{ end: 42, start: 42 }] },
+    ]);
+  });
+
+  it("says nothing about a call that failed", () => {
+    // Following the agent onto a path it could not open is worse than not
+    // following it.
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(toolStart({ args: { path: "src/a.ts" } }));
+    router.onSessionEvent(toolEnd({ isError: true }));
+
+    expect(accessEvents(emitted)).toEqual([]);
+  });
+
+  it("says nothing about a tool that touches no file", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(
+      toolStart({ args: { slug: "x" }, toolName: "wiki_ensure_page" }),
+    );
+    router.onSessionEvent(toolEnd({ toolName: "wiki_ensure_page" }));
+
+    expect(accessEvents(emitted)).toEqual([]);
+  });
+
+  it("parses a shell command and marks what it found as inferred", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(
+      toolStart({
+        args: { command: "sed -n 10,20p src/a.ts" },
+        toolName: "bash",
+      }),
+    );
+    router.onSessionEvent(toolEnd({ toolName: "bash" }));
+
+    expect(accessEvents(emitted)[0]?.accesses).toMatchObject([
+      { confidence: "inferred", ranges: [{ end: 20, start: 10 }], tool: "bash" },
+    ]);
+  });
+
+  it("attributes live accesses to the live turn, since none is persisted yet", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(assistantMessageStart());
+    router.onSessionEvent(toolStart({ args: { path: "src/a.ts" } }));
+    router.onSessionEvent(toolEnd());
+
+    expect(accessEvents(emitted)[0]?.accesses[0]?.turnId).toBe("\u2039live\u203a");
+  });
+});

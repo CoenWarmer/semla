@@ -8,6 +8,7 @@
 
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 import type { CodeMap } from "@/lib/code-map/types";
+import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
   historyToTurns,
   stampLiveTimestamps,
@@ -51,6 +52,19 @@ export type PiSessionEvent =
       type: "tool-end";
     }
   | { map: CodeMap; type: "code-map" }
+  /**
+   * Files the tool that just finished read or wrote, for the review panel's
+   * follow mode.
+   *
+   * Derived on the server, at tool *end*, from the same extractor the history
+   * endpoint uses — not on the client from `tool-start`. The client cannot do
+   * it: `getParams` keeps only scalar arguments and `tool-end` carries no
+   * `details`, so an `edit`'s changed line and a `code_resolve`'s target never
+   * reach it. Deriving in two places would also let the live view and the
+   * history disagree about what the agent just did, which is the one thing a
+   * traceability surface must not do.
+   */
+  | { accesses: readonly FileAccess[]; type: "file-access" }
   | { runId: string; startedAt: string; type: "workflow-started" }
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   /**
