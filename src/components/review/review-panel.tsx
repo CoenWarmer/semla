@@ -517,157 +517,162 @@ export function ReviewPanel({
         </div>
       </header>
 
-      {accesses.length > 0 ? (
-        <ReviewScrubber
-          accesses={accesses}
-          agents={fileAccess.data?.agents ?? []}
-          following={following}
-          onFollowingChange={changeFollowing}
-          onStep={openStep}
-          selection={selection}
-          turns={fileAccess.data?.turns ?? []}
-        />
-      ) : null}
+      {/* The glow says the panel is being driven by the agent, which is worth
+          saying because the editor moving on its own is otherwise
+          indistinguishable from the panel losing the operator's place. */}
+      <div className={cn("flex h-full flex-col", following && "semla-following")}>
+        {accesses.length > 0 ? (
+          <ReviewScrubber
+            accesses={accesses}
+            agents={fileAccess.data?.agents ?? []}
+            following={following}
+            onFollowingChange={changeFollowing}
+            onStep={openStep}
+            selection={selection}
+            turns={fileAccess.data?.turns ?? []}
+          />
+        ) : null}
 
-      {request.precision === "component" && (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
-          <span className="text-xs text-muted-foreground">
-            Opened on the nearest component Semla could resolve — not
-            necessarily the exact line clicked.
-          </span>
-        </div>
-      )}
+        {request.precision === "component" && (
+          <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+            <span className="text-xs text-muted-foreground">
+              Opened on the nearest component Semla could resolve — not
+              necessarily the exact line clicked.
+            </span>
+          </div>
+        )}
 
-      <div className="flex min-h-0 flex-1">
-        <aside
-          className="flex shrink-0 flex-col border-r"
-          style={{ width: SIDEBAR_WIDTH }}
-        >
-          <ResizablePanelGroup orientation="vertical" className="h-full">
-            <ResizablePanel
-              defaultSize={15}
-              minSize={15}
-              className="overflow-y-auto py-2"
-            >
-              {review.isPending ? (
-                <div className="flex justify-center py-4">
-                  <Spinner />
-                </div>
-              ) : (
-                <ReviewChangedFiles
-                  busy={busy}
-                  expanded={expanded}
-                  onReveal={revealLine}
-                  onSelect={(next) => {
-                    // Toggle: clicking the already-expanded file's row
-                    // closes it again rather than being a no-op, since it
-                    // is already the open editor selection.
-                    revise((base) => ({
-                      expanded:
-                        base.expanded?.project === next.project &&
-                        base.expanded.path === next.path
-                          ? null
-                          : next,
-                      highlight: null,
-                      precision: null,
-                      selection: next,
-                    }));
-                  }}
-                  onStage={onStage}
-                  projects={
-                    selectedCommit
-                      ? projects.map((p) =>
-                          p.path === activeProject?.path
-                            ? { ...p, changedFiles: visibleFiles }
-                            : p,
-                        )
-                      : projects
-                  }
-                  selected={selection}
-                  sessionId={sessionId}
-                />
-              )}
-            </ResizablePanel>
-
-            <ResizableHandle withHandle />
-
-            {/* The whole project tree, keyed by project so switching repositories
-                re-opens the tree on the new one's changes rather than keeping the
-                old one's expansion. */}
-            <ResizablePanel
-              defaultSize={60}
-              minSize={15}
-              className="flex flex-col"
-            >
-              {activeProject ? (
-                <div className="flex h-full flex-col py-2">
-                  <p className="shrink-0 px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {activeProject.name}
-                  </p>
-                  <ReviewFileTree
-                    key={activeProject.path}
-                    onSelectPath={(path, line) => {
-                      selectFile({ path, project: activeProject.path });
-                      if (line) revealLine(line);
+        <div className="flex min-h-0 flex-1">
+          <aside
+            className="flex shrink-0 flex-col border-r"
+            style={{ width: SIDEBAR_WIDTH }}
+          >
+            <ResizablePanelGroup orientation="vertical" className="h-full">
+              <ResizablePanel
+                defaultSize={15}
+                minSize={15}
+                className="overflow-y-auto py-2"
+              >
+                {review.isPending ? (
+                  <div className="flex justify-center py-4">
+                    <Spinner />
+                  </div>
+                ) : (
+                  <ReviewChangedFiles
+                    busy={busy}
+                    expanded={expanded}
+                    onReveal={revealLine}
+                    onSelect={(next) => {
+                      // Toggle: clicking the already-expanded file's row
+                      // closes it again rather than being a no-op, since it
+                      // is already the open editor selection.
+                      revise((base) => ({
+                        expanded:
+                          base.expanded?.project === next.project &&
+                          base.expanded.path === next.path
+                            ? null
+                            : next,
+                        highlight: null,
+                        precision: null,
+                        selection: next,
+                      }));
                     }}
-                    project={activeProject}
-                    projects={projects}
-                    selectedPath={
-                      selection?.project === activeProject.path
-                        ? selection.path
-                        : null
+                    onStage={onStage}
+                    projects={
+                      selectedCommit
+                        ? projects.map((p) =>
+                            p.path === activeProject?.path
+                              ? { ...p, changedFiles: visibleFiles }
+                              : p,
+                          )
+                        : projects
                     }
+                    selected={selection}
                     sessionId={sessionId}
                   />
-                </div>
-              ) : null}
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </aside>
+                )}
+              </ResizablePanel>
 
-        <main className="min-w-0 flex-1">
-          {selection ? (
-            <ReviewEditorPane
-              access={
-                // Only while the highlight describes the file on screen: the
-                // operator can move off a scrubber stop with the sidebar, and
-                // the marks must not follow them onto another file.
-                highlight &&
-                request.selection?.path === selection.path &&
-                request.selection.project === selection.project
-                  ? highlight
-                  : null
-              }
-              busy={busy}
-              draft={drafts[draftKey(selection)] ?? null}
-              onExplain={onExplain}
-              onDraftChange={(content, dirty) =>
-                setDrafts((previous) => {
-                  const key = draftKey(selection);
-                  if (!dirty) {
-                    if (!(key in previous)) return previous;
-                    const next = { ...previous };
-                    delete next[key];
-                    return next;
-                  }
-                  return { ...previous, [key]: content };
-                })
-              }
-              onOpenWorkspacePath={openWorkspacePath}
-              onSave={onSave}
-              onStage={onStage}
-              reveal={reveal}
-              selection={selection}
-              sessionId={sessionId}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {review.data && isEmptyReview(review.data)
-                ? "Nothing to review."
-                : "Select a file."}
-            </div>
-          )}
-        </main>
+              <ResizableHandle withHandle />
+
+              {/* The whole project tree, keyed by project so switching repositories
+                re-opens the tree on the new one's changes rather than keeping the
+                old one's expansion. */}
+              <ResizablePanel
+                defaultSize={60}
+                minSize={15}
+                className="flex flex-col"
+              >
+                {activeProject ? (
+                  <div className="flex h-full flex-col py-2">
+                    <p className="shrink-0 px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {activeProject.name}
+                    </p>
+                    <ReviewFileTree
+                      key={activeProject.path}
+                      onSelectPath={(path, line) => {
+                        selectFile({ path, project: activeProject.path });
+                        if (line) revealLine(line);
+                      }}
+                      project={activeProject}
+                      projects={projects}
+                      selectedPath={
+                        selection?.project === activeProject.path
+                          ? selection.path
+                          : null
+                      }
+                      sessionId={sessionId}
+                    />
+                  </div>
+                ) : null}
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </aside>
+
+          <main className="min-w-0 flex-1">
+            {selection ? (
+              <ReviewEditorPane
+                access={
+                  // Only while the highlight describes the file on screen: the
+                  // operator can move off a scrubber stop with the sidebar, and
+                  // the marks must not follow them onto another file.
+                  highlight &&
+                  request.selection?.path === selection.path &&
+                  request.selection.project === selection.project
+                    ? highlight
+                    : null
+                }
+                busy={busy}
+                draft={drafts[draftKey(selection)] ?? null}
+                onExplain={onExplain}
+                onDraftChange={(content, dirty) =>
+                  setDrafts((previous) => {
+                    const key = draftKey(selection);
+                    if (!dirty) {
+                      if (!(key in previous)) return previous;
+                      const next = { ...previous };
+                      delete next[key];
+                      return next;
+                    }
+                    return { ...previous, [key]: content };
+                  })
+                }
+                onOpenWorkspacePath={openWorkspacePath}
+                onSave={onSave}
+                onStage={onStage}
+                reveal={reveal}
+                selection={selection}
+                sessionId={sessionId}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {review.data && isEmptyReview(review.data)
+                  ? "Nothing to review."
+                  : "Select a file."}
+              </div>
+            )}
+          </main>
+        </div>
       </div>
 
       <ReviewCommitBar

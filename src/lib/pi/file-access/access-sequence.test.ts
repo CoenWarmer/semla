@@ -7,6 +7,7 @@ import {
   mergeRanges,
   rangeLabel,
   revealLineFor,
+  stepIndex,
 } from "./access-sequence.ts";
 import type { FileAccess } from "./access-types.ts";
 
@@ -247,5 +248,40 @@ describe("index helpers", () => {
     expect(indexOfFile(steps, { path: "src/b.ts", project: "semla" })).toBe(1);
     expect(indexOfFile(steps, { path: "src/c.ts", project: "semla" })).toBeNull();
     expect(indexOfFile(steps, null)).toBeNull();
+  });
+});
+
+describe("stepIndex", () => {
+  // The bug this pins: the editor followed the agent while the counter sat on
+  // whatever the arrows last touched, so "11 / 13" named a file that was not
+  // on screen.
+  it("pins to the newest stop while following, ignoring a stale cursor", () => {
+    expect(stepIndex({ cursor: 3, following: true, length: 13 })).toBe(12);
+  });
+
+  it("tracks the sequence growing under it while a turn runs", () => {
+    expect(stepIndex({ cursor: null, following: true, length: 1 })).toBe(0);
+    expect(stepIndex({ cursor: null, following: true, length: 14 })).toBe(13);
+  });
+
+  it("hands control back to the cursor once following stops", () => {
+    expect(stepIndex({ cursor: 3, following: false, length: 13 })).toBe(3);
+  });
+
+  // "Not started": the pill shows the first stop's number without having
+  // navigated anywhere, so opening the panel does not yank the editor.
+  it("shows the first stop for a cursor that has never moved", () => {
+    expect(stepIndex({ cursor: null, following: false, length: 13 })).toBe(0);
+  });
+
+  // The scope toggle and the agent filter both shorten the sequence under a
+  // cursor that was valid a moment ago.
+  it("clamps a cursor left past the end of a shortened sequence", () => {
+    expect(stepIndex({ cursor: 40, following: false, length: 13 })).toBe(12);
+  });
+
+  it("stays at zero for an empty sequence rather than going negative", () => {
+    expect(stepIndex({ cursor: null, following: true, length: 0 })).toBe(0);
+    expect(stepIndex({ cursor: 5, following: false, length: 0 })).toBe(0);
   });
 });

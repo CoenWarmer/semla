@@ -199,6 +199,31 @@ export function clampIndex(index: number, length: number): number {
   return Math.min(Math.max(index, 0), length - 1);
 }
 
+/**
+ * Which stop the pill is on.
+ *
+ * Following pins to the newest stop, which is the whole of what following
+ * means here: the panel is already showing the agent's latest access, and a
+ * counter that kept reading its own cursor would name a different file from
+ * the one on screen.
+ *
+ * Otherwise the operator's cursor decides, clamped — the sequence grows
+ * underneath it while a turn runs and shrinks when the scope or agent filter
+ * changes, and a null cursor is "not started", which shows the first stop
+ * without having navigated anywhere.
+ */
+export function stepIndex({
+  cursor,
+  following,
+  length,
+}: {
+  cursor: number | null;
+  following: boolean;
+  length: number;
+}): number {
+  return clampIndex(following ? length - 1 : (cursor ?? 0), length);
+}
+
 /** The stop the file at `selection` is at, for keeping the pill in sync. */
 export function indexOfFile(
   steps: readonly AccessStep[],

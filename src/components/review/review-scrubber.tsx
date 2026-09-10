@@ -33,6 +33,7 @@ import {
   buildSequence,
   clampIndex,
   rangeLabel,
+  stepIndex,
   type AccessStep,
 } from "@/lib/pi/file-access/access-sequence";
 import {
@@ -102,7 +103,10 @@ export function ReviewScrubber({
 
   const { missing, steps, unlinked } = sequence;
   const skipped = missing + unlinked;
-  const index = cursor === null ? 0 : clampIndex(cursor, steps.length);
+  // Derived, never pushed into `cursor` as the events arrive: that would be
+  // the `react/set-state-in-effect` this repository treats as an error, and it
+  // would give the counter a second source of truth to disagree with.
+  const index = stepIndex({ cursor, following, length: steps.length });
   const current = steps[index];
 
   const go = useCallback(
@@ -263,7 +267,14 @@ export function ReviewScrubber({
                 aria-label="Follow the agent"
                 aria-pressed={following}
                 className={cn(following && "bg-accent text-accent-foreground")}
-                onClick={() => onFollowingChange(!following)}
+                onClick={() => {
+                  // Unfollowing leaves the cursor on the stop the agent
+                  // reached, matching the file the panel keeps open. Without
+                  // it the counter would snap back to wherever the arrows were
+                  // last used, naming a file that is not on screen.
+                  if (following) setCursor(index);
+                  onFollowingChange(!following);
+                }}
                 size="icon"
                 variant="ghost"
               />

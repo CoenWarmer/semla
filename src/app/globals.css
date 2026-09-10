@@ -152,18 +152,26 @@ div.react-sigma {
  * Green for added and red for removed, which is what every review tool means
  * by those colours; the alpha is kept low so syntax highlighting stays
  * readable through the wash rather than competing with it.
+ *
+ * The green is spelled out. These read `var(--chart-2, <this green>)` until
+ * 2026-09-10, which painted them *orange*: `--chart-2` is defined, so the
+ * fallback never applied, and this theme's chart ramp is entirely warm — every
+ * stop between hue 46 and 92, no green in it anywhere. The `.dark` overrides
+ * below had the literal green all along, so an added line was green in dark
+ * mode and orange in light, against a removal marker that is genuinely red
+ * either way.
  */
 .semla-review-added-line {
-  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 12%, transparent);
+  background-color: color-mix(in oklch, oklch(0.7 0.15 150) 12%, transparent);
 }
 
 .semla-review-added-span {
-  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 28%, transparent);
+  background-color: color-mix(in oklch, oklch(0.7 0.15 150) 28%, transparent);
   border-radius: 2px;
 }
 
 .semla-review-added-gutter {
-  background-color: color-mix(in oklch, var(--chart-2, oklch(0.7 0.15 150)) 55%, transparent);
+  background-color: color-mix(in oklch, oklch(0.7 0.15 150) 55%, transparent);
   margin-left: 3px;
   width: 2px !important;
 }
@@ -190,25 +198,78 @@ div.react-sigma {
  * actual change lost in it. Blue rather than green or red, because those two
  * already mean "added" and "removed" three rules above and reusing them would
  * make a read of an unchanged file look like a change to it.
+ *
+ * Spelled out rather than taken from `--chart-*`. That palette is a single
+ * warm ramp in this theme — every stop sits between hue 46 and 92 — so a
+ * `var(--chart-1, <blue fallback>)` never reaches its fallback and paints
+ * yellow instead, and read and write come out as two shades of orange a few
+ * degrees apart. These three need to be distinguishable from each other and
+ * from the diff, which is a different job from charting a series.
  */
 .semla-access-read-line {
-  background-color: color-mix(in oklch, var(--chart-1, oklch(0.6 0.16 250)) 7%, transparent);
+  background-color: color-mix(in oklch, oklch(0.6 0.16 250) 7%, transparent);
 }
 
 .semla-access-read-gutter {
-  background-color: color-mix(in oklch, var(--chart-1, oklch(0.6 0.16 250)) 50%, transparent);
+  background-color: color-mix(in oklch, oklch(0.6 0.16 250) 50%, transparent);
   margin-left: 1px;
   width: 2px !important;
 }
 
 .semla-access-write-line {
-  background-color: color-mix(in oklch, var(--chart-4, oklch(0.7 0.16 60)) 9%, transparent);
+  background-color: color-mix(in oklch, oklch(0.7 0.16 60) 9%, transparent);
 }
 
 .semla-access-write-gutter {
-  background-color: color-mix(in oklch, var(--chart-4, oklch(0.7 0.16 60)) 60%, transparent);
+  background-color: color-mix(in oklch, oklch(0.7 0.16 60) 60%, transparent);
   margin-left: 1px;
   width: 2px !important;
+}
+
+/*
+ * Following: the panel is being driven by the agent rather than by the operator.
+ *
+ * Inset rather than a real border, because switching it on must move nothing.
+ * The operator is reading line numbers in the editor beside it, and a 2px
+ * reflow arriving with every tool call would be worse than no indicator at all.
+ *
+ * The pulse is slow — 2.4s, and a shallow one — for the same reason. This runs
+ * for as long as a turn does, in the operator's peripheral vision, next to text
+ * they are trying to read. Anything faster reads as an alarm.
+ *
+ * Green spelled out rather than `--chart-2`: see the note above the access
+ * decorations. That variable is orange in this theme, and its green fallback
+ * is unreachable.
+ */
+@keyframes semla-following-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 40%, transparent),
+      inset 0 0 12px 0 color-mix(in oklch, oklch(0.72 0.19 150) 10%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 80%, transparent),
+      inset 0 0 22px 0 color-mix(in oklch, oklch(0.72 0.19 150) 26%, transparent);
+  }
+}
+
+.semla-following {
+  animation: semla-following-pulse 2.4s ease-in-out infinite;
+}
+
+/*
+ * The state still has to be legible without the motion, so the glow holds at
+ * its brightest rather than disappearing along with the animation.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .semla-following {
+    animation: none;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 70%, transparent),
+      inset 0 0 16px 0 color-mix(in oklch, oklch(0.72 0.19 150) 18%, transparent);
+  }
 }
 
 .dark .semla-access-read-line {
