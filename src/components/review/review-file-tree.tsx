@@ -347,8 +347,11 @@ export function ReviewFileTree({
 
   return (
     <div className="flex h-full flex-col">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2 pb-2">
+        {project.name}
+      </p>
       <div className="relative shrink-0 px-2 pb-1">
-        <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+        <SearchIcon className="pointer-events-none absolute left-4 top-1.5 size-3 text-muted-foreground" />
         <Input
           aria-label="Filter files"
           className="h-7 pl-7 text-xs"
