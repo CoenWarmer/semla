@@ -16,9 +16,16 @@
  * boxes, while one strip is a single line between the question and the answer.
  *
  * Turns that do have text are left exactly as they were.
+ *
+ * One tool is exempt from the fold. An `ask_user` call is not the agent's own
+ * work — it is a question the reader answered, and the answers are part of the
+ * conversation in the way a message is. Burying that behind an unlabelled dot
+ * loses the record of what was actually agreed, so it is lifted out of the run
+ * as its own item and rendered beside the messages. See ask-user-record.ts.
  */
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
+import { parseAskUserResult, type AskUserPair } from "@/lib/ask-user-record";
 
 export type StepItem =
   | { kind: "thinking"; id: string; messageId: string; text: string }
@@ -26,7 +33,45 @@ export type StepItem =
 
 export type ConversationItem =
   | { kind: "message"; message: SessionMessage }
-  | { kind: "steps"; id: string; items: StepItem[] };
+  | { kind: "steps"; id: string; items: StepItem[] }
+  | {
+      kind: "ask";
+      id: string;
+      /** Empty while the call is still open — nothing answered yet. */
+      pairs: AskUserPair[];
+      /** True once the tool returned an error, i.e. it was cancelled. */
+      cancelled: boolean;
+      /** Result text that did not parse into pairs, shown verbatim. */
+      raw?: string;
+    };
+
+/** The tool whose result is a record of the reader's answers, not agent work. */
+const ASK_USER_TOOL = "ask_user";
+
+/**
+ * A call is still open when no result has arrived. Mid-turn that is the whole
+ * window between the question appearing and the reader answering it, and there
+ * is nothing to record yet — the questions themselves are already on screen in
+ * the answer dialog, so a card here would ask them a second time, directly
+ * above it, with an empty answer under each. `resultAt` is what the live
+ * `tool-end` event sets (see applyLiveToolEvent), and what the persisted row
+ * carries once the turn is written, so one check covers both paths.
+ */
+const isPending = (call: SessionToolCall): boolean =>
+  call.resultAt === undefined && call.resultText === undefined && !call.isError;
+
+const askItem = (call: SessionToolCall): ConversationItem => {
+  const pairs = call.isError ? [] : parseAskUserResult(call.resultText);
+  const raw = call.errorText ?? call.resultText;
+
+  return {
+    cancelled: call.isError === true,
+    id: `ask:${call.messageId}:${call.id}`,
+    kind: "ask",
+    pairs,
+    ...(pairs.length === 0 && raw?.trim() ? { raw } : {}),
+  };
+};
 
 /** A turn the conversation has nothing to print for. */
 const isSilent = (message: SessionMessage): boolean =>
@@ -54,8 +99,20 @@ export function groupConversation(
   const items: ConversationItem[] = [];
 
   for (const message of messages) {
+    const calls = callsByMessage.get(message.id) ?? [];
+
+    // An ask is lifted out whether or not its turn said anything. A turn that
+    // introduces the question ('a few things determine the design:') does have
+    // text, so it never reaches the silent-fold path below — which is how the
+    // first version of this rendered nothing for exactly the calls that matter
+    // most, the ones the agent bothered to preface.
+    const asks = calls
+      .filter((call) => call.name === ASK_USER_TOOL && !isPending(call))
+      .map(askItem);
+
     if (!isSilent(message)) {
       items.push({ kind: "message", message });
+      items.push(...asks);
       continue;
     }
 
@@ -69,7 +126,8 @@ export function groupConversation(
         text: message.thinking,
       });
     }
-    for (const call of callsByMessage.get(message.id) ?? []) {
+    for (const call of calls) {
+      if (call.name === ASK_USER_TOOL) continue;
       steps.push({
         call,
         id: `${message.id}:${call.id}`,
@@ -80,11 +138,16 @@ export function groupConversation(
 
     // A silent turn with no reasoning and no calls has genuinely nothing in it.
     // Drop it rather than drawing a dot that opens onto nothing.
-    if (steps.length === 0) continue;
+    if (steps.length > 0) {
+      const previous = items.at(-1);
+      if (previous?.kind === "steps") previous.items.push(...steps);
+      else items.push({ id: `steps:${message.id}`, items: steps, kind: "steps" });
+    }
 
-    const previous = items.at(-1);
-    if (previous?.kind === "steps") previous.items.push(...steps);
-    else items.push({ id: `steps:${message.id}`, items: steps, kind: "steps" });
+    // After the strip: the reasoning and calls that led to the question read as
+    // preceding it, and an ask ends the run so the next silent turn starts a
+    // new strip rather than reaching back across the question.
+    items.push(...asks);
   }
 
   return items;

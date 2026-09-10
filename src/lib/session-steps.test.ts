@@ -140,6 +140,146 @@ describe("groupConversation", () => {
       "message",
     ]);
   });
+
+  it("lifts an ask_user call out of the strip as its own item", () => {
+    const items = groupConversation(
+      [message("u", "user", "question"), message("a", "assistant", "")],
+      [
+        {
+          ...call("c1", "a", "ask_user"),
+          resultText: "How prominent?\n\u2192 card",
+        },
+      ],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["message", "ask"]);
+    expect(items[1].kind === "ask" && items[1].pairs).toEqual([
+      { answer: "card", question: "How prominent?" },
+    ]);
+  });
+
+  it("renders nothing for an ask still waiting on an answer", () => {
+    // Mid-turn, between the question arriving and the reader answering it. The
+    // answer dialog is already showing these questions, so a card here would
+    // ask them twice with nothing under them.
+    const items = groupConversation(
+      [message("live-round-message:live-round-1", "assistant", "")],
+      [call("c1", "live-round-message:live-round-1", "ask_user")],
+    );
+
+    expect(items).toEqual([]);
+  });
+
+  it("keeps a pending ask out of the strip as well as out of the asks", () => {
+    // Otherwise the fold catches what the ask path declined, and it comes back
+    // as an unlabelled dot for the duration of the question.
+    const items = groupConversation(
+      [message("a", "assistant", "")],
+      [call("c1", "a", "bash"), call("c2", "a", "ask_user")],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["steps"]);
+    expect(items[0].kind === "steps" && items[0].items).toHaveLength(1);
+  });
+
+  it("renders the card as soon as a live tool-end carries the answers", () => {
+    // applyLiveToolEvent sets resultAt on tool-end, which is what tells this
+    // apart from the pending row above — mid-turn, before any persisted row.
+    const items = groupConversation(
+      [message("live-round-message:live-round-1", "assistant", "")],
+      [
+        {
+          ...call("c1", "live-round-message:live-round-1", "ask_user"),
+          resultAt: "2026-09-01T10:00:01.000Z",
+          resultText: "Live?\n\u2192 yes",
+        },
+      ],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["ask"]);
+    expect(items[0].kind === "ask" && items[0].pairs).toEqual([
+      { answer: "yes", question: "Live?" },
+    ]);
+  });
+
+  it("lifts an ask out of a turn that did have text", () => {
+    // The common case in practice: the agent explains why it is asking, so the
+    // turn is not silent and the fold path never sees it.
+    const items = groupConversation(
+      [message("a", "assistant", "A few things determine the design:")],
+      [{ ...call("c1", "a", "ask_user"), resultText: "Which one?\n\u2192 the second" }],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["message", "ask"]);
+    expect(items[1].kind === "ask" && items[1].pairs).toEqual([
+      { answer: "the second", question: "Which one?" },
+    ]);
+  });
+
+  it("keeps the other calls of the same turn in the strip, before the ask", () => {
+    const items = groupConversation(
+      [message("u", "user", "q"), message("a", "assistant", "", "thought")],
+      [
+        call("c1", "a", "bash"),
+        { ...call("c2", "a", "ask_user"), resultText: "A?\n\u2192 a" },
+      ],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["message", "steps", "ask"]);
+    expect(items[1].kind === "steps" && items[1].items.map((i) => i.kind)).toEqual([
+      "thinking",
+      "tool",
+    ]);
+  });
+
+  it("ends the run, so a later silent turn starts a new strip", () => {
+    // Otherwise the strip after the question absorbs into the one before it and
+    // renders above the answers that caused it.
+    const items = groupConversation(
+      [message("a1", "assistant", ""), message("a2", "assistant", "")],
+      [
+        { ...call("c1", "a1", "ask_user"), resultText: "A?\n\u2192 a" },
+        call("c2", "a2", "bash"),
+      ],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["ask", "steps"]);
+  });
+
+  it("marks a cancelled ask and keeps its error text verbatim", () => {
+    const items = groupConversation(
+      [message("a", "assistant", "")],
+      [
+        {
+          ...call("c1", "a", "ask_user"),
+          errorText: "ask_user was cancelled: aborted",
+          // isError alone must be enough: a cancellation is not pending, even
+          // though the client may see the error before any resultAt.
+          isError: true,
+        },
+      ],
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].kind === "ask" && items[0].cancelled).toBe(true);
+    expect(items[0].kind === "ask" && items[0].pairs).toEqual([]);
+    expect(items[0].kind === "ask" && items[0].raw).toBe(
+      "ask_user was cancelled: aborted",
+    );
+  });
+
+  it("does not count an ask_user call in the strip summary", () => {
+    const items = groupConversation(
+      [message("a", "assistant", "")],
+      [
+        call("c1", "a", "bash"),
+        { ...call("c2", "a", "ask_user"), resultText: "A?\n\u2192 a" },
+      ],
+    );
+
+    const steps = items[0].kind === "steps" ? items[0].items : [];
+    expect(summariseSteps(steps)).toBe("bash");
+  });
 });
 
 describe("summariseSteps", () => {

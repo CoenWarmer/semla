@@ -27,6 +27,7 @@ import { useRouter } from "next/navigation";
 
 import type { PromptEditorModel } from "./prompt-editor";
 import { AskUserDialog } from "./ask-user-dialog";
+import { AskUserRecord } from "./ask-user-record";
 import { CopyMessageButton } from "./message-copy";
 import { EditableUserMessage } from "./message-edit";
 import { ForkMessageButton } from "./message-fork";
@@ -120,6 +121,13 @@ export function SessionConversation({
             conversation.map((item) =>
               item.kind === "steps" ? (
                 <SessionStepsStrip items={item.items} key={item.id} />
+              ) : item.kind === "ask" ? (
+                <AskUserRecord
+                  cancelled={item.cancelled}
+                  key={item.id}
+                  pairs={item.pairs}
+                  raw={item.raw}
+                />
               ) : item.message.role === "user" ? (
                 // Renders its own Message and bubble, so the edit button
                 // can sit beside the bubble rather than inside it.
