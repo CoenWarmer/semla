@@ -604,10 +604,7 @@ export function ReviewPanel({
                 className="flex flex-col"
               >
                 {activeProject ? (
-                  <div className="flex h-full flex-col py-2">
-                    <p className="shrink-0 px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {activeProject.name}
-                    </p>
+                  <div className="flex flex-col py-2 max-h-[stretch]">
                     <ReviewFileTree
                       key={activeProject.path}
                       onSelectPath={(path, line) => {
@@ -673,16 +670,15 @@ export function ReviewPanel({
             )}
           </main>
         </div>
+        <ReviewCommitBar
+          busy={commit.isPending}
+          message={message}
+          onCommit={onCommit}
+          onMessageChange={setMessage}
+          project={activeProject}
+          result={result}
+        />
       </div>
-
-      <ReviewCommitBar
-        busy={commit.isPending}
-        message={message}
-        onCommit={onCommit}
-        onMessageChange={setMessage}
-        project={activeProject}
-        result={result}
-      />
     </>
   );
 }
