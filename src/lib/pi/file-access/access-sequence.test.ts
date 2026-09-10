@@ -5,6 +5,7 @@ import {
   clampIndex,
   indexOfFile,
   mergeRanges,
+  linesOutside,
   rangeLabel,
   revealLineFor,
   stepIndex,
@@ -248,6 +249,76 @@ describe("index helpers", () => {
     expect(indexOfFile(steps, { path: "src/b.ts", project: "semla" })).toBe(1);
     expect(indexOfFile(steps, { path: "src/c.ts", project: "semla" })).toBeNull();
     expect(indexOfFile(steps, null)).toBeNull();
+  });
+});
+
+describe("linesOutside", () => {
+  it("returns the gap either side of a read", () => {
+    expect(linesOutside([{ end: 20, start: 10 }], 100)).toEqual([
+      { end: 9, start: 1 },
+      { end: 100, start: 21 },
+    ]);
+  });
+
+  it("returns the gaps between several reads", () => {
+    expect(
+      linesOutside(
+        [
+          { end: 20, start: 10 },
+          { end: 60, start: 50 },
+        ],
+        100,
+      ),
+    ).toEqual([
+      { end: 9, start: 1 },
+      { end: 49, start: 21 },
+      { end: 100, start: 61 },
+    ]);
+  });
+
+  it("treats a range running to EOF as covering everything after it", () => {
+    expect(linesOutside([{ end: null, start: 50 }], 100)).toEqual([
+      { end: 49, start: 1 },
+    ]);
+  });
+
+  it("leaves nothing outside a read of the whole file", () => {
+    expect(linesOutside([{ end: null, start: 1 }], 100)).toEqual([]);
+    expect(linesOutside([{ end: 100, start: 1 }], 100)).toEqual([]);
+  });
+
+  // The file shrank since the read — an `end` past EOF must not produce a
+  // range Monaco would throw on.
+  it("clamps a range that runs past the end of the file as it is now", () => {
+    expect(linesOutside([{ end: 500, start: 1 }], 100)).toEqual([]);
+    expect(linesOutside([{ end: 500, start: 90 }], 100)).toEqual([
+      { end: 89, start: 1 },
+    ]);
+  });
+
+  it("merges overlapping reads before taking the gaps", () => {
+    expect(
+      linesOutside(
+        [
+          { end: 40, start: 10 },
+          { end: 60, start: 30 },
+        ],
+        100,
+      ),
+    ).toEqual([
+      { end: 9, start: 1 },
+      { end: 100, start: 61 },
+    ]);
+  });
+
+  // Opposite of the FileAccess convention, and the reason the caller has to
+  // check for a whole-file access before asking.
+  it("treats no ranges as covering nothing", () => {
+    expect(linesOutside([], 100)).toEqual([{ end: 100, start: 1 }]);
+  });
+
+  it("has nothing to dim in an empty file", () => {
+    expect(linesOutside([{ end: 10, start: 1 }], 0)).toEqual([]);
   });
 });
 

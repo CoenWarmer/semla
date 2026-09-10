@@ -296,6 +296,21 @@ div.react-sigma {
 }
 
 /*
+ * The lines the agent did not read.
+ *
+ * Faded rather than hidden or folded: the surrounding code is what makes a
+ * read span legible, and collapsing it would answer "what did the agent see"
+ * by destroying the context needed to judge whether that was enough.
+ *
+ * Opacity rather than a flat grey so syntax highlighting survives the fade —
+ * a string still reads as a string at half strength, where overriding the
+ * colour would throw that away.
+ */
+.semla-access-dimmed {
+  opacity: 0.3;
+}
+
+/*
  * Following: the panel is being driven by the agent rather than by the operator.
  *
  * Inset rather than a real border, because switching it on must move nothing.

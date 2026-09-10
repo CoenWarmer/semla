@@ -45,6 +45,8 @@ import {
 } from "./review-auto-scroll";
 import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
+import { linesOutside } from "@/lib/pi/file-access/access-sequence";
+
 import type { AccessHighlight } from "./review-panel-request";
 
 const CLASS_FOR_KIND = {
@@ -436,7 +438,7 @@ export default function CodeEditor({
   }, [hunks, path]);
 
   /**
-   * Mark the lines the agent read or wrote.
+   * Mark the lines the agent read or wrote, and fade the lines it did not.
    *
    * A gutter stripe and a faint wash rather than anything stronger: this sits
    * on top of the diff colours, and a read of a file the turn also changed must
@@ -468,8 +470,37 @@ export default function CodeEditor({
       ? `${access.kind === "write" ? "Written" : "Read"} by the agent — inferred from a shell command`
       : `${access.kind === "write" ? "Written" : "Read"} by the agent`;
 
-    collection.set(
-      access.ranges.map((range) => ({
+    const lineRange = (range: { start: number; end: number | null }) =>
+      new monaco.Range(
+        clamp(range.start),
+        1,
+        clamp(range.end ?? lineCount),
+        model.getLineMaxColumn(clamp(range.end ?? lineCount)),
+      );
+
+    /**
+     * Everything the agent did *not* read, faded back.
+     *
+     * The band alone says which lines were read; fading the rest says what the
+     * agent was working from, which is the question the scrubber exists to
+     * answer. `inlineClassName` rather than `className` because the target is
+     * the text: `className` paints a block behind the line, and putting
+     * `opacity` on that would fade the highlight rather than the code.
+     *
+     * Reads only. A write's ranges are a single `firstChangedLine`, so the
+     * complement is the entire file bar one line — and the diff wash is
+     * already saying what changed, in a vocabulary this would fight with.
+     */
+    const dimmed =
+      access.kind === "read"
+        ? linesOutside(access.ranges, lineCount).map((range) => ({
+            options: { inlineClassName: "semla-access-dimmed" },
+            range: lineRange(range),
+          }))
+        : [];
+
+    collection.set([
+      ...access.ranges.map((range) => ({
         options: {
           className,
           hoverMessage: { value: hover },
@@ -479,14 +510,10 @@ export default function CodeEditor({
               ? "semla-access-write-gutter"
               : "semla-access-read-gutter",
         },
-        range: new monaco.Range(
-          clamp(range.start),
-          1,
-          clamp(range.end ?? lineCount),
-          model.getLineMaxColumn(clamp(range.end ?? lineCount)),
-        ),
+        range: lineRange(range),
       })),
-    );
+      ...dimmed,
+    ]);
   }, [access, path]);
 
   // A button in the gutter of every hunk this diff can stage or unstage on

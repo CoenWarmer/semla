@@ -110,6 +110,42 @@ export function mergeRanges(ranges: readonly LineRange[]): LineRange[] {
   return merged;
 }
 
+/**
+ * The lines of a file these ranges do not cover.
+ *
+ * Mathematical, and therefore the opposite of the `FileAccess` convention one
+ * layer up: there an empty `ranges` means *the whole file*, whereas here it
+ * covers nothing and everything comes back as outside it. A caller holding an
+ * access has to check for that itself, or it will dim every line of a file the
+ * agent read all of.
+ *
+ * `end: null` is a range running to EOF, so nothing after it is outside.
+ */
+export function linesOutside(
+  ranges: readonly LineRange[],
+  lineCount: number,
+): LineRange[] {
+  if (lineCount < 1) return [];
+
+  const outside: LineRange[] = [];
+  let cursor = 1;
+
+  for (const range of mergeRanges(ranges)) {
+    const start = Math.max(1, range.start);
+    if (start > cursor) {
+      outside.push({ end: Math.min(start - 1, lineCount), start: cursor });
+    }
+
+    if (range.end === null) return outside;
+
+    cursor = Math.max(cursor, range.end + 1);
+    if (cursor > lineCount) return outside;
+  }
+
+  if (cursor <= lineCount) outside.push({ end: lineCount, start: cursor });
+  return outside;
+}
+
 const stepFrom = (access: FileAccess, project: string): AccessStep => ({
   agent: access.agent,
   at: access.at,
