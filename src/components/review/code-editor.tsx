@@ -39,6 +39,10 @@ import {
   hunkChangedLineRange,
   type Decoration,
 } from "./review-decorations";
+import {
+  shouldAutoScroll,
+  type AutoScrollState,
+} from "./review-auto-scroll";
 import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
 
@@ -164,6 +168,14 @@ export default function CodeEditor({
     useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const hunkGlyphsRef = useRef<HunkBracketWidgets | null>(null);
   const stagingBusyRef = useRef(stagingBusy);
+  /**
+   * Which path the open-on-first-hunk effect has already scrolled for.
+   *
+   * A ref rather than state: nothing renders from it, and writing it from
+   * the effect that reads it would be `react/set-state-in-effect`, which is
+   * an error in this repository.
+   */
+  const autoScrollRef = useRef<AutoScrollState>({ scrolledPath: null });
   /**
    * Models by path, so an edit survives looking at another file and coming
    * back. A single model with setValue would be less code and would throw the
@@ -443,11 +455,17 @@ export default function CodeEditor({
 
   // Open on the change rather than at the top of the file: a review starts at
   // what moved, and a 900-line file's first hunk is often nowhere near line 1.
+  //
+  // Once per opened file, not once per `hunks` array — see `shouldAutoScroll`.
+  // Staging invalidates the hunks query, and re-scrolling on the array that
+  // comes back took the viewport off wherever the reader had got to.
   useEffect(() => {
     const editor = editorRef.current;
     const line = firstChangedLine(hunks);
     if (!editor || line === null) return;
+    if (!shouldAutoScroll(autoScrollRef.current, path)) return;
 
+    autoScrollRef.current.scrolledPath = path;
     editor.revealLineNearTop(line, monaco.editor.ScrollType.Immediate);
   }, [hunks, path]);
 
