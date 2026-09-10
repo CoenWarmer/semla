@@ -51,7 +51,7 @@ export function ReviewCommitBar({
         value={message}
       />
 
-      {result ? (
+      {result?.ok === false ? (
         <span
           className={
             result.ok
