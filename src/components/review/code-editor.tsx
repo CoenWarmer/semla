@@ -44,10 +44,7 @@ import {
   hunkChangedLineRange,
   type Decoration,
 } from "./review-decorations";
-import {
-  shouldAutoScroll,
-  type AutoScrollState,
-} from "./review-auto-scroll";
+import { shouldAutoScroll, type AutoScrollState } from "./review-auto-scroll";
 import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
 import { linesOutside } from "@/lib/pi/file-access/access-sequence";
@@ -223,7 +220,9 @@ export default function CodeEditor({
    * same way `modelsRef` is, so the unmount cleanup can send `didClose` for
    * each rather than just whichever file happens to be on screen last.
    */
-  const lspOpenedRef = useRef(new Map<string, { path: string; project: string }>());
+  const lspOpenedRef = useRef(
+    new Map<string, { path: string; project: string }>(),
+  );
   /** Coalesces keystrokes into one `didChange` rather than one per character. */
   const lspSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Set once, by the registration effect below, so other effects can reach it. */
@@ -291,10 +290,13 @@ export default function CodeEditor({
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
     accessRef.current = editor.createDecorationsCollection([]);
-    hunkGlyphsRef.current = new HunkBracketWidgets(editor, (index, direction) => {
-      if (stagingBusyRef.current) return;
-      onStageHunkRef.current?.([index], direction);
-    });
+    hunkGlyphsRef.current = new HunkBracketWidgets(
+      editor,
+      (index, direction) => {
+        if (stagingBusyRef.current) return;
+        onStageHunkRef.current?.([index], direction);
+      },
+    );
 
     const changeSubscription = editor.onDidChangeModelContent(() => {
       const text = editor.getValue();
@@ -312,16 +314,16 @@ export default function CodeEditor({
       // quickly.
       const current = lspRef.current?.current();
       if (!current) return;
-      if (!lspRef.current?.languages.includes(languageForPath(current.path))) return;
+      if (!lspRef.current?.languages.includes(languageForPath(current.path)))
+        return;
       if (lspSyncTimeoutRef.current) clearTimeout(lspSyncTimeoutRef.current);
       lspSyncTimeoutRef.current = setTimeout(() => {
         lspRef.current?.notifySync(current.path, current.project, text);
       }, 300);
     });
 
-    editor.addCommand(
-      api.KeyMod.CtrlCmd | api.KeyCode.KeyS,
-      () => onSaveRef.current?.(),
+    editor.addCommand(api.KeyMod.CtrlCmd | api.KeyCode.KeyS, () =>
+      onSaveRef.current?.(),
     );
 
     /**
@@ -416,7 +418,8 @@ export default function CodeEditor({
           requestRename: async (request) =>
             (await lspRef.current?.requestRename(request)) ?? null,
           subscribeDiagnostics: (onDiagnostics) => {
-            const unsubscribe = lspRef.current?.subscribeDiagnostics(onDiagnostics);
+            const unsubscribe =
+              lspRef.current?.subscribeDiagnostics(onDiagnostics);
             return () => unsubscribe?.();
           },
           toWorkspacePath: (projectPath, filePath) =>
@@ -436,7 +439,10 @@ export default function CodeEditor({
       // screen when the panel closed — `modelsRef` holds one Monaco model per
       // path visited, and the language server should not be left thinking
       // any of them are still open.
-      for (const { path: openPath, project: openProject } of lspOpenedRef.current.values()) {
+      for (const {
+        path: openPath,
+        project: openProject,
+      } of lspOpenedRef.current.values()) {
         lspRef.current?.notifyClose(openPath, openProject);
       }
       lspOpenedRef.current.clear();
