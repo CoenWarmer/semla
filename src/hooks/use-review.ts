@@ -335,6 +335,182 @@ export async function fetchDefinition(
   return (await res.json()) as DefinitionAnswer;
 }
 
+/**
+ * Hover, references and rename, backed by the real language server the
+ * `review/lsp/*` routes bridge to — see `lsp-host.ts` for what runs behind
+ * them, and `lsp-provider.ts` for the Monaco side these feed.
+ *
+ * Positions throughout are one-based (Monaco's convention, and this file's
+ * own — see `fetchDefinition` above); the routes convert to and from LSP's
+ * zero-based ones at the one seam that has to know both.
+ *
+ * These types mirror the wire shape rather than importing it from
+ * `lsp-translate.ts`, the same choice `DefinitionAnswer` above already makes
+ * against `code-map/definition.ts`: this file has no reason to reach into
+ * `components/review` for a shape it can just restate.
+ */
+export type LspPosition = { line: number; character: number };
+export type LspRange = { start: LspPosition; end: LspPosition };
+
+export type LspHoverAnswer = {
+  contents:
+    | string
+    | { kind: "markdown" | "plaintext"; value: string }
+    | { language: string; value: string }
+    | Array<string | { language: string; value: string }>;
+  range?: LspRange;
+} | null;
+
+export type LspDiagnostic = {
+  range: LspRange;
+  /** LSP's own numbering: Error 1, Warning 2, Information 3, Hint 4. */
+  severity?: 1 | 2 | 3 | 4;
+  message: string;
+  source?: string;
+  code?: string | number;
+};
+
+export type LspTextEdit = { range: LspRange; newText: string };
+export type LspRenameFile = { path: string; edits: LspTextEdit[] };
+export type LspReferenceLocation = { path: string; range: LspRange };
+export type LspPrepareRenameAnswer =
+  | LspRange
+  | { range: LspRange; placeholder?: string }
+  | null;
+
+export type LspRequestBody = {
+  project: string;
+  path: string;
+  line: number;
+  character: number;
+};
+
+async function fetchLspRequest<T>(
+  sessionId: string,
+  method: "hover" | "references" | "prepareRename" | "rename",
+  body: LspRequestBody & { newName?: string },
+): Promise<T | null> {
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/review/lsp/request`, {
+      body: JSON.stringify({ ...body, method }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    // A 4xx/5xx here is the same "nothing to answer" outcome fetchDefinition
+    // treats a failed resolution as — a position with no hover, a language
+    // server that has not started yet — rather than something to throw over.
+    if (!res.ok) return null;
+    const { result } = (await res.json()) as { result: T };
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+export const fetchLspHover = (sessionId: string, body: LspRequestBody) =>
+  fetchLspRequest<LspHoverAnswer>(sessionId, "hover", body);
+
+export const fetchLspReferences = (sessionId: string, body: LspRequestBody) =>
+  fetchLspRequest<LspReferenceLocation[]>(sessionId, "references", body);
+
+export const fetchLspPrepareRename = (sessionId: string, body: LspRequestBody) =>
+  fetchLspRequest<LspPrepareRenameAnswer>(sessionId, "prepareRename", body);
+
+export const fetchLspRename = (
+  sessionId: string,
+  body: LspRequestBody & { newName: string },
+) => fetchLspRequest<{ files: LspRenameFile[] }>(sessionId, "rename", body);
+
+/**
+ * Buffer sync and close, fire-and-forget.
+ *
+ * Neither has an answer worth waiting for — the panel already has its own
+ * copy of the text, and a dropped notification is caught up on the next
+ * keystroke or the next file open. Errors are swallowed for the same reason
+ * `readFile`'s catch above returns null rather than throwing: a language
+ * server that is not running yet is not this call's failure to report.
+ */
+export function notifyLspSync(
+  sessionId: string,
+  project: string,
+  path: string,
+  text: string,
+): void {
+  void fetch(`/api/sessions/${sessionId}/review/lsp/notify`, {
+    body: JSON.stringify({ method: "didOpen", path, project, text }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  }).catch(() => {});
+}
+
+export function notifyLspClose(
+  sessionId: string,
+  project: string,
+  path: string,
+): void {
+  void fetch(`/api/sessions/${sessionId}/review/lsp/notify`, {
+    body: JSON.stringify({ method: "didClose", path, project }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  }).catch(() => {});
+}
+
+/**
+ * Attach to a project's diagnostics, replayed-on-attach and pushed after.
+ *
+ * The same framing and the same reader loop the terminal's SSE stream uses
+ * (`app-terminal.tsx`) — this repository's one pattern for a server that
+ * pushes rather than answers. Returns an unsubscribe that aborts the
+ * underlying fetch; the language server itself is not stopped by it — see
+ * `lsp-host.ts` on why that is the idle sweep's job instead.
+ */
+export function subscribeToLspDiagnostics(
+  sessionId: string,
+  project: string,
+  onDiagnostics: (path: string, diagnostics: LspDiagnostic[]) => void,
+): () => void {
+  const abort = new AbortController();
+
+  const run = async () => {
+    const params = new URLSearchParams({ project });
+    const response = await fetch(
+      `/api/sessions/${sessionId}/review/lsp/diagnostics?${params}`,
+      { signal: abort.signal },
+    );
+    if (!response.ok || !response.body) return;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+
+      for (const frame of frames) {
+        const line = frame.split("\n").find((entry) => entry.startsWith("data: "));
+        if (!line) continue;
+        const { path, diagnostics } = JSON.parse(line.slice(6)) as {
+          path: string;
+          diagnostics: LspDiagnostic[];
+        };
+        onDiagnostics(path, diagnostics);
+      }
+    }
+  };
+
+  run().catch((cause: unknown) => {
+    if ((cause as Error)?.name === "AbortError") return;
+    console.error("[lsp diagnostics]", cause);
+  });
+
+  return () => abort.abort();
+}
+
 export interface CodeMapAtLine {
   map: import("@/lib/code-map/types").CodeMap | null;
   symbol?: EnclosingSymbol;

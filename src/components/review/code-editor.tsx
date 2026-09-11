@@ -34,6 +34,11 @@ import {
   type DefinitionProviderConfig,
 } from "./definition-provider";
 import {
+  registerLspProviders,
+  type LspProviderConfig,
+  type LspProviderHandle,
+} from "./lsp-provider";
+import {
   buildDecorations,
   firstChangedLine,
   hunkChangedLineRange,
@@ -147,6 +152,13 @@ export interface CodeEditorProps {
    */
   definition?: DefinitionProviderConfig | null;
   /**
+   * Everything hover, references, rename and diagnostics need, or omitted to
+   * leave the real language server off — the same shape and the same reason
+   * as `definition`: registered once, for the editor's lifetime, against
+   * refs rather than the prop itself.
+   */
+  lsp?: LspProviderConfig | null;
+  /**
    * The lines the agent read or wrote here, to mark in the gutter.
    *
    * Distinct from `hunks`, which say what *changed*: the point of the scrubber
@@ -160,6 +172,7 @@ export default function CodeEditor({
   access = null,
   definition = null,
   hunks,
+  lsp = null,
   onChange,
   onExplainLine,
   onSave,
@@ -205,6 +218,16 @@ export default function CodeEditor({
    * operator's work away the moment they clicked a second row.
    */
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
+  /**
+   * Every `{ path, project }` the LSP bridge has been told is open, keyed the
+   * same way `modelsRef` is, so the unmount cleanup can send `didClose` for
+   * each rather than just whichever file happens to be on screen last.
+   */
+  const lspOpenedRef = useRef(new Map<string, { path: string; project: string }>());
+  /** Coalesces keystrokes into one `didChange` rather than one per character. */
+  const lspSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Set once, by the registration effect below, so other effects can reach it. */
+  const lspHandleRef = useRef<LspProviderHandle | null>(null);
 
   // The callbacks live in refs so a parent re-render with new closures does
   // not tear down and rebuild the editor.
@@ -214,6 +237,7 @@ export default function CodeEditor({
   const onVisualizeRef = useRef(onVisualizeLine);
   const onStageHunkRef = useRef(onStageHunk);
   const definitionRef = useRef(definition);
+  const lspRef = useRef(lsp);
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
@@ -221,8 +245,10 @@ export default function CodeEditor({
     onVisualizeRef.current = onVisualizeLine;
     onStageHunkRef.current = onStageHunk;
     definitionRef.current = definition;
+    lspRef.current = lsp;
   }, [
     definition,
+    lsp,
     onChange,
     onExplainLine,
     onSave,
@@ -271,7 +297,26 @@ export default function CodeEditor({
     });
 
     const changeSubscription = editor.onDidChangeModelContent(() => {
-      onChangeRef.current?.(editor.getValue());
+      const text = editor.getValue();
+      onChangeRef.current?.(text);
+
+      // Debounced: a `didChange` per keystroke would be one request per
+      // character typed, and the server's own answers only need to be as
+      // fresh as the next hover or diagnostics pass, not the current one.
+      //
+      // Gated on language: the bridge behind this is one TypeScript server,
+      // and `languageIdForPath` (lsp-host.ts) falls back to "typescript" for
+      // anything it does not recognise rather than refusing it. Sending it a
+      // file the server was never meant to see — `package-lock.json` did
+      // this once, at nearly a megabyte — is not a request it answers
+      // quickly.
+      const current = lspRef.current?.current();
+      if (!current) return;
+      if (!lspRef.current?.languages.includes(languageForPath(current.path))) return;
+      if (lspSyncTimeoutRef.current) clearTimeout(lspSyncTimeoutRef.current);
+      lspSyncTimeoutRef.current = setTimeout(() => {
+        lspRef.current?.notifySync(current.path, current.project, text);
+      }, 300);
     });
 
     editor.addCommand(
@@ -345,11 +390,58 @@ export default function CodeEditor({
         })
       : null;
 
+    /**
+     * Hover, references, rename and diagnostics, on the same exception as Go
+     * to Definition just above: `null` leaves the bridge off, and every
+     * callback delegates through the ref so the registration itself never
+     * has to change.
+     */
+    const lspRegistration = lspRef.current
+      ? registerLspProviders({
+          current: () => lspRef.current?.current() ?? null,
+          languages: lspRef.current.languages,
+          notifyClose: (path, docProject) =>
+            lspRef.current?.notifyClose(path, docProject),
+          notifySync: (path, docProject, text) =>
+            lspRef.current?.notifySync(path, docProject, text),
+          onNotice: (message) => lspRef.current?.onNotice(message),
+          prepareRename: async (request) =>
+            (await lspRef.current?.prepareRename(request)) ?? null,
+          readFile: async (workspacePath) =>
+            (await lspRef.current?.readFile(workspacePath)) ?? null,
+          requestHover: async (request) =>
+            (await lspRef.current?.requestHover(request)) ?? null,
+          requestReferences: async (request) =>
+            (await lspRef.current?.requestReferences(request)) ?? null,
+          requestRename: async (request) =>
+            (await lspRef.current?.requestRename(request)) ?? null,
+          subscribeDiagnostics: (onDiagnostics) => {
+            const unsubscribe = lspRef.current?.subscribeDiagnostics(onDiagnostics);
+            return () => unsubscribe?.();
+          },
+          toWorkspacePath: (projectPath, filePath) =>
+            lspRef.current?.toWorkspacePath(projectPath, filePath) ??
+            `${projectPath}/${filePath}`,
+        })
+      : null;
+    lspHandleRef.current = lspRegistration;
+
     return () => {
       changeSubscription.dispose();
       explain.dispose();
       visualize.dispose();
       definitionRegistration?.dispose();
+      if (lspSyncTimeoutRef.current) clearTimeout(lspSyncTimeoutRef.current);
+      // Every file this bridge was ever told about, not only the one on
+      // screen when the panel closed — `modelsRef` holds one Monaco model per
+      // path visited, and the language server should not be left thinking
+      // any of them are still open.
+      for (const { path: openPath, project: openProject } of lspOpenedRef.current.values()) {
+        lspRef.current?.notifyClose(openPath, openProject);
+      }
+      lspOpenedRef.current.clear();
+      lspRegistration?.dispose();
+      lspHandleRef.current = null;
       hunkGlyphsRef.current?.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
@@ -407,6 +499,20 @@ export default function CodeEditor({
     }
 
     editor.setModel(model);
+
+    // Tell the language server what is open, and show whatever it has
+    // already said about this file — both idempotent, so re-running this on
+    // every `value` change (staging, say) costs a redundant `didChange`
+    // rather than a bug.
+    //
+    // Gated on language, same reason as the debounced `didChange` above: this
+    // is the call that opens a file with the server for the first time, and a
+    // file outside `lsp.languages` should never reach it at all.
+    if (lspRef.current?.languages.includes(languageForPath(path))) {
+      lspOpenedRef.current.set(workspacePath, { path, project });
+      lspRef.current.notifySync(path, project, model.getValue());
+    }
+    lspHandleRef.current?.applyDiagnostics(workspacePath);
   }, [path, project, value]);
 
   // Decorations follow the hunks. Monaco anchors these to the model, so they

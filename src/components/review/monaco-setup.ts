@@ -88,6 +88,23 @@ import "monaco-editor/editor/contrib/indentation/browser/indentation.js";
 import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands.js";
 import "monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js";
 import "monaco-editor/editor/contrib/peekView/browser/peekView.js";
+/*
+ * Hover and rename, on the same exception as `gotoSymbol` above: checked to
+ * reference no `getWorker`, `EditorWorker` or `IEditorWorkerService`, so they
+ * cost no worker either. What they need is a `HoverProvider` and a
+ * `RenameProvider`, and `lsp-provider.ts` registers both, backed by a real
+ * `tsc --lsp` process this application spawns itself (see `lsp-host.ts` for
+ * why that is a second server rather than the one supi already runs for the
+ * agent) rather than Monaco's own bundled TypeScript worker.
+ *
+ * `suggest` is the one still out. Its `SuggestModel` is the sole contrib among
+ * this repository's candidates with a hard constructor dependency on
+ * `IEditorWorkerService` — a real one, not a language server, so bridging
+ * hover and rename here does not touch the question a completion widget
+ * would raise.
+ */
+import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js";
+import "monaco-editor/editor/contrib/rename/browser/rename.js";
 // The codicon font and its styles, as a module rather than as the raw .css
 // editor.main.js imports: the package's `exports` map rewrites every subpath
 // to a `.js` file, so a stylesheet cannot be reached through the package name
@@ -96,17 +113,16 @@ import "monaco-editor/features/codicon/register.js";
 
 /*
  * Left out deliberately, each because it needs something this panel does not
- * have: suggest, hover, parameterHints, inlayHints, codeAction, rename,
- * codelens, colorPicker, linkedEditing and stickyScroll all want a language
- * service; unicodeHighlighter and wordHighlighter want the editor web worker.
+ * have: suggest wants the editor worker service (see above); parameterHints,
+ * inlayHints, codeAction, codelens, colorPicker, linkedEditing and
+ * stickyScroll want a language service beyond what `lsp-provider.ts` asks
+ * for; unicodeHighlighter and wordHighlighter want the editor web worker.
  * Adding one of those means answering monaco-setup's worker question first —
  * `getWorker` below throws a message saying so.
  *
- * `gotoSymbol` used to be on this list. It is in, above, because the one thing
- * it needs — a DefinitionProvider — turned out to be answerable from the
- * server, and because it needs no worker. The rest of the list is unchanged:
- * hover is still out, so a cmd-hover shows the underline and the definition
- * preview the gesture draws itself, not a type tooltip.
+ * `gotoSymbol`, hover and rename used to be on this list. Each is in, above,
+ * because what it needs turned out to be answerable from the server and
+ * needs no worker of its own.
  */
 
 // The languages this repository and its neighbours are written in. Each is a
@@ -124,8 +140,63 @@ import "monaco-editor/languages/definitions/go/register.js";
 import "monaco-editor/languages/definitions/rust/register.js";
 import "monaco-editor/languages/definitions/xml/register.js";
 import "monaco-editor/languages/definitions/dockerfile/register.js";
-// JSON is not a Monarch language: it has its own feature module.
-import { jsonDefaults } from "monaco-editor/languages/features/json/register.js";
+/*
+ * JSON is not a Monarch language, and its "feature module" is not the
+ * worker-free shortcut it looks like.
+ *
+ * `languages/features/json/register.js` — imported here in an earlier
+ * version of this file for `jsonDefaults` — calls `languages.onLanguage
+ * ("json", () => import("./jsonMode.js"))` at module load. That listener
+ * fires the moment the *first* JSON model is created, so opening a single
+ * `.json` file dynamically imports `jsonMode.js`, which imports
+ * `WorkerManager`, which imports `internal/common/workers.js` — a module
+ * that unconditionally imports every editor contribution this file leaves
+ * out on purpose (codelens, suggest, colorPicker, dnd, codeAction,
+ * inlayHints, linkedEditing, and more) as side effects, registering them
+ * all with Monaco's global `EditorExtensionsRegistry`. Once registered,
+ * Monaco tries to instantiate them for every editor and fails — this
+ * application never sets up the workbench services (`ICodeLensCache`,
+ * `ISuggestMemories`, `treeViewsDndService`) they need — and the same
+ * import chain also asks for the `editorWorkerService` worker `getWorker`
+ * above refuses to hand out. Setting `modeConfiguration.tokens: true` and
+ * everything else `false` only controls which *providers* `jsonMode.js`
+ * registers once it has loaded; it cannot stop that module's own
+ * unconditional top-level imports from running. A dynamic `import()`
+ * inside a listener is invisible to reading this file's import list, which
+ * is why this took a running dev server and its actual served chunks to
+ * find rather than the source.
+ *
+ * `tokenization.js` is what this file actually wants: the same scanner
+ * `jsonMode.js` uses for its tokens provider, with no dependency on
+ * `editor.api.js`, `WorkerManager`, or anything else. Registering the
+ * language and its tokenizer directly, the same way the Monarch languages
+ * above do, gets JSON its colours without ever loading `jsonMode.js`.
+ */
+import { createTokenizationSupport } from "monaco-editor/languages/features/json/tokenization.js";
+
+monaco.languages.register({
+  aliases: ["JSON", "json"],
+  extensions: [".json", ".bowerrc", ".jshintrc", ".jscsrc", ".eslintrc", ".babelrc", ".har"],
+  id: "json",
+  mimetypes: ["application/json"],
+});
+monaco.languages.setTokensProvider("json", createTokenizationSupport(true));
+// Brackets and auto-closing pairs, copied from `jsonMode.js`'s own
+// `richEditConfiguration` — not imported from there, for the same reason
+// `tokenization.js` is imported directly rather than through it.
+monaco.languages.setLanguageConfiguration("json", {
+  autoClosingPairs: [
+    { close: "}", notIn: ["string"], open: "{" },
+    { close: "]", notIn: ["string"], open: "[" },
+    { close: '"', notIn: ["string"], open: '"' },
+  ],
+  brackets: [
+    ["{", "}"],
+    ["[", "]"],
+  ],
+  comments: { blockComment: ["/*", "*/"], lineComment: "//" },
+  wordPattern: /(-?\d*\.\d\w*)|([^[{\]}:",\s]+)/g,
+});
 
 export const DARK_THEME = "semla-dark";
 export const LIGHT_THEME = "semla-light";
@@ -185,31 +256,6 @@ export function configureMonaco(): typeof monaco {
   configured = true;
 
   installWorkerGuard();
-
-  // Diagnostics off: this is a review surface, not an editor with a linter.
-  // Schema validation on a package.json would report problems that are not
-  // what the operator opened the panel to look at.
-  jsonDefaults.setDiagnosticsOptions({
-    ...jsonDefaults.diagnosticsOptions,
-    enableSchemaRequest: false,
-    validate: false,
-  });
-
-  // Tokenization only. It runs on the main thread off the jsonc-parser
-  // scanner, so JSON keeps its colours; every other adapter in the JSON mode
-  // is worker-backed and would spawn one on first use.
-  jsonDefaults.setModeConfiguration({
-    colors: false,
-    completionItems: false,
-    diagnostics: false,
-    documentFormattingEdits: false,
-    documentRangeFormattingEdits: false,
-    documentSymbols: false,
-    foldingRanges: false,
-    hovers: false,
-    selectionRanges: false,
-    tokens: true,
-  });
 
   monaco.editor.defineTheme(DARK_THEME, {
     base: "vs-dark",

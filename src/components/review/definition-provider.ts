@@ -110,7 +110,13 @@ export const workspacePathForUri = (uri: Monaco.Uri) =>
  * outlives the panel; they are small, and the alternative is disposing a model
  * the editor may be about to adopt.
  */
-async function ensureModel(
+/**
+ * Exported for `lsp-provider.ts`, which needs the same guarantee for a
+ * reference or a rename edit landing in a file other than the one open —
+ * Monaco's own reference widget and bulk-edit service reject a `Uri` with no
+ * model behind it exactly the way this gesture does.
+ */
+export async function ensureModel(
   workspacePath: string,
   readFile: ReadFile,
 ): Promise<Monaco.editor.ITextModel | null> {

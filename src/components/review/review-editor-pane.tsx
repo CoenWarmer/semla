@@ -16,13 +16,21 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   fetchDefinition,
+  fetchLspHover,
+  fetchLspPrepareRename,
+  fetchLspReferences,
+  fetchLspRename,
   fileContentQueryKey,
+  notifyLspClose,
+  notifyLspSync,
+  subscribeToLspDiagnostics,
   useCodeMapAtLine,
   useFileContent,
   useReviewHunks,
   useSymbolAtLine,
   workspacePath,
   type CodeMapAtLine,
+  type LspDiagnostic,
 } from "@/hooks/use-review";
 import { explainFunctionPrompt } from "@/lib/review-prompts";
 
@@ -131,6 +139,35 @@ export function ReviewEditorPane({
   const queryClient = useQueryClient();
 
   /**
+   * Read a workspace-relative file through the query client rather than a
+   * bare fetch, so a target the operator subsequently opens is already
+   * cached, and a file read once — by a definition jump, a reference, a
+   * rename — does not get read twice. Shared by `definition` and `lsp`
+   * below, both of which cross into files other than the one open.
+   */
+  const readFile = useCallback(
+    async (path: string) => {
+      try {
+        const data = await queryClient.fetchQuery({
+          queryFn: async () => {
+            const params = new URLSearchParams({ path });
+            const res = await fetch(
+              `/api/sessions/${sessionId}/files/content?${params}`,
+            );
+            if (!res.ok) throw new Error("Unable to read file");
+            return res.json() as Promise<{ content: string }>;
+          },
+          queryKey: fileContentQueryKey(sessionId, path),
+        });
+        return data.content;
+      } catch {
+        return null;
+      }
+    },
+    [queryClient, sessionId],
+  );
+
+  /**
    * Everything Monaco's Go to Definition needs from this session.
    *
    * A single memoised object because `CodeEditor` registers the provider once,
@@ -138,10 +175,6 @@ export function ReviewEditorPane({
    * not what keeps it current, the closures are. `current` is a function
    * rather than a value for the same reason: the provider is called long after
    * registration, and must see the file open *then*.
-   *
-   * `readFile` goes through the query client rather than a bare fetch, so a
-   * definition target the operator subsequently opens is already cached, and a
-   * file opened first does not get read twice.
    */
   const definition = useMemo(
     () => ({
@@ -149,24 +182,7 @@ export function ReviewEditorPane({
       languages: ["typescript", "javascript"] as const,
       onCrossFile: onOpenWorkspacePath,
       onNotice: setNotice,
-      readFile: async (path: string) => {
-        try {
-          const data = await queryClient.fetchQuery({
-            queryFn: async () => {
-              const params = new URLSearchParams({ path });
-              const res = await fetch(
-                `/api/sessions/${sessionId}/files/content?${params}`,
-              );
-              if (!res.ok) throw new Error("Unable to read file");
-              return res.json() as Promise<{ content: string }>;
-            },
-            queryKey: fileContentQueryKey(sessionId, path),
-          });
-          return data.content;
-        } catch {
-          return null;
-        }
-      },
+      readFile,
       resolve: (request: {
         project: string;
         path: string;
@@ -175,13 +191,60 @@ export function ReviewEditorPane({
       }) => fetchDefinition(sessionId, request),
       toWorkspacePath: workspacePath,
     }),
-    [
-      onOpenWorkspacePath,
-      queryClient,
-      selection.path,
-      selection.project,
-      sessionId,
-    ],
+    [onOpenWorkspacePath, readFile, selection.path, selection.project, sessionId],
+  );
+
+  /**
+   * Everything the real language server bridge needs — hover, references,
+   * rename, and the project's diagnostics. Same shape as `definition`, same
+   * reason: registered once by `CodeEditor`, read through a ref after that.
+   *
+   * `subscribeDiagnostics` opens one SSE connection per project rather than
+   * per file — `lsp-host.ts` pools the language server itself the same way —
+   * so its identity only needs to change when the project does, not on every
+   * keystroke or file switch within it.
+   */
+  const lsp = useMemo(
+    () => ({
+      current: () => ({ path: selection.path, project: selection.project }),
+      languages: ["typescript", "javascript"] as const,
+      notifyClose: (path: string, project: string) =>
+        notifyLspClose(sessionId, project, path),
+      notifySync: (path: string, project: string, text: string) =>
+        notifyLspSync(sessionId, project, path, text),
+      onNotice: setNotice,
+      prepareRename: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+      }) => fetchLspPrepareRename(sessionId, request),
+      readFile,
+      requestHover: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+      }) => fetchLspHover(sessionId, request),
+      requestReferences: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+      }) => fetchLspReferences(sessionId, request),
+      requestRename: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+        newName: string;
+      }) => fetchLspRename(sessionId, request),
+      subscribeDiagnostics: (
+        onDiagnostics: (path: string, diagnostics: LspDiagnostic[]) => void,
+      ) => subscribeToLspDiagnostics(sessionId, selection.project, onDiagnostics),
+      toWorkspacePath: workspacePath,
+    }),
+    [readFile, selection.path, selection.project, sessionId],
   );
 
   const status = hunks.data?.file.status;
@@ -359,6 +422,7 @@ export function ReviewEditorPane({
         <ReviewEditor
           access={access}
           definition={definition}
+          lsp={lsp}
           hunks={hunks.data?.full?.hunks ?? []}
           onChange={(next) => onDraftChange(next, next !== onDisk)}
           onExplainLine={explainAt}
