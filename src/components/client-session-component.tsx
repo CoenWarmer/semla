@@ -785,6 +785,14 @@ export function ClientSessionComponent({
               className="flex min-h-0 flex-col overflow-hidden rounded-lg border"
               defaultSize={45}
               minSize={20}
+              // react-resizable-panels hardcodes `overflow: auto` inline on
+              // this element (see Panel's own style object in its source) —
+              // an inline style, which beats the `overflow-hidden` class
+              // above regardless of source order. Without this override the
+              // panel grows a scrollbar of its own on top of the ones
+              // ReviewPanel's inner file-tree and editor panes already
+              // manage themselves.
+              style={{ overflow: "hidden" }}
             >
               {/* No remount key: the panel is controlled, and remounting it
                   for each new pick would discard unsaved drafts, the hunk
@@ -803,6 +811,10 @@ export function ClientSessionComponent({
               className="flex min-h-0 flex-col overflow-hidden"
               defaultSize={55}
               minSize={20}
+              // Same override as the review panel above, and for the same
+              // reason: SessionConversation manages its own scroll region
+              // internally, so this outer panel must not grow a second one.
+              style={{ overflow: "hidden" }}
             >
               {conversationColumn}
             </ResizablePanel>
