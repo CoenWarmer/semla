@@ -12,6 +12,7 @@ import type { WorkflowTelemetry } from "../../../telemetry/workflow-recorder";
 import {
   preview,
   recomputeWorkflowSnapshot,
+  skipUnfinishedAgents,
   type WorkflowAgentSnapshot,
   type WorkflowSnapshot,
 } from "./display.ts";
@@ -413,6 +414,16 @@ export class WorkflowManager extends EventEmitter {
     // "pending" and "running" are not endings: a pending run has not begun and
     // a running one has not finished.
     if (status === "running" || status === "pending") return;
+
+    // Only IN_MEMORY_TERMINAL_STATUSES, not "paused": a paused run expects to
+    // resume its still-"running" agent, so leave it alone. See
+    // skipUnfinishedAgents's doc comment for why a terminal run cannot.
+    if (IN_MEMORY_TERMINAL_STATUSES.has(status)) {
+      managed.snapshot = recomputeWorkflowSnapshot({
+        ...managed.snapshot,
+        agents: skipUnfinishedAgents(managed.snapshot.agents),
+      });
+    }
 
     const agents = managed.snapshot.agents;
     this.telemetry.runEnded(managed.runId, {
@@ -1612,7 +1623,16 @@ export class WorkflowManager extends EventEmitter {
     const lease = this.persistence.acquireRunLease(runId);
     if (!lease) return false;
     try {
-      this.persistence.save({ ...persisted, status: "aborted", updatedAt: new Date().toISOString() });
+      this.persistence.save({
+        ...persisted,
+        // No live ManagedRun means endRun() never runs for this abort, so
+        // this branch must do its own reconciliation of any agent this
+        // persisted snapshot still shows as "queued"/"running" — see
+        // skipUnfinishedAgents's doc comment.
+        agents: skipUnfinishedAgents(persisted.agents),
+        status: "aborted",
+        updatedAt: new Date().toISOString(),
+      });
     } finally {
       this.persistence.releaseRunLease(lease);
     }

@@ -170,6 +170,34 @@ export function recomputeWorkflowSnapshot(snapshot: WorkflowSnapshot): WorkflowS
   return { ...snapshot, agentCount: snapshot.agents.length, runningCount, doneCount, errorCount };
 }
 
+/**
+ * An agent still "queued" or "running" when its run settles to a terminal
+ * status (completed/failed/aborted — never "paused", which is resumable and
+ * expects to pick that agent back up) has no future event that will ever
+ * flip it: its own onAgentEnd fires from inside the agent's call, and an
+ * abort's `controller.abort()` is cooperative — it does not guarantee that
+ * call's in-flight status update ever lands before the run is torn down.
+ *
+ * Left alone, the leftover "running"/"queued" entry outlives the run
+ * itself in every persisted snapshot. Semla's `countSessionAgents` sums
+ * `agent.status === "running"` across every run a session has ever had,
+ * with no cross-check against that run's own status, so a session shows a
+ * permanently-live agent indicator for a run that has actually gone idle.
+ *
+ * Generic over the caller's own agent shape because the two callers persist
+ * different types for the same status union: `endRun()`'s in-memory path
+ * works on `WorkflowAgentSnapshot`, while `stop()`'s persisted-fallback
+ * branch (no live `ManagedRun` to update through `endRun`) works on
+ * `PersistedAgentState` loaded straight off disk.
+ */
+export function skipUnfinishedAgents<
+  T extends { status: "queued" | "running" | "done" | "error" | "skipped" },
+>(agents: readonly T[]): T[] {
+  return agents.map((agent) =>
+    agent.status === "queued" || agent.status === "running" ? { ...agent, status: "skipped" } : agent,
+  );
+}
+
 export function createWidgetWorkflowDisplay(
   ctx: Pick<ExtensionContext, "ui" | "hasUI">,
   options: WorkflowDisplayOptions = {},
