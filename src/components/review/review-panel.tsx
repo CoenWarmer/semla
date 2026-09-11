@@ -550,18 +550,6 @@ export function ReviewPanel({
           saying because the editor moving on its own is otherwise
           indistinguishable from the panel losing the operator's place. */}
       <div className={cn("flex grow flex-col", following && "semla-following")}>
-        {accesses.length > 0 ? (
-          <ReviewScrubber
-            accesses={accesses}
-            agents={fileAccess.data?.agents ?? []}
-            following={following}
-            onFollowingChange={changeFollowing}
-            onStep={openStep}
-            selection={selection}
-            turns={fileAccess.data?.turns ?? []}
-          />
-        ) : null}
-
         {request.precision === "component" && (
           <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
             <span className="text-xs text-muted-foreground">
@@ -726,7 +714,19 @@ export function ReviewPanel({
               </main>
             </ResizablePanel>
           </ResizablePanelGroup>
+          
         </div>
+        {accesses.length > 0 ? (
+          <ReviewScrubber
+            accesses={accesses}
+            agents={fileAccess.data?.agents ?? []}
+            following={following}
+            onFollowingChange={changeFollowing}
+            onStep={openStep}
+            selection={selection}
+            turns={fileAccess.data?.turns ?? []}
+          />
+        ) : null}
       </div>
     </>
   );
