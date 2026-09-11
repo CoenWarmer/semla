@@ -15,6 +15,10 @@ import {
   shouldOpenReview,
 } from "@/lib/review-open";
 import { followModeEnabled, useUserSettings } from "@/hooks/use-user-settings";
+import {
+  usePanelLayoutSaver,
+  usePanelLayouts,
+} from "@/hooks/use-panel-layout";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,
@@ -68,6 +72,7 @@ export function ClientSessionComponent({
   defaultTools,
   goal: initialGoal,
   initialMessagesData,
+  initialReviewManuallyOpened = false,
   isRunning,
   sessionId,
   title,
@@ -75,6 +80,12 @@ export function ClientSessionComponent({
   defaultTools: string[];
   goal?: string | null;
   initialMessagesData?: SessionMessagesResult;
+  /**
+   * Whether the operator had the review panel open when this session was
+   * last viewed, from the session's own record on disk rather than local
+   * state — a page load has no local state yet.
+   */
+  initialReviewManuallyOpened?: boolean;
   isRunning?: boolean;
   sessionId: string;
   title: string | null;
@@ -371,7 +382,24 @@ export function ClientSessionComponent({
   const estimatedTokens =
     liveTextLength > 0 ? Math.round(liveTextLength / 4) : null;
 
-  const [reviewManuallyOpened, setReviewManuallyOpened] = useState(false);
+  const [reviewManuallyOpened, setReviewManuallyOpenedState] = useState(
+    initialReviewManuallyOpened,
+  );
+  // Persisted to the session's own record on disk, not to per-user panel
+  // layout: this is "was review open in *this* session", which belongs beside
+  // the session's other saved view state (leafId) rather than beside a
+  // pixel size that would be the same for every session.
+  const setReviewManuallyOpened = useCallback(
+    (next: boolean) => {
+      setReviewManuallyOpenedState(next);
+      void fetch(`/api/sessions/${sessionId}`, {
+        body: JSON.stringify({ reviewManuallyOpened: next }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+    },
+    [sessionId],
+  );
   // Which way the review panel splits from the conversation when both are
   // open. "vertical" stacks them (review on top); "horizontal" sits them
   // side by side. Session-local rather than persisted: the choice matters
@@ -379,6 +407,15 @@ export function ClientSessionComponent({
   const [reviewLayout, setReviewLayout] = useState<"horizontal" | "vertical">(
     "horizontal",
   );
+  // The dragged split between the review pane and the conversation,
+  // restored on reload. Keyed by orientation so a horizontal drag does not
+  // leak into the vertical layout's percentages.
+  const panelLayouts = usePanelLayouts().data;
+  const reviewSplitKey = `review-split-${reviewLayout}`;
+  const reviewSplitLayout = panelLayouts?.[reviewSplitKey] as
+    | Record<string, number>
+    | undefined;
+  const saveReviewSplit = usePanelLayoutSaver(reviewSplitKey);
   // The badge is worth a request even with the panel shut: it is how the
   // operator learns there is something to review without being interrupted.
   const reviewQuery = useReview(sessionId);
@@ -456,6 +493,7 @@ export function ClientSessionComponent({
     elementTarget,
     followWrite?.id,
     reviewQuery.data?.fingerprint,
+    setReviewManuallyOpened,
   ]);
   const agentSelection = useSessionAgentSelection(sessionId);
   const selectedAgent = agentSelection.data;
@@ -540,7 +578,13 @@ export function ClientSessionComponent({
         tools,
       });
     },
-    [forkedAt, promptMutateAsync, reviewOpen, viewingLeafId],
+    [
+      forkedAt,
+      promptMutateAsync,
+      reviewOpen,
+      setReviewManuallyOpened,
+      viewingLeafId,
+    ],
   );
 
   /**
@@ -616,7 +660,7 @@ export function ClientSessionComponent({
         tools: selection.tools,
       }).catch(() => {});
     },
-    [promptMutateAsync, viewingLeafId],
+    [promptMutateAsync, setReviewManuallyOpened, viewingLeafId],
   );
 
   const handleEditPrompt = useCallback(
@@ -776,14 +820,21 @@ export function ClientSessionComponent({
             // Remounted on layout flip: react-resizable-panels otherwise
             // keeps the user's dragged percentages across orientations, so
             // an 80%-wide review pane would become an 80%-tall one instead
-            // of resetting to a sane split for the new axis.
+            // of resetting to a sane split for the new axis. The saved layout
+            // is keyed by orientation for the same reason: a horizontal split
+            // and a vertical one are unrelated preferences.
             className="min-h-0 flex-1"
+            defaultLayout={reviewSplitLayout}
             key={reviewLayout}
+            onLayoutChanged={(layout, meta) => {
+              if (meta.isUserInteraction) saveReviewSplit(layout);
+            }}
             orientation={reviewLayout}
           >
             <ResizablePanel
               className="flex min-h-0 flex-col overflow-hidden rounded-lg border"
               defaultSize={45}
+              id="review"
               minSize={20}
               // react-resizable-panels hardcodes `overflow: auto` inline on
               // this element (see Panel's own style object in its source) —
@@ -810,6 +861,7 @@ export function ClientSessionComponent({
             <ResizablePanel
               className="flex min-h-0 flex-col overflow-hidden"
               defaultSize={55}
+              id="conversation"
               minSize={20}
               // Same override as the review panel above, and for the same
               // reason: SessionConversation manages its own scroll region

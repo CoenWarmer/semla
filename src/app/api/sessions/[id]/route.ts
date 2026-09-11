@@ -20,6 +20,7 @@ export async function PATCH(
   const body = (await request.json().catch(() => null)) as {
     title?: unknown;
     goal?: unknown;
+    reviewManuallyOpened?: unknown;
   } | null;
 
   const title =
@@ -32,8 +33,19 @@ export async function PATCH(
       ? body.goal.trim() || null
       : undefined;
 
-  if (title === undefined && goal === undefined) {
-    return Response.json({ error: "title or goal is required." }, { status: 400 });
+  // Disk-only: no Postgres column exists for this, same as `follow_mode` in
+  // user-settings-store.ts. It rides the same PATCH so the client does not
+  // need a second endpoint for one boolean.
+  const reviewManuallyOpened =
+    typeof body?.reviewManuallyOpened === "boolean"
+      ? body.reviewManuallyOpened
+      : undefined;
+
+  if (title === undefined && goal === undefined && reviewManuallyOpened === undefined) {
+    return Response.json(
+      { error: "title, goal, or reviewManuallyOpened is required." },
+      { status: 400 },
+    );
   }
 
   const patch: { title?: string; goal?: string | null } = {};
@@ -43,7 +55,15 @@ export async function PATCH(
   writeSessionMeta(id, {
     ...(title !== undefined ? { title } : {}),
     ...(goal !== undefined ? { goal } : {}),
+    ...(reviewManuallyOpened !== undefined ? { reviewManuallyOpened } : {}),
   });
+
+  // Postgres has no column for this preference; a database-only patch (this
+  // one) must not fall through to the `sessions` update below with an empty
+  // object, which would still touch nothing but is needless work.
+  if (title === undefined && goal === undefined) {
+    return Response.json({ ok: true });
+  }
 
   const { error } = await supabase
     .from("sessions")

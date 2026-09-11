@@ -59,6 +59,25 @@ describe("writeSessionMeta", () => {
     expect(readSessionMeta("nope", dir())).toBeNull();
   });
 
+  it("merges reviewManuallyOpened without disturbing the other fields", () => {
+    const d = dir();
+    writeSessionMeta("s1", { title: "Orient semla", goal: "learn the repo" }, d);
+
+    writeSessionMeta("s1", { reviewManuallyOpened: true }, d);
+
+    const meta = readSessionMeta("s1", d)!;
+    expect(meta.reviewManuallyOpened).toBe(true);
+    expect(meta.title).toBe("Orient semla");
+    expect(meta.goal).toBe("learn the repo");
+  });
+
+  it("has reviewManuallyOpened absent for a session that never touched the button", () => {
+    const d = dir();
+    writeSessionMeta("s1", { title: "Orient semla" }, d);
+
+    expect(readSessionMeta("s1", d)!.reviewManuallyOpened).toBeUndefined();
+  });
+
   it("starts a session with no projects", () => {
     const d = dir();
     writeSessionMeta("s1", { title: "New Session" }, d);

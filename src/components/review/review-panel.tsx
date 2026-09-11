@@ -32,6 +32,10 @@ import {
   useUpdateFollowMode,
   useUserSettings,
 } from "@/hooks/use-user-settings";
+import {
+  usePanelLayoutSaver,
+  usePanelLayouts,
+} from "@/hooks/use-panel-layout";
 import { isEmptyReview } from "@/lib/review-types";
 import type { SessionReview } from "@/lib/review-types";
 import { useSessionLiveAccesses } from "@/lib/session-live-state";
@@ -55,8 +59,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../ui/resizable";
-
-const SIDEBAR_WIDTH = 300;
 
 /** A draft is keyed by repository and path: two projects can hold one name. */
 const draftKey = (selection: FileSelection) =>
@@ -229,6 +231,20 @@ export function ReviewPanel({
   const updateFollowMode = useUpdateFollowMode();
   const [unpinned, setUnpinned] = useState(false);
   const following = !unpinned && followModeEnabled(settings);
+
+  // The two dragged splits inside the review surface — sidebar/editor, and
+  // changed-files/file-tree within the sidebar — restored on reload.
+  const panelLayouts = usePanelLayouts().data;
+  const sidebarSplitLayout = panelLayouts?.["review-sidebar-split"] as
+    | Record<string, number>
+    | undefined;
+  const saveSidebarSplit = usePanelLayoutSaver("review-sidebar-split");
+  const sidebarInnerSplitLayout = panelLayouts?.["review-sidebar-inner-split"] as
+    | Record<string, number>
+    | undefined;
+  const saveSidebarInnerSplit = usePanelLayoutSaver(
+    "review-sidebar-inner-split",
+  );
 
   /**
    * Open a stop from the scrubber.
@@ -556,12 +572,27 @@ export function ReviewPanel({
         )}
 
         <div className="flex min-h-0 flex-1">
-          <ResizablePanelGroup orientation="horizontal" className="h-full">
-            <ResizablePanel className="overflow-y-auto py-2">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="h-full"
+            defaultLayout={sidebarSplitLayout}
+            onLayoutChanged={(layout, meta) => {
+              if (meta.isUserInteraction) saveSidebarSplit(layout);
+            }}
+          >
+            <ResizablePanel className="overflow-y-auto py-2" id="sidebar">
               <aside className="flex shrink-0 flex-col border-r h-full">
-                <ResizablePanelGroup orientation="vertical" className="h-full">
+                <ResizablePanelGroup
+                  orientation="vertical"
+                  className="h-full"
+                  defaultLayout={sidebarInnerSplitLayout}
+                  onLayoutChanged={(layout, meta) => {
+                    if (meta.isUserInteraction) saveSidebarInnerSplit(layout);
+                  }}
+                >
                   <ResizablePanel
                     defaultSize={15}
+                    id="changed-files"
                     minSize={15}
                     className="overflow-y-auto py-2"
                   >
@@ -570,38 +601,48 @@ export function ReviewPanel({
                         <Spinner />
                       </div>
                     ) : (
-                      <ReviewChangedFiles
-                        busy={busy}
-                        expanded={expanded}
-                        onReveal={revealLine}
-                        onSelect={(next) => {
-                          // Toggle: clicking the already-expanded file's row
-                          // closes it again rather than being a no-op, since it
-                          // is already the open editor selection.
-                          revise((base) => ({
-                            expanded:
-                              base.expanded?.project === next.project &&
-                              base.expanded.path === next.path
-                                ? null
-                                : next,
-                            highlight: null,
-                            precision: null,
-                            selection: next,
-                          }));
-                        }}
-                        onStage={onStageFile}
-                        projects={
-                          selectedCommit
-                            ? projects.map((p) =>
-                                p.path === activeProject?.path
-                                  ? { ...p, changedFiles: visibleFiles }
-                                  : p,
-                              )
-                            : projects
-                        }
-                        selected={selection}
-                        sessionId={sessionId}
-                      />
+                      <div className="flex flex-col h-full w-full relative">
+                          <ReviewChangedFiles
+                            busy={busy}
+                            expanded={expanded}
+                            onReveal={revealLine}
+                            onSelect={(next) => {
+                              // Toggle: clicking the already-expanded file's row
+                              // closes it again rather than being a no-op, since it
+                              // is already the open editor selection.
+                              revise((base) => ({
+                                expanded:
+                                  base.expanded?.project === next.project &&
+                                  base.expanded.path === next.path
+                                    ? null
+                                    : next,
+                                highlight: null,
+                                precision: null,
+                                selection: next,
+                              }));
+                            }}
+                            onStage={onStageFile}
+                            projects={
+                              selectedCommit
+                                ? projects.map((p) =>
+                                    p.path === activeProject?.path
+                                      ? { ...p, changedFiles: visibleFiles }
+                                      : p,
+                                  )
+                                : projects
+                            }
+                            selected={selection}
+                            sessionId={sessionId}
+                          />
+                        <ReviewCommitBar
+                          busy={commit.isPending}
+                          message={message}
+                          onCommit={onCommit}
+                          onMessageChange={setMessage}
+                          project={activeProject}
+                          result={result}
+                        />
+                      </div>
                     )}
                   </ResizablePanel>
 
@@ -612,6 +653,7 @@ export function ReviewPanel({
                 old one's expansion. */}
                   <ResizablePanel
                     defaultSize={60}
+                    id="file-tree"
                     minSize={15}
                     className="flex flex-col"
                   >
@@ -638,7 +680,7 @@ export function ReviewPanel({
                 </ResizablePanelGroup>
               </aside>
             </ResizablePanel>
-            <ResizablePanel className="overflow-y-auto py-2">
+            <ResizablePanel className="overflow-y-auto py-2" id="editor">
               <main className="min-w-0 flex-1 h-full">
                 {selection ? (
                   <ReviewEditorPane
@@ -685,14 +727,6 @@ export function ReviewPanel({
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
-        <ReviewCommitBar
-          busy={commit.isPending}
-          message={message}
-          onCommit={onCommit}
-          onMessageChange={setMessage}
-          project={activeProject}
-          result={result}
-        />
       </div>
     </>
   );

@@ -9,6 +9,13 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  usePanelLayoutSaver,
+  usePanelLayouts,
+} from "@/hooks/use-panel-layout";
+
+const BOTTOM_PANEL_HEIGHT_KEY = "bottom-panel-height";
+
 /**
  * The bottom bar, shared between the frame and the page inside it.
  *
@@ -95,7 +102,17 @@ export function BottomPanelProvider({ children }: { children: ReactNode }) {
   // for good reason — a mount that sets state starts a second render.
   const [barSlot, setBarSlot] = useState<HTMLElement | null>(null);
   const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null);
-  const [height, setHeight] = useState(DEFAULT_PANEL_HEIGHT);
+
+  // `null` means "nothing dragged yet this session" — the height then
+  // follows whatever was last saved, computed at render time rather than
+  // synced in an effect. A drag sets an explicit override, which is what
+  // `resize` and `toggleExpanded` below produce.
+  const [heightOverride, setHeightOverride] = useState<number | null>(null);
+  const savedHeight = usePanelLayouts().data?.[BOTTOM_PANEL_HEIGHT_KEY] as
+    | number
+    | undefined;
+  const saveHeight = usePanelLayoutSaver(BOTTOM_PANEL_HEIGHT_KEY);
+  const height = heightOverride ?? savedHeight ?? DEFAULT_PANEL_HEIGHT;
 
   const toggle = useCallback((id: string) => {
     setOpen((current) => (current === id ? null : id));
@@ -103,13 +120,25 @@ export function BottomPanelProvider({ children }: { children: ReactNode }) {
 
   // `window` is read inside the handlers, never during render — this provider
   // renders on the server too.
-  const resize = useCallback((next: number) => {
-    setHeight(clampPanelHeight(next, window.innerHeight));
-  }, []);
+  const resize = useCallback(
+    (next: number) => {
+      const clamped = clampPanelHeight(next, window.innerHeight);
+      setHeightOverride(clamped);
+      saveHeight(clamped);
+    },
+    [saveHeight],
+  );
 
   const toggleExpanded = useCallback(() => {
-    setHeight((current) => nextPanelHeight(current, window.innerHeight));
-  }, []);
+    setHeightOverride((current) => {
+      const next = nextPanelHeight(
+        current ?? savedHeight ?? DEFAULT_PANEL_HEIGHT,
+        window.innerHeight,
+      );
+      saveHeight(next);
+      return next;
+    });
+  }, [saveHeight, savedHeight]);
 
   const value = useMemo(
     () => ({

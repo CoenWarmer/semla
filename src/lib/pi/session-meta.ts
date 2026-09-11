@@ -84,6 +84,17 @@ export interface SessionMeta {
    * Pi itself.
    */
   leafId?: string | null;
+  /**
+   * Whether the operator had the review panel open the last time this
+   * session was viewed, independent of whatever `shouldOpenReview` would
+   * derive on its own (a fresh unreviewed change, a live write under follow
+   * mode). Restoring it is what makes a manual open survive a reload rather
+   * than reverting to "closed" the instant the page that opened it is gone.
+   *
+   * Absent for a session that has never touched the button, which
+   * `ClientSessionComponent` reads the same as `false`.
+   */
+  reviewManuallyOpened?: boolean | null;
 }
 
 const metaPath = (id: string, dir: string) => join(dir, `${id}.json`);

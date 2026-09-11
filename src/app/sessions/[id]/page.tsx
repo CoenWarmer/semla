@@ -32,6 +32,7 @@ export default async function Page({
   const session = meta
     ? { goal: meta.goal, is_running: meta.isRunning, title: meta.title }
     : sessionResult.data;
+  const reviewManuallyOpened = meta?.reviewManuallyOpened ?? false;
 
   if (!meta && sessionResult.error) {
     console.error(`[sessions/${id}] Failed to fetch session:`, sessionResult.error);
@@ -63,6 +64,7 @@ export default async function Page({
         defaultTools={[...getPiRuntimeConfig().tools]}
         goal={session?.goal ?? null}
         initialMessagesData={transcript ?? undefined}
+        initialReviewManuallyOpened={reviewManuallyOpened}
         isRunning={session?.is_running ?? false}
         sessionId={id}
         title={session?.title ?? null}
