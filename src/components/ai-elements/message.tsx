@@ -354,7 +354,7 @@ const streamdownPlugins: PluginConfig = { cjk, code: code as PluginConfig["code"
 const streamdownComponentsWithoutSession = { p: MarkdownParagraph };
 
 export const MessageResponse = memo(
-  ({ className, sessionId, ...props }: MessageResponseProps) => {
+  ({ className, sessionId, isAnimating, ...props }: MessageResponseProps) => {
     // Stable across renders for a given sessionId, so Streamdown's own
     // memoization on `components` identity (see `Block`'s comparator in the
     // package) still holds — a fresh object literal every render would
@@ -397,6 +397,20 @@ export const MessageResponse = memo(
           className
         )}
         components={streamdownComponents}
+        // Streamdown defaults to `mode="streaming"`, which defers each
+        // markdown block's update through `useTransition` so a fast-arriving
+        // delta does not block the paint. That deferral is pointless once a
+        // message has stopped streaming — worse, a backgrounded tab is
+        // exactly where the browser most aggressively delays a scheduled
+        // transition, so a persisted message rendered with no live deltas
+        // left arriving can still carry a stale queued transition that
+        // commits unevenly once the tab regains focus, painting old and new
+        // text over each other until the next full remount (a refresh)
+        // clears it. `isAnimating` (session-conversation.tsx's own signal for
+        // "this is the live round") is exactly the condition that still needs
+        // the deferral; everything else renders `static`.
+        isAnimating={isAnimating}
+        mode={isAnimating ? "streaming" : "static"}
         plugins={streamdownPlugins}
         rehypePlugins={STREAMDOWN_REHYPE_PLUGINS_WITHOUT_RAW}
         {...props}
