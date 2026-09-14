@@ -93,12 +93,17 @@ export type SelectFile = (entry: FileEntry) => void;
  * `block: "nearest"` is the whole point: it scrolls each scrollable ancestor
  * only as far as it must, so a row that is already on screen does not move,
  * and the page around the panel is not dragged along by a row deep inside an
- * overflow container. A smooth behaviour is deliberately not asked for — this
- * fires as the row mounts, and animating from wherever the tree happened to be
- * reads as the panel scrolling by itself.
+ * overflow container. `behavior: "smooth"` is what makes that motion legible
+ * as "the panel followed the agent here" rather than a jump-cut that could be
+ * mistaken for a layout shift — the tree can now re-expand and re-reveal on
+ * every edit, not just at mount, so this fires repeatedly during a run.
  */
 const revealRow = (element: HTMLElement | null) => {
-  element?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  element?.scrollIntoView({
+    behavior: "smooth",
+    block: "nearest",
+    inline: "nearest",
+  });
 };
 
 /**
