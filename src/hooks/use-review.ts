@@ -95,6 +95,17 @@ export const workspacePath = (project: string, path: string) =>
 export const fileContentQueryKey = (sessionId: string, path: string | null) =>
   ["session-file-content", sessionId, path] as const;
 
+/**
+ * Every file-content query this session holds, regardless of path.
+ *
+ * `fileContentQueryKey` narrows to one path; invalidating that alone leaves
+ * every other cached file — including whichever one the editor has open —
+ * stale after something outside a save changes it on disk, such as a turn
+ * finishing. This is the prefix TanStack matches all of them against.
+ */
+export const fileContentQueryKeyPrefix = (sessionId: string) =>
+  ["session-file-content", sessionId] as const;
+
 export function useFileContent(sessionId: string, path: string | null) {
   return useQuery({
     enabled: path !== null,

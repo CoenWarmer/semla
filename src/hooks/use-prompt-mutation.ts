@@ -16,7 +16,7 @@ import {
   sessionSpansKey,
 } from "@/lib/session-spans";
 import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
-import { reviewQueryKey } from "@/hooks/use-review";
+import { fileContentQueryKeyPrefix, reviewQueryKey } from "@/hooks/use-review";
 import {
   projectChangeInvalidations,
   sessionProjectsKey,
@@ -791,6 +791,16 @@ export const usePromptMutation = (
       // the router, the persist queue and the recovery path must agree on.
       void queryClient.invalidateQueries({
         queryKey: reviewQueryKey(sessionId),
+      });
+
+      // The editor's own buffer is keyed separately from the review state
+      // above — `useFileContent` reads under `session-file-content`, not
+      // under `review` — so without this the changed-files list and hunks
+      // refresh but the open file's `value` prop never changes, and
+      // CodeEditor's model-swap effect (code-editor.tsx) has nothing to fire
+      // on: the buffer stays pinned to what was on disk before the turn.
+      void queryClient.invalidateQueries({
+        queryKey: fileContentQueryKeyPrefix(sessionId),
       });
 
       // The live accesses were attributed to `LIVE_TURN_ID` because nothing was
