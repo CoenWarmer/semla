@@ -82,17 +82,21 @@ export function toRelativePath(root: string, absolutePath: string): string {
 /**
  * One directory's entries, directories first then files, each alphabetical.
  *
- * Dotted names are left out: the browser is for reading a project's source, and
- * the dot directories in a workspace root are caches and VCS internals.
+ * Dotted names are left out by default: the browser is for reading a
+ * project's source, and the dot directories in a workspace root are usually
+ * caches and VCS internals. `showHidden` is an explicit opt-in for the caller
+ * that wants to see them anyway — a `.env` or a `.github` workflow is source
+ * too, just dotted.
  */
 export async function listDirectory(
   absolutePath: string,
   relPath: string,
+  showHidden = false,
 ): Promise<FileEntry[]> {
   const entries = await readdir(absolutePath, { withFileTypes: true });
 
   return entries
-    .filter((entry) => !entry.name.startsWith("."))
+    .filter((entry) => showHidden || !entry.name.startsWith("."))
     .map((entry) => ({
       name: entry.name,
       path: relPath ? `${relPath}/${entry.name}` : entry.name,

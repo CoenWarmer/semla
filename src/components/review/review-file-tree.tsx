@@ -14,10 +14,14 @@
  * *not* changed but should have been can be opened and read too.
  */
 
-import { SearchIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useContentSearch, type ContentMatch } from "@/hooks/use-review";
+import {
+  usePanelLayoutSaver,
+  usePanelLayouts,
+} from "@/hooks/use-panel-layout";
 import {
   SessionFileTree,
   useSessionFiles,
@@ -30,6 +34,16 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import type { ProjectReview } from "@/lib/review-types";
 import { cn } from "@/lib/utils";
 
+/**
+ * Kept beside the resizable panels' own sizes, in the same per-user store
+ * (see panel-layout-store.ts) — it is the same shape of preference: local
+ * to this screen, not worth a Postgres round-trip, and lost costs nothing
+ * but re-toggling. One key for the whole tree, not per project: the operator
+ * flipping it for one repository almost certainly wants it for the next one
+ * they open too.
+ */
+const SHOW_HIDDEN_FILES_KEY = "review-file-tree-show-hidden";
+
 import {
   splitPath,
   STATUS_LABEL,
@@ -37,8 +51,10 @@ import {
   TONE_CLASS,
 } from "./review-file-display";
 import {
+  ancestorDirectoriesOf,
   directoriesToExpand,
   indexChanges,
+  workspacePathOf,
   type ChangeIndex,
 } from "./review-tree-marks";
 import { useFileSearch } from "@/hooks/use-file-search";
@@ -249,23 +265,71 @@ export function ReviewFileTree({
   const [query, setQuery] = useState("");
   // Debounced so a sweep of the project is not started on every keystroke.
   const debounced = useDebouncedValue(query.trim(), 150);
+  /**
+   * Off by default: the tree is for reading a project's source, and the dot
+   * directories at a workspace root are usually caches and VCS internals
+   * nobody is here to browse. Persisted in the same place as the panel
+   * sizes (see SHOW_HIDDEN_FILES_KEY above) so the toggle survives a reload
+   * rather than resetting to hidden every time the panel mounts.
+   *
+   * `showHiddenOverride` mirrors the bottom bar's `heightOverride` pattern:
+   * the saver is debounced, and a click should flip the tree immediately
+   * rather than waiting out that debounce. `null` means "not touched this
+   * mount", so the saved value (once it has loaded) is what renders first.
+   */
+  const savedShowHidden = usePanelLayouts().data?.[SHOW_HIDDEN_FILES_KEY] as
+    | boolean
+    | undefined;
+  const [showHiddenOverride, setShowHiddenOverride] = useState<boolean | null>(
+    null,
+  );
+  const showHidden = showHiddenOverride ?? savedShowHidden ?? false;
+  const saveShowHidden = usePanelLayoutSaver(SHOW_HIDDEN_FILES_KEY);
 
   /**
    * Expanded once, from the turn's own changes and the file the panel opened
    * on.
    *
    * A lazy initialiser rather than an effect: this repository treats
-   * `react/set-state-in-effect` as an error, and re-deriving the set on every
-   * refetch would spring folders back open after the operator collapsed them.
-   * The panel remounts this component when the project changes — and, via its
-   * own `key`, when a new file is picked in the conversation — so both cases
-   * re-expand.
+   * `react/set-state-in-effect` as an error, and re-deriving the whole set on
+   * every refetch would spring folders back open after the operator collapsed
+   * them. The panel remounts this component when the project changes — and,
+   * via its own `key`, when a new file is picked in the conversation — so both
+   * cases re-expand from scratch here.
    */
   const [expanded, setExpanded] = useState(() =>
     directoriesToExpand(index, project.path, selectedPath),
   );
 
-  const root = useSessionFiles(sessionId, project.path);
+  /**
+   * The file the panel is showing changes without a remount too — most
+   * visibly while the agent is running and follow mode moves `selectedPath`
+   * from one edit to the next. Without this, a file the agent just wrote can
+   * sit inside a folder the operator never opened, and `revealSelected` below
+   * has no row to scroll to because it never mounts.
+   *
+   * Adjusted during render rather than in an effect — the sanctioned
+   * alternative to `useEffect` for "state derived from a changed prop", and
+   * the reason this repository can still treat `react/set-state-in-effect` as
+   * an error. Only ancestors are *added*; nothing already open is closed, so a
+   * folder the operator expanded by hand survives an edit landing elsewhere.
+   */
+  const [priorSelectedPath, setPriorSelectedPath] = useState(selectedPath);
+  if (selectedPath !== priorSelectedPath) {
+    setPriorSelectedPath(selectedPath);
+    if (selectedPath) {
+      const toSelection = ancestorDirectoriesOf(
+        workspacePathOf(project.path, selectedPath),
+      );
+      setExpanded((previous) => {
+        const next = new Set(previous);
+        for (const dir of toSelection) next.add(dir);
+        return next;
+      });
+    }
+  }
+
+  const root = useSessionFiles(sessionId, project.path, showHidden);
 
   const prefix = `${project.path}/`;
   const search = useFileSearch(sessionId, debounced, "project");
@@ -326,6 +390,7 @@ export function ReviewFileTree({
       expandedPaths={expanded}
       mark={(entry) => markFor(index, entry)}
       onExpandedChange={setExpanded}
+      showHidden={showHidden}
       // Folders arrive here as well and are only toggling; the file case is
       // handled by onSelectFile so nothing tries to read a directory.
       onSelect={() => {}}
@@ -347,9 +412,46 @@ export function ReviewFileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2 pb-2">
-        {project.name}
-      </p>
+      <div className="flex items-center justify-between gap-2 px-2 pb-2">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {project.name}
+        </span>
+        <div className="flex items-center">
+          {/* Collapses every folder, including the ones changed-file expansion
+              and the selected-file reveal opened. A plain reset to nothing —
+              not to the initial auto-expanded set — because "fold everything
+              in" is a stronger, more predictable action than reconstructing
+              whatever the tree happened to start with. */}
+          <button
+            aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
+            aria-pressed={showHidden}
+            className={cn(
+              "shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
+              showHidden && "text-foreground",
+            )}
+            onClick={() => {
+            const next = !showHidden;
+            setShowHiddenOverride(next);
+            saveShowHidden(next);
+          }}
+            title={showHidden ? "Hide hidden files" : "Show hidden files"}
+            type="button"
+          >
+            {showHidden ? (
+              <EyeIcon className="size-3.5" />
+            ) : (
+              <EyeOffIcon className="size-3.5" />
+            )}
+          </button>        
+          <button
+            className="shrink-0 truncate rounded px-2 py-1 text-right text-[11px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            onClick={() => setExpanded(new Set())}
+            type="button"
+          >
+            Fold in
+          </button>
+        </div>
+      </div>
       <div className="relative shrink-0 px-2 pb-1">
         <SearchIcon className="pointer-events-none absolute left-4 top-1.5 size-3 text-muted-foreground" />
         <Input

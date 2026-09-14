@@ -29,10 +29,15 @@ import { SEMLA_STATE_DIR } from "@/lib/user-settings-store";
  * One saved layout's value.
  *
  * A `react-resizable-panels` layout is a map of panel id to percentage; a
- * drag-to-resize height or width is a single pixel number. Both are stored
- * the same way so one API and one file serve every panel in the app.
+ * drag-to-resize height or width is a single pixel number. A `boolean` is
+ * for the one non-size preference kept in the same file — whether the review
+ * file tree shows dotted names — because it is the same shape of
+ * "per-user, per-screen, not worth a Postgres round-trip" preference this
+ * file already exists for, and a second file would just mean a second read
+ * on the same panel's mount. All three are stored the same way so one API
+ * and one file serve every panel in the app.
  */
-export type PanelLayoutValue = number | Record<string, number>;
+export type PanelLayoutValue = number | boolean | Record<string, number>;
 
 export type PanelLayouts = Record<string, PanelLayoutValue>;
 

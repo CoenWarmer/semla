@@ -24,7 +24,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const relPath = new URL(request.url).searchParams.get("path") ?? "";
+  const url = new URL(request.url);
+  const relPath = url.searchParams.get("path") ?? "";
+  const showHidden = url.searchParams.get("hidden") === "1";
 
   const { root, basePaths } = await resolveFileRoot(id);
   const targetRel = relPath || basePaths[0] || "";
@@ -35,7 +37,7 @@ export async function GET(
   }
 
   try {
-    const files = await listDirectory(targetPath, targetRel);
+    const files = await listDirectory(targetPath, targetRel, showHidden);
     return NextResponse.json({ files, root, basePaths, path: targetRel });
   } catch {
     return NextResponse.json({ error: "Unable to read directory" }, { status: 500 });

@@ -15,10 +15,7 @@ import {
   shouldOpenReview,
 } from "@/lib/review-open";
 import { followModeEnabled, useUserSettings } from "@/hooks/use-user-settings";
-import {
-  usePanelLayoutSaver,
-  usePanelLayouts,
-} from "@/hooks/use-panel-layout";
+import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
 import {
   useWorkflowRuns,

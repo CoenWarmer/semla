@@ -18,6 +18,7 @@ export async function GET() {
 
 const isValidValue = (value: unknown): value is PanelLayoutValue => {
   if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }

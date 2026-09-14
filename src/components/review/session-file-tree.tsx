@@ -35,17 +35,23 @@ export type DirectoryListing = {
 export async function fetchDirectory(
   sessionId: string,
   dirPath: string,
+  showHidden = false,
 ): Promise<DirectoryListing> {
   const params = new URLSearchParams({ path: dirPath });
+  if (showHidden) params.set("hidden", "1");
   const res = await fetch(`/api/sessions/${sessionId}/files?${params}`);
   if (!res.ok) throw new Error("Unable to list files");
   return res.json();
 }
 
-export function useSessionFiles(sessionId: string, dirPath: string) {
+export function useSessionFiles(
+  sessionId: string,
+  dirPath: string,
+  showHidden = false,
+) {
   return useQuery({
-    queryKey: filesQueryKey(sessionId, dirPath),
-    queryFn: () => fetchDirectory(sessionId, dirPath),
+    queryKey: filesQueryKey(sessionId, dirPath, showHidden),
+    queryFn: () => fetchDirectory(sessionId, dirPath, showHidden),
   });
 }
 
@@ -106,6 +112,7 @@ function FileTreeNode({
   revealPath,
   sessionId,
   expandedPaths,
+  showHidden,
 }: {
   entry: FileEntry;
   mark?: MarkEntry;
@@ -114,6 +121,8 @@ function FileTreeNode({
   revealPath?: string | null;
   sessionId: string;
   expandedPaths: Set<string>;
+  /** Include dotted names when this directory's own children load. */
+  showHidden?: boolean;
 }) {
   const isExpanded = expandedPaths.has(entry.path);
   const marked = mark?.(entry) ?? null;
@@ -202,6 +211,7 @@ function FileTreeNode({
           onSelectFile={onSelectFile}
           revealPath={revealPath}
           sessionId={sessionId}
+          showHidden={showHidden}
         />
       ))}
     </FileTreeFolder>
@@ -218,6 +228,7 @@ export function SessionFileTree({
   revealSelected = false,
   selectedPath,
   sessionId,
+  showHidden = false,
 }: {
   entries: FileEntry[];
   expandedPaths: Set<string>;
@@ -237,6 +248,13 @@ export function SessionFileTree({
   revealSelected?: boolean;
   selectedPath: string | null;
   sessionId: string;
+  /**
+   * Include dotted names when a folder's own children are fetched. The root
+   * listing itself is the caller's concern — `entries` already reflects
+   * whatever the caller fetched — this only has to keep every deeper fetch
+   * consistent with it as folders expand.
+   */
+  showHidden?: boolean;
 }) {
   return (
     <FileTree
@@ -255,6 +273,7 @@ export function SessionFileTree({
           onSelectFile={onSelectFile}
           revealPath={revealSelected ? selectedPath : null}
           sessionId={sessionId}
+          showHidden={showHidden}
         />
       ))}
     </FileTree>

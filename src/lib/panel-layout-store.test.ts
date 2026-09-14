@@ -25,6 +25,15 @@ describe("panel layouts on disk", () => {
     expect(readPanelLayouts(USER, d)).toEqual({ "bottom-panel-height": 420 });
   });
 
+  it("round-trips a boolean preference", () => {
+    const d = dir();
+    writePanelLayouts(USER, { "review-file-tree-show-hidden": true }, d);
+
+    expect(readPanelLayouts(USER, d)).toEqual({
+      "review-file-tree-show-hidden": true,
+    });
+  });
+
   it("round-trips a percentage layout map", () => {
     const d = dir();
     writePanelLayouts(
