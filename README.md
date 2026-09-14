@@ -19,6 +19,10 @@ The core design principle is that every agent run should be inspectable, repeata
 - **Model selection** — Models are loaded dynamically from the pi runtime; the active model is stored per user in user settings.
 - **System prompt editor** — Override the orchestrator's system prompt from the settings page without a redeploy.
 - **Code review** — see what code the agent is looking at live while it is doing it. Review its changes by being exposed to the code that the agent changes.
+- **File access timeline** — every file a session's agents read or wrote, in order, per turn and per (sub)agent — reconstructed from the session file itself rather than the trimmed transcript, so it can show detail (an edit's changed line, a resolved symbol) the transcript alone drops.
+- **Follow mode** — a saved preference that keeps the Review panel and the workflow timeline pinned to the agent's current position as it works, in both cases a mode the operator can pin/unpin rather than a one-off scroll.
+- **Element picker** — click any element in the running app UI to jump straight to its source in the Review panel. Resolution falls back from an exact clicked line to the nearest named component's declaration when the exact position can't be recovered, and says which of the two it landed on rather than guessing silently.
+- **Integrated terminal** — a real shell running on the machine hosting Semla, available alongside the conversation.
 - **MCP Server support** — Allow Semla to connect to MCP servers to extend functionality.
 ---
 
