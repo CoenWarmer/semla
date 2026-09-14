@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/collapsible";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
 import type { AgentDetail } from "@/lib/pi/workflow-service";
+import {
+  usePanelLayoutSaver,
+  usePanelLayouts,
+} from "@/hooks/use-panel-layout";
 import { TokenUsage } from "@/components/token-usage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -25,6 +29,7 @@ import remarkGfm from "remark-gfm";
 const DRAWER_WIDTH_DEFAULT = 520
 const DRAWER_WIDTH_MIN = 320
 const DRAWER_WIDTH_MAX = 1000
+const DRAWER_WIDTH_KEY = "agent-transcript-drawer-width"
 
 /**
  * The route's response, described by the type the route actually returns.
@@ -122,7 +127,15 @@ export function AgentTranscriptDrawer({
   runId: string | null;
   sessionId: string;
 }) {
-  const [drawerWidth, setDrawerWidth] = useState(DRAWER_WIDTH_DEFAULT)
+  // `null` means "nothing dragged yet this session" — width then follows
+  // whatever was last saved, read at render time rather than synced in an
+  // effect.
+  const [widthOverride, setWidthOverride] = useState<number | null>(null)
+  const savedWidth = usePanelLayouts().data?.[DRAWER_WIDTH_KEY] as
+    | number
+    | undefined
+  const saveWidth = usePanelLayoutSaver(DRAWER_WIDTH_KEY)
+  const drawerWidth = widthOverride ?? savedWidth ?? DRAWER_WIDTH_DEFAULT
   const drawerWidthRef = useRef(drawerWidth)
   useEffect(() => { drawerWidthRef.current = drawerWidth }, [drawerWidth])
 
@@ -132,15 +145,16 @@ export function AgentTranscriptDrawer({
     const startWidth = drawerWidthRef.current
     const onMouseMove = (ev: MouseEvent) => {
       const next = Math.max(DRAWER_WIDTH_MIN, Math.min(DRAWER_WIDTH_MAX, startWidth - (ev.clientX - startX)))
-      setDrawerWidth(next)
+      setWidthOverride(next)
     }
     const onMouseUp = () => {
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mouseup", onMouseUp)
+      saveWidth(drawerWidthRef.current)
     }
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mouseup", onMouseUp)
-  }, [])
+  }, [saveWidth])
 
   const query = useQuery<AgentData>({
     enabled: open && agentId !== null && runId !== null,
