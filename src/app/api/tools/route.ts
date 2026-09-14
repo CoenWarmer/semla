@@ -11,6 +11,18 @@ import { requireSessionOwner } from "@/lib/session-auth";
 export const runtime = "nodejs";
 
 /**
+ * `placement-tools` (architecture-awareness item 3) deliberately backs the
+ * built-in `edit`/`write` tool names under an extension — see the named
+ * exception in `assertManifestIsCoherent`. Those two names are already in
+ * `PI_TOOLS`/`toggleableTools`; without this, the prompt-bar tool picker and
+ * its count would list `edit`/`write` twice, once as a toggleable built-in
+ * and once as an "extension tool" nobody can distinguish from the first.
+ */
+function dedupeAgainstToggleable(extensionTools: string[]): string[] {
+  return extensionTools.filter((tool) => !(PI_TOOLS as readonly string[]).includes(tool));
+}
+
+/**
  * The tools a session actually has.
  *
  * `sessionId` is optional because /sessions/new has no session yet, and there
@@ -27,7 +39,7 @@ export async function GET(request: Request) {
     if (!sessionId) {
       await requireUser();
       return Response.json({
-        extensionTools: [...EXTENSION_TOOLS],
+        extensionTools: dedupeAgainstToggleable([...EXTENSION_TOOLS]),
         toggleableTools: [...PI_TOOLS],
       });
     }
@@ -46,7 +58,7 @@ export async function GET(request: Request) {
     );
 
     return Response.json({
-      extensionTools: [...extensionToolsForSession({ projectAnchored })],
+      extensionTools: dedupeAgainstToggleable([...extensionToolsForSession({ projectAnchored })]),
       toggleableTools: [...PI_TOOLS],
     });
   } catch (error) {

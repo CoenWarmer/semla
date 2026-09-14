@@ -38,6 +38,9 @@ import {
 
 // Semla's own extensions, imported rather than pointed at. See ExtensionSource.
 import askUserExtension from "@/lib/pi/extensions/ask-user";
+import placementPromptExtension from "@/lib/pi/extensions/architecture-awareness/placement-prompt";
+import placementToolsExtension from "@/lib/pi/extensions/architecture-awareness/placement-tools";
+import specPersistenceExtension from "@/lib/pi/extensions/architecture-awareness/spec-persistence";
 import codeMapExtension from "@/lib/pi/extensions/code-map";
 import codeSearchExtension from "@/lib/pi/extensions/code-search";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
@@ -55,7 +58,10 @@ export type ExtensionId =
   | "read-router"
   | "wiki"
   | "wiki-ingest-bridge"
-  | "mcp";
+  | "mcp"
+  | "placement-prompt"
+  | "spec-persistence"
+  | "placement-tools";
 
 /**
  * How Pi gets hold of an extension.
@@ -287,6 +293,47 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     remedy:
       "Run `npm install` — pi-mcp-adapter is declared in this repo's package.json and loaded from root node_modules.",
   },
+  {
+    id: "placement-prompt",
+    source: { factory: placementPromptExtension, kind: "factory" },
+    // Injects PLACEMENT.md into the system prompt via before_agent_start;
+    // depends on nothing else in the session.
+    requires: [],
+    providesTools: [],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/architecture-awareness/placement-prompt.ts.",
+  },
+  {
+    id: "spec-persistence",
+    source: { factory: specPersistenceExtension, kind: "factory" },
+    // Appends to and injects SPEC.md via before_agent_start; independent of
+    // placement-prompt even though both hook the same event.
+    requires: [],
+    providesTools: [],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/architecture-awareness/spec-persistence.ts.",
+  },
+  {
+    id: "placement-tools",
+    source: { factory: placementToolsExtension, kind: "factory" },
+    // Registers replacement `edit`/`write` tools; reads PLACEMENT.md via the
+    // same loader placement-prompt.ts exports, but does not need that
+    // extension loaded first — it calls the loader function directly.
+    requires: [],
+    // Deliberately claims the built-in tool names `edit`/`write` — see the
+    // named exception in assertManifestIsCoherent's collision check, and
+    // session-service.ts's excludeTools wiring that keeps Pi's own
+    // edit/write out of the active set so there is exactly one of each.
+    providesTools: ["edit", "write"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/architecture-awareness/placement-tools.ts.",
+  },
 ] as const;
 
 /**
@@ -484,10 +531,14 @@ export function assertManifestIsCoherent(
       }
       toolOwner.set(tool, spec.id);
 
-      // The workflow extension deliberately backs two built-in tool names; any
-      // other collision means the UI would offer a toggle for a tool an
-      // extension owns.
-      if (builtins.has(tool) && spec.id !== "workflow" && spec.id !== "ask-user") {
+      // The workflow extension deliberately backs two built-in tool names,
+      // and placement-tools deliberately replaces edit/write (see item 3 of
+      // docs/plans/architecture-awareness.md — Pi's built-in edit/write
+      // schemas cannot be extended in place, only replaced under the same
+      // name). Any other collision means the UI would offer a toggle for a
+      // tool an extension owns.
+      const allowedCollisions: readonly ExtensionId[] = ["workflow", "ask-user", "placement-tools"];
+      if (builtins.has(tool) && !allowedCollisions.includes(spec.id)) {
         problems.push(
           `tool "${tool}" from "${spec.id}" collides with a built-in Pi tool`,
         );

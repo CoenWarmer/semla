@@ -172,11 +172,15 @@ describe("EXTENSION_TOOLS", () => {
   });
 
   it("does not duplicate a toggleable built-in", () => {
-    // The workflow/ask-user tools are built-in names backed by extensions; the
-    // UI lists them under toggleableTools, so they must not also appear here.
+    // The workflow/ask-user tools are built-in names backed by extensions, and
+    // placement-tools deliberately replaces edit/write (see item 3 of
+    // docs/plans/architecture-awareness.md — Pi's built-in edit/write schemas
+    // cannot be extended in place, only replaced under the same name). The UI
+    // lists all of these under toggleableTools (see /api/tools's
+    // dedupeAgainstToggleable), so none of them should also appear here.
     const builtins = new Set<string>(PI_TOOLS as readonly string[]);
     const advertised = EXTENSION_MANIFEST.filter(
-      (s) => s.id !== "workflow" && s.id !== "ask-user",
+      (s) => s.id !== "workflow" && s.id !== "ask-user" && s.id !== "placement-tools",
     ).flatMap((s) => [...s.providesTools]);
     for (const tool of advertised) expect(builtins.has(tool)).toBe(false);
   });

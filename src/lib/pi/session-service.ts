@@ -18,6 +18,8 @@ import { mkdir } from "node:fs/promises";
 
 import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 import { registerNotifier } from "@/lib/pi/ask-user-bridge";
+import { assertPlacementFileWithinSessionBudget } from "@/lib/pi/extensions/architecture-awareness/placement-prompt";
+import { loadArchitectureAwarenessSettings } from "@/lib/pi/extensions/architecture-awareness/settings";
 import { runBackgroundContinuation } from "@/lib/pi/background-continuation";
 import {
   queueEntries,
@@ -53,6 +55,7 @@ import {
   extensionFactoriesInLoadOrder,
   extensionPathsInLoadOrder,
   manifestForSession,
+  type ExtensionId,
 } from "@/lib/pi/extension-manifest";
 import {
   getLiveSession,
@@ -394,7 +397,39 @@ export const runPiPrompt = async ({
    * `requiresProjectAnchor`. It picks the rest up on the next turn after a
    * project appears, including one the agent attached itself by writing a file.
    */
-  const specs = manifestForSession({ projectAnchored });
+  // Item 1's loud-failure contract: PLACEMENT.md is checked against its token
+  // budget here, synchronously, before the Pi session exists — not inside the
+  // `before_agent_start` extension handler, whose thrown errors Pi's runner
+  // routes to a diagnostic `onError` listener rather than the turn. See
+  // placement-prompt.ts's module docblock. Thrown here, this reaches the
+  // route handler's catch the same way `assertSandboxedRuntime` does above.
+  const architectureAwarenessSettings = loadArchitectureAwarenessSettings(agentCwd);
+  if (architectureAwarenessSettings.placementPromptEnabled) {
+    assertPlacementFileWithinSessionBudget(
+      agentCwd,
+      architectureAwarenessSettings.placementMaxTokens,
+    );
+  }
+
+  /**
+   * A session with no project loads a smaller extension set: see
+   * `requiresProjectAnchor`. It picks the rest up on the next turn after a
+   * project appears, including one the agent attached itself by writing a file.
+   *
+   * Each architecture-awareness item (docs/plans/architecture-awareness.md) is
+   * independently disableable per the plan's A/B constraint: an item whose
+   * setting is off is dropped from the load order entirely, rather than
+   * loaded and left inert, so a disabled item costs nothing and cannot leave
+   * a stray tool or hook active.
+   */
+  const disabledArchitectureAwarenessIds = new Set<ExtensionId>([
+    ...(architectureAwarenessSettings.placementPromptEnabled ? [] : (["placement-prompt"] as const)),
+    ...(architectureAwarenessSettings.specPersistenceEnabled ? [] : (["spec-persistence"] as const)),
+    ...(architectureAwarenessSettings.placementToolsEnabled ? [] : (["placement-tools"] as const)),
+  ]);
+  const specs = manifestForSession({ projectAnchored }).filter(
+    (spec) => !disabledArchitectureAwarenessIds.has(spec.id),
+  );
 
   if (projectAnchored) {
     sessionLog(semlaSessionId, "agent cwd", { cwd: agentCwd });
@@ -551,6 +586,25 @@ export const runPiPrompt = async ({
   await resourceLoader.reload();
   phase("extensions-compiled");
 
+  // When placement-tools is loaded it registers its own `edit`/`write` under
+  // the same names Pi's built-ins use — see extension-manifest.ts's named
+  // exception in assertManifestIsCoherent. No `excludeTools` is needed to make
+  // that the only `edit`/`write`: Pi's `_refreshToolRegistry` (agent-session.js)
+  // builds its tool registry from built-ins first, then overwrites entries
+  // with same-named custom/extension tools — `Map.set()`, last write wins —
+  // so placement-tools' registration already shadows the built-in with no
+  // help from us. With placement-tools off, the extension is dropped from
+  // `specs` above and never registers anything, so Pi's stock edit/write are
+  // the only ones and behave exactly as before this feature existed.
+  //
+  // `excludeTools` was tried here first and is wrong for this: Pi applies it
+  // by name across the *merged* registry — built-in and custom alike — inside
+  // the same `_refreshToolRegistry` filter (`isAllowedTool`). Excluding
+  // "edit"/"write" to suppress the built-ins also suppressed placement-tools'
+  // own same-named replacements, leaving neither registered and failing
+  // `assertExtensionLoad` with "placement-tools: loaded but did not register
+  // edit, write" on every real turn — caught only once this ran against a
+  // live Pi session instead of the per-item unit tests.
   const { extensionsResult, session } = await createAgentSession({
     cwd: agentCwd,
     model: configuredModel.model,
