@@ -21,8 +21,11 @@ export type { FileEntry };
 export const filesQueryPrefix = (sessionId: string) =>
   ["session-files", sessionId] as const;
 
-export const filesQueryKey = (sessionId: string, dirPath: string) =>
-  [...filesQueryPrefix(sessionId), dirPath] as const;
+export const filesQueryKey = (
+  sessionId: string,
+  dirPath: string,
+  showHidden = false,
+) => [...filesQueryPrefix(sessionId), dirPath, showHidden] as const;
 
 export type DirectoryListing = {
   files: FileEntry[];
@@ -145,8 +148,8 @@ function FileTreeNode({
   const fileProps = onSelectFile ? { onClick: () => onSelectFile(entry) } : {};
   const childQuery = useQuery({
     enabled: entry.type === "directory" && isExpanded,
-    queryKey: filesQueryKey(sessionId, entry.path),
-    queryFn: () => fetchDirectory(sessionId, entry.path),
+    queryKey: filesQueryKey(sessionId, entry.path, showHidden),
+    queryFn: () => fetchDirectory(sessionId, entry.path, showHidden),
   });
 
   if (entry.type !== "directory") {
