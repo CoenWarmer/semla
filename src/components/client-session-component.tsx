@@ -808,7 +808,7 @@ export function ClientSessionComponent({
           onClose={() =>
             queryClient.setQueryData(sessionAgentSelectionKey(sessionId), null)
           }
-          open={selectedAgent !== null}
+          open={selectedAgent !== undefined}
           runId={selectedAgent?.runId ?? null}
           sessionId={sessionId}
         />
