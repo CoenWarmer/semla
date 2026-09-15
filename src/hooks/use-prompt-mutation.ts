@@ -43,12 +43,8 @@ import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
 // feature-spec-bridge.ts and session-events.ts.
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
-  sessionActiveToolKey,
-  sessionCodeMapKey,
   sessionLiveAccessesKey,
-  sessionLiveRoundsKey,
   sessionLiveToolCallsKey,
-  sessionWorkflowSnapshotKey,
 } from "@/lib/session-live-state";
 
 export type PromptModel = {
@@ -362,16 +358,13 @@ export const usePromptMutation = (
   const handOffToTranscript = useCallback(
     () =>
       handOffStreamedAnswer({
-        clearStreamed: () => {
-          setLiveRounds([]);
-          queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
-        },
+        clearStreamed: () => setLiveRounds([]),
         loadTranscript: () =>
           queryClient.invalidateQueries({
             queryKey: messagesKey,
           }),
       }),
-    [queryClient, messagesKey, sessionId],
+    [queryClient, messagesKey],
   );
   const reconnectAbortRef = useRef<AbortController | null>(null);
   /**
@@ -407,21 +400,10 @@ export const usePromptMutation = (
   // created new closure objects on every call, which confused the React Compiler.
   const handlers = useMemo(
     (): StreamHandlers => ({
-      onRoundStart: (event) => {
-        setLiveRounds((r) => applyRoundStart(r, event));
-        queryClient.setQueryData(sessionLiveRoundsKey(sessionId), (prev) =>
-          applyRoundStart((prev as LiveRound[] | undefined) ?? [], event),
-        );
-      },
-      onDelta: (event) => {
-        setLiveRounds((r) => applyRoundDelta(r, event));
-        queryClient.setQueryData(sessionLiveRoundsKey(sessionId), (prev) =>
-          applyRoundDelta((prev as LiveRound[] | undefined) ?? [], event),
-        );
-      },
+      onRoundStart: (event) => setLiveRounds((r) => applyRoundStart(r, event)),
+      onDelta: (event) => setLiveRounds((r) => applyRoundDelta(r, event)),
       onToolStart: (event) => {
         setActiveTool(event.toolName);
-        queryClient.setQueryData(sessionActiveToolKey(sessionId), event.toolName);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
         queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
@@ -429,7 +411,6 @@ export const usePromptMutation = (
       },
       onToolEnd: (event) => {
         setActiveTool(undefined);
-        queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
         setLiveToolCalls((c) => applyLiveToolEvent(c, event));
         queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
@@ -439,10 +420,7 @@ export const usePromptMutation = (
       },
       onAskUser: (payload) => setPendingQuestion(payload),
       onFeatureSpecRequest: () => setPendingFeatureSpec(true),
-      onWorkflowSnapshot: (snapshot) => {
-        setWorkflowSnapshot(snapshot);
-        queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
-      },
+      onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
       onSpans: (incoming) => {
         setSpansById((previous) => {
           const next = new Map(previous);
@@ -458,10 +436,7 @@ export const usePromptMutation = (
             mergeSpans(prev ?? [], new Map(incoming.map((s) => [s.spanId, s]))),
         );
       },
-      onCodeMap: (map) => {
-        setCodeMap(map);
-        queryClient.setQueryData(sessionCodeMapKey(sessionId), map);
-      },
+      onCodeMap: (map) => setCodeMap(map),
       onFileAccess: (accesses) => {
         queryClient.setQueryData(
           sessionLiveAccessesKey(sessionId),
@@ -484,7 +459,6 @@ export const usePromptMutation = (
           startedAt: event.startedAt,
         };
         setWorkflowSnapshot(snapshot);
-        queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
       },
       onTitleUpdated: (title) => {
         setServerTitle(title);
@@ -533,13 +507,10 @@ export const usePromptMutation = (
 
     const reconnect = async () => {
       setLiveRounds([]);
-      queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setLiveToolCalls([]);
       queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
-      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), null);
       setIsReconnecting(true);
 
       try {
@@ -601,7 +572,6 @@ export const usePromptMutation = (
       } finally {
         setIsReconnecting(false);
         setActiveTool(undefined);
-        queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
         setPendingQuestion(null);
         setPendingFeatureSpec(false);
         await handOffToTranscript();
@@ -716,13 +686,10 @@ export const usePromptMutation = (
       );
       setStreamError(undefined);
       setLiveRounds([]);
-      queryClient.setQueryData(sessionLiveRoundsKey(sessionId), [] as LiveRound[]);
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setLiveToolCalls([]);
       queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
       setWorkflowSnapshot(undefined);
-      queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), null);
       setPendingQuestion(null);
       setPendingFeatureSpec(false);
       await queryClient.cancelQueries({
@@ -777,7 +744,6 @@ export const usePromptMutation = (
     onSettled: async () => {
       trace("onSettled:start");
       setActiveTool(undefined);
-      queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setPendingQuestion(null);
       setPendingFeatureSpec(false);
       trace("onSettled:invalidate-begin");

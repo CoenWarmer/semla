@@ -32,25 +32,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { SessionToolCall } from "@/hooks/use-session-messages";
-import type { LiveRound } from "@/lib/live-rounds";
-import type { CodeMap } from "@/lib/code-map/types";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
-export const sessionWorkflowSnapshotKey = (sessionId: string) =>
-  ["session-workflow-snapshot", sessionId] as const;
-
 export const sessionLiveToolCallsKey = (sessionId: string) =>
   ["session-live-tool-calls", sessionId] as const;
-
-export const sessionLiveRoundsKey = (sessionId: string) =>
-  ["session-live-rounds", sessionId] as const;
-
-export const sessionRunningKey = (sessionId: string) =>
-  ["session-running", sessionId] as const;
-
-export const sessionCodeMapKey = (sessionId: string) =>
-  ["session-code-map", sessionId] as const;
 
 /**
  * Files the running turn has read or written, as the events arrive.
@@ -63,22 +49,11 @@ export const sessionCodeMapKey = (sessionId: string) =>
 export const sessionLiveAccessesKey = (sessionId: string) =>
   ["session-live-accesses", sessionId] as const;
 
-export const sessionActiveToolKey = (sessionId: string) =>
-  ["session-active-tool", sessionId] as const;
-
 export const sessionAgentSelectionKey = (sessionId: string) =>
   ["session-agent-selection", sessionId] as const;
 
 export const sessionPendingScrollKey = (sessionId: string) =>
   ["session-pending-scroll", sessionId] as const;
-
-export const useSessionWorkflowSnapshot = (sessionId: string) =>
-  useQuery({
-    enabled: false,
-    queryKey: sessionWorkflowSnapshotKey(sessionId),
-    queryFn: (): WorkflowSnapshot | null => null,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
 
 export const useSessionLiveToolCalls = (sessionId: string) =>
   useQuery({
@@ -88,43 +63,11 @@ export const useSessionLiveToolCalls = (sessionId: string) =>
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-export const useSessionLiveRounds = (sessionId: string) =>
-  useQuery({
-    enabled: false,
-    queryKey: sessionLiveRoundsKey(sessionId),
-    queryFn: (): LiveRound[] => [],
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-
-export const useSessionRunning = (sessionId: string) =>
-  useQuery({
-    enabled: false,
-    queryKey: sessionRunningKey(sessionId),
-    queryFn: (): boolean => false,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-
-export const useSessionCodeMap = (sessionId: string) =>
-  useQuery({
-    enabled: false,
-    queryKey: sessionCodeMapKey(sessionId),
-    queryFn: (): CodeMap | null => null,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-
 export const useSessionLiveAccesses = (sessionId: string) =>
   useQuery({
     enabled: false,
     queryKey: sessionLiveAccessesKey(sessionId),
     queryFn: (): FileAccess[] => [],
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-
-export const useSessionActiveTool = (sessionId: string) =>
-  useQuery({
-    enabled: false,
-    queryKey: sessionActiveToolKey(sessionId),
-    queryFn: (): string | null => null,
     staleTime: Number.POSITIVE_INFINITY,
   });
 

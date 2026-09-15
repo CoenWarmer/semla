@@ -24,7 +24,6 @@ import {
 import {
   sessionAgentSelectionKey,
   sessionPendingScrollKey,
-  sessionRunningKey,
   sessionWorkflowComputedSnapshotKey,
   useSessionAgentSelection,
   useSessionLiveAccesses,
@@ -334,10 +333,6 @@ export function ClientSessionComponent({
       snapshot,
     );
   }, [queryClient, sessionId, snapshot]);
-
-  useEffect(() => {
-    queryClient.setQueryData(sessionRunningKey(sessionId), isActive);
-  }, [queryClient, sessionId, isActive]);
 
   // After every 10th user prompt, trigger a background context-quality check.
   const prevPendingRef = useRef(false);
