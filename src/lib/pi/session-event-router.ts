@@ -311,6 +311,7 @@ export const createTurnEventRouter = ({
                 {
                   agent: MAIN_AGENT,
                   at: new Date().toISOString(),
+                  callId: event.toolCallId,
                   id:
                     raw.length > 1
                       ? `${event.toolCallId}#${index}`

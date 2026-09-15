@@ -57,9 +57,17 @@ const result = (
   callId: string,
   toolName: string,
   details: unknown,
+  isError = false,
 ) => ({
   id,
-  message: { content: [], details, role: "toolResult", toolCallId: callId, toolName },
+  message: {
+    content: [],
+    details,
+    isError,
+    role: "toolResult",
+    toolCallId: callId,
+    toolName,
+  },
   parentId,
   timestamp: "2026-01-01T00:00:03.000Z",
   type: "message",
@@ -79,10 +87,10 @@ const build = () =>
 
 describe("buildFileAccessTimeline", () => {
   it("returns nothing for a session with no file", () => {
-    expect(build()).toEqual({ accesses: [], agents: [], turns: [] });
+    expect(build()).toEqual({ agents: [], calls: [], turns: [] });
   });
 
-  it("attributes accesses to the turn they happened in", () => {
+  it("attributes calls to the turn they happened in", () => {
     writeSession([
       user("u1", null, "2026-01-01T00:00:00.000Z"),
       assistant("a1", "u1", "2026-01-01T00:00:01.000Z", [
@@ -95,7 +103,7 @@ describe("buildFileAccessTimeline", () => {
     ]);
 
     const timeline = build();
-    expect(timeline.accesses.map((a) => [a.path, a.turnId])).toEqual([
+    expect(timeline.calls.map((call) => [call.accesses[0]?.path, call.turnId])).toEqual([
       ["src/a.ts", "u1"],
       ["src/b.ts", "u2"],
     ]);
@@ -113,13 +121,13 @@ describe("buildFileAccessTimeline", () => {
       result("r1", "a1", "c1", "edit", { firstChangedLine: 42 }),
     ]);
 
-    expect(build().accesses[0]).toMatchObject({
+    expect(build().calls[0]?.accesses[0]).toMatchObject({
       kind: "write",
       ranges: [{ end: 42, start: 42 }],
     });
   });
 
-  it("gives each file of a multi-file bash call its own id", () => {
+  it("gives each file of a multi-file bash call its own id, on one call", () => {
     writeSession([
       user("u1", null, "2026-01-01T00:00:00.000Z"),
       assistant("a1", "u1", "2026-01-01T00:00:01.000Z", [
@@ -133,8 +141,12 @@ describe("buildFileAccessTimeline", () => {
     ]);
 
     const timeline = build();
-    expect(timeline.accesses.map((a) => a.id)).toEqual(["c1#0", "c1#1"]);
-    expect(timeline.accesses.every((a) => a.confidence === "inferred")).toBe(true);
+    expect(timeline.calls).toHaveLength(1);
+    expect(timeline.calls[0]?.accesses.map((a) => a.id)).toEqual(["c1#0", "c1#1"]);
+    expect(timeline.calls[0]?.accesses.every((a) => a.callId === "c1")).toBe(true);
+    expect(timeline.calls[0]?.accesses.every((a) => a.confidence === "inferred")).toBe(
+      true,
+    );
   });
 
   it("keeps a single-file call on the bare tool call id", () => {
@@ -145,7 +157,7 @@ describe("buildFileAccessTimeline", () => {
       ]),
     ]);
 
-    expect(build().accesses[0]?.id).toBe("c1");
+    expect(build().calls[0]?.accesses[0]?.id).toBe("c1");
   });
 
   it("attributes work before the first prompt to the synthetic root turn", () => {
@@ -155,11 +167,43 @@ describe("buildFileAccessTimeline", () => {
       ]),
     ]);
 
-    expect(build().accesses[0]?.turnId).toBe("\u2039root\u203a");
+    expect(build().calls[0]?.turnId).toBe("\u2039root\u203a");
   });
 
-  it("lists the main agent only once it has touched something", () => {
+  it("lists the main agent only once it has made a call", () => {
     writeSession([user("u1", null, "2026-01-01T00:00:00.000Z")]);
     expect(build().agents).toEqual([]);
+  });
+
+  it("still records a call that touched no file, with its summary", () => {
+    // `ask_user`, `workflow_control`, an mcp call, a `bash` the shell parser
+    // did not recognise — none of these leave a `FileAccess`, but the "All
+    // tools" filter needs a stop for them anyway.
+    writeSession([
+      user("u1", null, "2026-01-01T00:00:00.000Z"),
+      assistant("a1", "u1", "2026-01-01T00:00:01.000Z", [
+        { arguments: { command: "npm test" }, id: "c1", name: "bash", type: "toolCall" },
+      ]),
+    ]);
+
+    const [call] = build().calls;
+    expect(call).toMatchObject({
+      accesses: [],
+      isError: false,
+      name: "bash",
+      summary: "npm test",
+    });
+  });
+
+  it("marks a call as failed from its result, independent of any access", () => {
+    writeSession([
+      user("u1", null, "2026-01-01T00:00:00.000Z"),
+      assistant("a1", "u1", "2026-01-01T00:00:01.000Z", [
+        { arguments: { path: "src/a.ts" }, id: "c1", name: "read", type: "toolCall" },
+      ]),
+      result("r1", "a1", "c1", "read", undefined, true),
+    ]);
+
+    expect(build().calls[0]).toMatchObject({ isError: true });
   });
 });

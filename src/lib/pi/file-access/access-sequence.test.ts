@@ -8,15 +8,18 @@ import {
   linesOutside,
   rangeLabel,
   revealLineFor,
+  siblingsOf,
   stepIndex,
+  type ScrubberStop,
 } from "./access-sequence.ts";
-import type { FileAccess } from "./access-types.ts";
+import type { FileAccess, ToolCallStep } from "./access-types.ts";
 
 let counter = 0;
 
 const access = (over: Partial<FileAccess> = {}): FileAccess => ({
   agent: { id: "main", label: "Main" },
   at: "2026-01-01T00:00:00.000Z",
+  callId: "unused",
   confidence: "exact",
   id: `a${(counter += 1)}`,
   kind: "read",
@@ -28,6 +31,26 @@ const access = (over: Partial<FileAccess> = {}): FileAccess => ({
   turnId: "u1",
   ...over,
 });
+
+/** A tool call carrying whichever accesses the test cares about. */
+const call = (
+  accesses: FileAccess[],
+  over: Partial<ToolCallStep> = {},
+): ToolCallStep => ({
+  accesses,
+  agent: { id: "main", label: "Main" },
+  at: "2026-01-01T00:00:00.000Z",
+  id: `c${(counter += 1)}`,
+  isError: false,
+  name: "read",
+  turnId: "u1",
+  ...over,
+});
+
+const fileStop = (stop: ScrubberStop | undefined) => {
+  if (!stop || stop.kind !== "file") throw new Error("expected a file stop");
+  return stop;
+};
 
 describe("mergeRanges", () => {
   it("merges overlapping spans", () => {
@@ -80,145 +103,166 @@ describe("mergeRanges", () => {
 });
 
 describe("buildSequence", () => {
-  it("folds a file read in several passes into one stop", () => {
-    // Four `sed -n` calls paging through a file are one thing the agent did.
-    // Four stops, each re-opening it a hundred lines further down, is worse
-    // than useless.
+  it("gives one call's several accesses their own contiguous stops", () => {
+    // One `bash` reading two files is one tool call; each file it touched
+    // still gets its own badge/stop, in the order the command implies.
     const sequence = buildSequence([
-      access({ ranges: [{ end: 100, start: 1 }] }),
-      access({ ranges: [{ end: 200, start: 101 }] }),
-      access({ ranges: [{ end: 300, start: 201 }] }),
+      call([access({ path: "src/a.ts" }), access({ path: "src/b.ts" })]),
     ]);
 
-    expect(sequence.steps).toHaveLength(1);
-    expect(sequence.steps[0]).toMatchObject({
-      count: 3,
-      ranges: [{ end: 300, start: 1 }],
-    });
-  });
-
-  it("does not fold a read and a write of the same file together", () => {
-    const sequence = buildSequence([
-      access({ ranges: [{ end: 10, start: 1 }] }),
-      access({ kind: "write", ranges: [{ end: 5, start: 5 }] }),
-    ]);
-    expect(sequence.steps.map((step) => step.kind)).toEqual(["read", "write"]);
-  });
-
-  it("does not fold non-consecutive visits to one file", () => {
-    // Coming back to a file after looking elsewhere is a distinct moment, and
-    // collapsing it would make the sequence disagree with the transcript.
-    const sequence = buildSequence([
-      access({ path: "src/a.ts" }),
-      access({ path: "src/b.ts" }),
-      access({ path: "src/a.ts" }),
-    ]);
-    expect(sequence.steps.map((step) => step.path)).toEqual([
+    expect(sequence.stops.map((stop) => fileStop(stop).access.path)).toEqual([
       "src/a.ts",
       "src/b.ts",
-      "src/a.ts",
     ]);
+    expect(sequence.stops.every((stop) => stop.call.id === sequence.stops[0]?.call.id)).toBe(
+      true,
+    );
   });
 
-  it("lets a whole-file read absorb the ranges folded into it", () => {
+  it("does not fold repeat reads of one file across separate tool calls", () => {
+    // Four `sed -n` calls paging through a file are four tool calls now, not
+    // one folded stop — a step is a call, and folding across calls is gone.
     const sequence = buildSequence([
-      access({ ranges: [{ end: 100, start: 1 }] }),
-      access({ ranges: [] }),
+      call([access({ ranges: [{ end: 100, start: 1 }] })]),
+      call([access({ ranges: [{ end: 200, start: 101 }] })]),
+      call([access({ ranges: [{ end: 300, start: 201 }] })]),
     ]);
-    expect(sequence.steps[0]?.ranges).toEqual([]);
+
+    expect(sequence.stops).toHaveLength(3);
+    expect(sequence.stops.map((stop) => stop.call.id)).toEqual([
+      sequence.stops[0]?.call.id,
+      sequence.stops[1]?.call.id,
+      sequence.stops[2]?.call.id,
+    ]);
+    // Three different calls: no two stops share a call id.
+    expect(new Set(sequence.stops.map((stop) => stop.call.id)).size).toBe(3);
   });
 
-  it("taints a folded stop with an inferred access", () => {
+  it("does not dedup two accesses in the same call to the same file", () => {
+    // A single bash command reading the same file twice, at different ranges,
+    // is rare enough not to special-case — it stays two stops.
     const sequence = buildSequence([
-      access({ ranges: [{ end: 10, start: 1 }] }),
-      access({ confidence: "inferred", ranges: [{ end: 20, start: 11 }], tool: "bash" }),
+      call([
+        access({ ranges: [{ end: 10, start: 1 }] }),
+        access({ ranges: [{ end: 20, start: 11 }] }),
+      ]),
     ]);
-    expect(sequence.steps[0]?.confidence).toBe("inferred");
+    expect(sequence.stops).toHaveLength(2);
   });
 
-  it("does not claim a sibling project's file is the same file", () => {
+  it("counts a missing access rather than stepping onto it", () => {
     const sequence = buildSequence([
-      access({ project: "semla" }),
-      access({ project: "semla-wiki" }),
-    ]);
-    expect(sequence.steps).toHaveLength(2);
-  });
-
-  it("counts files that are no longer on disk rather than stepping onto them", () => {
-    const sequence = buildSequence([
-      access({ path: "src/gone.ts", missing: true }),
-      access({ path: "src/here.ts" }),
+      call([access({ missing: true, path: "src/gone.ts" })]),
+      call([access({ path: "src/here.ts" })]),
     ]);
     expect(sequence).toMatchObject({ missing: 1 });
-    expect(sequence.steps.map((step) => step.path)).toEqual(["src/here.ts"]);
+    expect(sequence.stops.map((stop) => fileStop(stop).access.path)).toEqual([
+      "src/here.ts",
+    ]);
   });
 
-  it("counts reads outside every linked project rather than stepping onto them", () => {
+  it("counts an access outside every linked project rather than stepping onto it", () => {
     // The file API refuses a path outside the session's projects, so an arrow
     // landing on `node_modules` would be an arrow that does nothing.
     const sequence = buildSequence([
-      access({ path: "node_modules/react/index.js", project: null }),
-      access({ path: "src/here.ts" }),
+      call([access({ path: "node_modules/react/index.js", project: null })]),
+      call([access({ path: "src/here.ts" })]),
     ]);
     expect(sequence).toMatchObject({ unlinked: 1 });
-    expect(sequence.steps.map((step) => step.path)).toEqual(["src/here.ts"]);
+    expect(sequence.stops.map((stop) => fileStop(stop).access.path)).toEqual([
+      "src/here.ts",
+    ]);
+  });
+
+  it("excludes a call that touched no file by default", () => {
+    const sequence = buildSequence([
+      call([], { name: "ask_user" }),
+      call([access({ path: "src/here.ts" })]),
+    ]);
+    expect(sequence.stops.map((stop) => stop.kind)).toEqual(["file"]);
+  });
+
+  it("includes a call that touched no file as a single stop under 'All tools'", () => {
+    const sequence = buildSequence(
+      [call([], { name: "ask_user" }), call([access({ path: "src/here.ts" })])],
+      { agentId: null, showAllTools: true, turnId: null },
+    );
+    expect(sequence.stops.map((stop) => stop.kind)).toEqual(["tool", "file"]);
+    expect(sequence.stops[0]).toMatchObject({ kind: "tool" });
   });
 
   it("scopes to one turn", () => {
     const sequence = buildSequence(
-      [access({ turnId: "u1" }), access({ path: "src/b.ts", turnId: "u2" })],
-      { agentId: null, turnId: "u2" },
+      [
+        call([access({ turnId: "u1" })], { turnId: "u1" }),
+        call([access({ path: "src/b.ts", turnId: "u2" })], { turnId: "u2" }),
+      ],
+      { agentId: null, showAllTools: false, turnId: "u2" },
     );
-    expect(sequence.steps.map((step) => step.path)).toEqual(["src/b.ts"]);
+    expect(sequence.stops.map((stop) => fileStop(stop).access.path)).toEqual([
+      "src/b.ts",
+    ]);
   });
 
   it("scopes to one agent", () => {
     const sequence = buildSequence(
       [
-        access(),
-        access({
+        call([access()]),
+        call([access({ path: "src/b.ts" })], {
           agent: { id: "run1:reviewer", label: "reviewer" },
-          path: "src/b.ts",
         }),
       ],
-      { agentId: "run1:reviewer", turnId: null },
+      { agentId: "run1:reviewer", showAllTools: false, turnId: null },
     );
-    expect(sequence.steps.map((step) => step.path)).toEqual(["src/b.ts"]);
+    expect(sequence.stops.map((stop) => fileStop(stop).access.path)).toEqual([
+      "src/b.ts",
+    ]);
   });
 
   it("does not fold two agents' reads of one file together", () => {
-    // They are different agents' work even at the same path, and the pill
-    // names whose it was.
+    // They are different agents' work even at the same path and the same
+    // moment, and each keeps its own call and its own stop.
     const sequence = buildSequence([
-      access(),
-      access({ agent: { id: "run1:reviewer", label: "reviewer" } }),
+      call([access()]),
+      call([access()], { agent: { id: "run1:reviewer", label: "reviewer" } }),
     ]);
-    expect(sequence.steps).toHaveLength(2);
+    expect(sequence.stops).toHaveLength(2);
   });
 });
 
 describe("revealLineFor", () => {
   it("prefers a resolved symbol's own line", () => {
-    const [step] = buildSequence([
-      access({
-        ranges: [{ end: 200, start: 100 }],
-        symbol: { kind: "Function", line: 150, name: "f" },
-      }),
-    ]).steps;
-    expect(revealLineFor(step!)).toBe(150);
+    const [stop] = buildSequence([
+      call([
+        access({
+          ranges: [{ end: 200, start: 100 }],
+          symbol: { kind: "Function", line: 150, name: "f" },
+        }),
+      ]),
+    ]).stops;
+    expect(revealLineFor(stop!)).toBe(150);
   });
 
   it("asks for no scroll on a whole-file write", () => {
     // Leaves the editor's open-on-the-first-hunk behaviour alone, which is
     // where the interesting part of a rewritten file usually is.
-    const [step] = buildSequence([access({ kind: "write", ranges: [] })]).steps;
-    expect(revealLineFor(step!)).toBeNull();
+    const [stop] = buildSequence([call([access({ kind: "write", ranges: [] })])]).stops;
+    expect(revealLineFor(stop!)).toBeNull();
+  });
+
+  it("asks for no scroll on a bare tool stop", () => {
+    const [stop] = buildSequence([call([], { name: "ask_user" })], {
+      agentId: null,
+      showAllTools: true,
+      turnId: null,
+    }).stops;
+    expect(revealLineFor(stop!)).toBeNull();
   });
 });
 
 describe("rangeLabel", () => {
   const label = (ranges: FileAccess["ranges"]) =>
-    rangeLabel(buildSequence([access({ ranges })]).steps[0]!);
+    rangeLabel(buildSequence([call([access({ ranges })])]).stops[0]!);
 
   it("reads a span as a span and a single line as a line", () => {
     expect(label([{ end: 160, start: 120 }])).toBe("L120\u2013160");
@@ -232,6 +276,15 @@ describe("rangeLabel", () => {
   it("says nothing for a whole file", () => {
     expect(label([])).toBeNull();
   });
+
+  it("says nothing for a bare tool stop", () => {
+    const [stop] = buildSequence([call([], { name: "ask_user" })], {
+      agentId: null,
+      showAllTools: true,
+      turnId: null,
+    }).stops;
+    expect(rangeLabel(stop!)).toBeNull();
+  });
 });
 
 describe("index helpers", () => {
@@ -242,13 +295,31 @@ describe("index helpers", () => {
   });
 
   it("finds the stop for the file the panel is showing", () => {
-    const { steps } = buildSequence([
-      access({ path: "src/a.ts" }),
-      access({ path: "src/b.ts" }),
+    const { stops } = buildSequence([
+      call([access({ path: "src/a.ts" })]),
+      call([access({ path: "src/b.ts" })]),
     ]);
-    expect(indexOfFile(steps, { path: "src/b.ts", project: "semla" })).toBe(1);
-    expect(indexOfFile(steps, { path: "src/c.ts", project: "semla" })).toBeNull();
-    expect(indexOfFile(steps, null)).toBeNull();
+    expect(indexOfFile(stops, { path: "src/b.ts", project: "semla" })).toBe(1);
+    expect(indexOfFile(stops, { path: "src/c.ts", project: "semla" })).toBeNull();
+    expect(indexOfFile(stops, null)).toBeNull();
+  });
+});
+
+describe("siblingsOf", () => {
+  it("groups a call's several file stops together", () => {
+    const { stops } = buildSequence([
+      call([access({ path: "src/a.ts" }), access({ path: "src/b.ts" })]),
+      call([access({ path: "src/c.ts" })]),
+    ]);
+    expect(siblingsOf(stops, 0)).toEqual({ end: 1, start: 0 });
+    expect(siblingsOf(stops, 1)).toEqual({ end: 1, start: 0 });
+    expect(siblingsOf(stops, 2)).toEqual({ end: 2, start: 2 });
+  });
+
+  it("returns an empty range for an out-of-bounds index", () => {
+    const { stops } = buildSequence([call([access()])]);
+    expect(siblingsOf(stops, 5)).toEqual({ end: -1, start: -1 });
+    expect(siblingsOf(stops, -1)).toEqual({ end: -1, start: -1 });
   });
 });
 

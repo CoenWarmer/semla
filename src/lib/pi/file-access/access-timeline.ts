@@ -16,6 +16,7 @@ import { resolveSessionCwd } from "@/lib/pi/session-cwd";
 import { readSessionEntries, type SessionFileEntry } from "@/lib/pi/session-file";
 import { readSessionMeta } from "@/lib/pi/session-meta";
 import { ROOT_TURN_ID } from "@/lib/pi/session-turn-graph";
+import { summarizeArguments } from "@/lib/pi/transcript";
 
 import { accessesFromToolCall } from "./access-from-tool-call";
 import {
@@ -25,8 +26,8 @@ import {
 } from "./access-paths";
 import type {
   AccessAgent,
-  FileAccess,
   FileAccessTimeline,
+  ToolCallStep,
   TimelineTurn,
 } from "./access-types";
 
@@ -39,15 +40,16 @@ const messageOf = (entry: SessionFileEntry): Record<string, unknown> | null =>
   isRecord(entry.message) ? entry.message : null;
 
 /**
- * `details` from every tool result, by the call it answers.
+ * `{ details, isError }` from every tool result, by the call it answers.
  *
  * A first pass, because a result is a later entry than the call it belongs to
- * and `edit`'s changed line only exists on the result.
+ * and `edit`'s changed line — and whether the call failed at all — only exist
+ * on the result.
  */
-function detailsByCallId(
+function resultByCallId(
   entries: readonly SessionFileEntry[],
-): Map<string, unknown> {
-  const details = new Map<string, unknown>();
+): Map<string, { details: unknown; isError: boolean }> {
+  const results = new Map<string, { details: unknown; isError: boolean }>();
 
   for (const entry of entries) {
     const message = messageOf(entry);
@@ -56,10 +58,13 @@ function detailsByCallId(
     const callId = message.toolCallId;
     if (typeof callId !== "string") continue;
 
-    details.set(callId, message.details);
+    results.set(callId, {
+      details: message.details,
+      isError: Boolean(message.isError),
+    });
   }
 
-  return details;
+  return results;
 }
 
 export interface EntryAccessOptions {
@@ -75,18 +80,24 @@ export interface EntryAccessOptions {
 }
 
 /**
- * Accesses from a run of pi entries, oldest first.
+ * Tool calls from a run of pi entries, oldest first, each carrying the files
+ * it touched.
  *
  * Shared by the host session and by subagent transcripts, which pi writes in
  * the same format — so a subagent's `bash` reads are found by the same parser
  * rather than by a second, weaker one reading the run file's compacted history.
+ *
+ * Every tool call becomes a `ToolCallStep`, whether or not it touched a file:
+ * a call with `accesses: []` is what lets the "All tools" scrubber filter show
+ * `ask_user`, `workflow_control` and the rest, which are otherwise invisible by
+ * the time this reaches the browser.
  */
 export function accessesFromEntries(
   entries: readonly SessionFileEntry[],
   options: EntryAccessOptions,
-): { accesses: FileAccess[]; turns: TimelineTurn[] } {
-  const details = detailsByCallId(entries);
-  const accesses: FileAccess[] = [];
+): { calls: ToolCallStep[]; turns: TimelineTurn[] } {
+  const results = resultByCallId(entries);
+  const calls: ToolCallStep[] = [];
   const turns: TimelineTurn[] = [];
   let turnId = options.fixedTurnId ?? ROOT_TURN_ID;
 
@@ -109,20 +120,23 @@ export function accessesFromEntries(
       if (typeof part.name !== "string") continue;
 
       const callId = typeof part.id === "string" ? part.id : `${entry.id}-call`;
+      const result = results.get(callId);
       const found = accessesFromToolCall({
         arguments: part.arguments,
-        details: details.get(callId),
+        details: result?.details,
         id: callId,
         name: part.name,
       });
+      const summary = summarizeArguments(part.arguments);
 
-      found.forEach((raw, index) => {
-        accesses.push(
+      calls.push({
+        accesses: found.map((raw, index) =>
           toFileAccess(
             raw,
             {
               agent: options.agent,
               at,
+              callId,
               // One call can touch several files — a shell command, or a
               // resolve with more than one target — so the call id alone is
               // not unique enough to key a list on.
@@ -132,12 +146,21 @@ export function accessesFromEntries(
             options.workspace,
             options.exists,
           ),
-        );
+        ),
+        agent: options.agent,
+        at,
+        id: callId,
+        // Empty for a call whose result has not landed yet — a still-running
+        // tool is neither a success nor a failure.
+        isError: result?.isError ?? false,
+        name: part.name,
+        ...(summary ? { summary } : {}),
+        turnId,
       });
     }
   }
 
-  return { accesses, turns };
+  return { calls, turns };
 }
 
 /**
@@ -188,7 +211,7 @@ export function buildFileAccessTimeline(
     options.workspaceRoot ?? PI_WORKSPACE_ROOT,
   );
 
-  const { accesses, turns } = accessesFromEntries(
+  const { calls, turns } = accessesFromEntries(
     rows.map((row) => row.payload.entry),
     {
       agent: MAIN_AGENT,
@@ -198,8 +221,8 @@ export function buildFileAccessTimeline(
   );
 
   return {
-    accesses,
-    agents: accesses.length > 0 ? [MAIN_AGENT] : [],
+    agents: calls.length > 0 ? [MAIN_AGENT] : [],
+    calls,
     turns,
   };
 }

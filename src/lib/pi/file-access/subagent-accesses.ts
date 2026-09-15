@@ -33,8 +33,8 @@ import {
 } from "./access-timeline";
 import type {
   AccessAgent,
-  FileAccess,
   FileAccessTimeline,
+  ToolCallStep,
   TimelineTurn,
 } from "./access-types";
 
@@ -59,7 +59,7 @@ export function turnForRun(
 }
 
 /**
- * The same timeline, with every subagent's accesses merged in chronologically.
+ * The same timeline, with every subagent's tool calls merged in chronologically.
  *
  * Returned unchanged when the session ran no workflows, which is the common
  * case and costs one index read.
@@ -77,7 +77,7 @@ export function withSubagentAccesses(
   const exists = options.exists ?? existenceCache();
   const transcripts = indexAgentTranscripts(dir);
 
-  const added: FileAccess[] = [];
+  const added: ToolCallStep[] = [];
   const agents: AccessAgent[] = [...timeline.agents];
 
   for (const run of runs) {
@@ -102,27 +102,27 @@ export function withSubagentAccesses(
         label: agent.label,
       };
 
-      const { accesses } = accessesFromEntries(entries, {
+      const { calls } = accessesFromEntries(entries, {
         agent: identity,
         exists,
         fixedTurnId: turnId,
         workspace,
       });
 
-      if (accesses.length === 0) continue;
+      // A subagent with zero calls at all is an empty transcript, not one that
+      // merely touched no file — the latter still belongs in "All tools".
+      if (calls.length === 0) continue;
 
       agents.push(identity);
-      added.push(...accesses);
+      added.push(...calls);
     }
   }
 
   if (added.length === 0) return timeline;
 
   return {
-    accesses: [...timeline.accesses, ...added].sort((a, b) =>
-      a.at.localeCompare(b.at),
-    ),
     agents,
+    calls: [...timeline.calls, ...added].sort((a, b) => a.at.localeCompare(b.at)),
     turns: timeline.turns,
   };
 }

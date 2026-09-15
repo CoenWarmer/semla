@@ -77,6 +77,7 @@ describe("toFileAccess", () => {
   const origin = {
     agent: { id: "main", label: "Main" },
     at: "2026-09-09T19:35:16.000Z",
+    callId: "toolu_1",
     id: "toolu_1",
     turnId: "entry-1",
   };
@@ -95,6 +96,7 @@ describe("toFileAccess", () => {
     expect(access).toEqual({
       agent: origin.agent,
       at: origin.at,
+      callId: "toolu_1",
       confidence: "inferred",
       id: "toolu_1",
       kind: "read",

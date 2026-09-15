@@ -189,6 +189,7 @@ describe("shouldOpenReview across the start of a new turn", () => {
 const access = (overrides: Partial<FileAccess> = {}): FileAccess => ({
   agent: { id: "main", label: "Main" },
   at: "2026-01-01T10:00:00.000Z",
+  callId: "call-1",
   confidence: "exact",
   id: "call-1",
   kind: "write",

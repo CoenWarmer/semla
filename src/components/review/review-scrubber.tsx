@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * The scrubber: step through the files the agent read and wrote to answer a
- * prompt.
+ * The scrubber: step through what the agent did to answer a prompt.
  *
- * A pill rather than a list, because the interesting thing about a turn's reads
- * is their *order* — what the agent looked at, and what it looked at next. A
- * list of forty file names sorted by path answers a different question, and the
- * transcript already answers it badly.
+ * A pill rather than a list, because the interesting thing about a turn's work
+ * is its *order* — what the agent did, and what it did next. A list of forty
+ * tool calls sorted by name answers a different question, and the transcript
+ * already answers it badly.
+ *
+ * The unit is a tool call, not a file: a call that touched one or more files
+ * shows a `tool: <name>` badge plus one badge per file, grouped together and
+ * independently clickable; a call that touched none is a single stop with no
+ * file badge, visible only under the "All tools" filter.
  *
  * Holds only its own cursor. Which file is open is the panel's business, so a
  * step is an event handler that calls up rather than state this component and
@@ -33,13 +37,14 @@ import {
   buildSequence,
   clampIndex,
   rangeLabel,
+  siblingsOf,
   stepIndex,
-  type AccessStep,
+  type ScrubberStop,
 } from "@/lib/pi/file-access/access-sequence";
 import {
   LIVE_TURN_ID,
   type AccessAgent,
-  type FileAccess,
+  type ToolCallStep,
   type TimelineTurn,
 } from "@/lib/pi/file-access/access-types";
 import { cn } from "@/lib/utils";
@@ -51,40 +56,122 @@ const basename = (path: string) => path.split("/").pop() ?? path;
 /**
  * The turn to scope to.
  *
- * A running turn's accesses arrive live, before anything is persisted, so they
+ * A running turn's calls arrive live, before anything is persisted, so they
  * are attributed to `LIVE_TURN_ID` and are not in `turns` yet. While any are
  * present that *is* the current turn — scoping to the last persisted one would
- * show the previous prompt's reads while the agent is working.
+ * show the previous prompt's work while the agent is working.
  */
 const latestTurn = (
   turns: readonly TimelineTurn[],
-  accesses: readonly FileAccess[],
+  calls: readonly ToolCallStep[],
 ) =>
-  accesses.some((access) => access.turnId === LIVE_TURN_ID)
+  calls.some((call) => call.turnId === LIVE_TURN_ID)
     ? LIVE_TURN_ID
     : (turns[turns.length - 1]?.id ?? null);
 
+/** The `tool: <name>` badge shown for every stop's group, file or not. */
+function ToolPill({ call }: { call: ToolCallStep }) {
+  const label = (
+    <span
+      className={cn(
+        "shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]",
+        call.isError && "bg-destructive/15 text-destructive",
+      )}
+    >
+      tool: {call.name}
+    </span>
+  );
+
+  if (!call.summary && !call.isError) return label;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span />}>{label}</TooltipTrigger>
+      <TooltipContent>
+        {call.isError ? "This call failed. " : ""}
+        {call.summary ?? ""}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** One file badge within a tool call's group — same styling for every file it touched. */
+function FileBadge({
+  active,
+  onClick,
+  stop,
+}: {
+  active: boolean;
+  onClick: () => void;
+  stop: Extract<ScrubberStop, { kind: "file" }>;
+}) {
+  const { access } = stop;
+  const label = rangeLabel(stop);
+
+  return (
+    <button
+      className={cn(
+        "flex min-w-0 shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+      onClick={onClick}
+      title={`${access.project ? `${access.project}/` : ""}${access.path}`}
+      type="button"
+    >
+      {access.kind === "write" ? (
+        <PencilIcon className="size-3 shrink-0" />
+      ) : (
+        <FileSearchIcon className="size-3 shrink-0" />
+      )}
+      <span className="truncate font-medium">{basename(access.path)}</span>
+      {label ? (
+        <span className="shrink-0 tabular-nums opacity-70">{label}</span>
+      ) : null}
+      {/* A shell-derived path is a guess. Saying so is the difference
+          between a scrubber that is sometimes wrong and one that lies. */}
+      {access.confidence === "inferred" ? (
+        <Tooltip>
+          {/* `render` rather than children: TooltipTrigger renders its own
+              <button> by default, and this sits inside one already. */}
+          <TooltipTrigger
+            render={
+              <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400" />
+            }
+          >
+            ~
+          </TooltipTrigger>
+          <TooltipContent>
+            Parsed out of a shell command, so the file and lines are inferred
+            rather than read from a tool argument.
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+    </button>
+  );
+}
+
 export function ReviewScrubber({
-  accesses,
   agents,
+  calls,
   following,
   onFollowingChange,
   onStep,
-  selection,
   turns,
 }: {
-  accesses: readonly FileAccess[];
   agents: readonly AccessAgent[];
+  calls: readonly ToolCallStep[];
   following: boolean;
   onFollowingChange: (following: boolean) => void;
   /** Open this stop. The panel owns which file is showing. */
-  onStep: (step: AccessStep) => void;
-  /** What the panel is showing, so the pill can mark the matching stop. */
-  selection: { project: string | null; path: string } | null;
+  onStep: (stop: ScrubberStop) => void;
   turns: readonly TimelineTurn[];
 }) {
   const [scope, setScope] = useState<ScrubberScope>("turn");
   const [agentId, setAgentId] = useState<string | null>(null);
+  /** "File tools" (the historic scope) unless the operator opts into everything. */
+  const [showAllTools, setShowAllTools] = useState(false);
   /**
    * Where the arrows are. Null means "not started" and shows the first stop's
    * number without having navigated anywhere, so opening the panel does not
@@ -94,50 +181,50 @@ export function ReviewScrubber({
 
   const sequence = useMemo(
     () =>
-      buildSequence(accesses, {
+      buildSequence(calls, {
         agentId,
-        turnId: scope === "turn" ? latestTurn(turns, accesses) : null,
+        showAllTools,
+        turnId: scope === "turn" ? latestTurn(turns, calls) : null,
       }),
-    [accesses, agentId, scope, turns],
+    [agentId, calls, scope, showAllTools, turns],
   );
 
-  const { missing, steps, unlinked } = sequence;
+  const { missing, stops, unlinked } = sequence;
   const skipped = missing + unlinked;
   // Derived, never pushed into `cursor` as the events arrive: that would be
   // the `react/set-state-in-effect` this repository treats as an error, and it
   // would give the counter a second source of truth to disagree with.
-  const index = stepIndex({ cursor, following, length: steps.length });
-  const current = steps[index];
+  const index = stepIndex({ cursor, following, length: stops.length });
+  const current = stops[index];
+  const group = current ? siblingsOf(stops, index) : null;
 
   const go = useCallback(
     (next: number) => {
-      const clamped = clampIndex(next, steps.length);
-      const step = steps[clamped];
-      if (!step) return;
+      const clamped = clampIndex(next, stops.length);
+      const stop = stops[clamped];
+      if (!stop) return;
 
       setCursor(clamped);
       // Unpinning from the agent is left to `onStep`'s handler. Doing it here
       // too would conflate "I stepped away for now" with the Follow button's
       // saved preference, and an arrow press would turn following off for
       // every future session.
-      onStep(step);
+      onStep(stop);
     },
-    [onStep, steps],
+    [onStep, stops],
   );
 
-  if (steps.length === 0 && skipped === 0) return null;
-
-  const showing =
-    current !== undefined &&
-    selection?.path === current.path &&
-    selection.project === current.project;
+  // Nothing this session ever did, in any filter state — as opposed to
+  // nothing under the *current* one, which still renders the bar so the "All
+  // tools" toggle that would reveal it stays reachable.
+  if (calls.length === 0) return null;
 
   return (
     <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
       <div className="flex items-center gap-0.5">
         <Button
-          aria-label="Previous file the agent opened"
-          disabled={index <= 0 || steps.length === 0}
+          aria-label="Previous step"
+          disabled={index <= 0 || stops.length === 0}
           onClick={() => go(index - 1)}
           size="icon"
           variant="ghost"
@@ -145,8 +232,8 @@ export function ReviewScrubber({
           <ChevronLeftIcon className="size-4" />
         </Button>
         <Button
-          aria-label="Next file the agent opened"
-          disabled={index >= steps.length - 1 || steps.length === 0}
+          aria-label="Next step"
+          disabled={index >= stops.length - 1 || stops.length === 0}
           onClick={() => go(index + 1)}
           size="icon"
           variant="ghost"
@@ -156,58 +243,32 @@ export function ReviewScrubber({
       </div>
 
       <span className="text-xs tabular-nums text-muted-foreground">
-        {steps.length === 0 ? 0 : index + 1} / {steps.length}
+        {stops.length === 0 ? 0 : index + 1} / {stops.length}
       </span>
 
-      {current ? (
-        <button
-          className={cn(
-            "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors",
-            showing
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          onClick={() => go(index)}
-          title={`${current.project ? `${current.project}/` : ""}${current.path}`}
-          type="button"
-        >
-          {current.kind === "write" ? (
-            <PencilIcon className="size-3 shrink-0" />
-          ) : (
-            <FileSearchIcon className="size-3 shrink-0" />
-          )}
-          <span className="truncate font-medium">{basename(current.path)}</span>
-          {rangeLabel(current) ? (
-            <span className="shrink-0 tabular-nums opacity-70">
-              {rangeLabel(current)}
-            </span>
-          ) : null}
-          {current.count > 1 ? (
-            <span className="shrink-0 opacity-70">×{current.count}</span>
-          ) : null}
-          {/* A shell-derived path is a guess. Saying so is the difference
-              between a scrubber that is sometimes wrong and one that lies. */}
-          {current.confidence === "inferred" ? (
-            <Tooltip>
-              {/* `render` rather than children: TooltipTrigger renders its own
-                  <button> by default, and this sits inside one already. */}
-              <TooltipTrigger
-                render={
-                  <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400" />
-                }
-              >
-                ~
-              </TooltipTrigger>
-              <TooltipContent>
-                Parsed out of a shell command, so the file and lines are
-                inferred rather than read from a tool argument.
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-        </button>
+      {current && group ? (
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          <ToolPill call={current.call} />
+          {current.kind === "file"
+            ? stops.slice(group.start, group.end + 1).map((stop, offset) => {
+                if (stop.kind !== "file") return null;
+                const globalIndex = group.start + offset;
+                return (
+                  <FileBadge
+                    active={globalIndex === index}
+                    key={stop.id}
+                    onClick={() => go(globalIndex)}
+                    stop={stop}
+                  />
+                );
+              })
+            : null}
+        </div>
       ) : (
         <span className="text-xs text-muted-foreground">
-          No files the agent opened are still on disk.
+          {skipped > 0
+            ? "No files the agent opened are still on disk."
+            : "Nothing to show under this filter."}
         </span>
       )}
 
@@ -248,6 +309,17 @@ export function ReviewScrubber({
             ))}
           </select>
         ) : null}
+
+        <button
+          className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => {
+            setShowAllTools((previous) => !previous);
+            setCursor(null);
+          }}
+          type="button"
+        >
+          {showAllTools ? "All tools" : "File tools"}
+        </button>
 
         <button
           className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"

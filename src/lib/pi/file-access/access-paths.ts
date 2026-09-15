@@ -72,6 +72,8 @@ export function resolveAccessPath(
 export interface AccessOrigin {
   /** Tool call id; suffixed by the caller when a call yields several. */
   id: string;
+  /** The bare tool call id, never suffixed — see `FileAccess.callId`. */
+  callId: string;
   agent: AccessAgent;
   turnId: string;
   at: string;
@@ -95,6 +97,7 @@ export function toFileAccess(
   return {
     agent: origin.agent,
     at: origin.at,
+    callId: origin.callId,
     confidence: raw.confidence,
     id: origin.id,
     kind: raw.kind,

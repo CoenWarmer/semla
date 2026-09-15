@@ -1,56 +1,28 @@
 /**
  * Turning a timeline into the thing the arrows step through.
  *
- * Raw accesses are not steps. An agent paging through a file with four
- * `sed -n` calls made four accesses and did one thing, and stepping through
- * them as four stops — each re-opening the same file a hundred lines further
- * down — is worse than useless. Consecutive accesses to the same file are
- * folded into one stop whose highlight is the union of what was read.
+ * A step is a tool call, not a folded file access — an `ask_user`, an mcp
+ * call, or a `bash` the shell parser did not recognise is as much a stop in
+ * the agent's work as a `read` is, once the "All tools" filter asks to see
+ * it. A call that touched a file contributes one stop per access it made, in
+ * order, grouped under that call for the pill to render together; a call
+ * that touched nothing contributes exactly one stop, with no file to show and
+ * no reason to move the editor.
  *
  * Pure and free of React, and free of `node:` imports so the browser can hold
- * it: the arithmetic is index clamping and range merging, which is exactly the
+ * it: the arithmetic is index clamping and array slicing, which is exactly the
  * kind of thing that is wrong at the boundaries and silent about it.
  */
 
-import type {
-  AccessAgent,
-  AccessConfidence,
-  AccessKind,
-  AccessSymbol,
-  AccessTool,
-  FileAccess,
-  LineRange,
-} from "./access-types";
+import type { FileAccess, LineRange, ToolCallStep } from "./access-types";
 
 /** One stop for the arrows. */
-export interface AccessStep {
-  /** The id of the first access folded in — stable across refetches. */
-  id: string;
-  /**
-   * Never null, unlike `FileAccess.project`.
-   *
-   * The file API resolves paths against a session's linked projects and refuses
-   * anything outside them, so an access in `node_modules` or an unlinked
-   * repository cannot be opened. Those are counted, not made into stops the
-   * arrows land on and fail at.
-   */
-  project: string;
-  path: string;
-  kind: AccessKind;
-  /** Merged and sorted. Empty means the whole file. */
-  ranges: LineRange[];
-  symbol?: AccessSymbol;
-  agent: AccessAgent;
-  tool: AccessTool;
-  /** `inferred` if any folded access was; a guess taints the stop. */
-  confidence: AccessConfidence;
-  at: string;
-  /** How many raw accesses this stop folds in. */
-  count: number;
-}
+export type ScrubberStop =
+  | { kind: "tool"; id: string; call: ToolCallStep }
+  | { kind: "file"; id: string; call: ToolCallStep; access: FileAccess };
 
 export interface Sequence {
-  steps: AccessStep[];
+  stops: ScrubberStop[];
   /**
    * Accesses left out because the file is no longer on disk.
    *
@@ -68,19 +40,19 @@ export interface SequenceFilter {
   turnId: string | null;
   /** Null includes every agent. */
   agentId: string | null;
+  /**
+   * Include a call that touched no file as its own stop. Off by default: the
+   * pill's long-standing scope is "what the agent read and wrote", and this
+   * widens it only when the operator asks to see everything.
+   */
+  showAllTools: boolean;
 }
 
-/**
- * Whether two accesses are the same agent doing the same thing to one file.
- *
- * The agent is part of the identity: two agents reading the same file are two
- * facts, and the pill names whose read each stop was.
- */
-const foldsTogether = (a: AccessStep, b: FileAccess) =>
-  a.project === b.project &&
-  a.path === b.path &&
-  a.kind === b.kind &&
-  a.agent.id === b.agent.id;
+const DEFAULT_FILTER: SequenceFilter = {
+  agentId: null,
+  showAllTools: false,
+  turnId: null,
+};
 
 /**
  * Merge overlapping and adjacent ranges.
@@ -88,6 +60,11 @@ const foldsTogether = (a: AccessStep, b: FileAccess) =>
  * Adjacent as well as overlapping, so `1–40` followed by `41–80` is one
  * highlight rather than two abutting ones with a seam in the gutter. A range
  * running to EOF (`end: null`) absorbs everything at or after its start.
+ *
+ * Only ever needed on one access's own `ranges` — no extractor produces more
+ * than one range per access — but kept general and exported, since
+ * `access-sequence.test.ts` exercises it directly and a future extractor may
+ * yet produce several.
  */
 export function mergeRanges(ranges: readonly LineRange[]): LineRange[] {
   if (ranges.length === 0) return [];
@@ -146,83 +123,66 @@ export function linesOutside(
   return outside;
 }
 
-const stepFrom = (access: FileAccess, project: string): AccessStep => ({
-  agent: access.agent,
-  at: access.at,
-  confidence: access.confidence,
-  count: 1,
-  id: access.id,
-  kind: access.kind,
-  path: access.path,
-  project,
-  ranges: mergeRanges(access.ranges),
-  ...(access.symbol ? { symbol: access.symbol } : {}),
-  tool: access.tool,
-});
-
 /** The stops for a filtered timeline, oldest first. */
 export function buildSequence(
-  accesses: readonly FileAccess[],
-  filter: SequenceFilter = { agentId: null, turnId: null },
+  calls: readonly ToolCallStep[],
+  filter: SequenceFilter = DEFAULT_FILTER,
 ): Sequence {
-  const steps: AccessStep[] = [];
+  const stops: ScrubberStop[] = [];
   let missing = 0;
   let unlinked = 0;
 
-  for (const access of accesses) {
-    if (filter.turnId !== null && access.turnId !== filter.turnId) continue;
-    if (filter.agentId !== null && access.agent.id !== filter.agentId) continue;
+  for (const call of calls) {
+    if (filter.turnId !== null && call.turnId !== filter.turnId) continue;
+    if (filter.agentId !== null && call.agent.id !== filter.agentId) continue;
 
-    if (access.missing) {
-      missing += 1;
-      continue;
+    for (const access of call.accesses) {
+      if (access.missing) {
+        missing += 1;
+        continue;
+      }
+      if (access.project === null) {
+        unlinked += 1;
+        continue;
+      }
+
+      stops.push({ access, call, id: access.id, kind: "file" });
     }
 
-    if (access.project === null) {
-      unlinked += 1;
-      continue;
+    // A call with a file access that could not be opened (missing/unlinked)
+    // still touched a file, so it does not also become a bare tool stop —
+    // that would show the same call twice under "All tools".
+    if (call.accesses.length === 0 && filter.showAllTools) {
+      stops.push({ call, id: `${call.id}:tool`, kind: "tool" });
     }
-
-    const last = steps[steps.length - 1];
-    if (last && foldsTogether(last, access)) {
-      last.count += 1;
-      // A whole-file access absorbs the ranges around it: once the agent has
-      // read all of a file, marking a subset of it says less, not more.
-      last.ranges =
-        last.ranges.length === 0 || access.ranges.length === 0
-          ? []
-          : mergeRanges([...last.ranges, ...access.ranges]);
-      if (access.confidence === "inferred") last.confidence = "inferred";
-      if (!last.symbol && access.symbol) last.symbol = access.symbol;
-      continue;
-    }
-
-    steps.push(stepFrom(access, access.project));
   }
 
-  return { missing, steps, unlinked };
+  return { missing, stops, unlinked };
 }
 
 /**
  * Where the editor should scroll for a stop.
  *
  * A symbol's own line beats the range that contains it, and a range's start
- * beats nothing. Null asks for no scroll at all, which leaves the editor's
- * open-on-the-first-hunk behaviour alone — the right landing place for a
- * whole-file write.
+ * beats nothing. Null asks for no scroll at all — the right answer both for a
+ * whole-file write and for a bare tool stop, which has no file to scroll to.
  */
-export function revealLineFor(step: AccessStep): number | null {
-  return step.symbol?.line ?? step.ranges[0]?.start ?? null;
+export function revealLineFor(stop: ScrubberStop): number | null {
+  if (stop.kind === "tool") return null;
+  return stop.access.symbol?.line ?? stop.access.ranges[0]?.start ?? null;
 }
 
-/** The line span a stop covers, for the pill's readout. Null for a whole file. */
-export function rangeLabel(step: AccessStep): string | null {
-  const first = step.ranges[0];
+/** The line span a stop covers, for the pill's readout. Null for a whole file or a bare tool stop. */
+export function rangeLabel(stop: ScrubberStop): string | null {
+  if (stop.kind === "tool") return null;
+
+  const { ranges } = stop.access;
+  const first = ranges[0];
   if (!first) return null;
 
-  const last = step.ranges[step.ranges.length - 1]!;
+  const last = ranges[ranges.length - 1]!;
   if (last.end === null) return `L${first.start}+`;
-  if (step.ranges.length === 1 && first.start === last.end) {
+  if (ranges.length === 1 && first.start === last.end) {
     return `L${first.start}`;
   }
 
@@ -244,9 +204,9 @@ export function clampIndex(index: number, length: number): number {
  * the one on screen.
  *
  * Otherwise the operator's cursor decides, clamped — the sequence grows
- * underneath it while a turn runs and shrinks when the scope or agent filter
- * changes, and a null cursor is "not started", which shows the first stop
- * without having navigated anywhere.
+ * underneath it while a turn runs and shrinks when the scope, agent filter or
+ * "All tools" toggle changes, and a null cursor is "not started", which shows
+ * the first stop without having navigated anywhere.
  */
 export function stepIndex({
   cursor,
@@ -262,14 +222,40 @@ export function stepIndex({
 
 /** The stop the file at `selection` is at, for keeping the pill in sync. */
 export function indexOfFile(
-  steps: readonly AccessStep[],
+  stops: readonly ScrubberStop[],
   selection: { project: string; path: string } | null,
 ): number | null {
   if (!selection) return null;
 
-  const index = steps.findIndex(
-    (step) => step.project === selection.project && step.path === selection.path,
+  const index = stops.findIndex(
+    (stop) =>
+      stop.kind === "file" &&
+      stop.access.project === selection.project &&
+      stop.access.path === selection.path,
   );
 
   return index === -1 ? null : index;
+}
+
+/**
+ * The contiguous run of stops belonging to the same tool call as `stops[index]`.
+ *
+ * A call's stops are always contiguous — `buildSequence` emits them as one
+ * run per call — so this is a scan, not a search. The pill uses it to render
+ * every file badge a call produced together, with the arrow's current index
+ * marking which one is active.
+ */
+export function siblingsOf(
+  stops: readonly ScrubberStop[],
+  index: number,
+): { start: number; end: number } {
+  if (index < 0 || index >= stops.length) return { end: -1, start: -1 };
+
+  const callId = stops[index]!.call.id;
+  let start = index;
+  while (start > 0 && stops[start - 1]!.call.id === callId) start -= 1;
+  let end = index;
+  while (end < stops.length - 1 && stops[end + 1]!.call.id === callId) end += 1;
+
+  return { end, start };
 }

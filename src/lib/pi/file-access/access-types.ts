@@ -73,6 +73,15 @@ export interface RawAccess {
 export interface FileAccess {
   /** Tool call id, suffixed when one call produced several accesses. */
   id: string;
+  /**
+   * The bare tool call id, never suffixed.
+   *
+   * `id` above gets a `#index` suffix when one call touched several files, so
+   * it cannot be used to find this access's parent `ToolCallStep` — the live
+   * merge in `access-live-merge.ts` needs the unsuffixed id to match a
+   * `FileAccess` back to the `SessionToolCall` it came from.
+   */
+  callId: string;
   /** Workspace-relative project path, or null when outside every linked one. */
   project: string | null;
   /** Project-relative when `project` is set; workspace-relative otherwise. */
@@ -88,6 +97,31 @@ export interface FileAccess {
   confidence: AccessConfidence;
   /** The path did not exist when the timeline was built. Not navigable. */
   missing: boolean;
+}
+
+/**
+ * One tool call, carrying every file it touched.
+ *
+ * The scrubber's unit of navigation: a call that touched nothing still gets
+ * one of these, with `accesses: []` — `ask_user`, `workflow_control`, an mcp
+ * call, a `bash` the shell parser did not recognise. Without it, the only
+ * record of a session's non-file work would be gone by the time the browser
+ * sees it, the same gap `FileAccess` itself closes for `details`.
+ */
+export interface ToolCallStep {
+  /** Tool call id — matches `SessionToolCall.id` for the live merge. */
+  id: string;
+  /** The real tool name — "bash", "read", "code_resolve", "ask_user", … */
+  name: string;
+  agent: AccessAgent;
+  /** The `TurnNode.id` this descends from. */
+  turnId: string;
+  at: string;
+  /** First scalar argument, e.g. `bash: npm test` — see `summarizeArguments`. */
+  summary?: string;
+  isError: boolean;
+  /** Empty when the call touched no file. */
+  accesses: FileAccess[];
 }
 
 /**
@@ -109,7 +143,7 @@ export interface TimelineTurn {
 
 /** What the history endpoint answers with. */
 export interface FileAccessTimeline {
-  accesses: FileAccess[];
+  calls: ToolCallStep[];
   /** Every agent that appears, in first-seen order, for the filter. */
   agents: AccessAgent[];
   /** Turns in conversation order, so the client can scope without the graph. */

@@ -16,9 +16,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useFileAccess } from "@/hooks/use-file-access";
+import { toolCallStepsFromLive } from "@/lib/pi/file-access/access-live-merge";
 import {
   revealLineFor,
-  type AccessStep,
+  type ScrubberStop,
 } from "@/lib/pi/file-access/access-sequence";
 import {
   useCommitReview,
@@ -38,7 +39,10 @@ import {
 } from "@/hooks/use-panel-layout";
 import { isEmptyReview } from "@/lib/review-types";
 import type { SessionReview } from "@/lib/review-types";
-import { useSessionLiveAccesses } from "@/lib/session-live-state";
+import {
+  useSessionLiveAccesses,
+  useSessionLiveToolCalls,
+} from "@/lib/session-live-state";
 import { cn } from "@/lib/utils";
 
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
@@ -249,28 +253,42 @@ export function ReviewPanel({
   /**
    * Open a stop from the scrubber.
    *
+   * A bare tool stop — visible only under "All tools" — has no file to open,
+   * so it unpins from following without touching the editor, matching the
+   * scrubber's "no editor change" for a call that read or wrote nothing.
+   *
    * Does not fold the hunk accordion open, for the same reason a definition
    * target does not: most files the agent *read* have no hunks, and expanding
    * an empty list reads as the sidebar losing the row it had.
    */
   const openStep = useCallback(
-    (step: AccessStep) => {
+    (stop: ScrubberStop) => {
       // Stepping by hand is a statement that the operator wants to be
       // somewhere specific, which is the opposite of following. It unpins for
       // this panel only: an arrow press is not a change of preference, so the
       // saved setting is left alone and the Follow button re-pins.
       setUnpinned(true);
+      if (stop.kind === "tool") return;
+
+      const { access } = stop;
+      const { project } = access;
+      // `buildSequence` never emits a "file" stop for an access outside every
+      // linked project — that is what `unlinked` counts instead — so this is
+      // unreachable in practice. The check (on a local, so it narrows into the
+      // closure below) exists for the type, not the run.
+      if (project === null) return;
+
       revise((base) => {
-        const line = revealLineFor(step);
+        const line = revealLineFor(stop);
         return {
           highlight: {
-            inferred: step.confidence === "inferred",
-            kind: step.kind,
-            ranges: step.ranges,
+            inferred: access.confidence === "inferred",
+            kind: access.kind,
+            ranges: access.ranges,
           },
           precision: null,
           reveal: line === null ? null : nextReveal(base, line),
-          selection: { path: step.path, project: step.project },
+          selection: { path: access.path, project },
         };
       });
     },
@@ -363,9 +381,13 @@ export function ReviewPanel({
   const { expanded, highlight, reveal } = request;
   const selection = request.selection ?? defaultSelection(review.data);
 
-  const accesses = useMemo(
-    () => [...(fileAccess.data?.accesses ?? []), ...(liveAccesses ?? [])],
-    [fileAccess.data?.accesses, liveAccesses],
+  const liveToolCalls = useSessionLiveToolCalls(sessionId).data;
+  const calls = useMemo(
+    () => [
+      ...(fileAccess.data?.calls ?? []),
+      ...toolCallStepsFromLive(liveToolCalls ?? [], liveAccesses ?? []),
+    ],
+    [fileAccess.data?.calls, liveAccesses, liveToolCalls],
   );
   const projects = review.data?.projects ?? [];
   const activeProject =
@@ -716,14 +738,13 @@ export function ReviewPanel({
           </ResizablePanelGroup>
           
         </div>
-        {accesses.length > 0 ? (
+        {calls.length > 0 ? (
           <ReviewScrubber
-            accesses={accesses}
             agents={fileAccess.data?.agents ?? []}
+            calls={calls}
             following={following}
             onFollowingChange={changeFollowing}
             onStep={openStep}
-            selection={selection}
             turns={fileAccess.data?.turns ?? []}
           />
         ) : null}
