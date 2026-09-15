@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/session-auth", () => ({
+vi.mock("@/lib/auth/session-auth", () => ({
   requireSessionOwner: vi.fn().mockResolvedValue({ user: { id: "test-user" } }),
 }));
 

@@ -29,7 +29,7 @@ import {
 import { otherActiveSessionCount } from "@/lib/pi/session/session-concurrency";
 import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 import type { ProjectLink } from "@/lib/pi/session/session-meta";
-import type { ProjectReview, SessionReview } from "@/lib/review-types";
+import type { ProjectReview, SessionReview } from "@/lib/review/review-types";
 
 /** Last segment of a workspace-relative path — the project's own name. */
 const projectName = (path: string) => path.split("/").pop() ?? path;

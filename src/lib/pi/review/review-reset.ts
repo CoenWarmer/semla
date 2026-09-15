@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { explainGitFailure, type GitActionResult } from "@/lib/pi/git/git-actions";
 import { git, gitResult } from "@/lib/pi/git/git";
 import { readTurnCommits } from "@/lib/pi/review/review-status";
-import type { TurnCommit } from "@/lib/review-types";
+import type { TurnCommit } from "@/lib/review/review-types";
 
 export interface ResetPlan {
   /** The reset is allowed. When false, `message` says why not. */

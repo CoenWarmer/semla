@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 
-import { AUTH_REQUIRED, BIND_HOST } from "@/lib/auth-mode";
+import { AUTH_REQUIRED, BIND_HOST } from "@/lib/auth/auth-mode";
 import { type NextRequest, NextResponse } from "next/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

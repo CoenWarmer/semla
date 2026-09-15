@@ -1,4 +1,4 @@
-import { addUsage, type SessionUsage } from "@/lib/session-usage";
+import { addUsage, type SessionUsage } from "@/lib/session/session-usage";
 
 import { useSessionMessages } from "./use-session-messages";
 import { useWorkflowRuns } from "./use-workflow-runs";

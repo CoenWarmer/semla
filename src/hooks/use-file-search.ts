@@ -1,4 +1,4 @@
-import type { FileMatch } from "@/lib/file-search";
+import type { FileMatch } from "@/lib/paths/file-search";
 import { useQuery } from "@tanstack/react-query";
 
 type Scope = "project" | "workspace";

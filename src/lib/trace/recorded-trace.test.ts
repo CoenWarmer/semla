@@ -16,7 +16,7 @@ import { createHostTelemetry } from "@/lib/pi/telemetry/host-recorder";
 import { createSpanSink } from "@/lib/pi/telemetry/span-sink";
 import { createWorkflowTelemetry } from "@/lib/pi/telemetry/workflow-recorder";
 import { WorkflowManager } from "@/lib/pi/extensions/dynamic-workflows/src/workflow-manager";
-import { coversHostSession, recordedSpansToOtelSpans } from "@/lib/recorded-spans";
+import { coversHostSession, recordedSpansToOtelSpans } from "@/lib/trace/recorded-spans";
 
 // oxlint-disable-next-line typescript/no-explicit-any
 const mockAgent = { run: async () => "mock result" } as any;

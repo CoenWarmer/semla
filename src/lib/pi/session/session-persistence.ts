@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { toAsciiJson, toJson } from "../json-sanitize";
 import type { Json } from "@/types/database.types";
 import type { WorkflowSnapshot } from "@/types/workflow";

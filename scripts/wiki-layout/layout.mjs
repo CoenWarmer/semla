@@ -12,7 +12,7 @@ import noverlap from "graphology-layout-noverlap";
 
 /**
  * Settings currently shipped, mirroring WIKI_FA2_SETTINGS in
- * src/lib/wiki-graph-layout.ts. Keep the two in step.
+ * src/lib/wiki/wiki-graph-layout.ts. Keep the two in step.
  */
 export const APP_FA2 = {
   linLogMode: false,

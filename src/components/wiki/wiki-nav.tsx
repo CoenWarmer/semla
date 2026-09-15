@@ -6,7 +6,7 @@ import {
   NAV_GROUP_ORDER,
   navGroupFor,
   WikiPageMeta,
-} from "@/lib/wiki-types";
+} from "@/lib/wiki/wiki-types";
 
 const GROUP_LABELS: Record<NavGroup, string> = {
   repository: "Repositories",

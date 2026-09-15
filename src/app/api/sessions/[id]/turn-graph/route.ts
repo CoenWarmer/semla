@@ -1,6 +1,6 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { getSessionTurnGraph } from "@/lib/pi/session/session-turn-graph-loader";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";

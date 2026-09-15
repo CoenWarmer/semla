@@ -16,7 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
-import { type SessionUsage, NO_USAGE } from "@/lib/session-usage";
+import { type SessionUsage, NO_USAGE } from "@/lib/session/session-usage";
 
 /** Only the usage subtree, named so the row reads as `{ usage }`. */
 const USAGE_COLUMN = "semla_session_id,usage:snapshot->tokenUsage";

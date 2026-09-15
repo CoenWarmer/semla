@@ -13,8 +13,8 @@
  * — and that is worth asserting directly rather than through a click.
  */
 
-import type { ProjectReview } from "@/lib/review-types";
-import { splitWorkspacePath } from "@/lib/workspace-path";
+import type { ProjectReview } from "@/lib/review/review-types";
+import { splitWorkspacePath } from "@/lib/paths/workspace-path";
 
 import type { FileSelection } from "./review-changed-files";
 

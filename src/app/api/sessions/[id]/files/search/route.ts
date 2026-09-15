@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { NextResponse } from "next/server";
 
-import { matchScore, rankMatches, type FileMatch } from "@/lib/file-search";
+import { matchScore, rankMatches, type FileMatch } from "@/lib/paths/file-search";
 import {
   resolveFileRoot,
   resolveInsideRoot,

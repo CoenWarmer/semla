@@ -31,7 +31,7 @@ import {
   EMPTY_USAGE_RECORD,
   type SessionUsage,
   type SessionUsageRecord,
-} from "@/lib/session-usage";
+} from "@/lib/session/session-usage";
 
 /** A pi entry as the transcript holds it, in the shape usage lives in. */
 type UsageBearingEntry = {

@@ -1,4 +1,4 @@
-import { AUTH_REQUIRED, localUser } from "@/lib/auth-mode";
+import { AUTH_REQUIRED, localUser } from "@/lib/auth/auth-mode";
 import { hasTranscript, readSessionMeta } from "@/lib/pi/session/session-meta";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";

@@ -7,13 +7,13 @@ import {
   SessionMessagesResult,
   useSessionMessages,
 } from "@/hooks/use-session-messages";
-import { mergeToolCalls } from "@/lib/live-tool-calls";
-import { liveRoundMessages } from "@/lib/live-rounds";
+import { mergeToolCalls } from "@/lib/session/live-tool-calls";
+import { liveRoundMessages } from "@/lib/session/live-rounds";
 import {
   openingWrite,
   shouldFollowOpen,
   shouldOpenReview,
-} from "@/lib/review-open";
+} from "@/lib/review/review-open";
 import { followModeEnabled, useUserSettings } from "@/hooks/use-user-settings";
 import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import { useTriggerContextCheck } from "@/hooks/use-context-check";
@@ -28,7 +28,7 @@ import {
   useSessionAgentSelection,
   useSessionLiveAccesses,
   useSessionPendingScroll,
-} from "@/lib/session-live-state";
+} from "@/lib/session/session-live-state";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import { AgentTranscriptDrawer } from "./session/agent-transcript-drawer";
 import { useElementTarget } from "./element-target-provider";
@@ -39,8 +39,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "./ui/resizable";
-import { truncateAtMessage } from "@/lib/session-fork";
-import { groupConversation } from "@/lib/session-steps";
+import { truncateAtMessage } from "@/lib/session/session-fork";
+import { groupConversation } from "@/lib/session/session-steps";
 import dynamic from "next/dynamic";
 
 const WikiMiniGraph = dynamic(
@@ -59,7 +59,7 @@ import {
 } from "@/components/pending-prompt-provider";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { SESSION_STATUS_KEY } from "@/lib/session-status";
+import { SESSION_STATUS_KEY } from "@/lib/session/session-status";
 import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

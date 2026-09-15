@@ -1,9 +1,9 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   readUserSettings,
   writeUserSettings,
   type UserSettings,
-} from "@/lib/user-settings-store";
+} from "@/lib/stores/user-settings-store";
 
 /**
  * The column names the settings UI already expects.

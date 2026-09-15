@@ -19,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 
-import type { FileDiff, Hunk } from "@/lib/review-types";
+import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 import {
   configureMonaco,

@@ -17,7 +17,7 @@
 
 import { MessageCircleQuestionMarkIcon } from "lucide-react";
 
-import type { AskUserPair } from "@/lib/ask-user-record";
+import type { AskUserPair } from "@/lib/tool-records/ask-user-record";
 import { cn } from "@/lib/utils";
 
 export function AskUserRecord({

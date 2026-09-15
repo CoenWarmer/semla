@@ -34,7 +34,7 @@ import { useTurnGraph } from "@/hooks/use-turn-graph";
 import {
   layoutTurnGraph,
   type TurnGraphLayout,
-} from "@/lib/session-turn-layout";
+} from "@/lib/session/session-turn-layout";
 import type { TurnGraph } from "@/lib/pi/session/session-turn-graph";
 
 const nodeTypes = { turnGraphNode: TurnGraphNode };

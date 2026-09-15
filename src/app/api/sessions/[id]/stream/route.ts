@@ -1,5 +1,5 @@
-import { handleRouteError } from "@/lib/api-helpers";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { handleRouteError } from "@/lib/api/api-helpers";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import {
   isSessionStreamActive,
   subscribeToSessionStream,
@@ -10,7 +10,7 @@ import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
   startSseHeartbeat,
-} from "@/lib/sse";
+} from "@/lib/api/sse";
 
 export const runtime = "nodejs";
 

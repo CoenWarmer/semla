@@ -7,7 +7,7 @@
  * least often and can least afford to misread.
  */
 
-import type { ChangeStatus } from "@/lib/review-types";
+import type { ChangeStatus } from "@/lib/review/review-types";
 
 /** git's own letter, which anyone who has run `git status` already knows. */
 export const STATUS_LABEL: Record<ChangeStatus, string> = {

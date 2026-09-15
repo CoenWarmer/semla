@@ -15,13 +15,13 @@
  * run started from another tab appears in this one without a refresh.
  */
 
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import { subscribeToIndexRuns, type IndexRun } from "@/lib/code-index/index-runs";
 import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
   startSseHeartbeat,
-} from "@/lib/sse";
+} from "@/lib/api/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

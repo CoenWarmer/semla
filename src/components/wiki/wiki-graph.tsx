@@ -12,8 +12,8 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
-import { navGroupFor, repoList, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
-import { layoutWikiGraph } from "@/lib/wiki-graph-layout";
+import { navGroupFor, repoList, WikiLink, WikiPageMeta, WikiPageType } from "@/lib/wiki/wiki-types";
+import { layoutWikiGraph } from "@/lib/wiki/wiki-graph-layout";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 

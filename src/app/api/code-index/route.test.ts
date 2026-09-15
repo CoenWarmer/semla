@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/api-helpers", async () => ({
+vi.mock("@/lib/api/api-helpers", async () => ({
   requireUser: vi.fn(async () => ({ id: "local" })),
   handleRouteError: (_error: unknown, message: string) =>
     Response.json({ error: message }, { status: 500 }),

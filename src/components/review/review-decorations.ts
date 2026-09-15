@@ -11,7 +11,7 @@
  * boundary is why nothing downstream has to remember which convention it is in.
  */
 
-import type { DiffLine, Hunk } from "@/lib/review-types";
+import type { DiffLine, Hunk } from "@/lib/review/review-types";
 
 export type DecorationKind =
   /** A line the turn added or rewrote. */

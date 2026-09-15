@@ -25,7 +25,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { summariseSteps, type StepItem } from "@/lib/session-steps";
+import { summariseSteps, type StepItem } from "@/lib/session/session-steps";
 import { cn } from "@/lib/utils";
 
 const DRAWER_WIDTH = 560;

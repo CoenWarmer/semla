@@ -1,8 +1,8 @@
-import { requireUser } from "@/lib/api-helpers";
+import { requireUser } from "@/lib/api/api-helpers";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { sessionUsageTotals } from "@/lib/pi/session/session-usage-totals";
 import { listSessionMeta } from "@/lib/pi/session/session-meta";
-import { formatSessionDate } from "@/lib/session-date";
+import { formatSessionDate } from "@/lib/session/session-date";
 import { SessionsListClient } from "./sessions-list-client";
 
 export async function SessionsList() {

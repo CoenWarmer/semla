@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { TurnCommit } from "@/lib/review-types";
+import type { TurnCommit } from "@/lib/review/review-types";
 
 export function ReviewCommitNav({
   commits,

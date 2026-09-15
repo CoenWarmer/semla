@@ -1,7 +1,7 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { runContextCheck } from "@/lib/context-check/run-context-check";
 import type { ContextCheckResult, StoredInspection } from "@/lib/context-check/types";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { getTranscript } from "@/lib/pi/transcript";
 import { createClient } from "@/lib/supabase/server";
 

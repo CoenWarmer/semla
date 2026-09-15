@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChangedFile, ProjectReview } from "@/lib/review-types";
+import type { ChangedFile, ProjectReview } from "@/lib/review/review-types";
 
 import {
   ancestorDirectoriesOf,

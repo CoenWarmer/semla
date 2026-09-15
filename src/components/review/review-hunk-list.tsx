@@ -14,7 +14,7 @@ import { MinusIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { FileDiff, Hunk } from "@/lib/review-types";
+import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 import { hunkAnchorLine, hunkAnchorText } from "./review-decorations";
 

@@ -1,4 +1,4 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   getTerminal,
   killTerminal,
@@ -9,7 +9,7 @@ import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
   startSseHeartbeat,
-} from "@/lib/sse";
+} from "@/lib/api/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -15,8 +15,8 @@ import { useCallback, useMemo } from "react";
 
 import { useElementTarget } from "@/components/element-target-provider";
 import { useSessionProjects } from "@/hooks/use-session-projects";
-import type { ParsedFileToken } from "@/lib/file-path-token";
-import { resolveFileToken } from "@/lib/file-path-token";
+import type { ParsedFileToken } from "@/lib/paths/file-path-token";
+import { resolveFileToken } from "@/lib/paths/file-path-token";
 
 export function useFileTargetClick(sessionId: string, token: ParsedFileToken | null) {
   const projectsQuery = useSessionProjects(sessionId);

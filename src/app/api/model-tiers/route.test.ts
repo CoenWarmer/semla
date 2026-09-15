@@ -17,8 +17,8 @@ import { getModelTierConfigPath } from "@/lib/pi/extensions/dynamic-workflows/sr
 import { GET, PUT } from "./route";
 
 // Mock requireUser to avoid Next.js request context dependency in unit tests.
-vi.mock("@/lib/api-helpers", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/api-helpers")>();
+vi.mock("@/lib/api/api-helpers", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api/api-helpers")>();
   return {
     ...original,
     requireUser: vi.fn().mockResolvedValue({

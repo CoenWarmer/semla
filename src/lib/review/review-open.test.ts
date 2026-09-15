@@ -5,7 +5,7 @@ import {
   shouldFollowOpen,
   shouldOpenReview,
 } from "./review-open.ts";
-import type { FileAccess } from "./pi/file-access/access-types.ts";
+import type { FileAccess } from "../pi/file-access/access-types.ts";
 import type { ProjectReview, SessionReview } from "./review-types.ts";
 
 const project = (overrides: Partial<ProjectReview> = {}): ProjectReview => ({

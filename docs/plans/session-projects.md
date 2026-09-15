@@ -189,7 +189,7 @@ insert/update/delete policies established in
 `20260823010000_restrict_pi_internal_writes.sql`.
 
 All writes go through `createAdminClient()` behind API routes that call
-`requireSessionOwner()` (`src/lib/session-auth.ts`). That keeps explicit and
+`requireSessionOwner()` (`src/lib/auth/session-auth.ts`). That keeps explicit and
 observed attachment on one code path, and matches how every other server-owned
 table in this schema is written.
 
@@ -572,7 +572,7 @@ database, no per-session query. The links live on that same record, so
 `projects` rides along at zero cost and the route keeps the property its
 docblock is proud of — the sidebar works when Postgres does not.
 
-Three types grow the field: `SessionStatus` (`src/lib/session-status.ts`),
+Three types grow the field: `SessionStatus` (`src/lib/session/session-status.ts`),
 `SessionRow` (`sessions-list-client.tsx`), and the rows built server-side in
 `sessions-list.tsx`.
 

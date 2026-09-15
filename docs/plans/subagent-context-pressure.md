@@ -181,7 +181,7 @@ This phase is verifiable without trusting a report, which is the point:
   `stopReason` / `compactions` per agent afterwards, or it does not.
 - A unit test with a session double that emits `compaction_end` asserts the
   fields reach `onAgentEnd`.
-- A recorded-span test (`src/lib/recorded-spans.test.ts` is the existing
+- A recorded-span test (`src/lib/trace/recorded-spans.test.ts` is the existing
   pattern) asserts the two new span attributes.
 - One real workflow with a deliberately oversized research prompt should show a
   non-zero compaction count — which is also what settles §2.5.

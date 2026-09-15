@@ -21,7 +21,7 @@ import {
   stampConversationUsage,
   sumEntryUsage,
 } from "@/lib/pi/session/session-usage-store";
-import { sessionUsageTotal } from "@/lib/session-usage";
+import { sessionUsageTotal } from "@/lib/session/session-usage";
 
 const SESSION = "00000000-0000-4000-8000-0000000005e1";
 

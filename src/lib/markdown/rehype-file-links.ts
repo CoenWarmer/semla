@@ -41,7 +41,7 @@
 
 import type { Element, ElementContent, Root, RootContent } from "hast";
 
-import { parseFilePathToken } from "@/lib/file-path-token";
+import { parseFilePathToken } from "@/lib/paths/file-path-token";
 
 /** Marks a `span` this plugin emitted, for `message.tsx`'s components map to key on. */
 export const FILE_LINK_MARKER = "file-link";

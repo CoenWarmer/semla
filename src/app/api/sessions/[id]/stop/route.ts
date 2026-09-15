@@ -1,6 +1,6 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { stopPiSession } from "@/lib/pi/session/session-service";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 

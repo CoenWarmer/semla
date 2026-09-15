@@ -104,7 +104,7 @@ describe("code intelligence", () => {
       targets: [
         {
           displayLine: 75,
-          file: "src/lib/file-path-token.ts",
+          file: "src/lib/paths/file-path-token.ts",
           kind: "Function",
           name: "parseFilePathToken",
         },
@@ -120,7 +120,7 @@ describe("code intelligence", () => {
       confidence: "exact",
       kind: "read",
       ranges: [{ end: 75, start: 75 }],
-      rawPath: "src/lib/file-path-token.ts",
+      rawPath: "src/lib/paths/file-path-token.ts",
       symbol: { kind: "Function", line: 75, name: "parseFilePathToken" },
       tool: "code_resolve",
     });

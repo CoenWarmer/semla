@@ -17,7 +17,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { SEMLA_STATE_DIR } from "@/lib/user-settings-store";
+import { SEMLA_STATE_DIR } from "@/lib/stores/user-settings-store";
 
 export type RunStatus =
   | "running"

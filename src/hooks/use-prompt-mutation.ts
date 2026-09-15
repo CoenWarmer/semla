@@ -9,24 +9,24 @@ import {
 } from "@/hooks/use-session-messages";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { promptFailureMessage } from "@/lib/prompt-failure";
-import { truncateAtMessage } from "@/lib/session-fork";
+import { truncateAtMessage } from "@/lib/session/session-fork";
 import {
   fetchSessionSpans,
   mergeSpans,
   sessionSpansKey,
-} from "@/lib/session-spans";
-import { handOffStreamedAnswer } from "@/lib/streamed-answer-handoff";
+} from "@/lib/trace/session-spans";
+import { handOffStreamedAnswer } from "@/lib/session/streamed-answer-handoff";
 import { fileContentQueryKeyPrefix, reviewQueryKey } from "@/hooks/use-review";
 import {
   projectChangeInvalidations,
   sessionProjectsKey,
 } from "@/hooks/use-session-projects";
-import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/live-tool-calls";
+import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/session/live-tool-calls";
 import {
   applyRoundDelta,
   applyRoundStart,
   type LiveRound,
-} from "@/lib/live-rounds";
+} from "@/lib/session/live-rounds";
 import {
   fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
@@ -34,8 +34,8 @@ import {
   withSessionRunning,
   type SessionStatus,
   type SingleSessionStatus,
-} from "@/lib/session-status";
-import { startsWikiActivity } from "@/lib/wiki-activity";
+} from "@/lib/session/session-status";
+import { startsWikiActivity } from "@/lib/wiki/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
@@ -45,7 +45,7 @@ import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
   sessionLiveAccessesKey,
   sessionLiveToolCallsKey,
-} from "@/lib/session-live-state";
+} from "@/lib/session/session-live-state";
 
 export type PromptModel = {
   modelId: string;
@@ -273,7 +273,7 @@ export const usePromptMutation = (
 
   // Live turn state is mirrored into the query cache so layout-level
   // components (e.g. bottom-bar panels) can read it without a prop or portal.
-  // See src/lib/session-live-state.ts for the keys and read hooks.
+  // See src/lib/session/session-live-state.ts for the keys and read hooks.
 
   /**
    * Tell the sidebar what this page already knows about its own session.

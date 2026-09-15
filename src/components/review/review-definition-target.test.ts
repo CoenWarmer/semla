@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectReview } from "@/lib/review-types";
+import type { ProjectReview } from "@/lib/review/review-types";
 
 import {
   isReadOnlyPath,

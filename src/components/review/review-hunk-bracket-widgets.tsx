@@ -44,7 +44,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Hunk } from "@/lib/review-types";
+import type { Hunk } from "@/lib/review/review-types";
 
 import { hunkBracketLineCount } from "./review-hunk-bracket-geometry";
 import { monaco } from "./monaco-setup";

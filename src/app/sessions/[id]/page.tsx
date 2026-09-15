@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/api-helpers";
+import { requireUser } from "@/lib/api/api-helpers";
 import { createClient } from "@/lib/supabase/server";
 import { ClientSessionComponent } from "@/components/client-session-component";
 import { getPiRuntimeConfig } from "@/lib/pi/runtime/runtime-config";

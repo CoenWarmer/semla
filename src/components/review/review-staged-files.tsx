@@ -21,7 +21,7 @@
 import { useReviewHunks } from "@/hooks/use-review";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import type { ChangedFile } from "@/lib/review-types";
+import type { ChangedFile } from "@/lib/review/review-types";
 
 import {
   splitPath,

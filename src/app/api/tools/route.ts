@@ -1,4 +1,4 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   EXTENSION_TOOLS,
   extensionToolsForSession,
@@ -6,7 +6,7 @@ import {
 import { PI_TOOLS } from "@/lib/pi/runtime/runtime-config";
 import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session/session-cwd";
 import { sessionProjects } from "@/lib/pi/session/session-project";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 

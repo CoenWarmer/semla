@@ -20,7 +20,7 @@
  * reason a generated patch stops applying.
  */
 
-import type { FileDiff, Hunk } from "@/lib/review-types";
+import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 const NO_NEWLINE = "\\ No newline at end of file";
 

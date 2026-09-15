@@ -1,5 +1,5 @@
-import { handleRouteError } from "@/lib/api-helpers";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { handleRouteError } from "@/lib/api/api-helpers";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { deliverAnswer } from "@/lib/pi/bridge/ask-user-bridge";
 
 export const runtime = "nodejs";

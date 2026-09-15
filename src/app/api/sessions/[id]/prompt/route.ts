@@ -1,4 +1,4 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   createSession,
   readSessionCreateRequest,
@@ -8,14 +8,14 @@ import { parseRequestedSessionId } from "@/lib/pi/session/session-id";
 import { resolveSessionPromptContext } from "@/lib/pi/session/session-prompt-context";
 import { recordTurnStart } from "@/lib/pi/review/review-service";
 import { runPiPrompt } from "@/lib/pi/session/session-service";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { PI_TOOLS } from "@/lib/pi/runtime/runtime-config";
 import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
   startSseHeartbeat,
-} from "@/lib/sse";
+} from "@/lib/api/sse";
 
 export const runtime = "nodejs";
 

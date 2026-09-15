@@ -1,7 +1,7 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { buildSessionMessages } from "@/lib/pi/session/session-messages-payload";
 import { readSessionMeta } from "@/lib/pi/session/session-meta";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";

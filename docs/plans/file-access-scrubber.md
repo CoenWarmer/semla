@@ -192,7 +192,7 @@ That removes a control, and it removes the question of what the arrows mean whil
 following.
 
 Storage stays as planned: `followMode: boolean | null` on
-[`UserSettings`](src/lib/user-settings-store.ts), whose `writeUserSettings`
+[`UserSettings`](src/lib/stores/user-settings-store.ts), whose `writeUserSettings`
 already merges patches so one screen cannot erase another's field. `null` means
 on, encoded once in a `followModeEnabled(settings)` helper.
 

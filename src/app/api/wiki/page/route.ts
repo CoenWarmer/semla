@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWikiPageContent, getWikiRegistry } from "@/lib/wiki";
+import { getWikiPageContent, getWikiRegistry } from "@/lib/wiki/wiki";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

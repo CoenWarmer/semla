@@ -35,7 +35,7 @@ import {
   sessionUsageTotal,
   type SessionUsage,
   type SessionUsageRecord,
-} from "@/lib/session-usage";
+} from "@/lib/session/session-usage";
 
 export async function sessionUsageTotals(
   client: SupabaseClient<Database>,

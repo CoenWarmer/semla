@@ -20,8 +20,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { SEMLA_STATE_DIR } from "@/lib/user-settings-store";
-import type { ChangedFile } from "@/lib/review-types";
+import { SEMLA_STATE_DIR } from "@/lib/stores/user-settings-store";
+import type { ChangedFile } from "@/lib/review/review-types";
 
 export interface ProjectMark {
   /** HEAD when the turn began, or null in a repository with no commits. */

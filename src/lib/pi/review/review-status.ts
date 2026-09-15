@@ -21,7 +21,7 @@ import {
   type ChangedFile,
   type ChangeStatus,
   type TurnCommit,
-} from "@/lib/review-types";
+} from "@/lib/review/review-types";
 
 /** A tree of any size should not outlive the operator's patience. */
 const STATUS_TIMEOUT_MS = 30_000;

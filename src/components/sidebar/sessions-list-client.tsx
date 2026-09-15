@@ -5,13 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/sidebar/session-item";
-import { formatSessionDate } from "@/lib/session-date";
+import { formatSessionDate } from "@/lib/session/session-date";
 import {
   fetchSessionStatus,
   SESSION_STATUS_KEY,
   sessionStatusKey,
   type SessionStatus,
-} from "@/lib/session-status";
+} from "@/lib/session/session-status";
 
 export type SessionRow = {
   id: string;

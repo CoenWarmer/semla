@@ -17,7 +17,7 @@
 
 import { listWorkflowRuns } from "@/lib/pi/workflow/workflow-run-index";
 import { snapshotFromRunFile } from "@/lib/pi/workflow/workflow-service";
-import { addUsage, NO_USAGE, type SessionUsage } from "@/lib/session-usage";
+import { addUsage, NO_USAGE, type SessionUsage } from "@/lib/session/session-usage";
 
 type WithUsage = { tokenUsage?: { cost?: number; total?: number } | null };
 

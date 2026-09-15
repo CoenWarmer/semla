@@ -37,12 +37,12 @@ import {
   usePanelLayoutSaver,
   usePanelLayouts,
 } from "@/hooks/use-panel-layout";
-import { isEmptyReview } from "@/lib/review-types";
-import type { SessionReview } from "@/lib/review-types";
+import { isEmptyReview } from "@/lib/review/review-types";
+import type { SessionReview } from "@/lib/review/review-types";
 import {
   useSessionLiveAccesses,
   useSessionLiveToolCalls,
-} from "@/lib/session-live-state";
+} from "@/lib/session/session-live-state";
 import { cn } from "@/lib/utils";
 
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";

@@ -16,7 +16,7 @@ import {
   ItemDescription,
   ItemTitle,
 } from "@/components/ui/item";
-import { projectAbsolutePath, type SessionProject } from "@/lib/session-status";
+import { projectAbsolutePath, type SessionProject } from "@/lib/session/session-status";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
 import {

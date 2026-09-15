@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChangeStatus } from "@/lib/review-types";
+import type { ChangeStatus } from "@/lib/review/review-types";
 
 import {
   renameLabel,

@@ -4,8 +4,8 @@ import { test } from "vitest";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { workflowSnapshotToSpans } from "./workflow-spans.ts";
-import { applyLiveToolEvent, mergeToolCalls } from "./live-tool-calls.ts";
-import { stampLiveTimestamps } from "./pi/workflow/workflow-snapshot-merge.ts";
+import { applyLiveToolEvent, mergeToolCalls } from "../session/live-tool-calls.ts";
+import { stampLiveTimestamps } from "../pi/workflow/workflow-snapshot-merge.ts";
 
 const T0 = Date.parse("2026-08-24T12:00:00.000Z");
 const NOW = T0 + 60_000;

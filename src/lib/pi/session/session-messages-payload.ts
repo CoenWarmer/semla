@@ -19,7 +19,7 @@ import { modelCacheReadRate, modelContextWindow } from "@/lib/pi/prompt/context-
 import { readSessionMeta } from "@/lib/pi/session/session-meta";
 import { resolveSessionPromptContext } from "@/lib/pi/session/session-prompt-context";
 import { getTranscript, type SessionToolCall, type SessionTranscriptEntry } from "@/lib/pi/transcript";
-import { createAdminClient } from "@/lib/supabase-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type SessionMessagesPayload = {
   contextWindow: number | null;

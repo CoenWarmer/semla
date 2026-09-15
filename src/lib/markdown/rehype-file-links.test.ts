@@ -29,9 +29,9 @@ function paragraph(...children: Element[]): Root {
 
 describe("parseFileLinkHref", () => {
   it("parses a plain repo-relative source file", () => {
-    expect(parseFileLinkHref("src/lib/session-live-state.ts")).toEqual({
+    expect(parseFileLinkHref("src/lib/session/session-live-state.ts")).toEqual({
       line: null,
-      rawPath: "src/lib/session-live-state.ts",
+      rawPath: "src/lib/session/session-live-state.ts",
     });
   });
 
@@ -72,7 +72,7 @@ describe("parseFileLinkHref", () => {
 
 describe("rehypeFileLinks", () => {
   it("rewrites a file-link anchor into a marked span carrying the path", () => {
-    const tree = paragraph(anchor("src/lib/session-live-state.ts", "Foo"));
+    const tree = paragraph(anchor("src/lib/session/session-live-state.ts", "Foo"));
     rehypeFileLinks()(tree);
 
     const [p] = tree.children;
@@ -81,7 +81,7 @@ describe("rehypeFileLinks", () => {
     expect(span.tagName).toBe("span");
     expect(span.properties).toEqual({
       dataFileLink: FILE_LINK_MARKER,
-      dataFilePath: "src/lib/session-live-state.ts",
+      dataFilePath: "src/lib/session/session-live-state.ts",
     });
     expect(span.children).toEqual([{ type: "text", value: "Foo" }]);
   });

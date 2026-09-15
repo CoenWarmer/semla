@@ -13,7 +13,7 @@
  */
 
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
-import { isEmptyReview, type SessionReview } from "@/lib/review-types";
+import { isEmptyReview, type SessionReview } from "@/lib/review/review-types";
 
 export interface ReviewOpenInput {
   review: SessionReview | undefined;

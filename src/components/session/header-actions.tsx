@@ -6,7 +6,7 @@ import { useGlobalCost } from "@/hooks/use-global-cost";
 import {
   fetchSingleSessionStatus,
   sessionStatusKey,
-} from "@/lib/session-status";
+} from "@/lib/session/session-status";
 import { useParams } from "next/navigation";
 import { GitStatusBadge } from "../git-status-badge";
 import { SessionProjectPicker } from "../session-project-picker";

@@ -1,4 +1,4 @@
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentHistoryEntry } from "@/lib/pi/workflow/workflow-run-reader";
 import { getAgentDetail } from "@/lib/pi/workflow/workflow-service";

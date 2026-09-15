@@ -13,7 +13,7 @@
  * and swallowed, exactly as the rest of Semla treats Postgres.
  */
 
-import { createAdminClient } from "@/lib/supabase-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 import type { ProjectLink } from "@/lib/pi/session/session-meta";
 

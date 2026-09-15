@@ -12,7 +12,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import type { ProjectReview } from "@/lib/review-types";
+import type { ProjectReview } from "@/lib/review/review-types";
 
 /** Files the index would carry into a commit right now. */
 export const stagedCount = (project: ProjectReview | undefined): number =>

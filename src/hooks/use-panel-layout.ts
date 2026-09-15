@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 
-import type { PanelLayoutValue, PanelLayouts } from "@/lib/panel-layout-store";
+import type { PanelLayoutValue, PanelLayouts } from "@/lib/stores/panel-layout-store";
 
 export const panelLayoutQueryKey = ["panel-layout"] as const;
 

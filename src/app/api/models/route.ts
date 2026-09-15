@@ -1,4 +1,4 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 

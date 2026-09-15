@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 
-import { AUTH_REQUIRED, localUser } from "@/lib/auth-mode";
+import { AUTH_REQUIRED, localUser } from "@/lib/auth/auth-mode";
 import { createClient } from "@/lib/supabase/server";
 
 export const requireUser = async () => {

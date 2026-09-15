@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
-import { WikiPageMeta, WikiPageType } from "@/lib/wiki-types";
+import { WikiPageMeta, WikiPageType } from "@/lib/wiki/wiki-types";
 
 const TYPE_COLORS: Record<WikiPageType, string> = {
   // The three identity types share a family so a page that names someone or

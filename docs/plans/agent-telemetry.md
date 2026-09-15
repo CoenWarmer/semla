@@ -16,7 +16,7 @@ smaller ones are noted there as still open and neither blocks §6 step 1.
 **The trace panel does not display telemetry. It manufactures it.**
 
 `session-workflow-panel.tsx:1005` hands `TraceWaterfall` the result of
-`workflowSnapshotToSpans(snapshot, messages, …)` — `src/lib/workflow-spans.ts:34`.
+`workflowSnapshotToSpans(snapshot, messages, …)` — `src/lib/trace/workflow-spans.ts:34`.
 Every input is app state already on the client: a `WorkflowSnapshot` from the
 workflow manager, the transcript from `useSessionMessages`, and `Date.now()`.
 The module says so itself:

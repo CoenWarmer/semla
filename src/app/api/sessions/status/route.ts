@@ -1,4 +1,4 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import { listSessionMeta } from "@/lib/pi/session/session-meta";
 import { toSessionStatus } from "@/lib/pi/session/session-status-view";
 

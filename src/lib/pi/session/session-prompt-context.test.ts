@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const readUserSettingsMock = vi.hoisted(() => vi.fn());
 const readSessionMetaMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/user-settings-store", () => ({
+vi.mock("@/lib/stores/user-settings-store", () => ({
   readUserSettings: readUserSettingsMock,
 }));
 vi.mock("@/lib/pi/session/session-meta", () => ({

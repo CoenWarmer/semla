@@ -1,8 +1,8 @@
 /**
  * Rebuilds the /wiki graph's inputs outside the browser.
  *
- * Everything here mirrors code that runs in the app — src/lib/wiki.ts,
- * src/lib/wiki-types.ts and src/components/wiki/wiki-graph.tsx. Keep it in
+ * Everything here mirrors code that runs in the app — src/lib/wiki/wiki.ts,
+ * src/lib/wiki/wiki-types.ts and src/components/wiki/wiki-graph.tsx. Keep it in
  * step with them, or the probe stops describing what users actually see.
  */
 
@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MultiGraph } from "graphology";
 
-// ─── Mirrors src/lib/wiki-types.ts ───────────────────────────────────────────
+// ─── Mirrors src/lib/wiki/wiki-types.ts ───────────────────────────────────────────
 
 export const repoList = (meta) => {
   if (!meta.repo) return [];
@@ -49,7 +49,7 @@ export const nodeColor = (meta, repoColors) => {
   return SHARED_COLOR;
 };
 
-// ─── Mirrors src/lib/wiki.ts ─────────────────────────────────────────────────
+// ─── Mirrors src/lib/wiki/wiki.ts ─────────────────────────────────────────────────
 
 const stripFrontmatter = (content) => {
   if (!content.startsWith("---")) return content;

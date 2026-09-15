@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchScore, rankMatches, type FileMatch } from "@/lib/file-search";
+import { matchScore, rankMatches, type FileMatch } from "@/lib/paths/file-search";
 
 const file = (path: string, inProject = false): FileMatch => ({
   inProject,

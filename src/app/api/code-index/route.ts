@@ -15,7 +15,7 @@
  * deletes a directory should not be the place that relies on it.
  */
 
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import { projectKey } from "@/lib/code-index/index-paths";
 import { isIndexRunning, startIndexRun } from "@/lib/code-index/index-runs";
 import { getProjectIndexStatuses } from "@/lib/code-index/status";

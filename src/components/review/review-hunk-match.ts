@@ -17,7 +17,7 @@
  * guessed at.
  */
 
-import type { FileDiff, Hunk } from "@/lib/review-types";
+import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 export type StageDirection = "stage" | "unstage";
 

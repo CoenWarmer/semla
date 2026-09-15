@@ -4,7 +4,7 @@ import {
   getWikiConfig,
   getWikiRegistry,
   isWikiInitialized,
-} from "@/lib/wiki";
+} from "@/lib/wiki/wiki";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

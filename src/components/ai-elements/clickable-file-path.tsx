@@ -19,7 +19,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useMemo } from "react";
 
-import { parseFilePathToken } from "@/lib/file-path-token";
+import { parseFilePathToken } from "@/lib/paths/file-path-token";
 import { cn } from "@/lib/utils";
 
 import { useFileTargetClick } from "./use-file-target-click";

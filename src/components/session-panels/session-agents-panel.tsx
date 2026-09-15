@@ -10,16 +10,16 @@ import {
   sessionAgentSelectionKey,
   useSessionLiveToolCalls,
   useSessionWorkflowComputedSnapshot,
-} from "@/lib/session-live-state";
+} from "@/lib/session/session-live-state";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
-import { sessionSpansKey, fetchSessionSpans } from "@/lib/session-spans";
-import { mergeToolCalls } from "@/lib/live-tool-calls";
+import { sessionSpansKey, fetchSessionSpans } from "@/lib/trace/session-spans";
+import { mergeToolCalls } from "@/lib/session/live-tool-calls";
 import {
   sessionStatusKey,
   fetchSingleSessionStatus,
-} from "@/lib/session-status";
-import { countSessionAgents } from "@/lib/session-agent-counts";
+} from "@/lib/session/session-status";
+import { countSessionAgents } from "@/lib/session/session-agent-counts";
 import { SessionWorkflowPanel } from "./session-workflow-panel";
 
 const EMPTY_TOOL_CALLS: import("@/hooks/use-session-messages").SessionToolCall[] =

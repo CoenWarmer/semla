@@ -27,11 +27,11 @@
  */
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
-import { parseAskUserResult, type AskUserPair } from "@/lib/ask-user-record";
+import { parseAskUserResult, type AskUserPair } from "@/lib/tool-records/ask-user-record";
 import {
   parseFeatureSpecResult,
   type FeatureSpecField,
-} from "@/lib/feature-spec-record";
+} from "@/lib/tool-records/feature-spec-record";
 
 export type StepItem =
   | { kind: "thinking"; id: string; messageId: string; text: string }

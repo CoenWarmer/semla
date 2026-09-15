@@ -12,7 +12,7 @@
 
 import { ClipboardListIcon } from "lucide-react";
 
-import type { FeatureSpecField } from "@/lib/feature-spec-record";
+import type { FeatureSpecField } from "@/lib/tool-records/feature-spec-record";
 import { cn } from "@/lib/utils";
 
 export function FeatureSpecRecord({

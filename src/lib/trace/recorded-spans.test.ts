@@ -13,7 +13,7 @@ import {
   foldSingleTurnRuns,
   recordedSpansToOtelSpans,
   timelineSource,
-} from "@/lib/recorded-spans";
+} from "@/lib/trace/recorded-spans";
 
 const SESSION = "00000000-0000-4000-8000-00000000f00d";
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { spawn } from "node-pty";
 
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   registerTerminal,
   sweepIdleTerminals,

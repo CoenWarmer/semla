@@ -5,9 +5,9 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   createPendingPromptStore,
   type PendingPromptStore,
-} from "@/lib/pending-prompt-store";
+} from "@/lib/stores/pending-prompt-store";
 
-export type { PendingPrompt, PendingPromptStore } from "@/lib/pending-prompt-store";
+export type { PendingPrompt, PendingPromptStore } from "@/lib/stores/pending-prompt-store";
 
 const PendingPromptContext = createContext<PendingPromptStore | null>(null);
 

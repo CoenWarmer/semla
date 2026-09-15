@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { FileDiff } from "@/lib/review-types";
-import type { ChangedFile, SessionReview } from "@/lib/review-types";
+import type { FileDiff } from "@/lib/review/review-types";
+import type { ChangedFile, SessionReview } from "@/lib/review/review-types";
 
 /**
  * What there is to review, and one file's hunks.

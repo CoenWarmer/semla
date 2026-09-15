@@ -16,7 +16,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 import { formatCost, formatTokens } from "@/components/token-usage";
 import { cn } from "@/lib/utils";
-import { turnNodeLabel, type LaidOutTurnNode } from "@/lib/session-turn-layout";
+import { turnNodeLabel, type LaidOutTurnNode } from "@/lib/session/session-turn-layout";
 
 export type TurnGraphNodeData = LaidOutTurnNode;
 

@@ -247,7 +247,7 @@ regression here shows up as unreadable text in light mode specifically). Check:
 
 ## Non-goals
 
-- Rewriting the timeline's data pipeline (`src/lib/workflow-spans.ts`) — this is
+- Rewriting the timeline's data pipeline (`src/lib/trace/workflow-spans.ts`) — this is
   purely about row rendering.
 - Changing which spans are shown, or the `foldEventsIntoParent` behaviour.
 - Removing the spinner from running rows. It is arguably redundant now that the

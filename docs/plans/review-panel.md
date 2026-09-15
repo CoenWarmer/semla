@@ -269,7 +269,7 @@ the coloured state as "as of the last read", which is honest and cheap.
 - `unstageHunks(projectPath, patch)` → the same with `--reverse`
 - `commitStaged(projectPath, message)` → `git commit -m` (no `-a`)
 
-`src/lib/review-types.ts` — `ChangedFile`, `Hunk`, `TurnCommit`, and the status
+`src/lib/review/review-types.ts` — `ChangedFile`, `Hunk`, `TurnCommit`, and the status
 enum. **Node-free**, mirroring the `git-status-display.ts` / `git-status.ts`
 split. `client-boundary.test.ts` walks the whole import graph and a client
 component reaching a module that imports `node:fs` breaks the entire page

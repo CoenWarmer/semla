@@ -18,7 +18,7 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { splitWorkspacePath } from "@/lib/workspace-path";
+import { splitWorkspacePath } from "@/lib/paths/workspace-path";
 
 import type {
   AccessAgent,

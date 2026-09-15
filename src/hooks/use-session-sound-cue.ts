@@ -6,7 +6,7 @@ import {
   shouldPlayDoneSound,
   shouldPlayQuestionSound,
   type SoundCueState,
-} from "@/lib/session-sound-cue";
+} from "@/lib/session/session-sound-cue";
 
 /**
  * Play question.mp3 / done.mp3 when this session's state changes while its

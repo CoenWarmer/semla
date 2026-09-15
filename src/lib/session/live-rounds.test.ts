@@ -5,8 +5,8 @@ import {
   applyRoundStart,
   liveRoundMessages,
   type LiveRound,
-} from "@/lib/live-rounds";
-import { liveRoundMessageId } from "@/lib/live-tool-calls";
+} from "@/lib/session/live-rounds";
+import { liveRoundMessageId } from "@/lib/session/live-tool-calls";
 
 describe("applyRoundStart", () => {
   it("appends a new, empty round", () => {

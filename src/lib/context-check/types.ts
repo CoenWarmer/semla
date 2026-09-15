@@ -9,7 +9,7 @@
  * module still couples the client graph to server-only transitive deps once
  * someone adds a value import.
  *
- * The same split as src/lib/review-types.ts, for the same reason.
+ * The same split as src/lib/review/review-types.ts, for the same reason.
  */
 
 export type DimensionLevel = "good" | "warning" | "degraded";

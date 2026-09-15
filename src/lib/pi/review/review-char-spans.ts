@@ -16,7 +16,7 @@
  * and the spans travel to the client as data.
  */
 
-import type { CharSpan } from "@/lib/review-types";
+import type { CharSpan } from "@/lib/review/review-types";
 
 /**
  * Past this many tokens on either side the token LCS is abandoned for the

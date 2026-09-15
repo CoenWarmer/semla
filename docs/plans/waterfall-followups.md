@@ -75,7 +75,7 @@ Two corrections to the predecessor plan, so nobody re-litigates them:
 ## 1. Make synthesised spans cheap to build  ← highest value
 
 **Problem.** `OtelSpan` is shaped for *ingesting* real OTel data. Semla
-*synthesises* spans from app state, and `src/lib/workflow-spans.ts` (383 lines)
+*synthesises* spans from app state, and `src/lib/trace/workflow-spans.ts` (383 lines)
 pays a fixed tax for it, all in the first 27 lines:
 
 ```ts
@@ -141,8 +141,8 @@ comment, and keep the nano fields as the canonical form. Do **not** convert
 existing nano input through a lossy path.
 
 **Semla follow-up:** delete `msToNano`, `makeSpanId` and `TRACE_ID` from
-`src/lib/workflow-spans.ts`; switch the ~15 call sites to `startTimeMs` /
-`endTimeMs`. Its tests (`src/lib/workflow-spans.test.ts`, 12 tests) read
+`src/lib/trace/workflow-spans.ts`; switch the ~15 call sites to `startTimeMs` /
+`endTimeMs`. Its tests (`src/lib/trace/workflow-spans.test.ts`, 12 tests) read
 timestamps back via `Number(nano.slice(0, -6))`, defined locally in three
 separate tests — update all three.
 

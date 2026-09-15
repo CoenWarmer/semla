@@ -12,7 +12,7 @@
  * code goes wrong — is asserted directly.
  */
 
-import type { ChangeStatus, ProjectReview } from "@/lib/review-types";
+import type { ChangeStatus, ProjectReview } from "@/lib/review/review-types";
 
 /**
  * The tree speaks workspace-relative paths and the review speaks

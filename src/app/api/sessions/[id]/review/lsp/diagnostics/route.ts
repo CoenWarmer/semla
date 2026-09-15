@@ -10,7 +10,7 @@ import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
   startSseHeartbeat,
-} from "@/lib/sse";
+} from "@/lib/api/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

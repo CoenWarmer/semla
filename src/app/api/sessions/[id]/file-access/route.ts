@@ -1,7 +1,7 @@
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { buildFileAccessTimeline } from "@/lib/pi/file-access/access-timeline";
 import { withSubagentAccesses } from "@/lib/pi/file-access/subagent-accesses";
-import { requireSessionOwner } from "@/lib/session-auth";
+import { requireSessionOwner } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 

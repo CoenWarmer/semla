@@ -31,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import type { ProjectReview } from "@/lib/review-types";
+import type { ProjectReview } from "@/lib/review/review-types";
 import { cn } from "@/lib/utils";
 
 /**

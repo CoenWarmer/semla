@@ -9,7 +9,7 @@ import {
   WikiPageMeta,
   WikiRegistry,
   buildTitleMap,
-} from "@/lib/wiki-types";
+} from "@/lib/wiki/wiki-types";
 import dynamic from "next/dynamic";
 import { WikiNav } from "./wiki-nav";
 import { WikiPageView } from "./wiki-page-view";

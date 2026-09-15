@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { SigmaContainer } from "@react-sigma/core";
 import { useQuery } from "@tanstack/react-query";
 import { buildLaidOutGraph, buildRepoColorMap } from "./wiki-graph";
-import type { WikiLink, WikiPageMeta } from "@/lib/wiki-types";
+import type { WikiLink, WikiPageMeta } from "@/lib/wiki/wiki-types";
 
 // ─── API response type ────────────────────────────────────────────────────────
 

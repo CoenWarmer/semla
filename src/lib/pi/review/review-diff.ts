@@ -14,7 +14,7 @@
 
 import { gitResult } from "@/lib/pi/git/git";
 import { changedSpans } from "@/lib/pi/review/review-char-spans";
-import type { DiffLine, FileDiff, Hunk } from "@/lib/review-types";
+import type { DiffLine, FileDiff, Hunk } from "@/lib/review/review-types";
 
 /** A large file's diff is still worth waiting for; an unbounded one is not. */
 const DIFF_TIMEOUT_MS = 30_000;

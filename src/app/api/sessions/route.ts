@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   createSession,
   readSessionCreateRequest,

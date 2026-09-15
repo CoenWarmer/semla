@@ -1,9 +1,9 @@
-import { handleRouteError, requireUser } from "@/lib/api-helpers";
+import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   readPanelLayouts,
   writePanelLayouts,
   type PanelLayoutValue,
-} from "@/lib/panel-layout-store";
+} from "@/lib/stores/panel-layout-store";
 
 export const runtime = "nodejs";
 

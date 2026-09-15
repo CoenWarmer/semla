@@ -7,7 +7,7 @@ import {
   isLiveRoundMessageId,
   mergeToolCalls,
   type LiveToolEvent,
-} from "@/lib/live-tool-calls";
+} from "@/lib/session/live-tool-calls";
 
 type StartEvent = Extract<LiveToolEvent, { type: "tool-start" }>;
 

@@ -25,7 +25,7 @@
  * drift from what the persisted refetch draws moments later.
  */
 import type { SessionMessage } from "@/hooks/use-session-messages";
-import { liveRoundMessageId } from "@/lib/live-tool-calls";
+import { liveRoundMessageId } from "@/lib/session/live-tool-calls";
 
 export type LiveRound = {
   id: string;

@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getWorkflowSettingsPath } from "@/lib/pi/extensions/dynamic-workflows/src/workflow-settings";
 import { GET, PUT } from "./route";
 
-vi.mock("@/lib/api-helpers", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/api-helpers")>();
+vi.mock("@/lib/api/api-helpers", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api/api-helpers")>();
   return {
     ...original,
     requireUser: vi.fn().mockResolvedValue({

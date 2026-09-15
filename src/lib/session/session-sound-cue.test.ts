@@ -4,7 +4,7 @@ import {
   shouldPlayDoneSound,
   shouldPlayQuestionSound,
   type SoundCueState,
-} from "@/lib/session-sound-cue";
+} from "@/lib/session/session-sound-cue";
 
 const idle: SoundCueState = { hasPendingQuestion: false, isActive: false };
 

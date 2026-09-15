@@ -2,7 +2,7 @@ import { buildMemoryContextBlock } from "@/lib/pi/prompt/prompts";
 import { otherActiveSessionsByProject } from "@/lib/pi/session/session-concurrency";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompt/system-prompt";
 import { sessionProjects } from "@/lib/pi/session/session-project";
-import { readUserSettings } from "@/lib/user-settings-store";
+import { readUserSettings } from "@/lib/stores/user-settings-store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface SessionPromptContext {

@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronUpIcon, GitBranchIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { BottomBarPanel } from "@/components/bottom-bar-panel";
-import { sessionPendingScrollKey } from "@/lib/session-live-state";
+import { sessionPendingScrollKey } from "@/lib/session/session-live-state";
 import { TurnGraphCanvas } from "@/components/session-panels/turn-graph-canvas";
 import { useTurnGraph } from "@/hooks/use-turn-graph";
 

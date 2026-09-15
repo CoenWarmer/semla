@@ -37,7 +37,7 @@ fixing: here, a stale comment actually misleads someone.
 
 ### 1.1 `semla.session.prompts` is always 0 — HIGH
 
-`src/lib/recorded-spans.ts:199-201` counts prompts with
+`src/lib/trace/recorded-spans.ts:199-201` counts prompts with
 `children.filter((span) => span.name === "Prompt")`. But `children` is `roots`,
 derived at line 369 from `mapped`, and `mapped` sets `name: labelOf(span)`
 (line 340). For a prompt span `labelOf` returns `promptLabel(excerpt)`, which is
@@ -183,7 +183,7 @@ hooks; as it stands this logic cannot be unit-tested without pulling in the hook
 graph. `use-session-messages.ts` is only 119 lines and mostly types, so moving
 them to `src/lib/session-messages-types.ts` and re-exporting is cheap.
 
-`src/lib/pending-prompt-store.ts:1` imports `PromptEditorModel` from
+`src/lib/stores/pending-prompt-store.ts:1` imports `PromptEditorModel` from
 `@/components/conversation/prompt-editor` — a store whose own docblock says it is
 "Kept free of React" importing a presentation type. Both agents flagged this
 independently.
@@ -209,7 +209,7 @@ itself. Each has clean extraction boundaries listed in the area reports.
 
 ### 2.5 Client-side SSE framing duplicated four times — MEDIUM
 
-`src/lib/sse.ts` is a genuine success on the server: all five streaming routes
+`src/lib/api/sse.ts` is a genuine success on the server: all five streaming routes
 use it and no route hand-rolls `text/event-stream` any more. But it is
 server-only, and four client consumers each re-implement
 `buffer.split("\n\n")` plus `data:` parsing —
@@ -443,7 +443,7 @@ positions in different files.
 
 Worth recording so it does not get refactored away:
 
-- **`src/lib/sse.ts`** — a clean consolidation, fully adopted server-side.
+- **`src/lib/api/sse.ts`** — a clean consolidation, fully adopted server-side.
 - **The client/server split in `context-composition.ts`** — the docblock explains
   exactly why the arithmetic is client-safe and only `modelContextWindow` stays
   in `lib/pi`, and names the test that enforces it. The identical filename across

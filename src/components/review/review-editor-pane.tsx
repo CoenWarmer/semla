@@ -32,7 +32,7 @@ import {
   type CodeMapAtLine,
   type LspDiagnostic,
 } from "@/hooks/use-review";
-import { explainFunctionPrompt } from "@/lib/review-prompts";
+import { explainFunctionPrompt } from "@/lib/review/review-prompts";
 
 import { isReadOnlyPath } from "./review-definition-target";
 

@@ -19,7 +19,7 @@
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { ChangedFile, ProjectReview } from "@/lib/review-types";
+import type { ChangedFile, ProjectReview } from "@/lib/review/review-types";
 import { useReviewHunks } from "@/hooks/use-review";
 import { Spinner } from "@/components/ui/spinner";
 
