@@ -82,10 +82,6 @@ export function getIndexRun(root: string): IndexRun | null {
   return runs.get(projectKey(root)) ?? null;
 }
 
-export function listIndexRuns(): IndexRun[] {
-  return [...runs.values()];
-}
-
 export class NoEmbeddingCredentialError extends Error {
   constructor() {
     super(

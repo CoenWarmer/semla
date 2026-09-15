@@ -37,7 +37,7 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
 
 import { sessionLog } from "@/lib/pi/session-log";
 
@@ -75,9 +75,6 @@ const WriteSchema = Type.Object({
   target_module: PlacementFieldsSchema.properties.target_module,
   rationale: PlacementFieldsSchema.properties.rationale,
 });
-
-export type PlacementEditInput = Static<typeof EditSchema>;
-export type PlacementWriteInput = Static<typeof WriteSchema>;
 
 /** Formats the rejection message so it quotes the PLACEMENT.md rule verbatim. */
 function rejectionMessage(targetModule: string, rules: readonly PlacementRule[]): string {

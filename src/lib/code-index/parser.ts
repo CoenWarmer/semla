@@ -151,10 +151,3 @@ export async function parseSource(
     return null;
   }
 }
-
-/** Test seam: drop cached parsers so a test can exercise the cold path. */
-export function resetParserCache(): void {
-  runtime = null;
-  languages.clear();
-  parsers.clear();
-}

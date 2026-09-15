@@ -91,7 +91,3 @@ export function buildPatch(
 
   return `${file.header}\n${body.join("\n")}\n`;
 }
-
-/** Every hunk in a file, for "stage this whole file". */
-export const allHunkIndexes = (file: FileDiff): number[] =>
-  file.hunks.map((hunk) => hunk.index);

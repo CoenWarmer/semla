@@ -146,20 +146,11 @@ export function getProjectProgram(
   }
 
   // Built before the stale entry is released, so a failed rebuild leaves the
-  // cache as it was rather than emptied.
+  // cache as it was rather than emptied. Releasing it is not optional under
+  // TS 7: a program is a compiler subprocess, so an entry dropped from this
+  // map without release() leaves one running.
   const built = build(configPath);
   cached?.release();
   cache.set(configPath, { ...built, builtAt: now, configMtimeMs });
   return built;
-}
-
-/**
- * Drop cached programs, shutting down their compilers.
- *
- * Exported for tests and for an explicit refresh. Not optional under TS 7: the
- * subprocesses outlive the cache entries otherwise.
- */
-export function clearProgramCache(): void {
-  for (const entry of cache.values()) entry.release();
-  cache.clear();
 }

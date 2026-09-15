@@ -24,24 +24,6 @@ import type { Chunk } from "./types";
 /** Node types that are a comment in every grammar vendored here. */
 const COMMENT_TYPES = new Set(["comment", "line_comment", "block_comment"]);
 
-/**
- * Node types worth descending into when the whole declaration is too large.
- * Everything else is emitted whole or split by lines.
- */
-const CONTAINER_TYPES = new Set([
-  "class_declaration",
-  "class_body",
-  "class_definition",
-  "abstract_class_declaration",
-  "interface_declaration",
-  "internal_module",
-  "module",
-  "namespace_declaration",
-  "object_type",
-  "impl_item",
-  "declaration_list",
-]);
-
 /** Field names grammars use for a declaration's name, in preference order. */
 const NAME_FIELDS = ["name", "declarator", "path"];
 
@@ -228,6 +210,3 @@ function makeChunk(
     kind: isTestPath(input.path) ? "test" : "source",
   };
 }
-
-/** Container types are exported for the test that pins the shallow walk. */
-export const AST_CONTAINER_TYPES: ReadonlySet<string> = CONTAINER_TYPES;
