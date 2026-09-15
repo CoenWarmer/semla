@@ -97,19 +97,6 @@ export const TREE_SITTER_GRAMMAR_DIR = join(
   "resources/grammars",
 );
 
-// Semla's own extensions. Anchored to the server's cwd like the wiki paths
-// above: PI_WORKSPACE_ROOT is the repo the agent operates *on*, not the repo
-// these files live in.
-export const WORKFLOW_EXTENSION_PATH = join(
-  process.cwd(),
-  "src/lib/pi/extensions/workflow.ts",
-);
-
-export const ASK_USER_EXTENSION_PATH = join(
-  process.cwd(),
-  "src/lib/pi/extensions/ask-user.ts",
-);
-
 // Code intelligence: LSP- and tree-sitter-backed navigation. Declared in this
 // repository's package.json and loaded from root node_modules by path, not
 // through pi's package resolution out of .pi/npm — see the extension-dependency
@@ -126,25 +113,10 @@ export const CODE_INTELLIGENCE_EXTENSION_PATH = join(
   "node_modules/@mrclrchtr/supi-code-intelligence/src/headless.ts",
 );
 
-// Resolves a call graph with the TypeScript checker and draws it in the session
-// panel. Registered here rather than taken from a package because owning the
-// tool is what keeps the structured map intact through the tool result.
-export const CODE_MAP_EXTENSION_PATH = join(
-  process.cwd(),
-  "src/lib/pi/extensions/code-map.ts",
-);
-
-// Refuses bash commands that would install a package. Loaded like the others
-// rather than bundled into one, so the manifest shows what can block a call.
-export const INSTALL_GUARD_EXTENSION_PATH = join(
-  process.cwd(),
-  "src/lib/pi/extensions/install-guard-extension.ts",
-);
-
 // The workflow skills ship inside the dynamic-workflows package but are only
-// contributed when it is loaded as a package. Sessions load the extension file
-// directly, so the skills are pointed at explicitly rather than inherited from
-// whatever is installed in the developer's agent dir.
+// contributed when it is loaded as a package. Sessions get the extension as an
+// imported factory, so the skills are pointed at explicitly rather than
+// inherited from whatever is installed in the developer's agent dir.
 export const WORKFLOW_SKILLS_PATH = join(
   process.cwd(),
   "src/lib/pi/extensions/dynamic-workflows/skills",
