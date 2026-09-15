@@ -25,10 +25,10 @@ const send = (id: string, control: TerminalControl) =>
 /**
  * A real shell, running where the server runs.
  *
- * xterm rather than the read-only Terminal component this bar used to show:
- * that renders a string through ansi-to-react, which understands colour but not
- * cursor movement or the alternate screen — so vim, top, and anything that
- * redraws would come out as noise. This is an emulator.
+ * xterm rather than the read-only ANSI-to-HTML renderer this bar used to show:
+ * that understood colour but not cursor movement or the alternate screen — so
+ * vim, top, and anything that redraws would come out as noise. This is an
+ * emulator.
  *
  * Everything here runs after mount and only in the browser; the module is
  * imported dynamically by the console bar because xterm reaches for `document`
