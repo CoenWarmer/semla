@@ -8,8 +8,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { unfinishedBackgroundRunId } from "@/lib/pi/background-run-recovery";
-import type { WorkflowRunRecord } from "@/lib/pi/workflow-run-index";
-import type { PersistedRunState } from "@/lib/pi/workflow-run-reader";
+import type { WorkflowRunRecord } from "@/lib/pi/workflow/workflow-run-index";
+import type { PersistedRunState } from "@/lib/pi/workflow/workflow-run-reader";
 
 const record = (over: Partial<WorkflowRunRecord> = {}): WorkflowRunRecord => ({
   run_id: "run-1",

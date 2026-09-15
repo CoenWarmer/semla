@@ -17,18 +17,70 @@
  * file supplies a handler and nothing else.
  */
 
-import { CheckIcon, PencilIcon } from "lucide-react";
+import { BrainIcon, CheckIcon, PencilIcon } from "lucide-react";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { CopyMessageButton } from "@/components/conversation/message-copy";
 import { ForkMessageButton } from "@/components/conversation/message-fork";
 import { cn } from "@/lib/utils";
+
+/**
+ * What the wiki auto-injected for this prompt, as a small badge beside the
+ * bubble. Traceability, not decoration: the extension puts this content into
+ * the model's context on every turn with `display: false`, which hides it
+ * from a TUI's own chat view but is not a claim that Semla should hide it too
+ * — see wiki-recall-message.ts. Without this, the only record of what
+ * actually informed a response lived in the raw session .jsonl, unreadable to
+ * the person who sent the prompt.
+ *
+ * A popover rather than a drawer: the content is Markdown-formatted but
+ * short (a links-first list or a few short previews), and opening a full
+ * side drawer for it would be disproportionate next to a one-line prompt.
+ */
+function WikiRecallBadge({ content }: { content: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            className="shrink-0"
+            onClick={(event) => event.stopPropagation()}
+            type="button"
+          >
+            <Badge className="gap-1 text-muted-foreground" variant="outline">
+              <BrainIcon className="size-3" />
+              Wiki
+            </Badge>
+          </button>
+        }
+      />
+      <PopoverContent
+        align="end"
+        className="max-h-96 w-96 overflow-y-auto text-left"
+        onClick={(event) => event.stopPropagation()}
+        side="top"
+      >
+        <div className="prose prose-sm dark:prose-invert max-w-none text-xs leading-relaxed [&_p]:my-1">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface EditableUserMessageProps {
   message: SessionMessage;
@@ -133,6 +185,9 @@ export function EditableUserMessage({
           is the gutter between it and the conversation. Copy first, so edit
           stays nearest the bubble it edits.
         */}
+        {!editing && message.wikiRecall && (
+          <WikiRecallBadge content={message.wikiRecall} />
+        )}
         {!editing && (
           <ForkMessageButton
             disabled={disabled}

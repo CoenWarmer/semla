@@ -9,6 +9,15 @@ import { resolvePersistAgentSessions } from "./agent-session.ts";
 // Relative, and type-only: erased at build time, so this module gains no
 // runtime dependency on the host and would still load under jiti.
 import type { WorkflowTelemetry } from "../../../telemetry/workflow-recorder";
+// The one host *value* this tree imports. The registry below is Semla's, and
+// its key was spelled here as a `Symbol.for` literal while the reader took it
+// from the contract — so a typo would have broken live snapshots on the writer
+// side only, silently. extension-contract.ts imports nothing, so taking it at
+// runtime leaves this module loadable on its own, jiti included.
+import {
+  readOrInitSlot,
+  WORKFLOW_MANAGER_REGISTRY,
+} from "../../../extension-contract";
 import {
   preview,
   recomputeWorkflowSnapshot,
@@ -337,8 +346,8 @@ export class WorkflowManager extends EventEmitter {
    *    but is not necessarily evicted immediately: up to
    *    maxTerminalRunsInMemory terminal entries are kept, oldest evicted
    *    first, so a `getRun()` call immediately after completion (e.g. the
-   *    "complete" event's own synchronous listeners — task-panel's result
-   *    delivery, `/workflows watch`) still sees the live object. Once
+   *    "complete" event's own synchronous listeners — result-delivery.ts,
+   *    `/workflows status`) still sees the live object. Once
    *    evicted, the entry is simply removed from `runs`; nothing else reads
    *    or writes it again.
    *  - Every caller of getRun()/getSnapshot() must treat "undefined"/null as
@@ -478,7 +487,8 @@ export class WorkflowManager extends EventEmitter {
   }
 
   /** Bind the manager to the current pi session, so new runs are tagged with it and
-   * the navigator/task-panel show only this session's runs (set on session_start). */
+   * `/workflows` and `workflow_control` show only this session's runs (set on
+   * session_start). */
   setSessionId(id: string | undefined): void {
     this.sessionId = id;
   }
@@ -665,10 +675,10 @@ export class WorkflowManager extends EventEmitter {
     // Register this manager in the shared globalThis registry so Semla's
     // snapshot API can access live running/queued agent state across module
     // boundaries (jiti loads each extension in a fresh module context).
-    const _semlaKey = Symbol.for("semla.workflow.managers");
-    const _semlaReg = ((globalThis as Record<symbol, unknown>)[_semlaKey] ??=
-      new Map<string, WeakRef<WorkflowManager>>()) as Map<string, WeakRef<WorkflowManager>>;
-    _semlaReg.set(runId, new WeakRef(this));
+    readOrInitSlot(WORKFLOW_MANAGER_REGISTRY, () => new Map()).set(
+      runId,
+      new WeakRef(this),
+    );
 
     try {
       // Persist initial state

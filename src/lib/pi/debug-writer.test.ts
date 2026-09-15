@@ -181,7 +181,7 @@ describe("SessionPhase coverage", () => {
       (match) => match[1]!,
     );
 
-    const turn = read("src/lib/pi/session-service.ts");
+    const turn = read("src/lib/pi/session/session-service.ts");
     const emitted = [...turn.matchAll(/\bphase\("([a-z-]+)"\)/g)].map(
       (match) => match[1]!,
     );

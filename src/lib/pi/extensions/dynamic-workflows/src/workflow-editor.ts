@@ -233,68 +233,17 @@ export function registerWorkflowTriggerCommand(
 }
 
 /**
- * Register the bottom progress-panel preference command:
- *  - `/workflows-progress compact|detailed|status` — switch (or report) the panel mode.
- *  - `/workflows-progress max <1-1000>` — cap agents shown per phase in detailed mode.
- * Both persist via `settingsStore` and take effect on the next live run (the panel
- * live-reads its settings), so no session restart is needed.
- */
-export function registerWorkflowProgressCommands(
-  pi: ExtensionAPI,
-  settingsStore: WorkflowSettingsStore = DEFAULT_SETTINGS_STORE,
-): void {
-  pi.registerCommand?.("workflows-progress", {
-    description: "Bottom progress panel: compact | detailed | status | max <N>",
-    async handler(args: string, _ctx: ExtensionCommandContext) {
-      const trimmed = args.trim();
-      const say = (content: string) => pi.sendMessage({ customType: "workflows-progress", content, display: true });
-      const spaceIdx = trimmed.indexOf(" ");
-      const verb = (spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx)).toLowerCase();
-      const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
-
-      if (verb === "compact" || verb === "detailed") {
-        const saved = persistProgressSettings(settingsStore, { progressPanelMode: verb });
-        await say(
-          saved
-            ? `Workflow progress panel set to ${verb} — takes effect on the next render of a live run (no restart needed).`
-            : `Workflow progress panel set to ${verb} for this session, but the preference could not be saved.`,
-        );
-        return;
-      }
-
-      if (verb === "max") {
-        if (!rest) {
-          await say(
-            `Detailed progress shows up to ${loadProgressMaxAgents(settingsStore)} agents per phase. Usage: /workflows-progress max <1-1000>`,
-          );
-          return;
-        }
-        const n = Number.parseInt(rest, 10);
-        if (!Number.isFinite(n) || n < 1) {
-          await say(`Invalid value "${rest}". Usage: /workflows-progress max <1-1000> (a whole number ≥ 1).`);
-          return;
-        }
-        const clamped = Math.min(1000, n);
-        const saved = persistProgressSettings(settingsStore, { progressPanelMaxAgents: clamped });
-        await say(
-          saved
-            ? `Detailed progress now shows up to ${clamped} agents per phase.`
-            : `Set to ${clamped} for this session, but the preference could not be saved.`,
-        );
-        return;
-      }
-
-      await say(
-        `Workflow progress panel is ${loadProgressMode(settingsStore)}, showing up to ${loadProgressMaxAgents(settingsStore)} agents per phase. Usage: /workflows-progress compact | detailed | status | max <N>`,
-      );
-    },
-  });
-}
-
-/**
  * Install the keyword-trigger arming hook (submit-time detection + prompt
- * rewrite) and the related trigger/progress commands. Call once (e.g. in
- * `session_start`).
+ * rewrite) and the trigger command. Call once (e.g. in `session_start`).
+ *
+ * There was a `/workflows-progress` command here too, setting the detail level
+ * of the bottom progress panel. The panel was a pi-tui widget and is gone (see
+ * result-delivery.ts), which left the command reading and writing
+ * `progressPanelMode`/`progressPanelMaxAgents` with nothing downstream of
+ * either — it reported a setting back to whoever set it and changed nothing.
+ * The keyword trigger below is the opposite case and stays: its settings feed
+ * the `input` hook, which is live in Semla because it fires on ordinary
+ * messages rather than needing a UI.
  */
 export function installWorkflowKeywordArming(
   pi: ExtensionAPI,
@@ -310,7 +259,6 @@ export function installWorkflowKeywordArming(
   };
 
   registerWorkflowTriggerCommand(pi, state, settingsStore);
-  registerWorkflowProgressCommands(pi, settingsStore);
 
   // Active tools saved while a turn is restricted to `workflow`; restored on turn_end.
   let savedTools: string[] | undefined;
@@ -412,29 +360,4 @@ function resolvedTriggerWord(keywordTriggerWord: string | undefined): string {
 function triggerDisplayName(keywordTriggerWord: string | undefined): string {
   const word = resolvedTriggerWord(keywordTriggerWord);
   return word.toLowerCase() === DEFAULT_KEYWORD_TRIGGER_WORD ? "workflow/workflows" : `"${word}"`;
-}
-
-function persistProgressSettings(settingsStore: WorkflowSettingsStore, settings: WorkflowSettings): boolean {
-  try {
-    settingsStore.save(settings);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function loadProgressMode(settingsStore: WorkflowSettingsStore): "compact" | "detailed" {
-  try {
-    return settingsStore.load().progressPanelMode ?? "compact";
-  } catch {
-    return "compact";
-  }
-}
-
-function loadProgressMaxAgents(settingsStore: WorkflowSettingsStore): number {
-  try {
-    return settingsStore.load().progressPanelMaxAgents ?? 8;
-  } catch {
-    return 8;
-  }
 }

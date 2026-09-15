@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  ACTIVE_WORKFLOW_MANAGER,
   clearSlot,
   CONTRACT_SLOT_KEYS,
   EXTENSION_CONTRACT_VERSION,
+  publishSessionWorkflowManager,
 } from "./extension-contract.ts";
 import { getExtensionHealth, recordExtensionLoad } from "./extension-health.ts";
 import {
@@ -11,6 +13,11 @@ import {
   EXTENSION_MANIFEST,
   extensionEntryId,
 } from "./extension-manifest.ts";
+
+const PI_SESSION_ID = "pi-session-under-test";
+
+/** Held at module scope: the manager slot stores a WeakRef. */
+const manager = { startInBackground: () => ({ runId: "r" }) };
 
 afterEach(() => {
   for (const key of CONTRACT_SLOT_KEYS) clearSlot(key);
@@ -62,7 +69,12 @@ describe("extension health", () => {
     const tools = EXTENSION_MANIFEST.flatMap((s) => [...s.providesTools]);
     for (const spec of EXTENSION_MANIFEST) {
       for (const slot of spec.providesSlots) {
-        (globalThis as Record<symbol, unknown>)[slot] = () => true;
+        if (slot === ACTIVE_WORKFLOW_MANAGER) {
+          // Kept alive by `manager` below: the slot holds a WeakRef.
+          publishSessionWorkflowManager(PI_SESSION_ID, manager);
+        } else {
+          (globalThis as Record<symbol, unknown>)[slot] = () => true;
+        }
       }
     }
 
@@ -70,6 +82,7 @@ describe("extension health", () => {
       buildExtensionLoadReport({
         loadedPaths: EXTENSION_MANIFEST.map(extensionEntryId),
         loadErrors: [],
+        piSessionId: PI_SESSION_ID,
         registeredTools: tools,
       }),
     );

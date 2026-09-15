@@ -1,14 +1,15 @@
 /**
- * Shared in-memory bridge between the `capture_feature_spec` Pi extension
- * (loaded via factory inside pi-coding-agent) and the
- * /feature-spec-answer API route.
+ * The `capture_feature_spec` rendezvous: the form's field types, and the three
+ * calls that open it in the browser and carry the filled-in answers back.
  *
- * Same shape as ask-user-bridge.ts, and for the same reason: the extension
- * runs inside the agent's process, the answer arrives over an HTTP request
- * from the browser, and `Symbol.for` keeps the registry shared across module
- * contexts even if the two sides were loaded from different module graphs —
- * the same pattern as workflow-manager-registry.ts / workflow-progress-bridge.ts.
+ * The mechanism is session-rendezvous.ts, which ask-user-bridge.ts shares.
+ * Unlike ask_user there is no request payload — the fields are fixed, so the
+ * only thing to send is the fact that the form should open, which is why
+ * `waitForFeatureSpec` takes no request argument.
  */
+
+import { FEATURE_SPEC_RENDEZVOUS } from "./extension-contract";
+import { createSessionRendezvous } from "./session/session-rendezvous";
 
 /** The fixed set of fields the form captures. Free text, one block each. */
 export type FeatureSpecAnswers = {
@@ -17,82 +18,29 @@ export type FeatureSpecAnswers = {
   nonFunctionalRequirements: string;
 };
 
-type PendingEntry = {
-  reject: (err: Error) => void;
-  resolve: (answers: FeatureSpecAnswers) => void;
-};
-
-type NotifierFn = () => void;
-
-const PENDING_KEY = Symbol.for("semla.feature-spec.pending");
-const NOTIFIER_KEY = Symbol.for("semla.feature-spec.notifiers");
-
-const g = globalThis as Record<symbol, unknown>;
-g[PENDING_KEY] ??= new Map<string, PendingEntry>();
-g[NOTIFIER_KEY] ??= new Map<string, NotifierFn>();
-
-const pending = g[PENDING_KEY] as Map<string, PendingEntry>;
-const notifiers = g[NOTIFIER_KEY] as Map<string, NotifierFn>;
+const rendezvous = createSessionRendezvous<void, FeatureSpecAnswers>({
+  slot: FEATURE_SPEC_RENDEZVOUS,
+  toolName: "capture_feature_spec",
+});
 
 /**
- * Called by session-service before starting a session to wire up the SSE
- * notifier. Returns a cleanup function that removes the notifier on session end.
+ * Called by session-service at turn start to wire up the SSE notifier. Returns
+ * a cleanup function that removes it at turn end.
  */
-export const registerFeatureSpecNotifier = (
-  sessionId: string,
-  notifier: NotifierFn,
-): (() => void) => {
-  notifiers.set(sessionId, notifier);
-  return () => notifiers.delete(sessionId);
-};
+export const registerFeatureSpecNotifier = rendezvous.registerNotifier;
 
 /**
- * Called by the feature-spec extension's execute() function. Pushes the
- * request to the SSE stream and waits for the user to fill in and submit the
- * form.
+ * Called by the feature-spec extension's execute(): opens the form and waits
+ * for the user to submit it.
  */
 export const waitForFeatureSpec = (
   sessionId: string,
   signal?: AbortSignal,
-): Promise<FeatureSpecAnswers> => {
-  const notifier = notifiers.get(sessionId);
-  if (!notifier) {
-    return Promise.reject(
-      new Error(`capture_feature_spec: no active session for ${sessionId}`),
-    );
-  }
-
-  return new Promise<FeatureSpecAnswers>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("capture_feature_spec cancelled"));
-      return;
-    }
-
-    pending.set(sessionId, { reject, resolve });
-
-    signal?.addEventListener("abort", () => {
-      if (pending.get(sessionId)?.reject === reject) {
-        pending.delete(sessionId);
-        reject(new Error("capture_feature_spec cancelled"));
-      }
-    });
-
-    notifier();
-  });
-};
+): Promise<FeatureSpecAnswers> =>
+  rendezvous.waitFor(sessionId, undefined, signal);
 
 /**
- * Called by the /feature-spec-answer API route when the user submits the
- * form. Returns true if there was a pending request, false if nothing was
- * waiting.
+ * Called by the /feature-spec-answer API route when the user submits. Returns
+ * false if nothing was waiting.
  */
-export const deliverFeatureSpec = (
-  sessionId: string,
-  answers: FeatureSpecAnswers,
-): boolean => {
-  const entry = pending.get(sessionId);
-  if (!entry) return false;
-  pending.delete(sessionId);
-  entry.resolve(answers);
-  return true;
-};
+export const deliverFeatureSpec = rendezvous.deliver;

@@ -194,11 +194,13 @@ const SESSION_ROW = "Session";
 const sessionRow = (
   children: readonly MsSpan[],
   traceId: string,
+  prompts: number,
 ): MsSpan => ({
   attributes: {
-    // The count is the useful part of a row that has no timing of its own.
-    "semla.session.prompts": children.filter((span) => span.name === "Prompt")
-      .length,
+    // The count is the useful part of a row that has no timing of its own. It
+    // arrives already counted because only the caller can still tell a prompt
+    // from any other root — see the call site.
+    "semla.session.prompts": prompts,
   },
   endTimeMs: Math.max(...children.map((span) => span.endTimeMs)),
   kind: "INTERNAL",
@@ -369,7 +371,17 @@ export const recordedSpansToOtelSpans = (
   const roots = mapped.filter((span) => span.parentSpanId === undefined);
   if (roots.length === 0) return mapped;
 
-  const row = sessionRow(roots, mapped[0]?.traceId ?? "");
+  // Counted off the recorded names rather than the mapped ones. `labelOf` has
+  // already replaced a prompt's name with an excerpt of the prompt itself, so
+  // matching on "Prompt" here would only ever find the prompts recorded before
+  // excerpts existed — which read as zero for every session since. Not every
+  // root is a prompt either: a background workflow run recovered with its turn
+  // gone is re-rooted above, and is not one.
+  const prompts = roots.filter(
+    (root) => byId.get(root.spanId)?.name === HARNESS_RUN_SPAN,
+  ).length;
+
+  const row = sessionRow(roots, mapped[0]?.traceId ?? "", prompts);
 
   return [
     row,

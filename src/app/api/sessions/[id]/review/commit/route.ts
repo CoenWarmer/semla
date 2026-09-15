@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { commitStaged } from "@/lib/pi/review-apply";
-import { resolveReviewTarget } from "@/lib/pi/review-service";
+import { commitStaged } from "@/lib/pi/review/review-apply";
+import { resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

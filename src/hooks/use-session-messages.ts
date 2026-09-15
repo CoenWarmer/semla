@@ -14,6 +14,13 @@ export type SessionMessage = {
    * edited. Mirrors SessionTranscriptEntry.versions on the server.
    */
   versions?: string[];
+  /**
+   * Wiki pages the LLM Wiki extension auto-injected into the model's context
+   * for this (always `user`) message, when its turn matched any. Mirrors
+   * SessionTranscriptEntry.wikiRecall on the server — present only when
+   * recall actually fired with a result, so most messages have none.
+   */
+  wikiRecall?: string;
 };
 
 /** A tool the assistant invoked, rendered as a marker on the timeline. */

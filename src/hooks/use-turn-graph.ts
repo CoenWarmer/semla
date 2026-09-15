@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import type { TurnGraph } from "@/lib/pi/session-turn-graph";
+import type { TurnGraph } from "@/lib/pi/session/session-turn-graph";
 
 export const turnGraphQueryKey = (sessionId: string) =>
   ["turn-graph", sessionId] as const;

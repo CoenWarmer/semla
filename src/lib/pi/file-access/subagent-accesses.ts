@@ -16,14 +16,14 @@
  */
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
-import { readSessionEntriesFromPath } from "@/lib/pi/session-file";
-import { ROOT_TURN_ID } from "@/lib/pi/session-turn-graph";
+import { readSessionEntriesFromPath } from "@/lib/pi/session/session-file";
+import { ROOT_TURN_ID } from "@/lib/pi/session/session-turn-graph";
 import {
   indexAgentTranscripts,
   subagentSessionName,
-} from "@/lib/pi/workflow-agent-transcript";
-import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
-import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
+} from "@/lib/pi/workflow/workflow-agent-transcript";
+import { listWorkflowRuns } from "@/lib/pi/workflow/workflow-run-index";
+import { snapshotFromRunFile } from "@/lib/pi/workflow/workflow-service";
 
 import { existenceCache } from "./access-paths";
 import {

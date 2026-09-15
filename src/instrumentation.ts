@@ -44,7 +44,7 @@ export async function register() {
   // pages that went missing.
   const { PI_WORKSPACE_ROOT, WIKI_HOME } = await import("@/lib/pi/runtime-config");
   const { describeShadowingVaults, findShadowingVaults } = await import(
-    "@/lib/pi/wiki-vault-location"
+    "@/lib/pi/wiki/wiki-vault-location"
   );
   const shadowing = findShadowingVaults(PI_WORKSPACE_ROOT, WIKI_HOME);
   if (shadowing.length > 0) {

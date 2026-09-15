@@ -16,8 +16,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
-import type { AgentDetail } from "@/lib/pi/workflow-service";
+import type { AgentHistoryEntry } from "@/lib/pi/workflow/workflow-run-reader";
+import type { AgentDetail } from "@/lib/pi/workflow/workflow-service";
 import {
   usePanelLayoutSaver,
   usePanelLayouts,

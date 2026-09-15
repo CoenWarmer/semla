@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import type { GitStatus } from "@/lib/pi/git-status";
+import type { GitStatus } from "@/lib/pi/git/git-status";
 
 /**
  * What a branch indicator is reporting on.

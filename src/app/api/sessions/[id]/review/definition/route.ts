@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { definitionAt } from "@/lib/code-map/definition";
 import { resolveFileRoot, toRelativePath } from "@/lib/pi/file-browser";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review-service";
+import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

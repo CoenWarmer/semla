@@ -250,7 +250,7 @@ export const CodeBlockActions = ({
   </div>
 );
 
-export const CodeBlockContent = ({
+const CodeBlockHighlightedContent = ({
   code,
   language,
   showLineNumbers = false,
@@ -270,16 +270,6 @@ export const CodeBlockContent = ({
 
   // Async highlighting result (populated after shiki loads)
   const [asyncTokens, setAsyncTokens] = useState<TokenizedCode | null>(null);
-  const asyncKeyRef = useRef({ code, language });
-
-  // Invalidate stale async tokens synchronously during render
-  if (
-    asyncKeyRef.current.code !== code ||
-    asyncKeyRef.current.language !== language
-  ) {
-    asyncKeyRef.current = { code, language };
-    setAsyncTokens(null);
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -298,11 +288,33 @@ export const CodeBlockContent = ({
   const tokenized = asyncTokens ?? syncTokens;
 
   return (
-    <div className="relative overflow-auto">
-      <CodeBlockBody showLineNumbers={showLineNumbers} tokenized={tokenized} />
-    </div>
+    <CodeBlockBody showLineNumbers={showLineNumbers} tokenized={tokenized} />
   );
 };
+
+export const CodeBlockContent = ({
+  code,
+  language,
+  showLineNumbers = false,
+}: {
+  code: string;
+  language: BundledLanguage;
+  showLineNumbers?: boolean;
+}) => (
+  // Keyed on the input so a change to `code` or `language` remounts the inner
+  // component, discarding async shiki tokens that describe the previous input.
+  // Resetting that state during render instead would mean reading a ref to
+  // compare against the last input, which react(refs) rejects. The scroll
+  // container stays outside the key so the remount does not reset scroll.
+  <div className="relative overflow-auto">
+    <CodeBlockHighlightedContent
+      key={`${language}:${code}`}
+      code={code}
+      language={language}
+      showLineNumbers={showLineNumbers}
+    />
+  </div>
+);
 
 export const CodeBlock = ({
   code,

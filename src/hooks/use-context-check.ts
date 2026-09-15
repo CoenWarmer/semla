@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ContextCheckResult, StoredInspection } from "@/app/api/sessions/[id]/context-check/route";
+import type { ContextCheckResult, StoredInspection } from "@/lib/context-check/types";
 
 export type { ContextCheckResult, StoredInspection };
 

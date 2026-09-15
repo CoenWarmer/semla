@@ -4,7 +4,7 @@ import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import {
   createSession,
   readSessionCreateRequest,
-} from "@/lib/pi/session-create";
+} from "@/lib/pi/session/session-create";
 
 /**
  * Create a session explicitly.

@@ -5,12 +5,15 @@ import { NextResponse } from "next/server";
 import { ensureLspHost, subscribeToDiagnostics } from "@/lib/pi/browser-lsp/lsp-host";
 import { workspacePathForLspUri } from "@/lib/pi/browser-lsp/lsp-request";
 import { resolveFileRoot } from "@/lib/pi/file-browser";
-import { resolveReviewTarget } from "@/lib/pi/review-service";
+import { resolveReviewTarget } from "@/lib/pi/review/review-service";
+import {
+  encodeSseDataEvent,
+  SSE_RESPONSE_HEADERS,
+  startSseHeartbeat,
+} from "@/lib/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const encoder = new TextEncoder();
 
 /**
  * The push half of the bridge: `textDocument/publishDiagnostics`.
@@ -79,9 +82,7 @@ export async function GET(
         if (path === null) return;
 
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ diagnostics, path })}\n\n`),
-          );
+          controller.enqueue(encodeSseDataEvent({ diagnostics, path }));
         } catch {
           close();
         }
@@ -95,17 +96,15 @@ export async function GET(
 
       // Proxies and browsers drop a stream that says nothing for long enough,
       // and a project with no fresh diagnostics can go quiet indefinitely.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          close();
-        }
-      }, 30_000);
+      const stopHeartbeat = startSseHeartbeat({
+        intervalMs: 30_000,
+        isClosed: () => closed,
+        enqueue: (chunk) => controller.enqueue(chunk),
+        onEnqueueError: close,
+      });
 
       const teardown = () => {
-        clearInterval(heartbeat);
+        stopHeartbeat();
         unsubscribe();
         close();
       };
@@ -117,11 +116,5 @@ export async function GET(
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream",
-    },
-  });
+  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 }

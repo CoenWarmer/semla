@@ -12,10 +12,10 @@
  */
 
 import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { resolveSessionCwd } from "@/lib/pi/session-cwd";
-import { readSessionEntries, type SessionFileEntry } from "@/lib/pi/session-file";
-import { readSessionMeta } from "@/lib/pi/session-meta";
-import { ROOT_TURN_ID } from "@/lib/pi/session-turn-graph";
+import { resolveSessionCwd } from "@/lib/pi/session/session-cwd";
+import { readSessionEntries, type SessionFileEntry } from "@/lib/pi/session/session-file";
+import { readSessionMeta } from "@/lib/pi/session/session-meta";
+import { ROOT_TURN_ID } from "@/lib/pi/session/session-turn-graph";
 import { summarizeArguments } from "@/lib/pi/transcript";
 
 import { accessesFromToolCall } from "./access-from-tool-call";

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { toolsQueryKey } from "@/hooks/use-tools";
-import type { ProjectLink } from "@/lib/pi/session-project-links";
+import type { ProjectLink } from "@/lib/pi/session/session-project-links";
 import { SESSION_STATUS_KEY } from "@/lib/session-status";
 
 export const sessionProjectsKey = (sessionId: string) =>

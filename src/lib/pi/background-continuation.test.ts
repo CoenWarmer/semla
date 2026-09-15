@@ -30,18 +30,18 @@ vi.mock("@/lib/pi/bg-continuation-registry", () => ({
   releaseBackgroundContinuation: vi.fn(),
 }));
 vi.mock("@/lib/pi/entry-persist-queue", () => ({ queueEntries: vi.fn() }));
-vi.mock("@/lib/pi/session-persistence", () => ({
+vi.mock("@/lib/pi/session/session-persistence", () => ({
   finalizeBackgroundRun,
   persistWorkflowSnapshot: vi.fn(() => Promise.resolve()),
   setSessionRunning: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("@/lib/pi/session-stream-store", () => ({
+vi.mock("@/lib/pi/session/session-stream-store", () => ({
   closeSessionStream: vi.fn(),
   publishSessionRunning: vi.fn(),
   publishToSessionStream: vi.fn(),
 }));
-vi.mock("@/lib/pi/session-wiki-stamp", () => ({ stampWikiRepo: vi.fn() }));
-vi.mock("@/lib/pi/workflow-run-reader", () => ({
+vi.mock("@/lib/pi/session/session-wiki-stamp", () => ({ stampWikiRepo: vi.fn() }));
+vi.mock("@/lib/pi/workflow/workflow-run-reader", () => ({
   isRunTerminal: (run: { status: string } | null) =>
     run !== null && ["aborted", "completed", "failed"].includes(run.status),
   readWorkflowRun,

@@ -8,8 +8,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ACTIVE_WORKFLOW_MANAGER,
+  ASK_USER_RENDEZVOUS,
   BRIDGE_RUN_STARTED,
   clearSlot,
+  FEATURE_SPEC_RENDEZVOUS,
   CONTRACT_SLOT_KEYS,
   EXTENSION_HEALTH,
   EXTENSION_CONTRACT_VERSION,
@@ -46,6 +48,10 @@ describe("slot keys", () => {
       "semla.workflow.managers",
     );
     expect(EXTENSION_HEALTH.description).toBe("semla.extension-health");
+    expect(ASK_USER_RENDEZVOUS.description).toBe("semla.ask-user.rendezvous");
+    expect(FEATURE_SPEC_RENDEZVOUS.description).toBe(
+      "semla.feature-spec.rendezvous",
+    );
   });
 
   it("are registry symbols, so separate module scopes resolve the same slot", () => {
@@ -56,7 +62,7 @@ describe("slot keys", () => {
 
   it("are all listed in CONTRACT_SLOT_KEYS", () => {
     expect(new Set(CONTRACT_SLOT_KEYS).size).toBe(CONTRACT_SLOT_KEYS.length);
-    expect(CONTRACT_SLOT_KEYS).toHaveLength(8);
+    expect(CONTRACT_SLOT_KEYS).toHaveLength(10);
   });
 
   it("exposes a contract version", () => {
@@ -88,10 +94,10 @@ describe("slot accessors", () => {
   });
 
   it("clears a slot back to undefined", () => {
-    writeSlot(BRIDGE_RUN_STARTED, () => {});
-    clearSlot(BRIDGE_RUN_STARTED);
-    expect(readSlot(BRIDGE_RUN_STARTED)).toBeUndefined();
-    expect(hasSlot(BRIDGE_RUN_STARTED)).toBe(false);
+    writeSlot(WIKI_INGEST_DISPATCHER, () => true);
+    clearSlot(WIKI_INGEST_DISPATCHER);
+    expect(readSlot(WIKI_INGEST_DISPATCHER)).toBeUndefined();
+    expect(hasSlot(WIKI_INGEST_DISPATCHER)).toBe(false);
   });
 
   it("initialises lazily only once", () => {

@@ -47,7 +47,6 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 export function SessionConversation({
   activeTool,
   conversation,
-  contextWindowFraction,
   costPerTurn,
   defaultTools,
   elapsedLabel,
@@ -75,7 +74,6 @@ export function SessionConversation({
 }: {
   activeTool: string | undefined;
   conversation: ConversationItem[];
-  contextWindowFraction: number | null;
   costPerTurn: number | null;
   defaultTools: string[];
   elapsedLabel: string | null;
@@ -289,7 +287,6 @@ export function SessionConversation({
         <PromptEditor
           defaultTools={defaultTools}
           costPerTurn={costPerTurn}
-          contextWindowFraction={contextWindowFraction}
           onCompactClick={onCompactClick}
           goalEditor={
             <GoalEditor

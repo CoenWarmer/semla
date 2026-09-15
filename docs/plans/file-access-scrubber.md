@@ -131,7 +131,7 @@ promotes `path` only for `write` and `edit`. A `read` survives as a JSON blob
 inside `text`. Parsing that back would be a second, weaker extractor.
 
 Instead: locate the subagent's own `.jsonl` with
-[`findAgentTranscript(runId, label)`](src/lib/pi/workflow-agent-transcript.ts) and
+[`findAgentTranscript(runId, label)`](src/lib/pi/workflow/workflow-agent-transcript.ts) and
 run the **same** extractor over its raw entries. Subagent transcripts are written
 into `PI_SESSION_DIR` under pi's `<timestamp>_<uuid>.jsonl` naming and linked by
 `session_info.name === "workflow:<runId> <label>"`, so the format is identical to
@@ -140,7 +140,7 @@ the main session's.
 Agent identity: `{ id: "main", label: "Main" }` for the host agent, and
 `{ id: "<runId>:<agentId>", label: agent.label }` for subagents, where `label` is
 already unique per run because transcript linkage depends on it. Runs come from
-[`listWorkflowRuns(sessionId)`](src/lib/pi/workflow-run-index.ts).
+[`listWorkflowRuns(sessionId)`](src/lib/pi/workflow/workflow-run-index.ts).
 
 **Cost warning.** `findAgentTranscript` lists `PI_SESSION_DIR` and reads the
 first 16 KB of every `.jsonl` to match the name. That directory already holds 204
@@ -161,7 +161,7 @@ modules — the superseded plan's Phase 2 — emit the already-resolved record:
 Emit at **tool end**, where both arguments and `details` are available. Arguments
 arrive at start, so stash them keyed by `toolCallId` and consume at end — exactly
 the `pendingWrittenPaths` pattern already in
-[`session-event-router.ts`](src/lib/pi/session-event-router.ts) for project
+[`session-event-router.ts`](src/lib/pi/session/session-event-router.ts) for project
 attach. Resolving server-side also settles the superseded plan's open question 1:
 live and replay use one code path, with no client-side path guessing.
 

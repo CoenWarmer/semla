@@ -27,9 +27,13 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The directory name itself is not forbidden: `.pi/worktrees/` is where
- * dynamic-workflows puts an isolated worktree, and `.pi/agents/` is a
- * cwd-relative convention it *reads*. Those are fine. What must not come back
- * is a settings file pi acts on, or a dependency tree `npm audit` cannot see.
+ * dynamic-workflows puts an isolated worktree, `.pi/agents/` is a
+ * cwd-relative convention it *reads*, and `~/.pi/workflows/model-tiers.json`
+ * maps workflow tier names to model specs — written by the dynamic-workflows
+ * extension or Semla's model-tiers API, with a repo-local
+ * `.pi/workflows/model-tiers.json` overriding it when present. Those are fine.
+ * What must not come back is a settings file pi acts on, or a dependency tree
+ * `npm audit` cannot see.
  */
 const FORBIDDEN = [
   [

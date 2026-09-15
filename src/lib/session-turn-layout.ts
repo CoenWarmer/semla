@@ -13,7 +13,7 @@
  */
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import type { TurnGraph, TurnNode } from "@/lib/pi/session-turn-graph";
+import type { TurnGraph, TurnNode } from "@/lib/pi/session/session-turn-graph";
 
 export const TURN_NODE_HEIGHT = 56;
 const MIN_TURN_NODE_WIDTH = 160;

@@ -6,8 +6,8 @@ import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { resolveInsideRoot, toRelativePath } from "@/lib/pi/file-browser";
 import { SEMLA_PROJECT_PATH } from "@/lib/pi/runtime-config";
-import { attachProject } from "@/lib/pi/session-project-links";
-import { updateSessionProjects } from "@/lib/pi/session-project-store";
+import { attachProject } from "@/lib/pi/session/session-project-links";
+import { updateSessionProjects } from "@/lib/pi/session/session-project-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

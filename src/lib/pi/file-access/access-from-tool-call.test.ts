@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { writtenPath } from "@/lib/pi/session-project-attach";
+import { writtenPath } from "@/lib/pi/session/session-project-attach";
 
 import { accessesFromToolCall } from "./access-from-tool-call.ts";
 

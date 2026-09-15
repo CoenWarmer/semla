@@ -17,11 +17,14 @@
 
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import { subscribeToIndexRuns, type IndexRun } from "@/lib/code-index/index-runs";
+import {
+  encodeSseDataEvent,
+  SSE_RESPONSE_HEADERS,
+  startSseHeartbeat,
+} from "@/lib/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const encoder = new TextEncoder();
 
 /** Only what the panel renders; the report and root are not the client's business. */
 function toEvent(run: IndexRun) {
@@ -62,9 +65,7 @@ export async function GET(request: Request) {
       const send = (run: IndexRun) => {
         if (closed) return;
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(toEvent(run))}\n\n`),
-          );
+          controller.enqueue(encodeSseDataEvent(toEvent(run)));
         } catch {
           close();
         }
@@ -74,28 +75,20 @@ export async function GET(request: Request) {
 
       // Proxies and browsers drop a stream that says nothing for long enough,
       // and no project being indexed is the normal state of this page.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          close();
-        }
-      }, 30_000);
+      const stopHeartbeat = startSseHeartbeat({
+        intervalMs: 30_000,
+        isClosed: () => closed,
+        enqueue: (chunk) => controller.enqueue(chunk),
+        onEnqueueError: close,
+      });
 
       request.signal.addEventListener("abort", () => {
-        clearInterval(heartbeat);
+        stopHeartbeat();
         unsubscribe();
         close();
       });
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream",
-    },
-  });
+  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 }

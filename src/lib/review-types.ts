@@ -3,8 +3,8 @@
  * commits the agent made while the turn ran.
  *
  * Deliberately free of node imports. A client component reads every one of
- * these, and the readers that produce them (src/lib/pi/review-status.ts,
- * src/lib/pi/review-diff.ts) shell out to git. See client-boundary.test.ts for
+ * these, and the readers that produce them (src/lib/pi/review/review-status.ts,
+ * src/lib/pi/review/review-diff.ts) shell out to git. See client-boundary.test.ts for
  * why that separation is load-bearing: the agent package imports child_process
  * at module scope, so one hop from a client component into a server-only
  * module fails the whole page compile with an error that names neither.

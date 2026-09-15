@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { resolveReviewTarget } from "@/lib/pi/review-service";
-import { performReset, planReset } from "@/lib/pi/review-reset";
-import { readTurnMark } from "@/lib/pi/review-turn-mark";
+import { resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { performReset, planReset } from "@/lib/pi/review/review-reset";
+import { readTurnMark } from "@/lib/pi/review/review-turn-mark";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

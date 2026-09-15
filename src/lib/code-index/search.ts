@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { grepProject } from "@/lib/pi/review-grep";
+import { grepProject } from "@/lib/pi/review/review-grep";
 
 import { readChunkText } from "./chunk";
 import { enumerateProject } from "./enumerate";

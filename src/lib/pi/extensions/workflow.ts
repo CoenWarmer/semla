@@ -25,10 +25,9 @@ import {
 import { registerAllSavedWorkflows } from "./dynamic-workflows/src/saved-commands";
 import {
   installResultDelivery,
-  installTaskPanel,
   resumeResultDelivery,
   suspendResultDelivery,
-} from "./dynamic-workflows/src/task-panel";
+} from "./dynamic-workflows/src/result-delivery";
 import { UsageLimitScheduler } from "./dynamic-workflows/src/usage-limit-scheduler";
 import { createWebTools } from "./dynamic-workflows/src/web-tools";
 import { registerWorkflowCommands } from "./dynamic-workflows/src/workflow-commands";
@@ -44,7 +43,6 @@ import {
   saveWorkflowSettingsForCwd,
 } from "./dynamic-workflows/src/workflow-settings";
 import { createWorkflowTool } from "./dynamic-workflows/src/workflow-tool";
-import { registerWorkflowModelsCommand } from "./dynamic-workflows/src/workflows-models-command";
 import {
   getHostTelemetry,
   getSpanSink,
@@ -53,10 +51,9 @@ import {
 import { createWorkflowTelemetry } from "../telemetry/workflow-recorder";
 import { wikiToolsetKey } from "./wiki-subagent-tools";
 import {
-  ACTIVE_WORKFLOW_MANAGER,
+  publishSessionWorkflowManager,
   readSlot,
   WORKFLOW_EXTRA_TOOLSETS,
-  writeSlot,
 } from "../extension-contract";
 
 /**
@@ -310,7 +307,11 @@ export default function extension(pi: ExtensionAPI) {
     getCwd,
     effort,
   });
-  registerWorkflowModelsCommand(pi);
+  // No `/workflows-models`: its handler was a pi-tui tier editor driven
+  // entirely by ctx.ui.select/custom/confirm, which are noOpUIContext stubs
+  // under `mode: "print"` — select returned undefined, so the menu loop broke
+  // on its first iteration and the command did nothing at all, silently.
+  // Model tiers are edited over /api/model-tiers instead.
   registerBuiltinWorkflows(pi, { getManager, getCwd, getStorage });
   // Saved project commands are registered on session_start (after the real
   // ctx.cwd is known and any cross-project rebuild has finished). Registering
@@ -436,18 +437,16 @@ export default function extension(pi: ExtensionAPI) {
       });
     }
     // Expose active manager for cross-extension access (e.g. wiki-ingest-bridge).
-    writeSlot(ACTIVE_WORKFLOW_MANAGER, manager);
+    // Keyed by session for the same reason the wiki toolset tag above is: the
+    // slot is process-wide, so a bare value hands concurrent sessions each
+    // other's manager.
+    publishSessionWorkflowManager(sessionId, manager);
 
     // Runtime is bound now (session_start fires after bindCore). Unsuspend and
     // flush anything queued while the previous ctx was dying or this factory
     // was still loading.
     resumeResultDelivery(manager);
 
-    installTaskPanel(pi, manager, ctx.ui, {
-      storage,
-      cwd,
-      loadSettings: () => loadWorkflowSettings({ cwd: getCwd() }),
-    });
     if (!armingInstalled) {
       installWorkflowKeywordArming(pi, effort, {
         settingsStore: {

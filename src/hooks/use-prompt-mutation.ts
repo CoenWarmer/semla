@@ -81,6 +81,7 @@ type PromptInput = {
 
 type PiStreamEvent =
   | { text: string; type: "user-message" }
+  | { content: string; type: "wiki-recall" }
   | { roundId: string; type: "round-start" }
   | { delta: string; roundId: string; type: "assistant-delta" }
   | { message: string; type: "error" }
@@ -112,6 +113,13 @@ const trace = (stage: string, data?: Record<string, unknown>) => {
 
 type StreamHandlers = {
   onUserMessage?: (text: string) => void;
+  /**
+   * The wiki extension's per-turn auto-recall content, when this turn's
+   * prompt matched any pages. Optional for the same reason `onUserMessage`
+   * is: the mid-turn reconnect path does not need it, since a reload always
+   * re-reads the persisted transcript's own wikiRecall field instead.
+   */
+  onWikiRecall?: (content: string) => void;
   onRoundStart: (event: Extract<PiStreamEvent, { type: "round-start" }>) => void;
   onDelta: (event: Extract<PiStreamEvent, { type: "assistant-delta" }>) => void;
   onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
@@ -137,9 +145,11 @@ type StreamHandlers = {
  * instant this turn's model loop goes idle, even when the server is about to
  * carry on without us — a background workflow starting its next phase, or
  * spawning its next agent (see #13). `serverIsRunning` is the last
- * `session-status` push that same stream delivered before closing, so a
- * `true` here means the server is still going with no listener left on this
- * tab. `reconnectToStream` is the same path a page loaded mid-turn already
+ * `session-status` push that same stream delivered before closing — read from
+ * `serverIsRunningRef` rather than the state of the same name, for the reason
+ * that ref's own comment gives — so a `true` here means the server is still
+ * going with no listener left on this tab. `reconnectToStream` is the same
+ * path a page loaded mid-turn already
  * uses to attach to that live stream — it self-guards against a second
  * concurrent subscription, so calling it is safe even if one happens to
  * already be open.
@@ -188,6 +198,8 @@ const readPiStream = async (
 
       if (piEvent.type === "user-message") {
         handlers.onUserMessage?.(piEvent.text);
+      } else if (piEvent.type === "wiki-recall") {
+        handlers.onWikiRecall?.(piEvent.content);
       } else if (piEvent.type === "round-start") {
         handlers.onRoundStart(piEvent);
       } else if (piEvent.type === "assistant-delta") {
@@ -395,6 +407,32 @@ export const usePromptMutation = (
     () => initialIsRunning ?? false,
   );
 
+  /**
+   * The same reading, readable synchronously.
+   *
+   * `onSettled` is the one consumer that cannot use the state. It closes over
+   * whatever `serverIsRunning` was when the mutation's callbacks were captured,
+   * and the `session-status` push that matters most arrives *during* the turn
+   * it settles — a background workflow announcing it will carry on past this
+   * turn. That push lands on the same stream `mutationFn` is reading, so the
+   * render it queues has not committed by the time the reader hits end-of-body
+   * and `onSettled` runs. The closure reads the pre-turn `false`, no reconnect
+   * is made, and the tab sits there with the server still working and no
+   * listener on it — which is the whole failure `reconnectIfStillRunning`
+   * exists to prevent.
+   *
+   * A ref is written before the state, so the decision sees the last push
+   * regardless of where React is in its work. Every writer goes through
+   * `markServerRunning` to keep the two from parting company; the state is
+   * still what renders, since a ref does not.
+   */
+  const serverIsRunningRef = useRef(initialIsRunning ?? false);
+
+  const markServerRunning = useCallback((isRunning: boolean) => {
+    serverIsRunningRef.current = isRunning;
+    setServerIsRunning(isRunning);
+  }, []);
+
   // Stable handlers object — state setters are guaranteed stable by React,
   // so this memo never needs to re-run. A factory function (the previous shape)
   // created new closure objects on every call, which confused the React Compiler.
@@ -465,6 +503,30 @@ export const usePromptMutation = (
         // So the sidebar shows it now rather than on its next poll.
         void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
       },
+      // Attaches to the last message in the cache rather than to the
+      // optimistic bubble's own id: onMutate's optimistic write already
+      // landed by the time this event arrives (user-message precedes it on
+      // the wire, and onMutate ran synchronously before the fetch that opens
+      // the stream), but its id is not known here without threading it
+      // through — the last message is that bubble by construction, since
+      // nothing else appends to this list between onMutate and the turn's own
+      // assistant reply.
+      onWikiRecall: (content) => {
+        queryClient.setQueryData<SessionMessagesResult>(messagesKey, (prev) => {
+          if (!prev || prev.messages.length === 0) return prev;
+          const lastIndex = prev.messages.length - 1;
+          const last = prev.messages[lastIndex];
+          if (!last || last.role !== "user") return prev;
+          const messages = [...prev.messages];
+          messages[lastIndex] = { ...last, wikiRecall: content };
+          return {
+            contextWindow: prev.contextWindow,
+            messages,
+            systemPromptChars: prev.systemPromptChars,
+            toolCalls: prev.toolCalls,
+          };
+        });
+      },
       onError: (message) => setStreamError(message),
       onWikiTool: (toolName) => {
         if (!wikiActiveRef.current && startsWikiActivity(toolName)) {
@@ -473,7 +535,7 @@ export const usePromptMutation = (
         }
       },
       onSessionStatus: (isRunning) => {
-        setServerIsRunning(isRunning);
+        markServerRunning(isRunning);
         // Keep the cache the header badges and the sidebar read in step with
         // the same push, so a component that only reads sessionStatusKey
         // (session-agents-panel.tsx, header-actions.tsx) does not need its own
@@ -526,7 +588,7 @@ export const usePromptMutation = (
           // fresh event (a real `session-status` push, or a new mount's
           // `initialIsRunning`) says so, so setting it false here does not
           // provoke another reattach on its own.
-          setServerIsRunning(false);
+          markServerRunning(false);
 
           // Correct the cached reading too, so the rest of the UI stops showing
           // a turn that has demonstrably ended rather than waiting for the next
@@ -795,7 +857,9 @@ export const usePromptMutation = (
       // See reconnectIfStillRunning's own doc comment for why this is needed
       // at all: the POST stream this mutation just read from is a one-shot,
       // and does not survive a background workflow continuing past this turn.
-      reconnectIfStillRunning(serverIsRunning, reconnectToStream);
+      // Off the ref, not the state: see `serverIsRunningRef` for why the state
+      // this closure captured is the wrong reading precisely when it matters.
+      reconnectIfStillRunning(serverIsRunningRef.current, reconnectToStream);
 
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });

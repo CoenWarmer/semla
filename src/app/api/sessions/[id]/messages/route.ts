@@ -1,6 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { buildSessionMessages } from "@/lib/pi/session-messages-payload";
-import { readSessionMeta } from "@/lib/pi/session-meta";
+import { buildSessionMessages } from "@/lib/pi/session/session-messages-payload";
+import { readSessionMeta } from "@/lib/pi/session/session-meta";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 

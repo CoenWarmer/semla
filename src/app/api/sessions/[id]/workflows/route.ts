@@ -1,8 +1,8 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { detach } from "@/lib/pi/session-log";
-import { finalizeBackgroundRun } from "@/lib/pi/session-persistence";
-import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
-import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
+import { detach } from "@/lib/pi/session/session-log";
+import { finalizeBackgroundRun } from "@/lib/pi/session/session-persistence";
+import { listWorkflowRuns } from "@/lib/pi/workflow/workflow-run-index";
+import { snapshotFromRunFile } from "@/lib/pi/workflow/workflow-service";
 import { createServerTiming } from "@/lib/server-timing";
 import type { WorkflowSnapshot } from "@/types/workflow";
 

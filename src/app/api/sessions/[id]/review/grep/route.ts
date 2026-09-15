@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { grepProject } from "@/lib/pi/review-grep";
-import { resolveReviewTarget } from "@/lib/pi/review-service";
+import { grepProject } from "@/lib/pi/review/review-grep";
+import { resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

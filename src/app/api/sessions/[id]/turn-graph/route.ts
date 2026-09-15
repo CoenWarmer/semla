@@ -1,5 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { getSessionTurnGraph } from "@/lib/pi/session-turn-graph-loader";
+import { getSessionTurnGraph } from "@/lib/pi/session/session-turn-graph-loader";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 

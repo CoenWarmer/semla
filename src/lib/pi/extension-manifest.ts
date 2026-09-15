@@ -23,7 +23,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 
 import {
   ACTIVE_WORKFLOW_MANAGER,
-  hasSlot,
+  isSlotPublished,
   slotName,
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
@@ -632,11 +632,21 @@ export type ExtensionLoadReport = {
 export function buildExtensionLoadReport({
   loadedPaths,
   loadErrors,
+  piSessionId,
   registeredTools,
   specs = EXTENSION_MANIFEST,
 }: {
   loadedPaths: readonly string[];
   loadErrors: readonly { path: string; error: unknown }[];
+  /**
+   * The pi runtime session id this report is about.
+   *
+   * Session-keyed slots are verified for this session specifically. Without it
+   * a concurrent session's entry would satisfy the check, which is the
+   * cross-session confusion those slots are keyed to prevent — so the one
+   * caller that runs a real session passes it.
+   */
+  piSessionId?: string;
   registeredTools: readonly string[];
   specs?: readonly ExtensionSpec[];
 }): ExtensionLoadReport {
@@ -666,7 +676,9 @@ export function buildExtensionLoadReport({
         ? spec.providesTools.filter((tool) => !toolSet.has(tool))
         : [],
       missingSlots: loaded
-        ? spec.providesSlots.filter((slot) => !hasSlot(slot)).map(slotName)
+        ? spec.providesSlots
+            .filter((slot) => !isSlotPublished(slot, piSessionId))
+            .map(slotName)
         : [],
       optionalToolsPresent: loaded
         ? spec.optionalTools.filter((tool) => toolSet.has(tool))

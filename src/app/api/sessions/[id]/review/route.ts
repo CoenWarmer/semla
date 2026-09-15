@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { readSessionReview } from "@/lib/pi/review-service";
-import { markReviewed } from "@/lib/pi/review-turn-mark";
+import { readSessionReview } from "@/lib/pi/review/review-service";
+import { markReviewed } from "@/lib/pi/review/review-turn-mark";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * already observes `edit` and `write` to attach projects to a session, but
  * that observation cannot see writes made through `bash` — `sed -i`, `mv`,
  * generated output — and a review panel built on it would open empty after a
- * turn that changed a dozen files. See src/lib/pi/review-status.ts.
+ * turn that changed a dozen files. See src/lib/pi/review/review-status.ts.
  *
  * Keyed the way `/api/sessions/[id]/git` keys: by workspace-relative project
  * path, anchor first, so a caller with no particular project in mind gets the

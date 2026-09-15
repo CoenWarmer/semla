@@ -12,7 +12,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { toRelativePath } from "@/lib/pi/file-browser";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review-service";
+import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 import { documentUri, ensureLspHost, type LspHost } from "./lsp-host";
 

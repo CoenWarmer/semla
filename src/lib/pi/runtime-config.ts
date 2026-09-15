@@ -150,14 +150,6 @@ export const SEMLA_PROJECT_PATH: string | null = (() => {
   return rel.split(sep).join("/");
 })();
 /**
- * Pi session transcripts, one .jsonl per Semla session.
- *
- * Kept inside the Semla directory rather than /tmp, which is wiped on reboot:
- * these files are the on-disk record of every conversation, and Semla is a
- * single-machine tool, so containment beats a system temp dir. Gitignored —
- * they hold whatever was discussed.
- */
-/**
  * How often Semla may `git fetch` a project to keep divergence counts honest.
  *
  * Reading refs alone reports where you stood at the last fetch, which drifts
@@ -170,6 +162,14 @@ export const GIT_FETCH_INTERVAL_MS = Number(
   process.env.SEMLA_GIT_FETCH_INTERVAL_MS ?? 60_000,
 );
 
+/**
+ * Pi session transcripts, one .jsonl per Semla session.
+ *
+ * Kept inside the Semla directory rather than /tmp, which is wiped on reboot:
+ * these files are the on-disk record of every conversation, and Semla is a
+ * single-machine tool, so containment beats a system temp dir. Gitignored —
+ * they hold whatever was discussed.
+ */
 export const PI_SESSION_DIR =
   process.env.PI_SESSION_DIR ?? join(process.cwd(), ".semla-sessions");
 

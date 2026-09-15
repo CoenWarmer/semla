@@ -19,7 +19,7 @@
  * authentication on in the same move.
  */
 
-import { listSessionMeta } from "@/lib/pi/session-meta";
+import { listSessionMeta } from "@/lib/pi/session/session-meta";
 
 // Blank counts as unset: `SEMLA_BIND_HOST=` in an env file would otherwise
 // leave an empty host, which is not loopback and would demand a sign-in nobody

@@ -4,13 +4,13 @@ import { requireSessionOwner } from "@/lib/session-auth";
 import { handleRouteError } from "@/lib/api-helpers";
 import { isWorkspaceProject } from "@/lib/pi/workspace-git";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session-project";
+import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 import {
   attachProject,
   detachProject,
   setPrimary,
-} from "@/lib/pi/session-project-links";
-import { updateSessionProjects } from "@/lib/pi/session-project-store";
+} from "@/lib/pi/session/session-project-links";
+import { updateSessionProjects } from "@/lib/pi/session/session-project-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { branchNameFromBase } from "@/lib/git-status-display";
-import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git-actions";
-import { readGitStatus } from "@/lib/pi/git-status";
+import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git/git-actions";
+import { readGitStatus } from "@/lib/pi/git/git-status";
 import {
   getWorkspaceGitStatus,
   isWorkspaceProject,

@@ -1,7 +1,7 @@
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
-import type { AgentHistoryEntry } from "@/lib/pi/workflow-run-reader";
-import { getAgentDetail } from "@/lib/pi/workflow-service";
+import type { AgentHistoryEntry } from "@/lib/pi/workflow/workflow-run-reader";
+import { getAgentDetail } from "@/lib/pi/workflow/workflow-service";
 import { TokenUsage } from "@/components/token-usage";
 import Link from "next/link";
 import { notFound } from "next/navigation";

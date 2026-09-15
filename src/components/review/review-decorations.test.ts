@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseUnifiedDiff } from "@/lib/pi/review-diff";
+import { parseUnifiedDiff } from "@/lib/pi/review/review-diff";
 
 import {
   buildDecorations,

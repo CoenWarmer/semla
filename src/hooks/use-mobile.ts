@@ -1,19 +1,23 @@
-import * as React from "react"
+import { useSyncExternalStore } from "react"
 
 const MOBILE_BREAKPOINT = 768
+const MOBILE_MEDIA_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`
+
+function subscribe(onStoreChange: () => void) {
+  const mql = window.matchMedia(MOBILE_MEDIA_QUERY)
+  mql.addEventListener("change", onStoreChange)
+  return () => mql.removeEventListener("change", onStoreChange)
+}
+
+function getSnapshot() {
+  return window.innerWidth < MOBILE_BREAKPOINT
+}
+
+function getServerSnapshot() {
+  // Desktop-first default: SSR renders the desktop layout until hydrated.
+  return false
+}
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }

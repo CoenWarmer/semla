@@ -174,8 +174,6 @@ interface PromptEditorProps {
   goalEditor?: ReactNode;
   /** Estimated cost of one additional turn given the current context size, in USD. */
   costPerTurn?: number | null;
-  /** Fraction of the model's context window currently in use (0–1). Drives cost label colour. */
-  contextWindowFraction?: number | null;
   /** Trigger manual context compaction. Absent when unavailable (e.g. no live session). */
   onCompactClick?: () => void;
   /**
@@ -209,7 +207,6 @@ export function PromptEditor({
   defaultTools,
   goalEditor,
   costPerTurn,
-  contextWindowFraction,
   onCompactClick,
   isRunning,
   onSelectionChange,

@@ -5,11 +5,11 @@ import {
   stageWholeFile,
   unstageHunks,
   unstageWholeFile,
-} from "@/lib/pi/review-apply";
-import { readFileDiff } from "@/lib/pi/review-diff";
-import { buildPatch } from "@/lib/pi/review-patch";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review-service";
-import { readChangedFiles } from "@/lib/pi/review-status";
+} from "@/lib/pi/review/review-apply";
+import { readFileDiff } from "@/lib/pi/review/review-diff";
+import { buildPatch } from "@/lib/pi/review/review-patch";
+import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { readChangedFiles } from "@/lib/pi/review/review-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

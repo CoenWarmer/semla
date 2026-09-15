@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getAgentDetail,
   verifyRunBelongsToSession,
-} from "@/lib/pi/workflow-service";
+} from "@/lib/pi/workflow/workflow-service";
 
 export const runtime = "nodejs";
 

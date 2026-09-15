@@ -49,7 +49,7 @@ if (!workspaceRoot) {
 /**
  * The project's path relative to the workspace root, or null if it is outside.
  *
- * Mirrors projectPrefix in src/lib/pi/session-project.ts. Kept as a copy rather
+ * Mirrors projectPrefix in src/lib/pi/session/session-project.ts. Kept as a copy rather
  * than an import because this is a plain .mjs script and that module reaches
  * into the Next alias graph.
  */

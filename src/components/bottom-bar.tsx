@@ -8,6 +8,7 @@ import {
   useBottomPanelHost,
 } from "@/components/bottom-panel";
 import { ConsolePanel } from "@/components/session-panels/console-panel";
+import { ObservabilityPanel } from "@/components/session-panels/observability-panel";
 import { SessionAgentsPanel } from "@/components/session-panels/session-agents-panel";
 import { SessionBranchesPanel } from "@/components/session-panels/session-branches-panel";
 import { ElementPicker } from "@/components/session-panels/element-picker";
@@ -100,6 +101,7 @@ export function BottomBar() {
           portal's children in the order its owning component renders.
         */}
         <ConsolePanel />
+        <ObservabilityPanel />
         <SessionAgentsPanel />
         <SessionBranchesPanel />
         <ElementPicker />

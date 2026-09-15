@@ -220,6 +220,34 @@ describe(`${WIKI_PACKAGE} dispatcher hooks`, () => {
         "would silently fall back to inline synthesis.",
     ).toBe(true);
   });
+
+  /**
+   * Both dispatcher slots hold one function for the whole process, because an
+   * external caller cannot index a session map — so the calling session's id
+   * has to arrive as an argument instead. That argument comes from this
+   * repository's own patch, and losing it is silent: the bridge falls back to
+   * whichever session registered the dispatcher last, which is the wrong one
+   * exactly when two sessions are running.
+   */
+  it.each([
+    ["ingest", "semlaDispatcher(sources.map"],
+    ["reindex", "reindexDispatcher({"],
+  ])("still passes the calling session id to the %s dispatcher", (label, call) => {
+    const at = toolsSource.indexOf(call);
+    expect(at, `the ${label} dispatcher call site has moved or changed shape`).toBeGreaterThan(-1);
+
+    // A window either side of the call: the ingest site assigns the id on the
+    // line above and passes it positionally, the reindex site reads it inline
+    // into the argument object.
+    const statement = toolsSource.slice(Math.max(0, at - 400), at + 400);
+    expect(
+      /getSessionId/.test(statement),
+      `pi-llm-wiki calls the ${label} dispatcher without a session id. ` +
+        "Re-cut patches/@zosmaai+pi-llm-wiki+0.11.5.patch: without it the " +
+        "bridge cannot tell whose ingest it is running, and two concurrent " +
+        "sessions silently cross over.",
+    ).toBe(true);
+  });
 });
 
 /**

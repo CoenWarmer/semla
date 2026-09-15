@@ -1,7 +1,7 @@
 import { access, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { git } from "./git";
+import { git } from "./git/git";
 import { PI_WORKSPACE_ROOT } from "./runtime-config";
 
 /**

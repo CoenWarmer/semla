@@ -1,0 +1,188 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
+import type { WorkflowSnapshot } from "@/types/workflow";
+import { PI_WORKSPACE_ROOT } from "../runtime-config";
+import {
+  extractWorkflowDescription,
+  readWorkflowRun,
+  type PersistedAgentState,
+} from "./workflow-run-reader";
+import { readAgentHistoryFromTranscript } from "./workflow-agent-transcript";
+import { getActiveManager } from "./workflow-manager-registry";
+import { historyToTurns, mergeLiveSnapshot, type LiveSnapshot } from "./workflow-snapshot-merge";
+
+/**
+ * Build a live WorkflowSnapshot for a run.
+ *
+ * For running workflows, the disk file only updates when agents COMPLETE
+ * (onAgentJournal fires at completion, not at start). Agents in "running" or
+ * "queued" state are only visible in the WorkflowManager's in-memory snapshot.
+ * We try the manager first so the UI shows agents as they start, then fall
+ * back to the disk file once the run completes and the manager evicts it.
+ */
+export function snapshotFromRunFile(runId: string): WorkflowSnapshot | null {
+  // Disk is authoritative for timestamps (written as agents complete). The
+  // workflow extension falls back to process.cwd() when ctx.cwd isn't
+  // propagated from the agent session (PI_WORKSPACE_ROOT may differ).
+  const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
+  const runState = cwds.reduce<ReturnType<typeof readWorkflowRun>>(
+    (found, cwd) => found ?? readWorkflowRun(cwd, runId),
+    null,
+  );
+
+  // Backfill description from the script's meta literal if not stored directly.
+  if (runState && !runState.workflowDescription) {
+    runState.workflowDescription = extractWorkflowDescription(runState.script);
+  }
+
+  // The manager is the only source for agents that are queued or running, so
+  // merge its status over the timestamps the run file has recorded so far.
+  const live = (getActiveManager(runId)?.getSnapshot(runId) ?? null) as LiveSnapshot | null;
+  if (live) {
+    return mergeLiveSnapshot({ disk: runState, live, runId });
+  }
+
+  if (!runState) return null;
+
+  const agents = runState.agents.map((a) => ({
+    cost: a.tokenUsage?.cost,
+    endedAt: a.endedAt,
+    error: a.error,
+    id: a.id,
+    label: a.label,
+    model: a.model,
+    phase: a.phase,
+    prompt: a.prompt ? a.prompt.slice(0, 200) : undefined,
+    resultPreview:
+      typeof a.result === "string"
+        ? (a.result as string).slice(0, 300)
+        : a.resultPreview,
+    startedAt: a.startedAt,
+    status: a.status,
+    tokens: a.tokens,
+    turns: a.history ? historyToTurns(a.history) : undefined,
+    stopReason: a.stopReason,
+    compactions: a.compactions,
+    compactionReasons: a.compactionReasons,
+  }));
+
+  return {
+    agentCount: agents.length,
+    agents,
+    completedAt: runState.completedAt,
+    currentPhase: runState.currentPhase,
+    description: runState.workflowDescription ?? extractWorkflowDescription(runState.script),
+    doneCount: agents.filter((a) => a.status === "done").length,
+    errorCount: agents.filter((a) => a.status === "error").length,
+    name: runState.workflowName,
+    phases: runState.phases,
+    runId,
+    runningCount: agents.filter((a) => a.status === "running").length,
+    // Disk-only branch: there is no live manager for this run (post-reload,
+    // or a run this process never held), so the persisted run's own status
+    // is the only lifecycle signal available — carry it through so the phase
+    // bar can tell a finished run from a live one. See WorkflowSnapshot.runStatus.
+    runStatus: runState.status,
+    startedAt: runState.startedAt,
+    tokenUsage: runState.tokenUsage
+      ? { cost: runState.tokenUsage.cost, total: runState.tokenUsage.total }
+      : undefined,
+  };
+}
+
+/** Verify that a workflow run belongs to the given Semla session. */
+export async function verifyRunBelongsToSession(
+  supabase: SupabaseClient<Database>,
+  semlaSessionId: string,
+  runId: string,
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const { data: run, error } = await supabase
+    .from("workflow_runs")
+    .select("run_id")
+    .eq("semla_session_id", semlaSessionId)
+    .eq("run_id", runId)
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message, ok: false, status: 500 };
+  }
+  if (run) return { ok: true };
+
+  // Supabase row may not exist yet for live/in-progress runs. Fall back to
+  // disk: the run file stores sessionId and was written at run start.
+  const cwds = [...new Set([PI_WORKSPACE_ROOT, process.cwd()])];
+  for (const cwd of cwds) {
+    const runState = readWorkflowRun(cwd, runId);
+    if (runState?.sessionId === semlaSessionId) return { ok: true };
+  }
+
+  return { error: "Workflow run not found.", ok: false, status: 404 };
+}
+
+export type AgentDetail = {
+  cost?: number;
+  endedAt?: string;
+  error?: string;
+  history: PersistedAgentState["history"];
+  /**
+   * Which record `history` came from. "run-file" is the 40-entry / 20k-char
+   * tail, which for a long agent is a window onto its final seconds rather
+   * than an account of the run — worth saying out loud in the UI instead of
+   * presenting two very different things under one heading.
+   */
+  historySource: "transcript" | "run-file";
+  id: number;
+  label: string;
+  model?: string;
+  phase?: string;
+  prompt: string;
+  startedAt?: string;
+  status: PersistedAgentState["status"];
+  tokens?: number;
+};
+
+export type AgentDetailResult =
+  | { agent: AgentDetail; workflowName: string; reason?: undefined }
+  | { reason: "run-not-found" | "agent-not-found" };
+
+/**
+ * Look up a single agent's detail from a run's on-disk state.
+ *
+ * Prefers the agent's own persisted transcript over the run file's `history`.
+ * The two are not the same record: `history` is a bounded tail rebuilt on
+ * every emit, so for anything long it describes the end of the run and not the
+ * run. The fallback is kept because it is the only record that exists for runs
+ * written before subagent transcripts were persisted, and for any agent whose
+ * session degraded to in-memory.
+ */
+export function getAgentDetail(
+  runId: string,
+  agentId: number,
+): AgentDetailResult {
+  const runState = readWorkflowRun(PI_WORKSPACE_ROOT, runId);
+  if (!runState) return { reason: "run-not-found" };
+
+  const agent = runState.agents.find((a) => a.id === agentId);
+  if (!agent) return { reason: "agent-not-found" };
+
+  const transcript = readAgentHistoryFromTranscript(runId, agent.label);
+
+  return {
+    agent: {
+      cost: agent.tokenUsage?.cost,
+      endedAt: agent.endedAt,
+      error: agent.error,
+      history: transcript ?? agent.history ?? [],
+      historySource: transcript ? "transcript" : "run-file",
+      id: agent.id,
+      label: agent.label,
+      model: agent.model,
+      phase: agent.phase,
+      prompt: agent.prompt,
+      startedAt: agent.startedAt,
+      status: agent.status,
+      tokens: agent.tokens,
+    },
+    workflowName: runState.workflowName,
+  };
+}

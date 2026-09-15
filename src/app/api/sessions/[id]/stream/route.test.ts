@@ -11,11 +11,11 @@ vi.mock("@/lib/session-auth", () => ({
   requireSessionOwner: vi.fn().mockResolvedValue({ user: { id: "test-user" } }),
 }));
 
-vi.mock("@/lib/pi/session-persistence", () => ({
+vi.mock("@/lib/pi/session/session-persistence", () => ({
   setSessionRunning: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/pi/session-service", () => ({
+vi.mock("@/lib/pi/session/session-service", () => ({
   isSessionActive: vi.fn().mockReturnValue(false),
 }));
 
@@ -23,7 +23,7 @@ import {
   closeSessionStream,
   openSessionStream,
   publishToSessionStream,
-} from "@/lib/pi/session-stream-store";
+} from "@/lib/pi/session/session-stream-store";
 import { GET } from "./route";
 
 const sessionId = () => `test-session-${Math.random().toString(36).slice(2)}`;

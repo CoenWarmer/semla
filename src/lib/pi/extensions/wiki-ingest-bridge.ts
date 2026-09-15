@@ -9,6 +9,11 @@
  *
  * How it works:
  * 1. Registers global dispatcher symbols that pi-llm-wiki's tools.ts checks.
+ *    One slot serves the whole process, so the package hands over the calling
+ *    session's id and everything session-scoped is resolved from that rather
+ *    than from the instance that happened to write the slot — see
+ *    `dispatchOwner` below, and WIKI_INGEST_DISPATCHER for why it cannot be a
+ *    session-keyed slot like the others.
  * 2. The ingest dispatcher starts ONE coordinating workflow per batch, using
  *    parallel() to fan out all sources. A shared commit_synthesis tool (with a
  *    source_id param) is registered in the batch toolset so each parallel
@@ -30,10 +35,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
-  ACTIVE_WORKFLOW_MANAGER,
   BRIDGE_RUN_STARTED,
   readOrInitSlot,
-  readSlot,
+  readSessionSlot,
+  readSessionWorkflowManager,
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
   WIKI_SESSION_REPOS,
@@ -380,11 +385,6 @@ function createBatchCommitSynthesisTool(
       const worker = (await import(/* turbopackIgnore: true */ INGEST_WORKER_PATH)) as { commitSynthesis: CommitFn };
       const meta = (await import(/* turbopackIgnore: true */ METADATA_PATH)) as { rebuildMetadataLight: RebuildFn };
 
-      // Deliberately the *source's* repo, not the session's. pi-llm-wiki reads
-      // one literal symbol for the dispatcher and calls it with sources only,
-      // so the dispatcher that runs may belong to another concurrent session.
-      // The source page already records who captured it, and a batch belongs to
-      // the repos of the sources in it whoever dispatched it.
       // Checked before the commit so the report reflects what was proposed,
       // and reported rather than refused: the agent stops after one call, so
       // rejecting here loses the page entirely and leaves the source with no
@@ -400,8 +400,15 @@ function createBatchCommitSynthesisTool(
       }
 
       // One repo, not the session's whole set: this qualifies entity titles,
-      // and a title cannot be namespaced to two repositories at once. The
-      // source's own repo wins; the session's anchor is the fallback.
+      // and a title cannot be namespaced to two repositories at once.
+      //
+      // The source's own page wins, because it records who captured it and a
+      // batch may span repositories. `repoOf` is the dispatching session's
+      // anchor, and is a fallback rather than the primary for that reason — not,
+      // as this comment used to claim, because the dispatcher might belong to
+      // another session. It cannot any more: the session is resolved from the
+      // id the package passes (see WIKI_INGEST_DISPATCHER), and `repoOf` here
+      // is bound to that session.
       const repo = sourceRepo(paths, source_id) ?? repoOf()[0] ?? null;
       // Entities are artifacts of one repo, so they are qualified before the
       // package derives a slug from the title. Concepts are shared on purpose
@@ -644,18 +651,52 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
     }
   });
 
-  // Read straight off the shared slot: the server-side half of this pair
-  // (wiki-session-repo.ts) imports through the "@/" alias, which jiti cannot
-  // resolve from here.
-  const repoOf = (): string[] =>
-    (sessionId
-      ? readOrInitSlot(WIKI_SESSION_REPOS, () => new Map()).get(sessionId)
-      : null) ?? [];
+  // Read straight off the shared slot rather than through wiki-session-repo.ts,
+  // the server-side half of this pair: both halves reach the same session-keyed
+  // map, and only this side can be reached without the "@/" alias.
+  const reposOf = (id: string | undefined): string[] =>
+    readSessionSlot(WIKI_SESSION_REPOS, id) ?? [];
+
+  // This instance's own session. Correct for the subagent toolset, which is
+  // registered under a per-session tag and so is only ever reached by the
+  // session that registered it — unlike the dispatchers below, which share one
+  // process-wide slot and must take their session from the caller.
+  const repoOf = (): string[] => reposOf(sessionId);
 
   registerSubagentWikiToolset(pi, repoOf, () => sessionId);
 
-  const dispatcher: WikiIngestDispatcher = (sources) => {
-    const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
+  /**
+   * The session a dispatch belongs to.
+   *
+   * One dispatcher slot serves every session in the process — pi-llm-wiki reads
+   * a symbol and calls whatever it finds — so the id the package passes is the
+   * owner, not this instance's `sessionId`. Resolving it here is what keeps the
+   * dispatcher closures session-agnostic, and therefore what makes it harmless
+   * that the last bridge to load owns the slot.
+   *
+   * The fallback covers a package whose patch did not apply. It restores the
+   * previous behaviour — right for a lone session, last-writer-wins for
+   * concurrent ones — and says so once, because a silent absence is exactly
+   * what apply-package-patches.mjs is strict in order to prevent.
+   */
+  let warnedUnpatched = false;
+  const dispatchOwner = (caller: string | undefined): string | undefined => {
+    if (caller) return caller;
+    if (!warnedUnpatched) {
+      warnedUnpatched = true;
+      console.warn(
+        "[wiki-bridge] pi-llm-wiki dispatched a wiki task without a session " +
+          "id, so its Semla patch is missing or stale. Falling back to the " +
+          "session that registered the dispatcher, which is the wrong session " +
+          "whenever two run at once. Check that scripts/apply-package-patches.mjs ran.",
+      );
+    }
+    return sessionId;
+  };
+
+  const dispatcher: WikiIngestDispatcher = (sources, callerSessionId) => {
+    const owner = dispatchOwner(callerSessionId);
+    const manager = readSessionWorkflowManager(owner);
     if (!manager) return false;
 
     const extraToolsets = readOrInitSlot(WORKFLOW_EXTRA_TOOLSETS, () => ({}));
@@ -665,7 +706,11 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
     const toolsetKey = nextRunKey("wiki-synthesis");
 
     // Single shared commit_synthesis tool — source_id param routes each call.
-    extraToolsets[toolsetKey] = () => [createBatchCommitSynthesisTool(manifests, paths, repoOf)];
+    // Bound to the dispatching session's repos, not this instance's: the tool
+    // outlives the call and is resolved later, by the run this dispatch starts.
+    extraToolsets[toolsetKey] = () => [
+      createBatchCommitSynthesisTool(manifests, paths, () => reposOf(owner)),
+    ];
 
     const { runId } = manager.startInBackground(
       WIKI_INGEST_BATCH_SCRIPT,
@@ -679,7 +724,7 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
       { toolset: toolsetKey },
     );
 
-    readSlot(BRIDGE_RUN_STARTED)?.(runId, { primary: true });
+    readSessionSlot(BRIDGE_RUN_STARTED, owner)?.(runId, { primary: true });
 
     return true;
   };
@@ -693,7 +738,8 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
     const embedder = args.embedder as WikiEmbedder;
     const force = args.force;
 
-    const manager = readSlot(ACTIVE_WORKFLOW_MANAGER);
+    const owner = dispatchOwner(args.sessionId);
+    const manager = readSessionWorkflowManager(owner);
     if (!manager) return false;
 
     const extraToolsets = readOrInitSlot(WORKFLOW_EXTRA_TOOLSETS, () => ({}));
@@ -708,7 +754,7 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
       { model: embedder.model },
       { toolset: toolsetKey, suppressDelivery: true },
     );
-    readSlot(BRIDGE_RUN_STARTED)?.(reindexRunId);
+    readSessionSlot(BRIDGE_RUN_STARTED, owner)?.(reindexRunId);
     return true;
   };
 

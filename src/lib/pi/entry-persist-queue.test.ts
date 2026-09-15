@@ -13,7 +13,7 @@ const { persistEntries } = vi.hoisted(() => ({
   persistEntries: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("@/lib/pi/session-persistence", () => ({ persistEntries }));
+vi.mock("@/lib/pi/session/session-persistence", () => ({ persistEntries }));
 
 import {
   flushEntryQueue,

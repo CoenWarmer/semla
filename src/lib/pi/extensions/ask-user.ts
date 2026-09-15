@@ -1,10 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import {
-  deliverAnswer,
-  waitForAnswer,
-  type AskUserAnswers,
-} from "../ask-user-bridge";
+import { waitForAnswer, type AskUserAnswers } from "../ask-user-bridge";
 
 const OptionSchema = Type.Object({
   value: Type.String(),
@@ -82,8 +78,3 @@ export default function askUserExtension(api: ExtensionAPI) {
     },
   });
 }
-
-// Re-export deliverAnswer so the answer API route can import it from this
-// module path without needing to know about the bridge directly. Not used
-// internally — the API route imports from ask-user-bridge directly.
-export { deliverAnswer };

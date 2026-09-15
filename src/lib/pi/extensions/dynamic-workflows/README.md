@@ -82,7 +82,7 @@ return await agent(
 - **Journaled resume** — replay completed agents after interruption without rerunning them or spending their tokens again. The orchestrator can also resume with an **edited script** (`resumeFromRunId`): unchanged `agent()` calls replay from cache and only edited/new ones re-run — so a single bad prompt no longer means paying to re-run the whole workflow.
 - **Git worktree isolation** — let parallel agents edit safely on throwaway branches with `isolation: "worktree"`.
 - **Measured usage** — report real tokens and cost from each subagent session; add run, phase, or agent budgets only when you want them.
-- **Visible background runs** — track phases, agents, models, fresh/cache tokens, cost, and live tok/s from the progress panel or `/workflows` navigator.
+- **Visible background runs** — track phases, agents, models, fresh/cache tokens, cost and totals through `workflow_control`, `/workflows` or Semla's workflow panel.
 - **Quality patterns** — compose `verify()`, `judgePanel()`, `loopUntilDry()`, and `completenessCheck()` instead of rebuilding review loops.
 - **Reusable workflows** — save any run as a command and call saved workflows from other workflows.
 
@@ -159,21 +159,20 @@ Pi can manage background runs directly with the `workflow_control` tool instead 
 
 | Command | Purpose |
 | --- | --- |
-| `/workflows` | Open the interactive run navigator |
+| `/workflows` | List runs (no args) |
 | `/workflows run <prompt>` | Arm workflow mode for a prompt even when keyword triggering is off |
 | `/workflows status <id>` | Watch a run and print its result when complete |
 | `/workflows pause\|resume\|stop\|rm <id>` | Control a run |
 | `/workflows save <name>` | Save the latest script as a reusable command |
 | `/workflows-trigger off\|on\|status` | Control automatic keyword triggering |
 | `/workflows-trigger set <word>\|reset` | Set or reset the trigger word |
-| `/workflows-progress compact\|detailed\|status\|max <N>` | Live-panel detail level (and max agents shown per phase in detailed mode) |
-| `/workflows-models` | Map model tiers and thinking levels |
 | `/ultracode [off]` | Toggle exhaustive automatic workflows |
 | `/effort off\|high\|ultra` | Set the standing orchestration effort |
 
-In the navigator: `↑/↓` select · `enter/→` open · `esc/←` back · `p` pause · `x` stop · `r` restart · `s` save · `q` quit.
-
-Agent details use a compact summary by default: completed agents show their final result, while active agents show the prompt and two latest history events. Press `enter` to open the full syntax-highlighted pager. In the pager, use `j/k` or `↑/↓` for lines, `PgUp/PgDn` for pages, `g/G` for the ends, and `t` to toggle live tail mode.
+As vendored into Semla there is no TUI: the interactive run navigator, the
+bottom progress panel and the `/workflows-models` tier editor have been removed,
+along with `/workflows-progress`, which only configured that panel. Runs are
+inspected through the `workflow_control` tool and Semla's own workflow panel.
 
 ## Runtime reference
 
@@ -233,7 +232,7 @@ Model tiers live at `~/.pi/workflows/model-tiers.json` and accept Pi CLI-style t
 }
 ```
 
-Use `/workflows-models` to edit them interactively. Without a config, the extension ranks authenticated models by capability hints and assigns distinct models when possible.
+Semla edits these over `/api/model-tiers`. Without a config, the extension ranks authenticated models by capability hints and assigns distinct models when possible.
 
 Omitted `tokenBudget` and `agentTimeoutMs` values use configured `defaultTokenBudget` and `defaultAgentTimeoutMs` settings; without them, runs are unlimited and have no hard per-agent timeout. Add per-run or per-agent values when you need explicit gates. `concurrency` is clamped to 16; `agentRetries` retries only recoverable failures. Defaults live in `~/.pi/workflows/settings.json`; `defaultTokenBudget` is a soft pre-call gate, and a project-level override of `null` cancels a global budget.
 

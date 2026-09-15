@@ -3,23 +3,21 @@ import {
   createSession,
   readSessionCreateRequest,
   sessionExistsOnDisk,
-} from "@/lib/pi/session-create";
-import { parseRequestedSessionId } from "@/lib/pi/session-id";
-import { resolveSessionPromptContext } from "@/lib/pi/session-prompt-context";
-import { recordTurnStart } from "@/lib/pi/review-service";
-import { runPiPrompt } from "@/lib/pi/session-service";
+} from "@/lib/pi/session/session-create";
+import { parseRequestedSessionId } from "@/lib/pi/session/session-id";
+import { resolveSessionPromptContext } from "@/lib/pi/session/session-prompt-context";
+import { recordTurnStart } from "@/lib/pi/review/review-service";
+import { runPiPrompt } from "@/lib/pi/session/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 import { PI_TOOLS } from "@/lib/pi/runtime-config";
+import {
+  encodeSseDataEvent,
+  SSE_RESPONSE_HEADERS,
+  startSseHeartbeat,
+} from "@/lib/sse";
 
 export const runtime = "nodejs";
-
-const encoder = new TextEncoder();
-
-const eventPayload = (event: unknown) =>
-  encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
-
-const heartbeatPayload = encoder.encode(": keep-alive\n\n");
 
 export async function POST(
   request: Request,
@@ -177,21 +175,18 @@ export async function POST(
       const send = (event: unknown) => {
         if (closed) return;
         try {
-          controller.enqueue(eventPayload(event));
+          controller.enqueue(encodeSseDataEvent(event));
         } catch {
           // Client disconnected — drop the event silently.
         }
       };
 
       // Heartbeat: keeps the SSE connection alive across browser/proxy idle timeouts.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(heartbeatPayload);
-        } catch {
-          // Client disconnected.
-        }
-      }, 30_000);
+      const stopHeartbeat = startSseHeartbeat({
+        intervalMs: 30_000,
+        isClosed: () => closed,
+        enqueue: (chunk) => controller.enqueue(chunk),
+      });
 
       // Hard deadline: force-close if runPiPrompt hasn't finished after 30 minutes.
       // Wiki ingestion sessions can run 10–20 min; 30 min is a safe upper bound.
@@ -220,18 +215,12 @@ export async function POST(
           });
         })
         .finally(() => {
-          clearInterval(heartbeat);
+          stopHeartbeat();
           clearTimeout(deadline);
           close();
         });
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream",
-    },
-  });
+  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 }

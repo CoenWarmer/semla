@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { buildCodeMap, SymbolNotFoundError } from "@/lib/code-map/call-graph";
 import { enclosingSymbol } from "@/lib/code-map/enclosing";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review-service";
+import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

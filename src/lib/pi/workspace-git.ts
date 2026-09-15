@@ -1,6 +1,6 @@
 import type { GitStatus } from "@/lib/git-status-display";
 
-import { fetchCanonical, readGitStatus } from "./git-status";
+import { fetchCanonical, readGitStatus } from "./git/git-status";
 import { getWorkspaceProjects } from "./workspace";
 
 /**

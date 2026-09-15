@@ -727,7 +727,7 @@ const capabilities: readonly CapabilityDescriptor[] = [
     constraints: ["live values must not be copied into static contract data"],
     enforcementOwner: "model-tier-config",
     runtimeBinding: null,
-    behaviorEvidence: ["tests/workflows-models-command.test.ts"],
+    behaviorEvidence: ["model-tier-project-config.test.ts"],
     staticReference: { path: REFERENCE_PATH, anchor: "model-routes" },
     dynamicReference: "model-routes",
   },

@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { WIKI_PACKAGE_DIR } from "@/lib/pi/runtime-config";
-import { stampWikiPages } from "@/lib/pi/wiki-repo-stamp";
+import { stampWikiPages } from "@/lib/pi/wiki/wiki-repo-stamp";
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.ts";
 
 // Derived, not spelled out: this path moved once already, when the package

@@ -8,6 +8,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  WikiIngestDispatcher,
+  WikiIngestSource,
+  WikiReindexDispatcher,
+} from "../extension-contract.ts";
 import wikiIngestBridge from "./wiki-ingest-bridge.ts";
 
 // ── Symbol keys ──────────────────────────────────────────────────────────────
@@ -20,12 +25,45 @@ const BRIDGE_RUN_STARTED_KEY = Symbol.for("semla.bridge-run-started");
 
 type G = Record<symbol, unknown>;
 
+/**
+ * The session every single-session test runs as.
+ *
+ * The manager and notifier slots are keyed by pi session id, so a test has to
+ * install them under the same id the bridge closed over at session_start —
+ * which is the whole point of the keying: an entry filed under another session
+ * must not be reachable from this one.
+ */
+const SESSION_ID = "pi-session-under-test";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeMockPi() {
-  return { registerTool: vi.fn(), on: vi.fn() } as unknown as Parameters<
-    typeof wikiIngestBridge
-  >[0];
+/**
+ * A pi whose session_start handlers fire as they register, so the bridge has
+ * closed over a session id by the time the factory returns.
+ *
+ * Not awaited: the bridge's own handler reads the id off ctx synchronously, and
+ * the only other handler awaits a `gathering` promise that already carries its
+ * own `.catch`.
+ */
+function makeMockPi(sessionId: string = SESSION_ID) {
+  return {
+    registerTool: vi.fn(),
+    // Two handlers register here and only one is synchronous, hence the union:
+    // the bridge's own reads the id off ctx and returns, the toolset one is
+    // async. The `void` is what says the second's promise is deliberately
+    // dropped.
+    on: vi.fn(
+      (
+        event: string,
+        handler: (e: unknown, c: unknown) => void | Promise<void>,
+      ) => {
+        if (event !== "session_start") return;
+        void handler(undefined, {
+          sessionManager: { getSessionId: () => sessionId },
+        });
+      },
+    ),
+  } as unknown as Parameters<typeof wikiIngestBridge>[0];
 }
 
 /** A pi whose session_start handlers can be fired with a chosen session id. */
@@ -56,8 +94,56 @@ function makeMockManager() {
   return { startInBackground: vi.fn().mockReturnValue({ runId: "wf_test" }) };
 }
 
-function installManager(manager: ReturnType<typeof makeMockManager>) {
-  (globalThis as G)[ACTIVE_MANAGER_KEY] = manager;
+/**
+ * File the manager under a session, the way workflow.ts does.
+ *
+ * A WeakRef, and the caller's `manager` is what keeps it alive — see
+ * readSessionWorkflowManager for why the slot holds the manager weakly.
+ */
+function installManager(
+  manager: ReturnType<typeof makeMockManager>,
+  sessionId: string = SESSION_ID,
+) {
+  const managers = ((globalThis as G)[ACTIVE_MANAGER_KEY] ??= new Map()) as Map<
+    string,
+    WeakRef<object>
+  >;
+  managers.set(sessionId, new WeakRef(manager));
+}
+
+/** File a bridge-run notifier under a session, the way session-service does. */
+function installNotifier(
+  notifier: (runId: string, opts?: { primary?: boolean }) => void,
+  sessionId: string = SESSION_ID,
+) {
+  const notifiers = ((globalThis as G)[BRIDGE_RUN_STARTED_KEY] ??=
+    new Map()) as Map<string, typeof notifier>;
+  notifiers.set(sessionId, notifier);
+}
+
+/**
+ * The dispatchers, bound to a session the way the patched pi-llm-wiki binds
+ * them.
+ *
+ * The slot holds one function for the whole process and the session travels as
+ * an argument — see WIKI_INGEST_DISPATCHER. Binding it here rather than at each
+ * call site keeps the default (the session under test) in one place, and means
+ * a test that cares about the session is the only one that names one.
+ */
+function ingestDispatcher(sessionId: string | undefined = SESSION_ID) {
+  const dispatch = (globalThis as G)[DISPATCHER_KEY] as WikiIngestDispatcher;
+  return (sources: WikiIngestSource[]) => dispatch(sources, sessionId);
+}
+
+function reindexDispatcher(sessionId: string | undefined = SESSION_ID) {
+  const dispatch = (globalThis as G)[
+    REINDEX_DISPATCHER_KEY
+  ] as WikiReindexDispatcher;
+  return (args: {
+    paths: unknown;
+    embedder: { model: string; embed: unknown };
+    force: boolean;
+  }) => dispatch({ ...args, sessionId });
 }
 
 function clearGlobals() {
@@ -123,10 +209,7 @@ describe("wikiIngestBridge factory", () => {
 describe("ingest dispatcher", () => {
   it("returns false when no active manager is set", () => {
     wikiIngestBridge(makeMockPi());
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: unknown[],
-    ) => boolean;
-    expect(dispatch([])).toBe(false);
+    expect(ingestDispatcher()([])).toBe(false);
   });
 
   it("returns true and calls startInBackground once per batch (not per source)", () => {
@@ -134,9 +217,7 @@ describe("ingest dispatcher", () => {
     const manager = makeMockManager();
     installManager(manager);
 
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
-    ) => boolean;
+    const dispatch = ingestDispatcher();
 
     const sources = [
       { id: "src-1", extracted: "content one", manifest: { title: "Source One" } },
@@ -155,9 +236,7 @@ describe("ingest dispatcher", () => {
     const manager = makeMockManager();
     installManager(manager);
 
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
-    ) => boolean;
+    const dispatch = ingestDispatcher();
 
     dispatch([{ id: "my-source", extracted: "some text", manifest: { title: "My Source" } }]);
 
@@ -187,9 +266,7 @@ describe("ingest dispatcher", () => {
     );
     installManager(manager);
 
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
-    ) => boolean;
+    const dispatch = ingestDispatcher();
     dispatch([{ id: "x", extracted: "y", manifest: {} }]);
   });
 
@@ -199,11 +276,9 @@ describe("ingest dispatcher", () => {
     installManager(manager);
 
     const notifier = vi.fn();
-    (globalThis as G)[BRIDGE_RUN_STARTED_KEY] = notifier;
+    installNotifier(notifier);
 
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
-    ) => boolean;
+    const dispatch = ingestDispatcher();
     dispatch([
       { id: "a", extracted: "x", manifest: {} },
       { id: "b", extracted: "y", manifest: {} },
@@ -221,9 +296,7 @@ describe("ingest dispatcher", () => {
     const manager = makeMockManager();
     installManager(manager);
 
-    const dispatch = (globalThis as G)[DISPATCHER_KEY] as (
-      sources: Array<{ id: string; extracted: string; manifest: Record<string, unknown> }>,
-    ) => boolean;
+    const dispatch = ingestDispatcher();
 
     const longContent = "x".repeat(50_000);
     dispatch([{ id: "big", extracted: longContent, manifest: {} }]);
@@ -241,8 +314,10 @@ describe("ingest dispatcher", () => {
 describe("reindex dispatcher", () => {
   it("returns false when no active manager is set", () => {
     wikiIngestBridge(makeMockPi());
-    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: unknown) => boolean;
-    expect(dispatch({ paths: {}, embedder: { model: "text-emb-3" }, force: false })).toBe(false);
+    const dispatch = reindexDispatcher();
+    expect(
+      dispatch({ paths: {}, embedder: { model: "text-emb-3", embed: vi.fn() }, force: false }),
+    ).toBe(false);
   });
 
   it("returns true and calls startInBackground with model arg", () => {
@@ -250,11 +325,7 @@ describe("reindex dispatcher", () => {
     const manager = makeMockManager();
     installManager(manager);
 
-    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: {
-      paths: unknown;
-      embedder: { model: string; embed: unknown };
-      force: boolean;
-    }) => boolean;
+    const dispatch = reindexDispatcher();
 
     const result = dispatch({
       paths: {},
@@ -286,11 +357,7 @@ describe("reindex dispatcher", () => {
     );
     installManager(manager);
 
-    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: {
-      paths: unknown;
-      embedder: { model: string; embed: unknown };
-      force: boolean;
-    }) => boolean;
+    const dispatch = reindexDispatcher();
 
     dispatch({ paths: {}, embedder: { model: "text-emb-3", embed: vi.fn() }, force: true });
   });
@@ -302,13 +369,9 @@ describe("reindex dispatcher", () => {
     installManager(manager);
 
     const notifier = vi.fn();
-    (globalThis as G)[BRIDGE_RUN_STARTED_KEY] = notifier;
+    installNotifier(notifier);
 
-    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: {
-      paths: unknown;
-      embedder: { model: string; embed: unknown };
-      force: boolean;
-    }) => boolean;
+    const dispatch = reindexDispatcher();
     dispatch({ paths: {}, embedder: { model: "emb", embed: vi.fn() }, force: false });
 
     expect(notifier).toHaveBeenCalledWith("wf_reindex_test");
@@ -319,11 +382,7 @@ describe("reindex dispatcher", () => {
     const manager = makeMockManager();
     installManager(manager);
 
-    const dispatch = (globalThis as G)[REINDEX_DISPATCHER_KEY] as (args: {
-      paths: unknown;
-      embedder: { model: string; embed: unknown };
-      force: boolean;
-    }) => boolean;
+    const dispatch = reindexDispatcher();
 
     dispatch({ paths: {}, embedder: { model: "emb-1", embed: vi.fn() }, force: false });
     dispatch({ paths: {}, embedder: { model: "emb-2", embed: vi.fn() }, force: false });
@@ -400,5 +459,143 @@ describe("concurrent sessions", () => {
     wikiIngestBridge(only.pi);
 
     expect(typeof toolsets().wiki).toBe("function");
+  });
+
+  /**
+   * The dispatcher slots are the one pair that cannot be session-keyed: an
+   * external package reads the symbol and calls what it finds. So the last
+   * bridge to load owns the slot, and session A's ingest used to run through
+   * B's closure — into B's workflow manager, announced to B's event router.
+   *
+   * The session travels as an argument instead, which is what makes the shared
+   * closure correct. These check the argument is honoured over the closure,
+   * which is the whole of the fix.
+   */
+  describe("dispatch ownership", () => {
+    it("runs an ingest on the manager of the session that called it", async () => {
+      const first = makeSessionPi("session-a");
+      wikiIngestBridge(first.pi);
+      await first.start();
+
+      // Second, so it owns the slot: the dispatcher every call now reaches is
+      // B's closure, whose own session is "session-b".
+      const second = makeSessionPi("session-b");
+      wikiIngestBridge(second.pi);
+      await second.start();
+
+      const managerA = makeMockManager();
+      const managerB = makeMockManager();
+      installManager(managerA, "session-a");
+      installManager(managerB, "session-b");
+
+      const dispatched = ingestDispatcher("session-a")([
+        { id: "src-1", extracted: "content", manifest: { title: "One" } },
+      ]);
+
+      expect(dispatched).toBe(true);
+      expect(managerA.startInBackground).toHaveBeenCalledTimes(1);
+      expect(managerB.startInBackground).not.toHaveBeenCalled();
+    });
+
+    it("announces the run to the calling session's notifier", async () => {
+      const first = makeSessionPi("session-a");
+      wikiIngestBridge(first.pi);
+      await first.start();
+      const second = makeSessionPi("session-b");
+      wikiIngestBridge(second.pi);
+      await second.start();
+
+      const managerA = makeMockManager();
+      installManager(managerA, "session-a");
+
+      const notifierA = vi.fn();
+      const notifierB = vi.fn();
+      installNotifier(notifierA, "session-a");
+      installNotifier(notifierB, "session-b");
+
+      ingestDispatcher("session-a")([{ id: "s", extracted: "c", manifest: {} }]);
+
+      expect(notifierA).toHaveBeenCalledTimes(1);
+      expect(notifierB).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The batch's toolset is registered against the run the dispatch starts,
+     * so it lands on the calling session's manager like everything else. Its
+     * `commit_synthesis` closes over the same resolved session for its repos —
+     * which is the attribution half of this fix, and is asserted through the
+     * manager above rather than here, because observing the closure means
+     * running a real commit against a real vault.
+     */
+    it("registers the batch's shared commit tool on the calling session's run", async () => {
+      const first = makeSessionPi("session-a");
+      wikiIngestBridge(first.pi);
+      await first.start();
+      const second = makeSessionPi("session-b");
+      wikiIngestBridge(second.pi);
+      await second.start();
+
+      const managerA = makeMockManager();
+      installManager(managerA, "session-a");
+
+      ingestDispatcher("session-a")([{ id: "s", extracted: "c", manifest: {} }]);
+
+      const [, , opts] = managerA.startInBackground.mock.calls[0] as [
+        string,
+        unknown,
+        { toolset: string },
+      ];
+      const tools = toolsets()[opts.toolset]!() as Array<{ name: string }>;
+      expect(tools.map((tool) => tool.name)).toEqual(["commit_synthesis"]);
+    });
+
+    it("routes a reindex to the calling session too", async () => {
+      const first = makeSessionPi("session-a");
+      wikiIngestBridge(first.pi);
+      await first.start();
+      const second = makeSessionPi("session-b");
+      wikiIngestBridge(second.pi);
+      await second.start();
+
+      const managerA = makeMockManager();
+      const managerB = makeMockManager();
+      installManager(managerA, "session-a");
+      installManager(managerB, "session-b");
+
+      reindexDispatcher("session-a")({
+        paths: {},
+        embedder: { model: "emb", embed: vi.fn() },
+        force: false,
+      });
+
+      expect(managerA.startInBackground).toHaveBeenCalledTimes(1);
+      expect(managerB.startInBackground).not.toHaveBeenCalled();
+    });
+
+    /**
+     * An unpatched package passes no session id. That has to keep working —
+     * it is the behaviour every earlier version had — but silently falling
+     * back is the failure apply-package-patches.mjs is strict to prevent, so
+     * it says so.
+     */
+    it("falls back to its own session, loudly, when given no session id", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const only = makeSessionPi("session-a");
+      wikiIngestBridge(only.pi);
+      await only.start();
+
+      const manager = makeMockManager();
+      installManager(manager, "session-a");
+
+      // Called with one argument, exactly as an unpatched package calls it —
+      // not through ingestDispatcher, which always supplies a session.
+      const unpatched = (globalThis as G)[DISPATCHER_KEY] as WikiIngestDispatcher;
+
+      expect(unpatched([{ id: "s", extracted: "c", manifest: {} }])).toBe(true);
+      expect(manager.startInBackground).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain("without a session id");
+    });
   });
 });

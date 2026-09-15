@@ -24,11 +24,11 @@
  * two overlapping drains could present a child before its parent.
  */
 
-import { sessionWarn } from "@/lib/pi/session-log";
+import { sessionWarn } from "@/lib/pi/session/session-log";
 import {
   persistEntries,
   type PiSessionEntry,
-} from "@/lib/pi/session-persistence";
+} from "@/lib/pi/session/session-persistence";
 
 type QueueState = {
   /** Ids known to be in Postgres, or queued to go there. */

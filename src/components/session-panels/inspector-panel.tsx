@@ -9,7 +9,7 @@ import {
 import type {
   ContextCheckResult,
   DimensionLevel,
-} from "@/app/api/sessions/[id]/context-check/route";
+} from "@/lib/context-check/types";
 import {
   AlertTriangleIcon,
   CheckCircleIcon,

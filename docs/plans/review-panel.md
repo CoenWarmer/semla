@@ -28,11 +28,11 @@ a *hunk model*, not a file browser.
 | Directory listing route | `src/app/api/sessions/[id]/files/route.ts` | |
 | File read route | `src/app/api/sessions/[id]/files/content/route.ts` | `GET` only |
 | Path containment | `src/lib/pi/file-browser.ts:45,67` | `resolveFileRoot`, `resolveInsideRoot` |
-| Project allowlist | `src/lib/pi/session-project.ts:27,54` | `sessionProjects`, `projectAbsolutePath` |
-| Git subprocess | `src/lib/pi/git.ts:37,68` | `git` (collapses to null), `gitResult` (keeps stderr) |
-| Human-readable git failure | `src/lib/pi/git-actions.ts:27` | `explainGitFailure` |
-| Branch/divergence read | `src/lib/pi/git-status.ts:111` | `readGitStatus` |
-| Turn-end client hook | `src/hooks/use-prompt-mutation.ts:568` | `onSettled`, plus the `complete` SSE event at `src/lib/pi/session-events.ts:48` |
+| Project allowlist | `src/lib/pi/session/session-project.ts:27,54` | `sessionProjects`, `projectAbsolutePath` |
+| Git subprocess | `src/lib/pi/git/git.ts:37,68` | `git` (collapses to null), `gitResult` (keeps stderr) |
+| Human-readable git failure | `src/lib/pi/git/git-actions.ts:27` | `explainGitFailure` |
+| Branch/divergence read | `src/lib/pi/git/git-status.ts:111` | `readGitStatus` |
+| Turn-end client hook | `src/hooks/use-prompt-mutation.ts:568` | `onSettled`, plus the `complete` SSE event at `src/lib/pi/session/session-events.ts:48` |
 | Panel/portal precedent | `src/components/bottom-panel.tsx` | the frame owns chrome, the session owns data |
 
 ### The three gaps
@@ -48,7 +48,7 @@ a *hunk model*, not a file browser.
 
 ### The change-detection trap
 
-`src/lib/pi/session-project-attach.ts` already observes writes per turn, and
+`src/lib/pi/session/session-project-attach.ts` already observes writes per turn, and
 `session-event-router.ts:171,199` calls it on every `tool-end`. It looks like
 the natural trigger. It is not sufficient, and its own docblock says why:
 
@@ -250,7 +250,7 @@ the coloured state as "as of the last read", which is honest and cheap.
 
 ### New modules
 
-`src/lib/pi/review-status.ts`
+`src/lib/pi/review/review-status.ts`
 - `readChangedFiles(projectPath)` → `ChangedFile[]`, from
   `git status --porcelain=v1 -z --untracked-files=all`. `-z` because paths with
   spaces or non-ASCII are otherwise quoted and escaped, and every hand-rolled
@@ -264,7 +264,7 @@ the coloured state as "as of the last read", which is honest and cheap.
 - `buildPatch(file, hunks)` → a unified diff containing only the selected
   hunks, with headers and line offsets recomputed.
 
-`src/lib/pi/review-apply.ts`
+`src/lib/pi/review/review-apply.ts`
 - `stageHunks(projectPath, patch)` → `git apply --cached --unidiff-zero -`
 - `unstageHunks(projectPath, patch)` → the same with `--reverse`
 - `commitStaged(projectPath, message)` → `git commit -m` (no `-a`)

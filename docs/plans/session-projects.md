@@ -21,9 +21,9 @@ what the agent can do.**
 `runPiPrompt` opens the session and the agent at the workspace root, not at the
 project:
 
-- `SessionManager.open(sessionFile, PI_SESSION_DIR, PI_WORKSPACE_ROOT)` — `src/lib/pi/session-service.ts:451`
-- `new DefaultResourceLoader({ cwd: PI_WORKSPACE_ROOT, ... })` — `src/lib/pi/session-service.ts:486`
-- `createAgentSession({ cwd: PI_WORKSPACE_ROOT, ... })` — `src/lib/pi/session-service.ts:499`
+- `SessionManager.open(sessionFile, PI_SESSION_DIR, PI_WORKSPACE_ROOT)` — `src/lib/pi/session/session-service.ts:451`
+- `new DefaultResourceLoader({ cwd: PI_WORKSPACE_ROOT, ... })` — `src/lib/pi/session/session-service.ts:486`
+- `createAgentSession({ cwd: PI_WORKSPACE_ROOT, ... })` — `src/lib/pi/session/session-service.ts:499`
 
 `PI_WORKSPACE_ROOT` is the directory holding *every* repository on the machine.
 The agent has always been able to read and write across all of them. A session's
@@ -39,11 +39,11 @@ because there isn't one, and introducing one would be a different feature.
 |---|---|
 | `src/app/api/sessions/[id]/git/route.ts:27,57` | branch + divergence panel, checkout, merge |
 | `src/lib/pi/prompts.ts:98-105` | "The active project for this session is X" in the system prompt |
-| `src/lib/pi/session-service.ts:474` | `setSessionRepo()` — wiki page attribution |
+| `src/lib/pi/session/session-service.ts:474` | `setSessionRepo()` — wiki page attribution |
 | `src/lib/pi/file-browser.ts:38-48` | `basePath` — where the file tree opens |
 | `src/app/api/sessions/route.ts:20-38` | set at creation from a project card |
 
-`sessionProjectPath()` in `src/lib/pi/session-project.ts` — extracted out of the
+`sessionProjectPath()` in `src/lib/pi/session/session-project.ts` — extracted out of the
 git route in the in-flight file-browser work — is already the single chokepoint
 all of these want to go through. That extraction is what makes this change
 tractable, and it should land before this does.
@@ -124,7 +124,7 @@ on read.
 
 ## 4. Disk shape
 
-`SessionMeta` (`src/lib/pi/session-meta.ts`) grows one field:
+`SessionMeta` (`src/lib/pi/session/session-meta.ts`) grows one field:
 
 ```ts
 export interface ProjectLink {

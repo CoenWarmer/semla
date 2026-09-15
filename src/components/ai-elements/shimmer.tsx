@@ -3,29 +3,38 @@
 import { cn } from "@/lib/utils";
 import type { MotionProps } from "motion/react";
 import { motion } from "motion/react";
-import type { CSSProperties, ElementType, JSX } from "react";
+import type { CSSProperties } from "react";
 import { memo, useMemo } from "react";
 
 type MotionHTMLProps = MotionProps & Record<string, unknown>;
+type ShimmerMotionComponent = React.ComponentType<
+  MotionHTMLProps & { children: string }
+>;
 
-// Cache motion components at module level to avoid creating during render
-const motionComponentCache = new Map<
-  keyof JSX.IntrinsicElements,
-  React.ComponentType<MotionHTMLProps>
->();
-
-const getMotionComponent = (element: keyof JSX.IntrinsicElements) => {
-  let component = motionComponentCache.get(element);
-  if (!component) {
-    component = motion.create(element);
-    motionComponentCache.set(element, component);
-  }
-  return component;
-};
+/**
+ * `motion.create()` builds a component, so calling it during render trips
+ * react(static-components). The `motion` proxy instead caches one component per
+ * tag and returns it on property access, which keeps identity stable across
+ * renders without pre-building a constant for every tag.
+ *
+ * The union is deliberately narrower than `ElementType`: indexing the proxy
+ * with an arbitrary element would type-check and then render something else, so
+ * an unsupported tag should fail to compile rather than degrade silently.
+ */
+type ShimmerTag =
+  | "p"
+  | "span"
+  | "div"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "h4"
+  | "h5"
+  | "h6";
 
 export interface TextShimmerProps {
   children: string;
-  as?: ElementType;
+  as?: ShimmerTag;
   className?: string;
   duration?: number;
   spread?: number;
@@ -38,14 +47,12 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = getMotionComponent(
-    Component as keyof JSX.IntrinsicElements
-  );
-
   const dynamicSpread = useMemo(
     () => (children?.length ?? 0) * spread,
     [children, spread]
   );
+
+  const MotionComponent = motion[Component] as ShimmerMotionComponent;
 
   return (
     <MotionComponent

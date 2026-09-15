@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { branchNameFromBase } from "@/lib/git-status-display";
-import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git-actions";
+import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git/git-actions";
 import type { GitStatus } from "@/lib/git-status-display";
-import { fetchCanonical, readGitStatus } from "@/lib/pi/git-status";
-import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session-project";
+import { fetchCanonical, readGitStatus } from "@/lib/pi/git/git-status";
+import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

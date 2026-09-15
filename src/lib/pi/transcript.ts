@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
-import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session-file";
-import { activePath, supersededSiblings } from "@/lib/pi/session-path";
-import { resolveLeafOverride } from "@/lib/pi/session-leaf";
+import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session/session-file";
+import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
+import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
+import { WIKI_RECALL_CUSTOM_TYPE } from "@/lib/pi/wiki/wiki-recall-message";
 
 type PiUsage = {
   cacheRead?: number;
@@ -35,6 +36,14 @@ export type SessionTranscriptEntry = {
   /** The model's reasoning for this turn, when the provider returned any. */
   thinking?: string;
   tokenUsage?: { cost: number; total: number };
+  /**
+   * The wiki auto-recall content injected into the model's context right
+   * after this (always `user`) message, when the turn it started matched any
+   * wiki pages. Present only on a `user` message, and only when recall fired
+   * with a non-empty result — see `wikiRecallByParentId` in session-file.ts
+   * and transcript.ts for how it is attributed.
+   */
+  wikiRecall?: string;
 };
 
 /**
@@ -273,16 +282,63 @@ export const liveMessageRows = (
   const resolvedLeaf = resolveLeafOverride(walkable, leafId);
   const superseded = supersededSiblings(walkable, resolvedLeaf);
 
+  // Mirrors session-file.ts's wikiRecallByParentId, including the same fix:
+  // on a session's first turn, pi's own wiki-session-notice custom_message
+  // sits between the user message and this one
+  // (user → wiki-session-notice → wiki-recall-context → assistant), so the
+  // recall entry's direct parentId is the notice, not the user message. Walk
+  // up through non-message ancestors to the nearest real message, the same
+  // way the assistant reply's own parenting treats everything between one
+  // message and the next as belonging to the turn that message started.
+  const byId = new Map<string, (typeof walkable)[number]>();
+  for (const entry of walkable) {
+    if (entry.id) byId.set(entry.id, entry);
+  }
+  const nearestMessageAncestor = (
+    start: (typeof walkable)[number],
+  ): string | undefined => {
+    const seen = new Set<string>();
+    let current: (typeof walkable)[number] | undefined = start;
+    while (current) {
+      if (current.row.payload.entry.type === "message") return current.id as string;
+      const id = current.id;
+      if (id) {
+        if (seen.has(id)) return undefined;
+        seen.add(id);
+      }
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    return undefined;
+  };
+
+  const wikiRecallByParentId = new Map<string, string>();
+  for (const entry of walkable) {
+    const raw = entry.row.payload.entry as {
+      customType?: string;
+      content?: unknown;
+      parentId?: string | null;
+    };
+    if (raw.customType !== WIKI_RECALL_CUSTOM_TYPE || !raw.parentId) continue;
+    const parentEntry = byId.get(raw.parentId);
+    const messageId = parentEntry && nearestMessageAncestor(parentEntry);
+    if (!messageId) continue;
+    const text = typeof raw.content === "string" ? raw.content : "";
+    if (text.trim()) wikiRecallByParentId.set(messageId, text);
+  }
+
   return activePath(walkable, resolvedLeaf)
     .filter((entry) => entry.row.payload.entry.type === "message")
     .map((entry) => {
       const earlier = (superseded.get(entry.id as string) ?? [])
         .map((sibling) => sibling.row.payload.entry)
         .filter((sibling) => sibling.type === "message");
+      const recall = entry.id ? wikiRecallByParentId.get(entry.id) : undefined;
 
-      return earlier.length > 0
-        ? { ...entry.row, superseded: earlier }
-        : entry.row;
+      return {
+        ...entry.row,
+        ...(earlier.length > 0 ? { superseded: earlier } : {}),
+        ...(recall ? { wikiRecall: recall } : {}),
+      };
     });
 };
 
@@ -379,6 +435,7 @@ export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => 
         ...(message.role === "assistant" && inputTokens != null
           ? { inputTokens }
           : {}),
+        ...(entry.wikiRecall ? { wikiRecall: entry.wikiRecall } : {}),
       },
     ];
   });

@@ -5,11 +5,14 @@ import {
   subscribeToTerminal,
 } from "@/lib/pi/terminal-store";
 import { parseTerminalControl } from "@/lib/terminal-control";
+import {
+  encodeSseDataEvent,
+  SSE_RESPONSE_HEADERS,
+  startSseHeartbeat,
+} from "@/lib/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const encoder = new TextEncoder();
 
 /**
  * A terminal's output, as server-sent events.
@@ -51,9 +54,7 @@ export async function GET(
       const send = (chunk: string) => {
         if (closed) return;
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ data: chunk })}\n\n`),
-          );
+          controller.enqueue(encodeSseDataEvent({ data: chunk }));
         } catch {
           close();
         }
@@ -67,17 +68,15 @@ export async function GET(
 
       // Proxies and browsers drop a stream that says nothing for long enough,
       // and a shell sitting at a prompt says nothing indefinitely.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          close();
-        }
-      }, 30_000);
+      const stopHeartbeat = startSseHeartbeat({
+        intervalMs: 30_000,
+        isClosed: () => closed,
+        enqueue: (chunk) => controller.enqueue(chunk),
+        onEnqueueError: close,
+      });
 
       const teardown = () => {
-        clearInterval(heartbeat);
+        stopHeartbeat();
         unsubscribe();
         close();
       };
@@ -89,13 +88,7 @@ export async function GET(
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream",
-    },
-  });
+  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 }
 
 /**

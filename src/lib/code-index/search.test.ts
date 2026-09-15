@@ -21,11 +21,11 @@ import { renderSearchResult, searchProject } from "./search";
 import { createLocalVectorStore } from "./store/local";
 import type { ProjectKey } from "./types";
 
-vi.mock("@/lib/pi/review-grep", () => ({
+vi.mock("@/lib/pi/review/review-grep", () => ({
   grepProject: vi.fn(async () => ({ matches: [], truncated: false })),
 }));
 
-const { grepProject } = await import("@/lib/pi/review-grep");
+const { grepProject } = await import("@/lib/pi/review/review-grep");
 
 let root: string;
 let indexHome: string;

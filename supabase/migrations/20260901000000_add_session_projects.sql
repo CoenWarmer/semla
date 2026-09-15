@@ -4,7 +4,7 @@
 -- for now as a mirror of the primary link while its readers move across; a
 -- later migration drops it.
 --
--- Disk is authoritative for this relation (see src/lib/pi/session-meta.ts).
+-- Disk is authoritative for this relation (see src/lib/pi/session/session-meta.ts).
 -- This table is the mirror, written server-side with the service-role client,
 -- so that the data survives independently of the machine's .semla-sessions
 -- directory. A reader that disagrees with disk defers to disk.

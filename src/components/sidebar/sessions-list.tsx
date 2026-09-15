@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/api-helpers";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { sessionUsageTotals } from "@/lib/pi/session-usage-totals";
-import { listSessionMeta } from "@/lib/pi/session-meta";
+import { sessionUsageTotals } from "@/lib/pi/session/session-usage-totals";
+import { listSessionMeta } from "@/lib/pi/session/session-meta";
 import { formatSessionDate } from "@/lib/session-date";
 import { SessionsListClient } from "./sessions-list-client";
 

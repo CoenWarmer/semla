@@ -2,7 +2,7 @@
  * Shape and presentation of a working copy's branch state.
  *
  * Deliberately free of node imports: this is read by a client component, and
- * the reader that produces it (src/lib/pi/git-status.ts) shells out to git.
+ * the reader that produces it (src/lib/pi/git/git-status.ts) shells out to git.
  * See client-boundary.test.ts for why that separation is load-bearing.
  */
 

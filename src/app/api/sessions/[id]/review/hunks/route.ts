@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { readFileDiffSet } from "@/lib/pi/review-diff";
-import { readChangedFiles } from "@/lib/pi/review-status";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review-service";
+import { readFileDiffSet } from "@/lib/pi/review/review-diff";
+import { readChangedFiles } from "@/lib/pi/review/review-status";
+import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -226,13 +226,6 @@ export function ClientSessionComponent({
     if (tokens == null) return null;
     return (tokens * rate) / 1_000_000;
   }, [messages, messagesQuery.data?.cacheReadRatePerMToken]);
-  const contextWindowFraction = useMemo(() => {
-    const contextWindow = messagesQuery.data?.contextWindow;
-    if (!contextWindow) return null;
-    const tokens = latestInputTokens(messages);
-    if (tokens == null) return null;
-    return Math.min(1, tokens / contextWindow);
-  }, [messages, messagesQuery.data?.contextWindow]);
   // Persisted rows arrive only when the turn's entries are written, so fold in
   // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
   // row becomes the persisted row rather than a second marker.
@@ -747,7 +740,6 @@ export function ClientSessionComponent({
   const conversationColumn = (
     <SessionConversation
       activeTool={activeTool}
-      contextWindowFraction={contextWindowFraction}
       conversation={conversation}
       costPerTurn={costPerTurn}
       defaultTools={defaultTools}

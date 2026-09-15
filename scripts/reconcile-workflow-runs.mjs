@@ -14,19 +14,42 @@
  * be running long after anything could be working on it, becomes `interrupted`
  * — honest about not knowing how it ended, and no longer claiming it is live.
  *
- * Usage:  node scripts/reconcile-workflow-runs.mjs [--dry-run] [--stale-minutes=30]
+ * Usage:  npm run workflow:reconcile -- [--dry-run] [--stale-minutes=30]
  *
  * Safe to run more than once, and safe while work is in progress: a row whose
  * file says running and which was touched inside the staleness window is left
  * alone, so a live run is never cut off.
  */
 
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { createClient } from "@supabase/supabase-js";
+
+/**
+ * The app's own reader, imported rather than mirrored.
+ *
+ * This script used to derive the run path itself — a sha256 of the resolved
+ * cwd under a hardcoded `~/.pi/workflows` — and had fallen behind that
+ * derivation on three counts, each of which turned a run it could not find
+ * into a row settled on nothing but its age:
+ *
+ * - `PI_WORKFLOW_HOME` was ignored, so anyone who had moved the workflow home
+ *   saw every run reported missing;
+ * - the sanitiser kept case and replaced illegal characters one for one, while
+ *   `workflowProjectKey` lowercases and collapses runs of them, so any project
+ *   directory that is not already lowercase-and-clean hashed to a key nothing
+ *   writes to;
+ * - it looked only under the key for `PI_WORKSPACE_ROOT`, and runs are keyed by
+ *   the cwd the *extension* ran under, which stopped being the workspace root
+ *   when sessions gained their own project cwd (session-cwd.ts).
+ *
+ * `readWorkflowRun` has all three right, searches every project directory on a
+ * miss for that last reason, and falls back to a run's `.bak` on a corrupt
+ * primary. Node strips the types; the npm script carries the flag that silences
+ * the module-type warning importing a `.ts` from a `.mjs` otherwise prints.
+ */
+import { readWorkflowRun } from "../src/lib/pi/workflow/workflow-run-reader.ts";
 
 const dryRun = process.argv.includes("--dry-run");
 const staleArg = process.argv.find((a) => a.startsWith("--stale-minutes="));
@@ -47,30 +70,11 @@ loadEnvLocal();
 
 const workspaceRoot = process.env.PI_WORKSPACE_ROOT;
 if (!workspaceRoot) {
-  console.error("PI_WORKSPACE_ROOT is required: it locates the run files.");
+  console.error("PI_WORKSPACE_ROOT is required: it is where the search for a run file starts.");
   process.exit(1);
 }
 
-/** Mirrors workflowRunsDir in src/lib/pi/workflow-run-reader.ts. */
-function runsDir(cwd) {
-  const projectPath = resolve(cwd);
-  const slug = (basename(projectPath) || "project").replace(/[^a-zA-Z0-9._-]/g, "-");
-  const hash = createHash("sha256").update(projectPath).digest("hex").slice(0, 12);
-  return join(homedir(), ".pi", "workflows", "projects", `${slug}-${hash}`, "runs");
-}
-
-const readRunFile = (runId) => {
-  for (const ext of [".json", ".tson"]) {
-    const path = join(runsDir(workspaceRoot), `${runId}${ext}`);
-    if (!existsSync(path)) continue;
-    try {
-      return JSON.parse(readFileSync(path, "utf8"));
-    } catch {
-      return null;
-    }
-  }
-  return null;
-};
+const readRunFile = (runId) => readWorkflowRun(workspaceRoot, runId);
 
 /**
  * The row status a run file implies.

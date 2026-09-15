@@ -1,9 +1,9 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { listSessionMeta } from "@/lib/pi/session-meta";
+import { listSessionMeta } from "@/lib/pi/session/session-meta";
 import {
   sessionUsageTotals,
   totalUsage,
-} from "@/lib/pi/session-usage-totals";
+} from "@/lib/pi/session/session-usage-totals";
 import { createServerTiming } from "@/lib/server-timing";
 import { createAdminClient } from "@/lib/supabase-admin";
 

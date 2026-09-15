@@ -18,7 +18,6 @@ import { registerSavedWorkflow } from "./saved-commands.ts";
 import { buildForcedWorkflowPrompt, WORKFLOW_TOOL_NAME } from "./workflow-editor.ts";
 import type { WorkflowManager } from "./workflow-manager.ts";
 import type { WorkflowStorage } from "./workflow-saved.ts";
-import { openWorkflowNavigator } from "./workflow-ui.ts";
 
 const STATUS_ICON: Record<string, string> = {
   pending: "·",
@@ -147,7 +146,7 @@ export function registerWorkflowCommands(
 
   pi.registerCommand("workflows", {
     description:
-      "Manage workflow runs — no args (opens navigator) | run <prompt> | status/stop/pause/resume <id> | rm <id> | save <name> [runId]",
+      "Manage workflow runs — no args (lists runs) | run <prompt> | status/stop/pause/resume <id> | rm <id> | save <name> [runId]",
     async handler(args: string, ctx: ExtensionCommandContext) {
       const manager = getManager();
       const parts = args.trim().split(/\s+/).filter(Boolean);
@@ -194,28 +193,6 @@ export function registerWorkflowCommands(
         }
         case "ui":
         case "list": {
-          // Interactive navigator when a UI is available; plain text otherwise
-          // (print/RPC mode) or when the user explicitly asks for `list`.
-          if (sub !== "list" && ctx.hasUI) {
-            await openWorkflowNavigator(pi, manager, ctx.ui, {
-              storage: getStorage(),
-              cwd: getCwd(),
-              getStorage,
-              getCwd,
-              getManager,
-            });
-            return;
-          }
-          if (parts.length === 0 && ctx.hasUI) {
-            await openWorkflowNavigator(pi, manager, ctx.ui, {
-              storage: getStorage(),
-              cwd: getCwd(),
-              getStorage,
-              getCwd,
-              getManager,
-            });
-            return;
-          }
           const runs = manager.listRuns();
           if (!runs.length) {
             await print("No workflow runs yet. Start one with a background workflow (background: true).");

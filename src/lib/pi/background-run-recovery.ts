@@ -20,8 +20,8 @@
 import {
   listRunningWorkflowRuns,
   type WorkflowRunRecord,
-} from "@/lib/pi/workflow-run-index";
-import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow-run-reader";
+} from "@/lib/pi/workflow/workflow-run-index";
+import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow/workflow-run-reader";
 
 /**
  * A background run this session has going, or undefined.

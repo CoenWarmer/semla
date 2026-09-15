@@ -1,6 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { readSessionMeta } from "@/lib/pi/session-meta";
-import { sessionIsRunning, sessionProjects } from "@/lib/pi/session-status-view";
+import { readSessionMeta } from "@/lib/pi/session/session-meta";
+import { sessionIsRunning, sessionProjects } from "@/lib/pi/session/session-status-view";
 import { requireSessionOwner } from "@/lib/session-auth";
 
 export const runtime = "nodejs";

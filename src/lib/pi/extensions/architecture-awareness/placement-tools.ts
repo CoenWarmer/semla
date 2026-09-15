@@ -39,7 +39,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { sessionLog } from "@/lib/pi/session-log";
+import { sessionLog } from "@/lib/pi/session/session-log";
 
 import { renderEnforcementFeedback, runEnforcementCommand } from "./enforcement-loop";
 import { checkPlacement, type PlacementRule } from "./placement-rules";

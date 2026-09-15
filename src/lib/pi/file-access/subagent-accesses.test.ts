@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listWorkflowRuns } from "@/lib/pi/workflow-run-index";
-import { snapshotFromRunFile } from "@/lib/pi/workflow-service";
+import { listWorkflowRuns } from "@/lib/pi/workflow/workflow-run-index";
+import { snapshotFromRunFile } from "@/lib/pi/workflow/workflow-service";
 
 import { turnForRun, withSubagentAccesses } from "./subagent-accesses.ts";
 import type { FileAccessTimeline, TimelineTurn } from "./access-types.ts";
@@ -16,8 +16,8 @@ import type { FileAccessTimeline, TimelineTurn } from "./access-types.ts";
 // `withSubagentAccesses` touches — the session meta, the subagent's own
 // transcript, `indexAgentTranscripts`' directory scan — is real files under a
 // temp dir, exactly as `access-timeline.test.ts` exercises the host session.
-vi.mock("@/lib/pi/workflow-run-index", () => ({ listWorkflowRuns: vi.fn() }));
-vi.mock("@/lib/pi/workflow-service", () => ({ snapshotFromRunFile: vi.fn() }));
+vi.mock("@/lib/pi/workflow/workflow-run-index", () => ({ listWorkflowRuns: vi.fn() }));
+vi.mock("@/lib/pi/workflow/workflow-service", () => ({ snapshotFromRunFile: vi.fn() }));
 
 const turns: TimelineTurn[] = [
   { at: "2026-01-01T10:00:00.000Z", id: "u1" },

@@ -4,8 +4,8 @@ import {
   extensionToolsForSession,
 } from "@/lib/pi/extension-manifest";
 import { PI_TOOLS } from "@/lib/pi/runtime-config";
-import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session-cwd";
-import { sessionProjects } from "@/lib/pi/session-project";
+import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session/session-cwd";
+import { sessionProjects } from "@/lib/pi/session/session-project";
 import { requireSessionOwner } from "@/lib/session-auth";
 
 export const runtime = "nodejs";

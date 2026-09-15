@@ -35,8 +35,8 @@ const CALLERS = [
   "src/lib/pi/entry-persist-queue.ts",
   "src/app/api/sessions/[id]/workflows/route.ts",
   "src/lib/pi/background-continuation.ts",
-  "src/lib/pi/session-event-router.ts",
-  "src/lib/pi/session-service.ts",
+  "src/lib/pi/session/session-event-router.ts",
+  "src/lib/pi/session/session-service.ts",
 ] as const;
 
 const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
@@ -76,7 +76,7 @@ describe("fire-and-forget persistence calls", () => {
       (path) =>
         !(CALLERS as readonly string[]).includes(path) &&
         // Where they are defined, so its own calls are the definitions.
-        path !== "src/lib/pi/session-persistence.ts" &&
+        path !== "src/lib/pi/session/session-persistence.ts" &&
         THROWING_WRITES.some((write) =>
           new RegExp(String.raw`\b${write}\s*\(`).test(read(path)),
         ),

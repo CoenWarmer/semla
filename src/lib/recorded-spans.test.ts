@@ -429,6 +429,34 @@ describe("the session row", () => {
     expect(row?.attributes?.["semla.session.prompts"]).toBe(3);
   });
 
+  it("counts a prompt that carries an excerpt", () => {
+    // The case every real session is in, and the one a count taken off the
+    // mapped name misses: `labelOf` renames a prompt span to an excerpt of the
+    // prompt, so only excerpt-less spans still read as "Prompt".
+    const row = recordedSpansToOtelSpans([
+      at(1, 2, { attributes: { "semla.prompt.excerpt": "fix the thing" } }),
+      at(3, 4, { attributes: { "semla.prompt.excerpt": "and this too" } }),
+    ]).find((span) => span.name === "Session");
+
+    expect(row?.attributes?.["semla.session.prompts"]).toBe(2);
+  });
+
+  it("does not count a re-rooted workflow run as a prompt", () => {
+    // A background run whose turn span never reached this stream is re-rooted
+    // onto the session row, but it is not something anyone prompted.
+    const row = recordedSpansToOtelSpans([
+      at(1, 2, { attributes: { "semla.prompt.excerpt": "go" } }),
+      at(3, 4, {
+        attributes: { "semla.workflow.name": "orient" },
+        name: "semla.workflow.run",
+        parentSpanId: "missing-turn",
+        spanId: "w",
+      }),
+    ]).find((span) => span.name === "Session");
+
+    expect(row?.attributes?.["semla.session.prompts"]).toBe(1);
+  });
+
   it("reaches to now while a prompt is still running", () => {
     const row = recordedSpansToOtelSpans([at(100, null)], { now: 7_000 }).find(
       (span) => span.name === "Session",

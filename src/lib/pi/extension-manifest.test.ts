@@ -10,6 +10,7 @@ import {
   ACTIVE_WORKFLOW_MANAGER,
   clearSlot,
   CONTRACT_SLOT_KEYS,
+  publishSessionWorkflowManager,
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
   writeSlot,
@@ -236,8 +237,15 @@ describe("load report", () => {
     }),
   ];
 
-  const armSlots = () => {
-    writeSlot(ACTIVE_WORKFLOW_MANAGER, { startInBackground: () => ({ runId: "r" }) });
+  /**
+   * Held at describe scope, not inside armSlots: the manager slot stores a
+   * WeakRef, so a manager with no other reference may be collected and read
+   * back as "never published".
+   */
+  const manager = { startInBackground: () => ({ runId: "r" }) };
+
+  const armSlots = (sessionId?: string) => {
+    publishSessionWorkflowManager(sessionId ?? "pi-session", manager);
     writeSlot(WIKI_INGEST_DISPATCHER, () => true);
     writeSlot(WIKI_REINDEX_DISPATCHER, () => true);
   };
@@ -279,7 +287,7 @@ describe("load report", () => {
   it("fails when an extension loaded but published no contract slot", () => {
     // The bridge registers no tools at all, so a slot check is the only thing
     // that can tell whether it actually armed its dispatchers.
-    writeSlot(ACTIVE_WORKFLOW_MANAGER, { startInBackground: () => ({ runId: "r" }) });
+    publishSessionWorkflowManager("pi-session", manager);
     const report = buildExtensionLoadReport({
       loadedPaths: ["/tmp/workflow.ts", "/tmp/bridge.ts"],
       loadErrors: [],

@@ -29,10 +29,6 @@ export interface WorkflowSettings {
   defaultConcurrency?: number;
   /** Default retry attempts after recoverable agent failures. */
   defaultAgentRetries?: number;
-  /** Bottom task-panel display mode: "compact" (default, one line per run) | "detailed". */
-  progressPanelMode?: "compact" | "detailed";
-  /** Max agents shown per phase in detailed progress mode (default 8). */
-  progressPanelMaxAgents?: number;
   /**
    * Persist each workflow subagent transcript as a real pi session file
    * under the project's own session directory (`<project>/.semla-sessions/`,
@@ -217,22 +213,10 @@ function normalizeSettings(value: unknown): WorkflowSettings {
   );
   if (defaultAgentRetries !== undefined)
     settings.defaultAgentRetries = defaultAgentRetries;
-  if (
-    raw.progressPanelMode === "compact" ||
-    raw.progressPanelMode === "detailed"
-  ) {
-    settings.progressPanelMode = raw.progressPanelMode;
-  }
-  if (
-    typeof raw.progressPanelMaxAgents === "number" &&
-    Number.isFinite(raw.progressPanelMaxAgents) &&
-    raw.progressPanelMaxAgents >= 1
-  ) {
-    settings.progressPanelMaxAgents = Math.min(
-      1000,
-      Math.floor(raw.progressPanelMaxAgents),
-    );
-  }
+  // progressPanelMode / progressPanelMaxAgents are deliberately not parsed:
+  // they configured the pi-tui progress panel, which Semla never rendered. An
+  // existing settings file may still carry them; they are ignored rather than
+  // rejected, since a stale key is not a reason to fail a settings read.
   if (typeof raw.persistAgentSessions === "boolean") {
     settings.persistAgentSessions = raw.persistAgentSessions;
   }

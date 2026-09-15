@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseUnifiedDiff } from "@/lib/pi/review-diff";
+import { parseUnifiedDiff } from "@/lib/pi/review/review-diff";
 import type { FileDiff } from "@/lib/review-types";
 
 import { matchHunkAction } from "./review-hunk-match.ts";

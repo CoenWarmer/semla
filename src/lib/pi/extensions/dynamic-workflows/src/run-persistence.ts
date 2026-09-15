@@ -213,13 +213,13 @@ export interface RunPersistenceOptions {
 
 /**
  * `list()` does a full readdirSync + per-file readFileSync + JSON.parse of the
- * entire lifetime run history. It is called on essentially every progress tick
- * (task-panel re-render → WorkflowManager.listRuns()/listAllRuns()), so an
- * unbounded number of ticks each re-walked and re-parsed every run file on
- * disk. Cache the computed list for a short TTL — long enough to absorb a
+ * entire lifetime run history. Every run listing goes through it —
+ * `workflow_control`, `/workflows`, Semla's snapshot polling and the
+ * usage-limit scheduler all reach WorkflowManager.listRuns()/listAllRuns() —
+ * so an unbounded number of reads each re-walked and re-parsed every run file
+ * on disk. Cache the computed list for a short TTL: long enough to absorb a
  * burst of same-tick reads, short enough that a read from a DIFFERENT process
- * (or a mutation this instance doesn't own) still shows up quickly. Mirrors
- * the ~1s settings-read TTL cache in task-panel.ts.
+ * (or a mutation this instance doesn't own) still shows up quickly.
  */
 const LIST_CACHE_TTL_MS = 300;
 

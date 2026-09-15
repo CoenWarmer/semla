@@ -15,23 +15,23 @@ import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
 import { releaseBackgroundContinuation } from "@/lib/pi/bg-continuation-registry";
 import { queueEntries } from "@/lib/pi/entry-persist-queue";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
-import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session-events";
-import { detach, sessionLog, sessionWarn } from "@/lib/pi/session-log";
+import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session/session-events";
+import { detach, sessionLog, sessionWarn } from "@/lib/pi/session/session-log";
 import type { TurnOutcome } from "@/lib/pi/telemetry/host-recorder";
 import {
   finalizeBackgroundRun,
   persistWorkflowSnapshot,
   setSessionRunning,
   type PiSessionEntry,
-} from "@/lib/pi/session-persistence";
+} from "@/lib/pi/session/session-persistence";
 import {
   closeSessionStream,
   publishSessionRunning,
   publishToSessionStream,
-} from "@/lib/pi/session-stream-store";
-import { stampWikiRepo } from "@/lib/pi/session-wiki-stamp";
-import { finishedRunMessage } from "@/lib/pi/workflow-delivery-message";
-import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow-run-reader";
+} from "@/lib/pi/session/session-stream-store";
+import { stampWikiRepo } from "@/lib/pi/session/session-wiki-stamp";
+import { finishedRunMessage } from "@/lib/pi/workflow/workflow-delivery-message";
+import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow/workflow-run-reader";
 
 /**
  * Poll interval for the delivery watchdog — the failsafe that self-delivers a

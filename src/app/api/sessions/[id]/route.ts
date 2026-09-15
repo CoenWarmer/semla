@@ -1,7 +1,7 @@
 import { handleRouteError } from "@/lib/api-helpers";
-import { clearTurnMark } from "@/lib/pi/review-turn-mark";
-import { deleteSessionFiles, writeSessionMeta } from "@/lib/pi/session-meta";
-import { deleteWorkflowRuns } from "@/lib/pi/workflow-run-index";
+import { clearTurnMark } from "@/lib/pi/review/review-turn-mark";
+import { deleteSessionFiles, writeSessionMeta } from "@/lib/pi/session/session-meta";
+import { deleteWorkflowRuns } from "@/lib/pi/workflow/workflow-run-index";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
 

@@ -77,7 +77,7 @@ if (linksError) {
   process.exit(1);
 }
 
-/** Anchor first, matching orderLinks in src/lib/pi/session-project.ts. */
+/** Anchor first, matching orderLinks in src/lib/pi/session/session-project.ts. */
 const linksBySession = new Map();
 for (const link of links ?? []) {
   const mapped = {
@@ -107,7 +107,7 @@ for (const row of rows ?? []) {
     continue;
   }
 
-  // Shape mirrors SessionMeta in src/lib/pi/session-meta.ts.
+  // Shape mirrors SessionMeta in src/lib/pi/session/session-meta.ts.
   const meta = {
     id: row.id,
     title: row.title ?? null,

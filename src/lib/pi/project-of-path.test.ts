@@ -9,11 +9,11 @@ const owner = (path: string) => projectOfPath(path, ROOT, PROJECTS);
 
 describe("projectOfPath", () => {
   it("resolves an absolute path to the project containing it", () => {
-    expect(owner("/Users/x/Dev/semla/src/lib/pi/session-meta.ts")).toBe("semla");
+    expect(owner("/Users/x/Dev/semla/src/lib/pi/session/session-meta.ts")).toBe("semla");
   });
 
   it("resolves a path relative to the workspace root by default", () => {
-    expect(owner("semla/src/lib/pi/session-meta.ts")).toBe("semla");
+    expect(owner("semla/src/lib/pi/session/session-meta.ts")).toBe("semla");
     expect(owner("./semla/package.json")).toBe("semla");
   });
 
@@ -76,7 +76,7 @@ describe("projectOfPath with the agent running inside a project", () => {
     projectOfPath(path, ROOT, PROJECTS, `${ROOT}/semla`);
 
   it("resolves a relative path against the agent's cwd", () => {
-    expect(inSemla("src/lib/pi/session-meta.ts")).toBe("semla");
+    expect(inSemla("src/lib/pi/session/session-meta.ts")).toBe("semla");
     expect(inSemla("./package.json")).toBe("semla");
   });
 

@@ -1,6 +1,6 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { listSessionMeta } from "@/lib/pi/session-meta";
-import { toSessionStatus } from "@/lib/pi/session-status-view";
+import { listSessionMeta } from "@/lib/pi/session/session-meta";
+import { toSessionStatus } from "@/lib/pi/session/session-status-view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

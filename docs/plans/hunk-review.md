@@ -24,20 +24,20 @@ selection.
 
 | Thing | Where | Note |
 |---|---|---|
-| Unified-diff parser | `src/lib/pi/review-diff.ts` — `parseUnifiedDiff` | hand-written; `@@` headers → `Hunk[]`, body → `DiffLine[]` tagged `added`/`removed`/`context` |
-| Diff acquisition | `src/lib/pi/review-diff.ts` — `readFileDiff`, `readUntrackedDiff` | `git diff --no-color -U3 -M`, with `head` / `staged` / `index` modes |
-| Character-level spans | `src/lib/pi/review-char-spans.ts` — `changedSpans` | already drives inline highlighting |
-| Patch rebuild from a hunk subset | `src/lib/pi/review-patch.ts` — `buildPatch` | recomputes `newStart` so skipped hunks shift later ones correctly |
-| Stage / unstage hunks | `src/lib/pi/review-apply.ts` — `stageHunks`, `unstageHunks` | `git apply --cached --unidiff-zero -` |
+| Unified-diff parser | `src/lib/pi/review/review-diff.ts` — `parseUnifiedDiff` | hand-written; `@@` headers → `Hunk[]`, body → `DiffLine[]` tagged `added`/`removed`/`context` |
+| Diff acquisition | `src/lib/pi/review/review-diff.ts` — `readFileDiff`, `readUntrackedDiff` | `git diff --no-color -U3 -M`, with `head` / `staged` / `index` modes |
+| Character-level spans | `src/lib/pi/review/review-char-spans.ts` — `changedSpans` | already drives inline highlighting |
+| Patch rebuild from a hunk subset | `src/lib/pi/review/review-patch.ts` — `buildPatch` | recomputes `newStart` so skipped hunks shift later ones correctly |
+| Stage / unstage hunks | `src/lib/pi/review/review-apply.ts` — `stageHunks`, `unstageHunks` | `git apply --cached --unidiff-zero -` |
 | Stage / unstage whole file | same — `stageWholeFile`, `unstageWholeFile` | `git add --`, `git restore --staged --` |
 | Commit | same — `commitStaged` | checks index lock, unmerged paths, staged-emptiness; returns SHA |
-| Changed-file read | `src/lib/pi/review-status.ts` — `readChangedFiles` | `git status --porcelain=v1 -z` |
+| Changed-file read | `src/lib/pi/review/review-status.ts` — `readChangedFiles` | `git status --porcelain=v1 -z` |
 | Hunk list UI | `src/components/review/review-hunk-list.tsx` | already groups "Not staged" / "Staged" with per-hunk buttons |
 | Per-hunk gutter widgets | `src/components/review/review-hunk-bracket-widgets.tsx` | clickable brackets above each hunk in Monaco |
 | Commit input + commit call | `src/components/review/review-commit-bar.tsx` | `<Input>`, Enter commits, → `POST /api/sessions/[id]/review/commit` |
 | Panel open/close + Escape | `src/components/review/review-panel.tsx` | `shouldOpenReview({ manuallyOpened, review, sessionRunning })` |
-| Turn-end signal | `src/lib/pi/session-service.ts` — `runPiPrompt` | `session.prompt()` then `agent.waitForIdle()` |
-| Per-turn state on disk | `src/lib/pi/review-turn-mark.ts` — `ReviewTurnMark` | `SEMLA_STATE_DIR/review/<sessionId>.json`; `startedAt`, per-project `head`, dirty-set `fingerprint` |
+| Turn-end signal | `src/lib/pi/session/session-service.ts` — `runPiPrompt` | `session.prompt()` then `agent.waitForIdle()` |
+| Per-turn state on disk | `src/lib/pi/review/review-turn-mark.ts` — `ReviewTurnMark` | `SEMLA_STATE_DIR/review/<sessionId>.json`; `startedAt`, per-project `head`, dirty-set `fingerprint` |
 | Review routes | `src/app/api/sessions/[id]/review/{hunks,stage,commit,uncommit,grep}/route.ts` | API routes, not server actions |
 
 ### The five gaps
@@ -87,7 +87,7 @@ is not a Supabase table.
 
 ## 3. Phase 1 — reverting a hunk
 
-New export in `src/lib/pi/review-apply.ts`, alongside `stageHunks`:
+New export in `src/lib/pi/review/review-apply.ts`, alongside `stageHunks`:
 
 ```
 revertHunks(projectPath, path, hunks) → applies buildPatch output with

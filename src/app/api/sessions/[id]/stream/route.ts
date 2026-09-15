@@ -3,13 +3,16 @@ import { requireSessionOwner } from "@/lib/session-auth";
 import {
   isSessionStreamActive,
   subscribeToSessionStream,
-} from "@/lib/pi/session-stream-store";
-import { setSessionRunning } from "@/lib/pi/session-persistence";
-import { isSessionActive } from "@/lib/pi/session-service";
+} from "@/lib/pi/session/session-stream-store";
+import { setSessionRunning } from "@/lib/pi/session/session-persistence";
+import { isSessionActive } from "@/lib/pi/session/session-service";
+import {
+  encodeSseDataEvent,
+  SSE_RESPONSE_HEADERS,
+  startSseHeartbeat,
+} from "@/lib/sse";
 
 export const runtime = "nodejs";
-
-const encoder = new TextEncoder();
 
 export async function GET(
   request: Request,
@@ -62,22 +65,17 @@ export async function GET(
       const send = (event: unknown) => {
         if (closed) return;
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
-          );
+          controller.enqueue(encodeSseDataEvent(event));
         } catch {
           // client disconnected
         }
       };
 
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          // client disconnected
-        }
-      }, 30_000);
+      const stopHeartbeat = startSseHeartbeat({
+        intervalMs: 30_000,
+        isClosed: () => closed,
+        enqueue: (chunk) => controller.enqueue(chunk),
+      });
 
       // Closing follows the store's own lifetime, not a "complete"/"error"
       // event's contents. Those types used to mean "the stream is over"
@@ -92,24 +90,18 @@ export async function GET(
         id,
         (event) => send(event),
         () => {
-          clearInterval(heartbeat);
+          stopHeartbeat();
           close();
         },
       );
 
       request.signal.addEventListener("abort", () => {
-        clearInterval(heartbeat);
+        stopHeartbeat();
         unsubscribe();
         close();
       });
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream",
-    },
-  });
+  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 }
