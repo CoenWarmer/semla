@@ -3,15 +3,6 @@
  * Agents cross-check each other's findings for higher quality results.
  */
 
-export interface AdversarialReviewConfig {
-  /** Number of independent reviewers per finding. */
-  reviewerCount: number;
-  /** Whether to filter out findings that don't survive cross-checking. */
-  filterContested: boolean;
-  /** Minimum agreement threshold (0-1). */
-  agreementThreshold: number;
-}
-
 /**
  * Generate an adversarial-review workflow. The script is static and reads its
  * inputs from `args` (task/reviewers/threshold) — no string interpolation.

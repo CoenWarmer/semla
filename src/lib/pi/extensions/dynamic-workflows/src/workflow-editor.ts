@@ -38,10 +38,6 @@ export function hasTrigger(text: string, triggerWord = DEFAULT_KEYWORD_TRIGGER_W
   return triggerRegex(triggerWord).test(text);
 }
 
-export function endsWithTrigger(textBeforeCursor: string, triggerWord = DEFAULT_KEYWORD_TRIGGER_WORD): boolean {
-  return triggerRegex(triggerWord, "iu", true).test(textBeforeCursor);
-}
-
 /** Shared, mutable view of whether "workflows mode" is currently armed. */
 export interface WorkflowModeState {
   active: boolean;

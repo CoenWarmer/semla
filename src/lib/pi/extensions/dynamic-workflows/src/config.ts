@@ -14,17 +14,11 @@ export const MAX_CONCURRENCY = 16;
 /** Maximum automatic retry attempts after a recoverable agent failure. */
 export const MAX_AGENT_RETRIES = 3;
 
-/** Default token budget if none specified. */
-export const DEFAULT_TOKEN_BUDGET = null;
-
 /** Legacy project-relative directory for persisted workflow run state. New writes use workflowProjectPaths(). */
 export const WORKFLOW_RUNS_DIR = ".pi/workflows/runs";
 
 /** Legacy project-relative directory for saved workflow commands. New writes use workflowProjectPaths(). */
 export const WORKFLOW_SAVED_DIR = ".pi/workflows/saved";
-
-/** User-level saved workflows directory. */
-export const USER_WORKFLOW_SAVED_DIR = "~/.pi/workflows/saved";
 
 /**
  * Root of user-level workflow state, relative to the home directory.
@@ -46,9 +40,6 @@ export const MODEL_TIERS_FILENAME = "model-tiers.json";
  * `workflowHomeDir()` so it can be redirected.
  */
 export const MODEL_TIERS_FILE = `${WORKFLOW_HOME_RELATIVE_DIR}/${MODEL_TIERS_FILENAME}`;
-
-/** User-level workflow extension settings file, relative to the home directory. */
-export const WORKFLOW_SETTINGS_FILE = `${WORKFLOW_HOME_RELATIVE_DIR}/settings.json`;
 
 /** Default keyword that arms workflows mode from interactive input. */
 export const DEFAULT_KEYWORD_TRIGGER_WORD = "workflow";
