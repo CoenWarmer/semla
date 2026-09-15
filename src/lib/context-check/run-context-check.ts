@@ -3,7 +3,7 @@ import {
   contextWindowUsage,
   latestInputTokens,
 } from "@/lib/context-composition";
-import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
 import type { SessionToolCall, SessionTranscriptEntry } from "@/lib/pi/transcript";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";

@@ -6,7 +6,7 @@
  * the conversation, worded the same way either way.
  */
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { summarizeRunResult } from "@/lib/pi/workflow/workflow-result-summary";
 import {
   workflowRunPath,

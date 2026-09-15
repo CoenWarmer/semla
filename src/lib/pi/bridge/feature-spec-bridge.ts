@@ -8,8 +8,8 @@
  * `waitForFeatureSpec` takes no request argument.
  */
 
-import { FEATURE_SPEC_RENDEZVOUS } from "./extension-contract";
-import { createSessionRendezvous } from "./session/session-rendezvous";
+import { FEATURE_SPEC_RENDEZVOUS } from "../extension-loading/extension-contract";
+import { createSessionRendezvous } from "../session/session-rendezvous";
 
 /** The fixed set of fields the form captures. Free text, one block each. */
 export type FeatureSpecAnswers = {

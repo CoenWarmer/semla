@@ -1,5 +1,5 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { getExtensionHealth } from "@/lib/pi/extension-health";
+import { getExtensionHealth } from "@/lib/pi/extension-loading/extension-health";
 
 export const runtime = "nodejs";
 

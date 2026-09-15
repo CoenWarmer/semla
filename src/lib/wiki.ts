@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { WIKI_HOME } from "@/lib/pi/runtime-config";
+import { WIKI_HOME } from "@/lib/pi/runtime/runtime-config";
 import {
   buildTitleMap,
   extractWikiLinks,

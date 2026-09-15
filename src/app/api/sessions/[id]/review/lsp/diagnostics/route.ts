@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { ensureLspHost, subscribeToDiagnostics } from "@/lib/pi/browser-lsp/lsp-host";
 import { workspacePathForLspUri } from "@/lib/pi/browser-lsp/lsp-request";
-import { resolveFileRoot } from "@/lib/pi/file-browser";
+import { resolveFileRoot } from "@/lib/pi/workspace/file-browser";
 import { resolveReviewTarget } from "@/lib/pi/review/review-service";
 import {
   encodeSseDataEvent,

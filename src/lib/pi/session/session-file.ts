@@ -15,7 +15,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
 import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
 import { WIKI_RECALL_CUSTOM_TYPE } from "@/lib/pi/wiki/wiki-recall-message";

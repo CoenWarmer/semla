@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { WorkspaceProject } from "@/lib/pi/workspace";
+import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
 import { Button } from "@/components/ui/button";
 import {
   Command,

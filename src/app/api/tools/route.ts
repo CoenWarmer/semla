@@ -2,8 +2,8 @@ import { handleRouteError, requireUser } from "@/lib/api-helpers";
 import {
   EXTENSION_TOOLS,
   extensionToolsForSession,
-} from "@/lib/pi/extension-manifest";
-import { PI_TOOLS } from "@/lib/pi/runtime-config";
+} from "@/lib/pi/extension-loading/extension-manifest";
+import { PI_TOOLS } from "@/lib/pi/runtime/runtime-config";
 import { isProjectAnchored, resolveSessionCwd } from "@/lib/pi/session/session-cwd";
 import { sessionProjects } from "@/lib/pi/session/session-project";
 import { requireSessionOwner } from "@/lib/session-auth";

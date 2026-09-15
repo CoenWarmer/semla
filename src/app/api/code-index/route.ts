@@ -20,7 +20,7 @@ import { projectKey } from "@/lib/code-index/index-paths";
 import { isIndexRunning, startIndexRun } from "@/lib/code-index/index-runs";
 import { getProjectIndexStatuses } from "@/lib/code-index/status";
 import { createLocalVectorStore } from "@/lib/code-index/store/local";
-import { getWorkspaceProjects } from "@/lib/pi/workspace";
+import { getWorkspaceProjects } from "@/lib/pi/workspace/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

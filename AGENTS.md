@@ -20,7 +20,7 @@ Semla is an agent harness that focuses on reliability and traceability. The code
 
 **Decision.** A third-party pi extension package that Semla loads is declared in
 the root `package.json`, pinned to an exact version, loaded by path out of the
-root `node_modules`, and declared in `src/lib/pi/extension-manifest.ts`. It is
+root `node_modules`, and declared in `src/lib/pi/extension-loading/extension-manifest.ts`. It is
 **not** declared in `.pi/npm/package.json`, and **not** listed in
 `.pi/settings.json` for pi's own package resolution.
 
@@ -196,7 +196,7 @@ is uninstalled and cannot be reinstated — it has nothing to drive. TS 7 serves
 LSP from the compiler binary as `tsc --lsp -stdio`, and supi spawns
 `typescript-language-server --stdio` by name on PATH. The translation is
 `scripts/language-servers/typescript-language-server`, a shim on a PATH entry
-this repository controls; see the docblock in `src/lib/pi/language-servers.ts`
+this repository controls; see the docblock in `src/lib/pi/runtime/language-servers.ts`
 for why a shim rather than supi's own config. Note the single dash in `-stdio`:
 `--stdio` is accepted and then exits without answering `initialize`.
 

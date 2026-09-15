@@ -24,7 +24,7 @@
 
 import { join } from "node:path";
 
-import { TREE_SITTER_GRAMMAR_DIR, TREE_SITTER_PACKAGE_DIR } from "@/lib/pi/runtime-config";
+import { TREE_SITTER_GRAMMAR_DIR, TREE_SITTER_PACKAGE_DIR } from "@/lib/pi/runtime/runtime-config";
 
 import type { GrammarLanguage } from "./languages";
 

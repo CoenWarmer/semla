@@ -20,7 +20,7 @@ import { Type } from "typebox";
 import {
   waitForFeatureSpec,
   type FeatureSpecAnswers,
-} from "../feature-spec-bridge";
+} from "../bridge/feature-spec-bridge";
 
 // No parameters: the fields are fixed, so there is nothing for the model to
 // pass beyond triggering the tool.

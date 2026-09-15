@@ -41,7 +41,7 @@ import { SessionStepsStrip } from "./session-steps-strip";
 import type { ConversationItem } from "@/lib/session-steps";
 import { isLiveRoundMessageId } from "@/lib/live-tool-calls";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 export function SessionConversation({

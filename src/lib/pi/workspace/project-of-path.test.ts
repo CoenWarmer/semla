@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectOfPath } from "@/lib/pi/project-of-path";
+import { projectOfPath } from "@/lib/pi/workspace/project-of-path";
 
 const ROOT = "/Users/x/Dev";
 const PROJECTS = new Set(["semla", "kibana", "semantic-code-search"]);

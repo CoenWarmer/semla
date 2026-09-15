@@ -17,7 +17,7 @@
 import {
   readOrInitSlot,
   WIKI_SESSION_REPOS,
-} from "@/lib/pi/extension-contract";
+} from "@/lib/pi/extension-loading/extension-contract";
 
 const repos = (): Map<string, string[]> =>
   readOrInitSlot(WIKI_SESSION_REPOS, () => new Map());

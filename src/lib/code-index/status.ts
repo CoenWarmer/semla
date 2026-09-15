@@ -7,7 +7,7 @@
  * and the panel exists to change it deliberately.
  */
 
-import { getWorkspaceProjects } from "@/lib/pi/workspace";
+import { getWorkspaceProjects } from "@/lib/pi/workspace/workspace";
 
 import { getIndexRun } from "./index-runs";
 import { projectKey } from "./index-paths";

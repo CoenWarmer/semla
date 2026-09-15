@@ -6,7 +6,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getExtensionHealth } from "@/lib/pi/extension-health";
+import { getExtensionHealth } from "@/lib/pi/extension-loading/extension-health";
 
 /**
  * A broken Pi extension used to be visible only in the server log, while the

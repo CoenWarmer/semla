@@ -236,7 +236,7 @@ describe("createSubagentSessionManager", () => {
       vi.resetModules();
 
       const { PI_SESSION_DIR: reloadedSessionDir } = await import(
-        "../../../runtime-config.ts"
+        "../../../runtime/runtime-config.ts"
       );
       const { createSubagentSessionManager: reloadedCreate } = await import(
         "./agent-session.ts"

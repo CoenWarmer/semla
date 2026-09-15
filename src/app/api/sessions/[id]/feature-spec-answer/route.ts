@@ -1,6 +1,6 @@
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
-import { deliverFeatureSpec } from "@/lib/pi/feature-spec-bridge";
+import { deliverFeatureSpec } from "@/lib/pi/bridge/feature-spec-bridge";
 
 export const runtime = "nodejs";
 

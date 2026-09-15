@@ -31,8 +31,8 @@
 
 import { relative, resolve, sep } from "node:path";
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
-import { getWorkspaceProjects } from "@/lib/pi/workspace";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
+import { getWorkspaceProjects } from "@/lib/pi/workspace/workspace";
 
 /**
  * The project owning `path`, as a workspace-relative path, or null.

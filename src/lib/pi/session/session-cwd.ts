@@ -23,7 +23,7 @@
 import { statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 
 export const resolveSessionCwd = (
   /** Workspace-relative repos this session works in, anchor first. */

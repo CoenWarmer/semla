@@ -12,7 +12,7 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
-import { retainBackgroundSession } from "@/lib/pi/background-sessions";
+import { retainBackgroundSession } from "@/lib/pi/background/background-sessions";
 import { accessesFromToolCall } from "@/lib/pi/file-access/access-from-tool-call";
 import {
   existenceCache,
@@ -50,7 +50,7 @@ import {
   noteDeliveredDuringPrompt,
   setBackgroundRun,
   type TurnBackgroundState,
-} from "@/lib/pi/turn-background-state";
+} from "@/lib/pi/background/turn-background-state";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
 import type { HostTelemetry } from "@/lib/pi/telemetry/host-recorder";
 

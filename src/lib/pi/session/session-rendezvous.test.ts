@@ -13,7 +13,7 @@ import {
   ASK_USER_RENDEZVOUS,
   clearSlot,
   FEATURE_SPEC_RENDEZVOUS,
-} from "../extension-contract.ts";
+} from "../extension-loading/extension-contract.ts";
 import { createSessionRendezvous } from "./session-rendezvous.ts";
 
 type Request = { question: string };

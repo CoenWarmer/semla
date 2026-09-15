@@ -9,12 +9,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   abortBackgroundContinuation,
   armBackgroundContinuation,
-} from "../bg-continuation-registry.ts";
+} from "../background/bg-continuation-registry.ts";
 import {
   getLiveSession,
   releaseLiveSession,
   retainLiveSession,
-} from "../live-sessions.ts";
+} from "./live-sessions.ts";
 import { isSessionActive } from "./session-service.ts";
 
 const session = () => ({

@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { GIT_FETCH_INTERVAL_MS } from "../runtime-config";
+import { GIT_FETCH_INTERVAL_MS } from "../runtime/runtime-config";
 import { git } from "./git";
 
 /**

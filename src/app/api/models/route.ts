@@ -1,5 +1,5 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 export const runtime = "nodejs";

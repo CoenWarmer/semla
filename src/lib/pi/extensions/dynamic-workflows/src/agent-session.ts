@@ -25,7 +25,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
-import { PI_SESSION_DIR } from "../../../runtime-config.ts";
+import { PI_SESSION_DIR } from "../../../runtime/runtime-config.ts";
 import { applyToolPolicy } from "./agent-registry.ts";
 import { WorkflowError, WorkflowErrorCode } from "./errors.ts";
 import {

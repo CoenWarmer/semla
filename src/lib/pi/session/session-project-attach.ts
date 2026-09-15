@@ -15,7 +15,7 @@
  * attached by hand.
  */
 
-import { projectOfWrittenPath } from "@/lib/pi/project-of-path";
+import { projectOfWrittenPath } from "@/lib/pi/workspace/project-of-path";
 import type { ProjectLink } from "@/lib/pi/session/session-meta";
 import { attachProject } from "@/lib/pi/session/session-project-links";
 import { updateSessionProjects } from "@/lib/pi/session/session-project-store";

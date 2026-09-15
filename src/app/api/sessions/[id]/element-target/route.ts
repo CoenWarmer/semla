@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api-helpers";
 import { requireSessionOwner } from "@/lib/session-auth";
-import { resolveInsideRoot, toRelativePath } from "@/lib/pi/file-browser";
-import { SEMLA_PROJECT_PATH } from "@/lib/pi/runtime-config";
+import { resolveInsideRoot, toRelativePath } from "@/lib/pi/workspace/file-browser";
+import { SEMLA_PROJECT_PATH } from "@/lib/pi/runtime/runtime-config";
 import { attachProject } from "@/lib/pi/session/session-project-links";
 import { updateSessionProjects } from "@/lib/pi/session/session-project-store";
 

@@ -25,7 +25,7 @@
 import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 
 /** Injectable so tests never write into the real session directory. */

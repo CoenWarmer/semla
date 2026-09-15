@@ -15,7 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { modelCacheReadRate, modelContextWindow } from "@/lib/pi/context-composition";
+import { modelCacheReadRate, modelContextWindow } from "@/lib/pi/prompt/context-composition";
 import { readSessionMeta } from "@/lib/pi/session/session-meta";
 import { resolveSessionPromptContext } from "@/lib/pi/session/session-prompt-context";
 import { getTranscript, type SessionToolCall, type SessionTranscriptEntry } from "@/lib/pi/transcript";

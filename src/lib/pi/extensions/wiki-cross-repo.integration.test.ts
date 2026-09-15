@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { WIKI_PACKAGE_DIR } from "@/lib/pi/runtime-config";
+import { WIKI_PACKAGE_DIR } from "@/lib/pi/runtime/runtime-config";
 import { stampWikiPages } from "@/lib/pi/wiki/wiki-repo-stamp";
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge.ts";
 

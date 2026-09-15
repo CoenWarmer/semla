@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { ensureDocumentOpen } from "@/lib/pi/browser-lsp/lsp-host";
 import { resolveLspFile, workspacePathForLspUri } from "@/lib/pi/browser-lsp/lsp-request";
-import { resolveFileRoot } from "@/lib/pi/file-browser";
+import { resolveFileRoot } from "@/lib/pi/workspace/file-browser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

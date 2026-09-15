@@ -23,7 +23,7 @@ import {
   registerLspHost,
   spawnLspConnection,
 } from "@/lib/pi/browser-lsp/lsp-host";
-import { ensureLanguageServersOnPath } from "@/lib/pi/language-servers";
+import { ensureLanguageServersOnPath } from "@/lib/pi/runtime/language-servers";
 
 const SOURCE = `/** Adds two numbers. */
 export function add(a: number, b: number): number {

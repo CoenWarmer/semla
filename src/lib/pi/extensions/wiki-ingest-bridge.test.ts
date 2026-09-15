@@ -12,7 +12,7 @@ import type {
   WikiIngestDispatcher,
   WikiIngestSource,
   WikiReindexDispatcher,
-} from "../extension-contract.ts";
+} from "../extension-loading/extension-contract.ts";
 import wikiIngestBridge from "./wiki-ingest-bridge.ts";
 
 // ── Symbol keys ──────────────────────────────────────────────────────────────

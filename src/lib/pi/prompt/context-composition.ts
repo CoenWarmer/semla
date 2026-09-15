@@ -7,7 +7,7 @@
  * page — see client-boundary.test.ts.
  */
 
-import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 /** Context window of the model a session is configured to use. */

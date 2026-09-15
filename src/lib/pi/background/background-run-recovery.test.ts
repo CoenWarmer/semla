@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { unfinishedBackgroundRunId } from "@/lib/pi/background-run-recovery";
+import { unfinishedBackgroundRunId } from "@/lib/pi/background/background-run-recovery";
 import type { WorkflowRunRecord } from "@/lib/pi/workflow/workflow-run-index";
 import type { PersistedRunState } from "@/lib/pi/workflow/workflow-run-reader";
 

@@ -1,5 +1,5 @@
 import { handleRouteError, requireUser } from "@/lib/api-helpers";
-import { getMcpConfigSummary } from "@/lib/pi/mcp-config";
+import { getMcpConfigSummary } from "@/lib/pi/runtime/mcp-config";
 
 export const runtime = "nodejs";
 

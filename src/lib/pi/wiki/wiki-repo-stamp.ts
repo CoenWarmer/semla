@@ -29,7 +29,7 @@ import {
   parseRepoValue,
   stampRepoFrontmatter,
 } from "@/lib/pi/extensions/wiki-frontmatter";
-import { WIKI_HOME } from "@/lib/pi/runtime-config";
+import { WIKI_HOME } from "@/lib/pi/runtime/runtime-config";
 import { sweepIdentityPages } from "@/lib/pi/extensions/identity-page-sweep";
 import { ensureRepositoryPage } from "@/lib/pi/extensions/repository-page";
 

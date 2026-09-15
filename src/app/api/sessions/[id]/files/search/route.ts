@@ -8,9 +8,9 @@ import {
   resolveFileRoot,
   resolveInsideRoot,
   toRelativePath,
-} from "@/lib/pi/file-browser";
-import { IGNORED_DIRECTORIES } from "@/lib/pi/file-walk";
-import { listProjectFiles, mapWithConcurrency } from "@/lib/pi/project-files";
+} from "@/lib/pi/workspace/file-browser";
+import { IGNORED_DIRECTORIES } from "@/lib/pi/workspace/file-walk";
+import { listProjectFiles, mapWithConcurrency } from "@/lib/pi/workspace/project-files";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

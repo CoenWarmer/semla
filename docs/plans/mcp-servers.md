@@ -26,7 +26,7 @@ postinstall script. Landed as `MCP_PACKAGE_DIR`/`MCP_EXTENSION_PATH` in
 work — see the revised §5 and §6 below. `PI_MCP_CONFIG_MODE=exclusive` is what
 actually collapses the package's six-source precedence chain to one file, and
 an env var (not an argv flag) is the right mechanism for a long-lived server
-process. Landed as `src/lib/pi/mcp-config.ts`, called from
+process. Landed as `src/lib/pi/runtime/mcp-config.ts`, called from
 `instrumentation.ts`. Phases 3–4 remain open.
 
 ---
@@ -182,7 +182,7 @@ What actually collapses the chain is `PI_MCP_CONFIG_MODE=exclusive`.
 off, and `loadMcpConfig()` skips package and agent-plugin configs too via the
 same early return — confirmed by reading and exercising `config.ts` directly
 with jiti, not assumed from the package's docs (see
-`src/lib/pi/mcp-config.test.ts`).
+`src/lib/pi/runtime/mcp-config.test.ts`).
 
 That single remaining source is `getAgentPath("mcp.json")` — inside whatever
 `PI_CODING_AGENT_DIR` points at, which is already Semla's own agent directory
@@ -229,10 +229,10 @@ to `@earendil-works` with no `@mariozechner` wildcard to alias away.
 
 **2 — Pin the configuration.** Done, but not as originally written here — see
 the revised §5 above. `PI_MCP_CONFIG_MODE=exclusive`, set by
-`isolateMcpConfigMode()` in `src/lib/pi/mcp-config.ts` and called from
+`isolateMcpConfigMode()` in `src/lib/pi/runtime/mcp-config.ts` and called from
 `instrumentation.ts` right after `isolatePiAgentDir()`, so the one remaining
 config source lands inside `~/.semla/agent/mcp.json`.
-`src/lib/pi/mcp-config.test.ts` proves the pinned mode collapses the package's
+`src/lib/pi/runtime/mcp-config.test.ts` proves the pinned mode collapses the package's
 own `getConfigDiscoveryPaths()` to exactly that path.
 
 **3 — Make it visible.** Done. `mcp` was **not** added to `PI_TOOLS`: it stays
@@ -245,7 +245,7 @@ Connection status (connected / needs-auth / failed) is only known inside a
 running session — the package publishes it as an event on that session's own
 `ExtensionAPI` instance, not anywhere a route handler can reach without one
 running. What a route handler *can* read cheaply is the pinned config file
-itself: `getMcpConfigSummary()` in `src/lib/pi/mcp-config.ts` deep-imports
+itself: `getMcpConfigSummary()` in `src/lib/pi/runtime/mcp-config.ts` deep-imports
 `pi-mcp-adapter`'s compiled `dist/config.js` for the exported `loadMcpConfig`
 — a pure file read with no connection attempted — and reports server names and
 count. `getExtensionHealth()` (now async) surfaces this as `mcp:
@@ -253,7 +253,7 @@ McpConfigSummary | null`, and the settings page's extension health card renders
 it: an unreadable file is shown as an error, zero configured servers as a
 neutral "None configured" (an operator who has not written an `mcp.json` yet is
 a valid, inert state — not a degradation), and N servers as their names.
-`src/lib/pi/mcp-config-summary-contract.test.ts` is the compensating check for
+`src/lib/pi/runtime/mcp-config-summary-contract.test.ts` is the compensating check for
 the deep import, in the mould of `WIKI_PACKAGE_DEEP_IMPORTS`.
 
 **4 — Document it.** Where `mcp.json` lives, and what putting a server in it

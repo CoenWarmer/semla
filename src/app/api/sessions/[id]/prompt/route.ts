@@ -10,7 +10,7 @@ import { recordTurnStart } from "@/lib/pi/review/review-service";
 import { runPiPrompt } from "@/lib/pi/session/session-service";
 import { requireSessionOwner } from "@/lib/session-auth";
 import { createClient } from "@/lib/supabase/server";
-import { PI_TOOLS } from "@/lib/pi/runtime-config";
+import { PI_TOOLS } from "@/lib/pi/runtime/runtime-config";
 import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,

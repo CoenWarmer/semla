@@ -17,7 +17,7 @@ import type { WorkflowTelemetry } from "../../../telemetry/workflow-recorder";
 import {
   readOrInitSlot,
   WORKFLOW_MANAGER_REGISTRY,
-} from "../../../extension-contract";
+} from "../../../extension-loading/extension-contract";
 import {
   preview,
   recomputeWorkflowSnapshot,

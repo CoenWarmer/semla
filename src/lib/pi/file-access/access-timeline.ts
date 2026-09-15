@@ -11,7 +11,7 @@
  * graph does, so "this turn" means the same thing in both panels.
  */
 
-import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { resolveSessionCwd } from "@/lib/pi/session/session-cwd";
 import { readSessionEntries, type SessionFileEntry } from "@/lib/pi/session/session-file";
 import { readSessionMeta } from "@/lib/pi/session/session-meta";

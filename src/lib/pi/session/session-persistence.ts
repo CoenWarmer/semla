@@ -5,7 +5,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "../runtime-config";
+import { PI_SESSION_DIR, PI_WORKSPACE_ROOT } from "../runtime/runtime-config";
 import { writeSessionMeta } from "./session-meta";
 import { listRunningWorkflowRuns, upsertWorkflowRun } from "../workflow/workflow-run-index";
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { GitStatusBadge } from "@/components/git-status-badge";
-import type { WorkspaceProject } from "@/lib/pi/workspace";
+import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
 import {
   Card,
   CardDescription,

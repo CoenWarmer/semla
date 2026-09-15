@@ -9,8 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   getPiCredentialProviders,
   getPiRuntimeConfig,
-} from "@/lib/pi/runtime-config";
-import { getInstalledPiPackages } from "@/lib/pi/packages";
+} from "@/lib/pi/runtime/runtime-config";
+import { getInstalledPiPackages } from "@/lib/pi/runtime/packages";
 import { ExtensionHealthCard } from "@/components/settings/extension-health-card";
 import { SystemPromptEditor } from "@/components/settings/system-prompt-editor";
 import { ModelTierEditor } from "@/components/settings/model-tier-editor";

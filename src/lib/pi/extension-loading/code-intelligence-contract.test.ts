@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { EXTENSION_MANIFEST } from "./extension-manifest.ts";
-import { CODE_INTELLIGENCE_EXTENSION_PATH } from "./runtime-config.ts";
+import { CODE_INTELLIGENCE_EXTENSION_PATH } from "../runtime/runtime-config.ts";
 
 const PACKAGE = "@mrclrchtr/supi-code-intelligence";
 

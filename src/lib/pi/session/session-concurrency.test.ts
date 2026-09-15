@@ -9,7 +9,7 @@ import {
   getLiveSession,
   releaseLiveSession,
   retainLiveSession,
-} from "../live-sessions.ts";
+} from "./live-sessions.ts";
 import {
   otherActiveSessionCount,
   otherActiveSessionsByProject,

@@ -15,7 +15,7 @@
  * extension's result shape, which this module otherwise knows nothing about.
  */
 
-import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import { readSessionEntriesFromPath } from "@/lib/pi/session/session-file";
 import { ROOT_TURN_ID } from "@/lib/pi/session/session-turn-graph";
 import {

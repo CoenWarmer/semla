@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
+import { PI_AGENT_DIR } from "@/lib/pi/runtime/agent-dir";
 
 import { DEFAULT_PLACEMENT_MAX_TOKENS } from "./placement-rules";
 

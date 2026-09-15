@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 // client bundle, but a type import is erased at compile time and leaves no
 // runtime trace — so the response shape stays the one source of truth
 // (McpConfigSummary) instead of a second copy that could drift from it.
-import type { McpConfigSummary } from "@/lib/pi/mcp-config";
+import type { McpConfigSummary } from "@/lib/pi/runtime/mcp-config";
 
 export type McpStatus = McpConfigSummary;
 

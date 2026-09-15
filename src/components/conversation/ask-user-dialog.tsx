@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 import {
   Questionnaire,
   QuestionnaireActions,

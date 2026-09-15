@@ -27,7 +27,7 @@ a *hunk model*, not a file browser.
 | File tree UI | `src/components/session-file-tree.tsx` | `SessionFileTree`, `useSessionFiles`, query keys per directory |
 | Directory listing route | `src/app/api/sessions/[id]/files/route.ts` | |
 | File read route | `src/app/api/sessions/[id]/files/content/route.ts` | `GET` only |
-| Path containment | `src/lib/pi/file-browser.ts:45,67` | `resolveFileRoot`, `resolveInsideRoot` |
+| Path containment | `src/lib/pi/workspace/file-browser.ts:45,67` | `resolveFileRoot`, `resolveInsideRoot` |
 | Project allowlist | `src/lib/pi/session/session-project.ts:27,54` | `sessionProjects`, `projectAbsolutePath` |
 | Git subprocess | `src/lib/pi/git/git.ts:37,68` | `git` (collapses to null), `gitResult` (keeps stderr) |
 | Human-readable git failure | `src/lib/pi/git/git-actions.ts:27` | `explainGitFailure` |
@@ -55,7 +55,7 @@ the natural trigger. It is not sufficient, and its own docblock says why:
 > Writes made through `bash` — `git commit`, `sed -i`, `mv`, generated build
 > output — carry no typed path and are **not** detected. That is a known gap.
 
-The agent has `bash` (`src/lib/pi/runtime-config.ts:149`). A turn that fixes a
+The agent has `bash` (`src/lib/pi/runtime/runtime-config.ts:149`). A turn that fixes a
 file with `sed -i` or regenerates a lockfile changes code and produces no
 `writtenPath`. Building the trigger on tool observation inherits that gap and
 would show the operator an empty review panel after a turn that changed twelve
@@ -75,7 +75,7 @@ Two kinds of thing need reviewing, and they are not the same shape.
 - **Working-tree changes.** Uncommitted modifications, additions, deletions,
   renames, and untracked files. The primary case.
 - **Turn commits.** Commits the agent made during the turn. Nothing stops it:
-  the system prompt (`src/lib/pi/system-prompt.ts:12`) has no policy on git at
+  the system prompt (`src/lib/pi/prompt/system-prompt.ts:12`) has no policy on git at
   all, and `bash` is in the tool set. Today those changes are simply invisible
   to any reviewer.
 

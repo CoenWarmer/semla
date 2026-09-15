@@ -7,7 +7,7 @@
 
 import { join, relative, sep } from "node:path";
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { readSessionMeta, type ProjectLink } from "@/lib/pi/session/session-meta";
 import { orderLinks } from "@/lib/pi/session/session-project-links";
 import { createClient } from "@/lib/supabase/server";

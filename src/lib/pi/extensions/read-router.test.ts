@@ -589,12 +589,12 @@ describe("settings", () => {
 
     const event = toolResult("read", lines(400));
     (event as unknown as { input: Record<string, unknown> }).input = {
-      path: "src/lib/pi/extension-manifest.ts",
+      path: "src/lib/pi/extension-loading/extension-manifest.ts",
     };
     await fire("tool_result", event, ctx);
 
     const first = completeSpy.mock.calls[0][1] as { messages: Array<{ content: string }> };
-    expect(first.messages[0].content).toContain("src/lib/pi/extension-manifest.ts");
+    expect(first.messages[0].content).toContain("src/lib/pi/extension-loading/extension-manifest.ts");
 
     // History carries no input; the tool name alone must still produce a
     // well-formed prompt rather than "undefined".

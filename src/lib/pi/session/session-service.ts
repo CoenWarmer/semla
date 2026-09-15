@@ -16,24 +16,24 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { mkdir } from "node:fs/promises";
 
-import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
-import { registerNotifier } from "@/lib/pi/ask-user-bridge";
-import { registerFeatureSpecNotifier } from "@/lib/pi/feature-spec-bridge";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
+import { registerNotifier } from "@/lib/pi/bridge/ask-user-bridge";
+import { registerFeatureSpecNotifier } from "@/lib/pi/bridge/feature-spec-bridge";
 import { assertPlacementFileWithinSessionBudget } from "@/lib/pi/extensions/architecture-awareness/placement-prompt";
 import { loadArchitectureAwarenessSettings } from "@/lib/pi/extensions/architecture-awareness/settings";
-import { runBackgroundContinuation } from "@/lib/pi/background-continuation";
+import { runBackgroundContinuation } from "@/lib/pi/background/background-continuation";
 import {
   queueEntries,
   seedPersistedEntryIds,
 } from "@/lib/pi/entry-persist-queue";
-import { unfinishedBackgroundRunId } from "@/lib/pi/background-run-recovery";
-import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
+import { unfinishedBackgroundRunId } from "@/lib/pi/background/background-run-recovery";
+import { releaseBackgroundSession } from "@/lib/pi/background/background-sessions";
 import {
   abortBackgroundContinuation,
   armBackgroundContinuation,
   hasBackgroundContinuation,
-} from "@/lib/pi/bg-continuation-registry";
-import { followBridgeRunProgress } from "@/lib/pi/bridge-run-progress";
+} from "@/lib/pi/background/bg-continuation-registry";
+import { followBridgeRunProgress } from "@/lib/pi/bridge/bridge-run-progress";
 import {
   createSessionDebugWriter,
   type SessionPhase,
@@ -44,8 +44,8 @@ import {
   readSessionWorkflowManager,
   writeSessionSlot,
   type BridgeRunNotifier,
-} from "@/lib/pi/extension-contract";
-import { recordExtensionLoad } from "@/lib/pi/extension-health";
+} from "@/lib/pi/extension-loading/extension-contract";
+import { recordExtensionLoad } from "@/lib/pi/extension-loading/extension-health";
 import {
   assertExtensionLoad,
   assertExtensionPathsExist,
@@ -56,12 +56,12 @@ import {
   extensionPathsInLoadOrder,
   manifestForSession,
   type ExtensionId,
-} from "@/lib/pi/extension-manifest";
+} from "@/lib/pi/extension-loading/extension-manifest";
 import {
   getLiveSession,
   releaseLiveSession,
   retainLiveSession,
-} from "@/lib/pi/live-sessions";
+} from "@/lib/pi/session/live-sessions";
 import { takeTurnSlot } from "@/lib/pi/session/session-turn-lock";
 import {
   PI_AGENT_DIR,
@@ -69,7 +69,7 @@ import {
   PI_TOOLS,
   WORKFLOW_SKILLS_PATH,
   getPiRuntimeConfig,
-} from "@/lib/pi/runtime-config";
+} from "@/lib/pi/runtime/runtime-config";
 import {
   applyBranchTarget,
   resolveBranchTarget,
@@ -113,11 +113,11 @@ import {
   publishToSessionStream,
 } from "@/lib/pi/session/session-stream-store";
 import { stampWikiRepo } from "@/lib/pi/session/session-wiki-stamp";
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/system-prompt";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompt/system-prompt";
 import {
   createTurnBackgroundState,
   decideContinuation,
-} from "@/lib/pi/turn-background-state";
+} from "@/lib/pi/background/turn-background-state";
 import { clearSessionRepo, setSessionRepos } from "@/lib/pi/wiki/wiki-session-repo";
 import { finishedRunMessage } from "@/lib/pi/workflow/workflow-delivery-message";
 import { isRunTerminal, readWorkflowRun } from "@/lib/pi/workflow/workflow-run-reader";

@@ -14,7 +14,7 @@
  * this whole feature exists to prevent, not to cause.
  */
 
-import { resolveInsideRoot } from "@/lib/pi/file-browser";
+import { resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
 import {
   readChangedFiles,
   readHeadSha,

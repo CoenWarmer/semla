@@ -47,7 +47,7 @@ import {
   readOrInitSlot,
   type RendezvousSlotKey,
   type RendezvousWaiter,
-} from "../extension-contract";
+} from "../extension-loading/extension-contract";
 
 /**
  * Function-typed properties rather than methods, deliberately: the three are

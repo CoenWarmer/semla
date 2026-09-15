@@ -28,13 +28,13 @@ import {
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
   type ContractSlotKey,
-} from "@/lib/pi/extension-contract";
+} from "@/lib/pi/extension-loading/extension-contract";
 import {
   CODE_INTELLIGENCE_EXTENSION_PATH,
   MCP_EXTENSION_PATH,
   PI_TOOLS,
   WIKI_EXTENSION_PATH,
-} from "@/lib/pi/runtime-config";
+} from "@/lib/pi/runtime/runtime-config";
 
 // Semla's own extensions, imported rather than pointed at. See ExtensionSource.
 import askUserExtension from "@/lib/pi/extensions/ask-user";

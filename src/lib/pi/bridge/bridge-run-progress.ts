@@ -1,4 +1,4 @@
-import type { WorkflowManagerLike } from "@/lib/pi/extension-contract";
+import type { WorkflowManagerLike } from "@/lib/pi/extension-loading/extension-contract";
 
 /**
  * Events a run emits as it progresses. `complete` and `error` are handled

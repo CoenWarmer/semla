@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { requireSessionOwner } from "@/lib/session-auth";
 import { handleRouteError } from "@/lib/api-helpers";
-import { isWorkspaceProject } from "@/lib/pi/workspace-git";
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { isWorkspaceProject } from "@/lib/pi/workspace/workspace-git";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 import {
   attachProject,

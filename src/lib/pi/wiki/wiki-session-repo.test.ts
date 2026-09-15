@@ -13,7 +13,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { readOrInitSlot, WIKI_SESSION_REPOS } from "@/lib/pi/extension-contract";
+import { readOrInitSlot, WIKI_SESSION_REPOS } from "@/lib/pi/extension-loading/extension-contract";
 import {
   clearSessionRepo,
   getSessionRepos,

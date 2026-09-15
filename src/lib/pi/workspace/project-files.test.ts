@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { isGitRepository, listProjectFiles } from "@/lib/pi/project-files";
+import { isGitRepository, listProjectFiles } from "@/lib/pi/workspace/project-files";
 
 let repo: string;
 let plain: string;

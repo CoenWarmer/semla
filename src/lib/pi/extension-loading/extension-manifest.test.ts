@@ -29,7 +29,7 @@ import {
   resolveExtensionLoadOrder,
   type ExtensionSpec,
 } from "./extension-manifest.ts";
-import { PI_TOOLS } from "./runtime-config.ts";
+import { PI_TOOLS } from "../runtime/runtime-config.ts";
 
 /** Path-loaded by default; pass `source` for a factory. */
 const spec = (over: Partial<ExtensionSpec> & Pick<ExtensionSpec, "id">) =>

@@ -4,11 +4,11 @@ import {
   listDirectory,
   resolveFileRoot,
   resolveInsideRoot,
-} from "@/lib/pi/file-browser";
+} from "@/lib/pi/workspace/file-browser";
 
 export const runtime = "nodejs";
 
-export type { FileEntry } from "@/lib/pi/file-browser";
+export type { FileEntry } from "@/lib/pi/workspace/file-browser";
 
 /**
  * List one directory of the session's workspace.

@@ -19,7 +19,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { walkFiles, type WalkResult } from "@/lib/pi/file-walk";
+import { walkFiles, type WalkResult } from "@/lib/pi/workspace/file-walk";
 
 /**
  * Called with each file's path *relative to the project directory*, and its

@@ -1,8 +1,8 @@
 import { access, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { git } from "./git/git";
-import { PI_WORKSPACE_ROOT } from "./runtime-config";
+import { git } from "../git/git";
+import { PI_WORKSPACE_ROOT } from "../runtime/runtime-config";
 
 /**
  * Cap on concurrent `git` subprocesses. The workspace root routinely holds

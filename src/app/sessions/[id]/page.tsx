@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/api-helpers";
 import { createClient } from "@/lib/supabase/server";
 import { ClientSessionComponent } from "@/components/client-session-component";
-import { getPiRuntimeConfig } from "@/lib/pi/runtime-config";
+import { getPiRuntimeConfig } from "@/lib/pi/runtime/runtime-config";
 import { buildSessionMessages } from "@/lib/pi/session/session-messages-payload";
 import { readSessionMeta } from "@/lib/pi/session/session-meta";
 import { notFound } from "next/navigation";

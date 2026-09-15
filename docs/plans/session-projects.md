@@ -38,9 +38,9 @@ because there isn't one, and introducing one would be a different feature.
 | Consumer | Use |
 |---|---|
 | `src/app/api/sessions/[id]/git/route.ts:27,57` | branch + divergence panel, checkout, merge |
-| `src/lib/pi/prompts.ts:98-105` | "The active project for this session is X" in the system prompt |
+| `src/lib/pi/prompt/prompts.ts:98-105` | "The active project for this session is X" in the system prompt |
 | `src/lib/pi/session/session-service.ts:474` | `setSessionRepo()` — wiki page attribution |
-| `src/lib/pi/file-browser.ts:38-48` | `basePath` — where the file tree opens |
+| `src/lib/pi/workspace/file-browser.ts:38-48` | `basePath` — where the file tree opens |
 | `src/app/api/sessions/route.ts:20-38` | set at creation from a project card |
 
 `sessionProjectPath()` in `src/lib/pi/session/session-project.ts` — extracted out of the
@@ -102,7 +102,7 @@ workspace root (`semla`, `nested/thing`). Three reasons:
    trouble before.
 2. The file-browser work established workspace-relative paths as *the*
    coordinate system for the file API, with the rationale written into
-   `src/lib/pi/file-browser.ts`. A second coordinate system for the same
+   `src/lib/pi/workspace/file-browser.ts`. A second coordinate system for the same
    directories is the thing that module exists to avoid.
 3. `projectPrefix()` already decides a project outside the workspace root is
    unaddressable and reports it absent. The codebase has taken this position.
@@ -234,7 +234,7 @@ confirmed against the typebox schemas in
 is "changes files", and attaching on reads would also make the file browser
 attach a project every time someone opens a file in it.
 
-Resolution, in a new `src/lib/pi/project-of-path.ts`:
+Resolution, in a new `src/lib/pi/workspace/project-of-path.ts`:
 
 1. Absolutise against `PI_WORKSPACE_ROOT` (the agent's cwd).
 2. Reject anything that escapes the root.

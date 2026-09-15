@@ -6,7 +6,7 @@
  * all three of which emit or persist the same snapshot shape.
  */
 
-import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {

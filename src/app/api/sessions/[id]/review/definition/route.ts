@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { definitionAt } from "@/lib/code-map/definition";
-import { resolveFileRoot, toRelativePath } from "@/lib/pi/file-browser";
+import { resolveFileRoot, toRelativePath } from "@/lib/pi/workspace/file-browser";
 import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";

@@ -19,7 +19,7 @@
 
 import { readSessionEntries } from "@/lib/pi/session/session-file";
 import type { SessionMeta } from "@/lib/pi/session/session-meta";
-import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import { buildTranscript } from "@/lib/pi/transcript";
 
 export type ToolUsageBucket = {

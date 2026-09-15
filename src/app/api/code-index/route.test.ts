@@ -17,7 +17,7 @@ vi.mock("@/lib/api-helpers", async () => ({
 }));
 
 const getWorkspaceProjects = vi.fn();
-vi.mock("@/lib/pi/workspace", () => ({
+vi.mock("@/lib/pi/workspace/workspace", () => ({
   getWorkspaceProjects: () => getWorkspaceProjects(),
 }));
 

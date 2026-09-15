@@ -23,7 +23,7 @@ const {
   setSessionRepos: vi.fn(),
 }));
 
-vi.mock("@/lib/pi/background-sessions", () => ({ retainBackgroundSession }));
+vi.mock("@/lib/pi/background/background-sessions", () => ({ retainBackgroundSession }));
 vi.mock("@/lib/pi/session/session-persistence", () => ({
   persistBackgroundWorkflowStart,
   persistWorkflowSnapshot,
@@ -43,7 +43,7 @@ import { createTurnEventRouter } from "./session-event-router.ts";
 import {
   createTurnBackgroundState,
   type TurnBackgroundState,
-} from "../turn-background-state.ts";
+} from "../background/turn-background-state.ts";
 
 const debugStub = () =>
   new Proxy({} as SessionDebugWriter, { get: () => () => {} });

@@ -36,7 +36,7 @@ import {
   compactAgentHistory,
   type AgentHistoryEntry,
 } from "../extensions/dynamic-workflows/src/agent-history.ts";
-import { PI_SESSION_DIR } from "../runtime-config";
+import { PI_SESSION_DIR } from "../runtime/runtime-config";
 
 /**
  * Bounds for a transcript rendered as agent detail.

@@ -15,7 +15,7 @@
 import { stat } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
-import { walkFiles } from "@/lib/pi/file-walk";
+import { walkFiles } from "@/lib/pi/workspace/file-walk";
 
 import { languageOf, type IndexLanguage } from "./languages";
 import type { SkipReport } from "./types";

@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { waitForAnswer, type AskUserAnswers } from "../ask-user-bridge";
+import { waitForAnswer, type AskUserAnswers } from "../bridge/ask-user-bridge";
 
 const OptionSchema = Type.Object({
   value: Type.String(),

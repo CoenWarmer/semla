@@ -2,7 +2,7 @@ import {
   readOrInitSlot,
   WORKFLOW_MANAGER_REGISTRY,
   type WorkflowSnapshotSource,
-} from "@/lib/pi/extension-contract";
+} from "@/lib/pi/extension-loading/extension-contract";
 
 // The workflow manager runs in a different module scope (loaded by
 // pi-coding-agent via import()), so the registry lives in a globalThis slot

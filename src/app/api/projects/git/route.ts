@@ -7,7 +7,7 @@ import {
   getWorkspaceGitStatus,
   isWorkspaceProject,
   refreshProject,
-} from "@/lib/pi/workspace-git";
+} from "@/lib/pi/workspace/workspace-git";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

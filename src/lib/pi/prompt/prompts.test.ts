@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildMemoryContextBlock } from "@/lib/pi/prompts";
+import { buildMemoryContextBlock } from "@/lib/pi/prompt/prompts";
 
 describe("buildMemoryContextBlock", () => {
   it("names the anchor as the active project", () => {

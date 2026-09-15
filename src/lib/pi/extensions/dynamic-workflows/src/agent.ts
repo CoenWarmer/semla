@@ -28,7 +28,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
-import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
+import { ensurePiAgentDirIsolated } from "../../../runtime/agent-dir.ts";
 import { recordStopReason } from "./agent-context-signals.ts";
 import { attachRunObservers } from "./agent-observers.ts";
 import {

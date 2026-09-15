@@ -18,7 +18,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PI_SESSION_DIR } from "@/lib/pi/runtime-config";
+import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import type { SessionUsageRecord } from "@/lib/session-usage";
 
 /**

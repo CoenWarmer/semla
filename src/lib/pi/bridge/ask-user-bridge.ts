@@ -7,8 +7,8 @@
  * question, the shape of an answer, and the tool's name for error messages.
  */
 
-import { ASK_USER_RENDEZVOUS } from "./extension-contract";
-import { createSessionRendezvous } from "./session/session-rendezvous";
+import { ASK_USER_RENDEZVOUS } from "../extension-loading/extension-contract";
+import { createSessionRendezvous } from "../session/session-rendezvous";
 
 export type AskUserOption = {
   value: string;

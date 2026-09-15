@@ -39,7 +39,7 @@ test, per the file-size rule in AGENTS.md.
 
 ### 2.1 Enumerate — `enumerate.ts`
 
-Reuse `src/lib/pi/file-walk.ts` (`walkFiles`, `IGNORED_DIRECTORIES`) rather than
+Reuse `src/lib/pi/workspace/file-walk.ts` (`walkFiles`, `IGNORED_DIRECTORIES`) rather than
 walking again. Filter to extensions with a tree-sitter grammar, plus Markdown.
 Skip files over a size ceiling and vendored trees; report both counts rather
 than dropping them silently — see §5.

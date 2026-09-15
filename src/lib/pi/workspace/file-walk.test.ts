@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { walkFiles } from "@/lib/pi/file-walk";
+import { walkFiles } from "@/lib/pi/workspace/file-walk";
 
 let root: string;
 

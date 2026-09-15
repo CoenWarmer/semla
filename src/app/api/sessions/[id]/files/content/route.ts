@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { NextResponse } from "next/server";
 
-import { resolveFileRoot, resolveInsideRoot } from "@/lib/pi/file-browser";
+import { resolveFileRoot, resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
 
 export const runtime = "nodejs";
 

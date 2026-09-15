@@ -25,7 +25,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
+import { ensurePiAgentDirIsolated } from "../../../runtime/agent-dir.ts";
 import { AGENTS_DIR } from "./config.ts";
 
 export interface AgentDefinition {

@@ -40,8 +40,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensurePiAgentDirIsolated, PI_AGENT_DIR } from "@/lib/pi/agent-dir";
-import { MCP_PACKAGE_DIR } from "@/lib/pi/runtime-config";
+import { ensurePiAgentDirIsolated, PI_AGENT_DIR } from "@/lib/pi/runtime/agent-dir";
+import { MCP_PACKAGE_DIR } from "@/lib/pi/runtime/runtime-config";
 
 /** Environment variable pi-mcp-adapter reads to select its config mode. */
 export const MCP_CONFIG_MODE_ENV = "PI_MCP_CONFIG_MODE";

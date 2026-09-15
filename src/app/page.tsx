@@ -1,4 +1,4 @@
-import { getWorkspaceProjects } from "@/lib/pi/workspace";
+import { getWorkspaceProjects } from "@/lib/pi/workspace/workspace";
 import { ProjectsGrid } from "@/components/home/projects-grid";
 
 export const dynamic = "force-dynamic";

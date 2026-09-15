@@ -11,8 +11,8 @@
  * Split out of runPiPrompt, which armed it from its own `finally` block.
  */
 
-import { releaseBackgroundSession } from "@/lib/pi/background-sessions";
-import { releaseBackgroundContinuation } from "@/lib/pi/bg-continuation-registry";
+import { releaseBackgroundSession } from "@/lib/pi/background/background-sessions";
+import { releaseBackgroundContinuation } from "@/lib/pi/background/bg-continuation-registry";
 import { queueEntries } from "@/lib/pi/entry-persist-queue";
 import type { SessionDebugWriter } from "@/lib/pi/debug-writer";
 import { asWorkflowSnapshot, liveSnapshot } from "@/lib/pi/session/session-events";

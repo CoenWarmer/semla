@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import type { FeatureSpecAnswers } from "@/lib/pi/feature-spec-bridge";
+import type { FeatureSpecAnswers } from "@/lib/pi/bridge/feature-spec-bridge";
 
 interface FeatureSpecDialogProps {
   sessionId: string;

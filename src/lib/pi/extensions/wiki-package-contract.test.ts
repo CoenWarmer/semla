@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import {
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
-} from "../extension-contract.ts";
+} from "../extension-loading/extension-contract.ts";
 import { WIKI_PACKAGE_DEEP_IMPORTS } from "./wiki-ingest-bridge.ts";
 import { WIKI_SUBAGENT_DEEP_IMPORTS } from "./wiki-subagent-tools.ts";
 

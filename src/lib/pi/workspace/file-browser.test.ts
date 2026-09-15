@@ -8,7 +8,7 @@ import {
   listDirectory,
   resolveInsideRoot,
   toRelativePath,
-} from "@/lib/pi/file-browser";
+} from "@/lib/pi/workspace/file-browser";
 
 const ROOT = "/Users/x/Dev";
 

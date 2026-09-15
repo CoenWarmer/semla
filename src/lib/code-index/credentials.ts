@@ -17,7 +17,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
+import { PI_AGENT_DIR } from "@/lib/pi/runtime/agent-dir";
 
 import {
   createOpenRouterEmbedder,

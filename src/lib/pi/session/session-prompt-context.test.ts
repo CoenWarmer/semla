@@ -10,10 +10,10 @@ vi.mock("@/lib/pi/session/session-meta", () => ({
   readSessionMeta: readSessionMetaMock,
   listSessionMeta: () => [],
 }));
-vi.mock("@/lib/pi/prompts", () => ({
+vi.mock("@/lib/pi/prompt/prompts", () => ({
   buildMemoryContextBlock: () => "MEMORY_BLOCK",
 }));
-vi.mock("@/lib/pi/system-prompt", () => ({
+vi.mock("@/lib/pi/prompt/system-prompt", () => ({
   DEFAULT_SYSTEM_PROMPT: "DEFAULT_PROMPT",
 }));
 

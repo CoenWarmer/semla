@@ -25,9 +25,9 @@ import { join } from "node:path";
 
 import { stampRepoFrontmatter } from "./wiki-frontmatter";
 import { withVaultLock } from "./wiki-vault-lock";
-// Relative, not "@/lib/pi/runtime-config": the "@/" alias is a Next.js
+// Relative, not "@/lib/pi/runtime/runtime-config": the "@/" alias is a Next.js
 // convention that jiti — the loader for path extensions — does not resolve.
-import { WIKI_PACKAGE_DIR } from "../runtime-config";
+import { WIKI_PACKAGE_DIR } from "../runtime/runtime-config";
 
 /** Toolset tag a workflow passes to reach these tools. */
 export const WIKI_SUBAGENT_TOOLSET = "wiki";

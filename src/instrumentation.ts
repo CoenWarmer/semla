@@ -11,7 +11,7 @@ export async function register() {
   // Also invoked for the edge runtime, which has no filesystem.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  const { isolatePiAgentDir } = await import("@/lib/pi/agent-dir");
+  const { isolatePiAgentDir } = await import("@/lib/pi/runtime/agent-dir");
   const { dir, seeded } = isolatePiAgentDir();
 
   if (seeded.length > 0) {
@@ -24,7 +24,7 @@ export async function register() {
   // Pins pi-mcp-adapter to the one file inside `dir` above, rather than the
   // six-source precedence chain it otherwise merges — two of which are
   // host-global and would outrank anything set here. See mcp-config.ts.
-  const { isolateMcpConfigMode } = await import("@/lib/pi/mcp-config");
+  const { isolateMcpConfigMode } = await import("@/lib/pi/runtime/mcp-config");
   const mcpConfig = isolateMcpConfigMode();
   console.log(`[pi] mcp config mode: ${mcpConfig.mode} (${mcpConfig.path})`);
 
@@ -32,7 +32,7 @@ export async function register() {
   // quietly to structural evidence when one is missing. Do it before any session
   // starts, and say what it found, so a thin code answer is traceable to here.
   const { describeLanguageServers, ensureLanguageServersOnPath } = await import(
-    "@/lib/pi/language-servers"
+    "@/lib/pi/runtime/language-servers"
   );
   const languageServers = ensureLanguageServersOnPath();
   const languageServerLine = describeLanguageServers(languageServers);
@@ -42,7 +42,7 @@ export async function register() {
   // A vault inside the workspace outranks WIKI_HOME, so orient would quietly
   // write somewhere else. Reported at boot rather than discovered later from
   // pages that went missing.
-  const { PI_WORKSPACE_ROOT, WIKI_HOME } = await import("@/lib/pi/runtime-config");
+  const { PI_WORKSPACE_ROOT, WIKI_HOME } = await import("@/lib/pi/runtime/runtime-config");
   const { describeShadowingVaults, findShadowingVaults } = await import(
     "@/lib/pi/wiki/wiki-vault-location"
   );
@@ -53,7 +53,7 @@ export async function register() {
 
   // The seeded catalog is a snapshot; refresh it once now so new provider
   // models show up, rather than on every ModelRuntime.create.
-  const { refreshModelCatalog } = await import("@/lib/pi/model-catalog");
+  const { refreshModelCatalog } = await import("@/lib/pi/runtime/model-catalog");
   const catalog = await refreshModelCatalog();
   console.log(
     catalog.refreshed

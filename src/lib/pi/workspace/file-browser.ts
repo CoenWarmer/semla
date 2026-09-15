@@ -12,7 +12,7 @@
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { sessionProjects } from "@/lib/pi/session/session-project";
 import { createClient } from "@/lib/supabase/server";
 

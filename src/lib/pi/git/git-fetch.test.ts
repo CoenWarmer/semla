@@ -4,7 +4,7 @@ const gitMock = vi.hoisted(() => vi.fn());
 let interval = 60_000;
 
 vi.mock("./git", () => ({ git: gitMock }));
-vi.mock("../runtime-config", () => ({
+vi.mock("../runtime/runtime-config", () => ({
   get GIT_FETCH_INTERVAL_MS() {
     return interval;
   },

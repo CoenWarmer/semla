@@ -46,7 +46,7 @@ import {
   writeSlot,
   type WikiIngestDispatcher,
   type WikiReindexDispatcher,
-} from "../extension-contract";
+} from "../extension-loading/extension-contract";
 import {
   collectWikiSubagentTools,
   wikiToolsetKey,
@@ -58,12 +58,12 @@ import {
   groundingReport,
   type GroundingReport,
 } from "./synthesis-grounding";
-// Relative, not "@/lib/pi/runtime-config": the "@/" alias is a Next.js
+// Relative, not "@/lib/pi/runtime/runtime-config": the "@/" alias is a Next.js
 // convention that jiti — the loader for path extensions — does not resolve.
-import { WIKI_PACKAGE_DIR } from "../runtime-config";
+import { WIKI_PACKAGE_DIR } from "../runtime/runtime-config";
 
 // WIKI_HOME: read from env (set by runtime-config.ts before any session starts).
-// Cannot import from "@/lib/pi/runtime-config" here because the "@/" alias is a
+// Cannot import from "@/lib/pi/runtime/runtime-config" here because the "@/" alias is a
 // Next.js convention that jiti (the pi extension loader) does not resolve.
 const WIKI_HOME = process.env.WIKI_HOME ?? join(process.cwd(), ".semla-wiki");
 

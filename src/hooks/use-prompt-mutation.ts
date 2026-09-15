@@ -38,7 +38,7 @@ import {
 import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
-import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 // No payload type import: feature-spec-request carries none. See
 // feature-spec-bridge.ts and session-events.ts.
 import type { FileAccess } from "@/lib/pi/file-access/access-types";

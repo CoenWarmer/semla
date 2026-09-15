@@ -19,7 +19,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "./system-prompt";
 describe("system-prompt.ts", () => {
   it("imports nothing", () => {
     const source = readFileSync(
-      join(process.cwd(), "src/lib/pi/system-prompt.ts"),
+      join(process.cwd(), "src/lib/pi/prompt/system-prompt.ts"),
       "utf-8",
     );
 

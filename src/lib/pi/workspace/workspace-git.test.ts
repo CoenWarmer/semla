@@ -5,7 +5,7 @@ const readGitStatusMock = vi.hoisted(() => vi.fn());
 const fetchCanonicalMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./workspace", () => ({ getWorkspaceProjects: projectsMock }));
-vi.mock("./git/git-status", () => ({
+vi.mock("../git/git-status", () => ({
   readGitStatus: readGitStatusMock,
   fetchCanonical: fetchCanonicalMock,
 }));

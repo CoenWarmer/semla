@@ -1,4 +1,4 @@
-import { PI_AGENT_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_AGENT_DIR, PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import {
   DefaultPackageManager,
   SettingsManager,

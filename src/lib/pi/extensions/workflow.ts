@@ -54,7 +54,7 @@ import {
   publishSessionWorkflowManager,
   readSlot,
   WORKFLOW_EXTRA_TOOLSETS,
-} from "../extension-contract";
+} from "../extension-loading/extension-contract";
 
 /**
  * Bound for the read-only session-header probe (first line only). Independent of

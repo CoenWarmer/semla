@@ -27,7 +27,7 @@ import {
   ModelRegistry,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { ensurePiAgentDirIsolated } from "../../../agent-dir.ts";
+import { ensurePiAgentDirIsolated } from "../../../runtime/agent-dir.ts";
 import { WorkflowError, WorkflowErrorCode } from "./errors.ts";
 import {
   canonicalModelSpec,

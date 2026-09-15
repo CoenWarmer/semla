@@ -13,7 +13,7 @@ import {
 } from "@/components/ai-elements/file-tree";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
-import type { FileEntry } from "@/lib/pi/file-browser";
+import type { FileEntry } from "@/lib/pi/workspace/file-browser";
 
 export type { FileEntry };
 

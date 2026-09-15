@@ -15,7 +15,7 @@ import {
   readSlot,
   slotName,
   writeSlot,
-} from "@/lib/pi/extension-contract";
+} from "@/lib/pi/extension-loading/extension-contract";
 import {
   assertExtensionPathsExist,
   assertManifestIsCoherent,
@@ -24,8 +24,8 @@ import {
   extensionEntryId,
   resolveExtensionLoadOrder,
   type ExtensionLoadReport,
-} from "@/lib/pi/extension-manifest";
-import { getMcpConfigSummary, type McpConfigSummary } from "@/lib/pi/mcp-config";
+} from "@/lib/pi/extension-loading/extension-manifest";
+import { getMcpConfigSummary, type McpConfigSummary } from "@/lib/pi/runtime/mcp-config";
 
 export type ExtensionHealth = {
   contractVersion: number;

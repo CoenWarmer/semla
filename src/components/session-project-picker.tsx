@@ -18,7 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useSessionProjectMutation } from "@/hooks/use-session-projects";
-import type { WorkspaceProject } from "@/lib/pi/workspace";
+import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
 import { cn } from "@/lib/utils";
 
 /**

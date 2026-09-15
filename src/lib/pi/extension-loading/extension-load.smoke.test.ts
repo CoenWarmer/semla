@@ -76,7 +76,7 @@ beforeAll(async () => {
     extensionPathsInLoadOrder,
   } = await import("./extension-manifest.ts");
   const contract = await import("./extension-contract.ts");
-  const { WORKFLOW_SKILLS_PATH } = await import("./runtime-config.ts");
+  const { WORKFLOW_SKILLS_PATH } = await import("../runtime/runtime-config.ts");
 
   const runtime = await ModelRuntime.create({ refreshOnCreate: false });
   const available = await runtime.getAvailable().catch(() => []);

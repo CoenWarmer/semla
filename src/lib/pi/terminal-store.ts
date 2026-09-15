@@ -23,7 +23,7 @@ import { existsSync } from "node:fs";
 
 import type { IPty } from "node-pty";
 
-import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime-config";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 
 /** Scrollback held per terminal. Enough to reattach onto, not a transcript. */
 const MAX_BUFFER_CHARS = 200_000;

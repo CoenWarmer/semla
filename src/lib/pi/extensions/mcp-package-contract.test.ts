@@ -23,8 +23,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { EXTENSION_MANIFEST } from "../extension-manifest.ts";
-import { MCP_EXTENSION_PATH, MCP_PACKAGE_DIR } from "../runtime-config.ts";
+import { EXTENSION_MANIFEST } from "../extension-loading/extension-manifest.ts";
+import { MCP_EXTENSION_PATH, MCP_PACKAGE_DIR } from "../runtime/runtime-config.ts";
 
 const PACKAGE = "pi-mcp-adapter";
 

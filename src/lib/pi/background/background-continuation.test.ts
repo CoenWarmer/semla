@@ -25,8 +25,8 @@ const { finalizeBackgroundRun, releaseBackgroundSession, readWorkflowRun } =
     readWorkflowRun: vi.fn(),
   }));
 
-vi.mock("@/lib/pi/background-sessions", () => ({ releaseBackgroundSession }));
-vi.mock("@/lib/pi/bg-continuation-registry", () => ({
+vi.mock("@/lib/pi/background/background-sessions", () => ({ releaseBackgroundSession }));
+vi.mock("@/lib/pi/background/bg-continuation-registry", () => ({
   releaseBackgroundContinuation: vi.fn(),
 }));
 vi.mock("@/lib/pi/entry-persist-queue", () => ({ queueEntries: vi.fn() }));
@@ -47,7 +47,7 @@ vi.mock("@/lib/pi/workflow/workflow-run-reader", () => ({
   readWorkflowRun,
 }));
 
-import type { SessionDebugWriter } from "./debug-writer.ts";
+import type { SessionDebugWriter } from "../debug-writer.ts";
 import {
   runBackgroundContinuation,
   type ContinuableSession,

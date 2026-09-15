@@ -1,4 +1,4 @@
-import { getPiRuntimeConfig } from "@/lib/pi/runtime-config";
+import { getPiRuntimeConfig } from "@/lib/pi/runtime/runtime-config";
 import { NewSessionClient } from "@/components/session/new-session-client";
 
 /**

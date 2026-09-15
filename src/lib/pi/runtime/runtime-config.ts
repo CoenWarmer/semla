@@ -1,6 +1,6 @@
 import { isAbsolute, join, relative, sep } from "node:path";
 
-import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
+import { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const hostDevelopmentEnabled =
@@ -187,8 +187,8 @@ export const PI_SESSION_DIR =
 // credentials agree rather than reading from two different places. It holds
 // only auth.json and models-store.json — never settings.json or npm/, which is
 // what would bring the host's packages back.
-export { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
-export { PI_AGENT_DIR } from "@/lib/pi/agent-dir";
+export { ensurePiAgentDirIsolated } from "@/lib/pi/runtime/agent-dir";
+export { PI_AGENT_DIR } from "@/lib/pi/runtime/agent-dir";
 export const PI_TOOLS = [
   "read",
   "bash",

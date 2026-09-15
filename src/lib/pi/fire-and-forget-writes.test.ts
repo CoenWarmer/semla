@@ -34,7 +34,7 @@ const CALLERS = [
   "src/app/api/sessions/[id]/stream/route.ts",
   "src/lib/pi/entry-persist-queue.ts",
   "src/app/api/sessions/[id]/workflows/route.ts",
-  "src/lib/pi/background-continuation.ts",
+  "src/lib/pi/background/background-continuation.ts",
   "src/lib/pi/session/session-event-router.ts",
   "src/lib/pi/session/session-service.ts",
 ] as const;
