@@ -28,6 +28,8 @@ import { useRouter } from "next/navigation";
 import type { PromptEditorModel } from "./prompt-editor";
 import { AskUserDialog } from "./ask-user-dialog";
 import { AskUserRecord } from "./ask-user-record";
+import { FeatureSpecDialog } from "./feature-spec-dialog";
+import { FeatureSpecRecord } from "./feature-spec-record";
 import { CopyMessageButton } from "./message-copy";
 import { EditableUserMessage } from "./message-edit";
 import { ForkMessageButton } from "./message-fork";
@@ -64,6 +66,7 @@ export function SessionConversation({
   onSelectionChange,
   onStop,
   onSubmit,
+  pendingFeatureSpec,
   pendingQuestion,
   sessionId,
   sessionMissing,
@@ -98,6 +101,7 @@ export function SessionConversation({
     model: PromptEditorModel,
     tools: string[],
   ) => Promise<void>;
+  pendingFeatureSpec: boolean;
   pendingQuestion: AskUserPayload | null;
   sessionId: string;
   sessionMissing: boolean;
@@ -126,6 +130,13 @@ export function SessionConversation({
                   cancelled={item.cancelled}
                   key={item.id}
                   pairs={item.pairs}
+                  raw={item.raw}
+                />
+              ) : item.kind === "feature-spec" ? (
+                <FeatureSpecRecord
+                  cancelled={item.cancelled}
+                  fields={item.fields}
+                  key={item.id}
                   raw={item.raw}
                 />
               ) : item.message.role === "user" ? (
@@ -231,6 +242,11 @@ export function SessionConversation({
             sessionId={sessionId}
             onDismiss={() => {}}
           />
+        </div>
+      )}
+      {pendingFeatureSpec && (
+        <div className="shrink-0">
+          <FeatureSpecDialog sessionId={sessionId} onDismiss={() => {}} />
         </div>
       )}
       {!forkedAt && viewingLeafId && (

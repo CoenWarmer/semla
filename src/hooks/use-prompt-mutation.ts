@@ -39,6 +39,8 @@ import { startsWikiActivity } from "@/lib/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { AskUserPayload } from "@/lib/pi/ask-user-bridge";
+// No payload type import: feature-spec-request carries none. See
+// feature-spec-bridge.ts and session-events.ts.
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
   sessionActiveToolKey,
@@ -93,6 +95,7 @@ type PiStreamEvent =
   | { map: CodeMap; type: "code-map" }
   | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
+  | { type: "feature-spec-request" }
   | { title: string; type: "title-updated" }
   /** See session-events.ts — the wire shape this mirrors. */
   | { type: "session-status"; isRunning: boolean }
@@ -118,6 +121,7 @@ type StreamHandlers = {
   onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
   onAskUser: (payload: AskUserPayload) => void;
+  onFeatureSpecRequest: () => void;
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
   onSpans: (spans: readonly RecordedSpan[]) => void;
   onCodeMap: (map: CodeMap) => void;
@@ -199,6 +203,8 @@ const readPiStream = async (
         handlers.onToolEnd(piEvent);
       } else if (piEvent.type === "ask-user-question") {
         handlers.onAskUser(piEvent.payload);
+      } else if (piEvent.type === "feature-spec-request") {
+        handlers.onFeatureSpecRequest();
       } else if (piEvent.type === "spans") {
         handlers.onSpans(piEvent.spans);
       } else if (piEvent.type === "workflow-snapshot") {
@@ -301,6 +307,7 @@ export const usePromptMutation = (
   // user asks about one thing, then talks about it for several turns.
   const [codeMap, setCodeMap] = useState<CodeMap>();
   const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
+  const [pendingFeatureSpec, setPendingFeatureSpec] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   // Latches true the first time wiki_init or wiki_capture_source is seen; never
   // resets to false for the lifetime of the hook (i.e. the session page).
@@ -428,8 +435,10 @@ export const usePromptMutation = (
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
         );
         if (event.toolName === "ask_user") setPendingQuestion(null);
+        if (event.toolName === "capture_feature_spec") setPendingFeatureSpec(false);
       },
       onAskUser: (payload) => setPendingQuestion(payload),
+      onFeatureSpecRequest: () => setPendingFeatureSpec(true),
       onWorkflowSnapshot: (snapshot) => {
         setWorkflowSnapshot(snapshot);
         queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), snapshot);
@@ -594,6 +603,7 @@ export const usePromptMutation = (
         setActiveTool(undefined);
         queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
         setPendingQuestion(null);
+        setPendingFeatureSpec(false);
         await handOffToTranscript();
       }
     };
@@ -714,6 +724,7 @@ export const usePromptMutation = (
       setWorkflowSnapshot(undefined);
       queryClient.setQueryData(sessionWorkflowSnapshotKey(sessionId), null);
       setPendingQuestion(null);
+      setPendingFeatureSpec(false);
       await queryClient.cancelQueries({
         queryKey: messagesKey,
       });
@@ -768,6 +779,7 @@ export const usePromptMutation = (
       setActiveTool(undefined);
       queryClient.setQueryData(sessionActiveToolKey(sessionId), null);
       setPendingQuestion(null);
+      setPendingFeatureSpec(false);
       trace("onSettled:invalidate-begin");
       await handOffToTranscript();
       trace("onSettled:invalidate-done");
@@ -876,6 +888,7 @@ export const usePromptMutation = (
     liveRounds,
     liveToolCalls,
     mutation,
+    pendingFeatureSpec,
     pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */
     serverTitle,

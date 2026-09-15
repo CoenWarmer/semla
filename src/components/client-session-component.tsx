@@ -106,6 +106,7 @@ export function ClientSessionComponent({
     liveRounds,
     liveToolCalls,
     mutation: promptMutation,
+    pendingFeatureSpec,
     pendingQuestion,
     serverIsRunning,
     serverTitle,
@@ -181,7 +182,7 @@ export function ClientSessionComponent({
 
   // Plays question.mp3 / done.mp3 when this session is not the tab in focus.
   useSessionSoundCue({
-    hasPendingQuestion: pendingQuestion !== null,
+    hasPendingQuestion: pendingQuestion !== null || pendingFeatureSpec,
     isActive,
   });
   // Paused mid-turn: the server has no rows for a turn until it ends, so an
@@ -771,6 +772,7 @@ export function ClientSessionComponent({
       onSelectionChange={handleSelectionChange}
       onStop={handleStop}
       onSubmit={handleSubmit}
+      pendingFeatureSpec={pendingFeatureSpec}
       pendingQuestion={pendingQuestion}
       sessionId={sessionId}
       sessionMissing={sessionMissing}

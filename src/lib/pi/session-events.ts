@@ -74,6 +74,12 @@ export type PiSessionEvent =
    */
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { payload: AskUserPayload; type: "ask-user-question" }
+  /**
+   * The `capture_feature_spec` tool is waiting for the reader to fill in and
+   * submit the form. No payload: the fields are fixed, so there is nothing to
+   * send beyond the fact that the form should open. See feature-spec-bridge.ts.
+   */
+  | { type: "feature-spec-request" }
   | { message: string; type: "error" }
   | { title: string; type: "title-updated" }
   /**

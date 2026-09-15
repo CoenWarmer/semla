@@ -18,6 +18,7 @@ import { mkdir } from "node:fs/promises";
 
 import { ensurePiAgentDirIsolated } from "@/lib/pi/agent-dir";
 import { registerNotifier } from "@/lib/pi/ask-user-bridge";
+import { registerFeatureSpecNotifier } from "@/lib/pi/feature-spec-bridge";
 import { assertPlacementFileWithinSessionBudget } from "@/lib/pi/extensions/architecture-awareness/placement-prompt";
 import { loadArchitectureAwarenessSettings } from "@/lib/pi/extensions/architecture-awareness/settings";
 import { runBackgroundContinuation } from "@/lib/pi/background-continuation";
@@ -565,6 +566,10 @@ export const runPiPrompt = async ({
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
   });
+  const unregisterFeatureSpecNotifier = registerFeatureSpecNotifier(
+    semlaSessionId,
+    () => emit({ type: "feature-spec-request" }),
+  );
 
   // Validate before Pi ever sees the paths: a missing entry file or an
   // inconsistent manifest fails here with a fix attached, rather than becoming
@@ -822,6 +827,7 @@ export const runPiPrompt = async ({
   } finally {
     unsubscribe();
     unregisterNotifier();
+    unregisterFeatureSpecNotifier();
     releaseLiveSession(semlaSessionId, session);
     clearSessionRepo(piRuntimeSessionId);
     // The recorder the manager holds closes over the sink, so a background run

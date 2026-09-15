@@ -17,15 +17,21 @@
  *
  * Turns that do have text are left exactly as they were.
  *
- * One tool is exempt from the fold. An `ask_user` call is not the agent's own
- * work — it is a question the reader answered, and the answers are part of the
- * conversation in the way a message is. Burying that behind an unlabelled dot
- * loses the record of what was actually agreed, so it is lifted out of the run
- * as its own item and rendered beside the messages. See ask-user-record.ts.
+ * Two tools are exempt from the fold. An `ask_user` call is not the agent's
+ * own work — it is a question the reader answered, and the answers are part
+ * of the conversation in the way a message is. `capture_feature_spec` is the
+ * same shape: a form the reader filled in, not agent work. Burying either
+ * behind an unlabelled dot loses the record of what was actually agreed, so
+ * both are lifted out of the run as their own items and rendered beside the
+ * messages. See ask-user-record.ts and feature-spec-record.ts.
  */
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
 import { parseAskUserResult, type AskUserPair } from "@/lib/ask-user-record";
+import {
+  parseFeatureSpecResult,
+  type FeatureSpecField,
+} from "@/lib/feature-spec-record";
 
 export type StepItem =
   | { kind: "thinking"; id: string; messageId: string; text: string }
@@ -43,10 +49,22 @@ export type ConversationItem =
       cancelled: boolean;
       /** Result text that did not parse into pairs, shown verbatim. */
       raw?: string;
+    }
+  | {
+      kind: "feature-spec";
+      id: string;
+      /** Empty while the form is still open — nothing submitted yet. */
+      fields: FeatureSpecField[];
+      /** True once the tool returned an error, i.e. it was cancelled. */
+      cancelled: boolean;
+      /** Result text that did not parse into fields, shown verbatim. */
+      raw?: string;
     };
 
 /** The tool whose result is a record of the reader's answers, not agent work. */
 const ASK_USER_TOOL = "ask_user";
+/** The tool whose result is the reader's submitted feature spec, not agent work. */
+const FEATURE_SPEC_TOOL = "capture_feature_spec";
 
 /**
  * A call is still open when no result has arrived. Mid-turn that is the whole
@@ -70,6 +88,19 @@ const askItem = (call: SessionToolCall): ConversationItem => {
     kind: "ask",
     pairs,
     ...(pairs.length === 0 && raw?.trim() ? { raw } : {}),
+  };
+};
+
+const featureSpecItem = (call: SessionToolCall): ConversationItem => {
+  const fields = call.isError ? [] : parseFeatureSpecResult(call.resultText);
+  const raw = call.errorText ?? call.resultText;
+
+  return {
+    cancelled: call.isError === true,
+    fields,
+    id: `feature-spec:${call.messageId}:${call.id}`,
+    kind: "feature-spec",
+    ...(fields.length === 0 && raw?.trim() ? { raw } : {}),
   };
 };
 
@@ -101,18 +132,22 @@ export function groupConversation(
   for (const message of messages) {
     const calls = callsByMessage.get(message.id) ?? [];
 
-    // An ask is lifted out whether or not its turn said anything. A turn that
-    // introduces the question ('a few things determine the design:') does have
-    // text, so it never reaches the silent-fold path below — which is how the
-    // first version of this rendered nothing for exactly the calls that matter
-    // most, the ones the agent bothered to preface.
+    // An ask (or a feature-spec form) is lifted out whether or not its turn
+    // said anything. A turn that introduces the question ('a few things
+    // determine the design:') does have text, so it never reaches the
+    // silent-fold path below — which is how the first version of this
+    // rendered nothing for exactly the calls that matter most, the ones the
+    // agent bothered to preface.
     const asks = calls
       .filter((call) => call.name === ASK_USER_TOOL && !isPending(call))
       .map(askItem);
+    const featureSpecs = calls
+      .filter((call) => call.name === FEATURE_SPEC_TOOL && !isPending(call))
+      .map(featureSpecItem);
 
     if (!isSilent(message)) {
       items.push({ kind: "message", message });
-      items.push(...asks);
+      items.push(...asks, ...featureSpecs);
       continue;
     }
 
@@ -127,7 +162,7 @@ export function groupConversation(
       });
     }
     for (const call of calls) {
-      if (call.name === ASK_USER_TOOL) continue;
+      if (call.name === ASK_USER_TOOL || call.name === FEATURE_SPEC_TOOL) continue;
       steps.push({
         call,
         id: `${message.id}:${call.id}`,
@@ -145,9 +180,9 @@ export function groupConversation(
     }
 
     // After the strip: the reasoning and calls that led to the question read as
-    // preceding it, and an ask ends the run so the next silent turn starts a
-    // new strip rather than reaching back across the question.
-    items.push(...asks);
+    // preceding it, and an ask/feature-spec ends the run so the next silent
+    // turn starts a new strip rather than reaching back across it.
+    items.push(...asks, ...featureSpecs);
   }
 
   return items;

@@ -38,6 +38,7 @@ import {
 
 // Semla's own extensions, imported rather than pointed at. See ExtensionSource.
 import askUserExtension from "@/lib/pi/extensions/ask-user";
+import featureSpecExtension from "@/lib/pi/extensions/feature-spec";
 import placementPromptExtension from "@/lib/pi/extensions/architecture-awareness/placement-prompt";
 import placementToolsExtension from "@/lib/pi/extensions/architecture-awareness/placement-tools";
 import specPersistenceExtension from "@/lib/pi/extensions/architecture-awareness/spec-persistence";
@@ -51,6 +52,7 @@ import workflowExtension from "@/lib/pi/extensions/workflow";
 export type ExtensionId =
   | "workflow"
   | "ask-user"
+  | "feature-spec"
   | "code-map"
   | "code-search"
   | "code-intelligence"
@@ -182,6 +184,16 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/ask-user.ts.",
+  },
+  {
+    id: "feature-spec",
+    source: { factory: featureSpecExtension, kind: "factory" },
+    requires: [],
+    providesTools: ["capture_feature_spec"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/feature-spec.ts.",
   },
   {
     id: "code-map",
