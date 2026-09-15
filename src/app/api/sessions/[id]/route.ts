@@ -1,4 +1,5 @@
 import { handleRouteError } from "@/lib/api-helpers";
+import { clearTurnMark } from "@/lib/pi/review-turn-mark";
 import { deleteSessionFiles, writeSessionMeta } from "@/lib/pi/session-meta";
 import { deleteWorkflowRuns } from "@/lib/pi/workflow-run-index";
 import { requireSessionOwner } from "@/lib/session-auth";
@@ -95,6 +96,9 @@ export async function DELETE(
   // the sidebar keeps finding no matter what Postgres says.
   deleteSessionFiles(id);
   deleteWorkflowRuns(id);
+  // Review marks live in SEMLA_STATE_DIR rather than the session dir, so
+  // deleteSessionFiles does not reach them.
+  clearTurnMark(id);
 
   const { error } = await supabase.from("sessions").delete().eq("id", id);
 
