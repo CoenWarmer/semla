@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 
 import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,14 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ChatDotsIcon } from "@phosphor-icons/react";
 
-export function ProjectsCombobox() {
+export function ProjectsCombobox({ small }: { small?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -46,18 +51,24 @@ export function ProjectsCombobox() {
     router.push(`/sessions/new?project=${encodeURIComponent(project.name)}`);
   }
 
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
+  const trigger = small
+    ? {
+        element: <Button variant="ghost" size="icon-sm"/>,
+        label: <ChatDotsIcon />,
+      }
+    : {
+        element: (
           <Button
             className="w-full justify-start font-normal text-muted-foreground"
             variant="outline"
           />
-        }
-      >
-        Open project…
-      </PopoverTrigger>
+        ),
+        label: "Select project…",
+      };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={trigger.element}>{trigger.label}</PopoverTrigger>
       <PopoverContent className="w-64 p-0" side="right" sideOffset={8}>
         <Command>
           <CommandInput placeholder="Search projects…" />

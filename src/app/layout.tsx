@@ -2,15 +2,18 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ProjectsCombobox } from "@/components/sidebar/projects-combobox";
 import { QueryProvider } from "@/components/query-provider";
 import { PendingPromptProvider } from "@/components/pending-prompt-provider";
 import { HeaderActions } from "@/components/session/header-actions";
 import { BottomBar } from "@/components/bottom-bar";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";
+import { ChatDotsIcon } from "@phosphor-icons/react";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 const jetbrainsMonoHeading = JetBrains_Mono({
   subsets: ["latin"],
@@ -63,7 +66,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                       {/* Named group: controls that only appear on hover key off
                           the header as a whole, not off whatever sits nearest. */}
                       <header className="group/header flex h-11 shrink-0 items-center gap-1 border-b border-border/40 px-2">
-                        <SidebarTrigger />
+                        <div className="flex">
+                          <SidebarTrigger />
+                          <ProjectsCombobox small />
+                        </div>
                         <HeaderActions />
                       </header>
                       <div className="flex-1 min-h-0 overflow-y-auto">
