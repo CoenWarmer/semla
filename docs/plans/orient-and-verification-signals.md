@@ -20,6 +20,11 @@ What landed, and where the implementation chose differently from the draft:
   genuinely have no sha; recording `""` there would be indistinguishable from a
   field nothing wrote. `isWikiStale` reports that as `no-commit-sha` rather
   than as "your wiki is out of date", because they call for different actions.
+- **§5.1's path moved after shipping**, from `~/.semla/orient/` to
+  `.semla-state/orient/`, keeping `SEMLA_ORIENT_HOME`. §5.2 has the reasoning:
+  mirroring `indexHomeDir()` was the wrong precedent to follow for four
+  scalars. `<project>/.semla-state/` was rejected because Semla should not
+  write untracked files into repositories it does not own.
 - §6's phase-1 row is honest about its cost rather than approximating it. The
   report says *indexed, freshness not recomputed* and never claims the index is
   current: confirming that needs the full tree hash `freshness()` already pays
@@ -199,8 +204,10 @@ for a vector index.
 ### 5.1 One file per phase, not one file per project
 
 ```
-~/.semla/orient/<slug-hash>/wiki.json          (root overridable via SEMLA_ORIENT_HOME)
-~/.semla/orient/<slug-hash>/verification.json
+<semla>/.semla-state/orient/<slug-hash>/wiki.json
+<semla>/.semla-state/orient/<slug-hash>/verification.json
+
+(root overridable via SEMLA_ORIENT_HOME; otherwise under SEMLA_STATE_DIR)
 ```
 
 **Phase 1 is not persisted here at all.** Its status already exists and is
@@ -234,7 +241,26 @@ instant, and no reader does — §6 checks each phase independently.
 `projectKey(root)` from `src/lib/code-index/index-paths.ts` gives a stable
 `slug-hash` derived from the absolute project path. Orient status is not
 code-index state, so it does not live under `projectIndexDir(key)`; it gets its
-own root, mirroring `indexHomeDir()`/`SEMLA_INDEX_HOME`.
+own root.
+
+**That root is `.semla-state/orient/`, not `~/.semla/orient/` — a correction
+made after the first implementation shipped.** This section originally said the
+root should mirror `indexHomeDir()`/`SEMLA_INDEX_HOME`, and mirroring it was
+the mistake: the code index is genuinely large (~12 MB per project) and a cache
+the user may want on another volume, which is what earns it a home-directory
+root of its own. Orient status is four scalars and a signal list. It is Semla's
+own state, in the same class as the review marks, run records, panel layout and
+user settings that already live in `.semla-state/`, which is already gitignored
+and already relocatable via `SEMLA_STATE_DIR`. Rooting it in the user's home
+directory bought nothing and put per-project state somewhere no other part of
+this application writes.
+
+`<project>/.semla-state/orient/` was considered and rejected. It is
+self-collecting — delete the repository and its status goes with it, which ends
+the orphan problem below outright — but it writes an untracked directory into
+repositories Semla does not own, where it surfaces in that repo's
+`git status` and in the review panel as a change the agent did not make.
+So the path stays keyed by project and rooted in Semla's own directory.
 
 The overridable root is not a convenience. `index-paths.ts`'s docblock records
 what happens without one: state keyed by a `mkdtemp` cwd but rooted at the real
@@ -524,7 +550,7 @@ Then manually, against this repo:
   `mcp-config.test.ts` fixtures, so it is an environment fact and this step must
   not be written as though the repo guarantees it. A machine with no `mcp.json`
   should produce no `mcp` signals and no error.
-- Read `~/.semla/orient/<slug-hash>/` directly and confirm `wiki.json` records
+- Read `.semla-state/orient/<slug-hash>/` directly and confirm `wiki.json` records
   a `commitSha` matching `git rev-parse HEAD` with the right `dirty`, and that
   `verification.json` records a digest that changes after touching
   `package.json`.
