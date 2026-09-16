@@ -62,8 +62,11 @@ import {
   type VerificationStatus,
 } from "@/lib/orient-status/verification-status";
 import { writeWikiStatus, type WikiStatus } from "@/lib/orient-status/wiki-status";
+import { chooseCheapModel } from "@/lib/pi/runtime/cheap-model";
 import { discoverVerificationSignals } from "@/lib/verification-signals/discover";
 import { renderDiscoveryResult } from "@/lib/verification-signals/render";
+import { createModelCaller, deriveSkillSignals } from "@/lib/verification-signals/skill-signals";
+import { loadSkillSources } from "@/lib/verification-signals/skill-sources";
 
 const OrientStatusSchema = Type.Object(
   {
@@ -141,9 +144,37 @@ export default function orientStatusExtension(pi: ExtensionAPI) {
     async execute(
       _toolCallId: string,
       params: { run?: "verification-signals" | "code-index"; record?: "wiki" },
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
     ) {
       if (params.run === "verification-signals") {
         const result = await discoverVerificationSignals({ root: cwd });
+
+        // Static facts and a model's reading of skill prose are gathered
+        // separately (discover.ts stays free of any model dependency — see its
+        // docblock) and only merged here, into one status file. A skill pass
+        // that fails outright (no reachable model) degrades to a warning, not
+        // a failed tool call: the static signals are still the useful half of
+        // the answer.
+        const skillWarnings: string[] = [];
+        let allSignals = result.signals;
+        try {
+          const { sources, warnings: sourceWarnings } = await loadSkillSources({ cwd });
+          skillWarnings.push(...sourceWarnings);
+          const { provider, modelId } = chooseCheapModel(ctx);
+          const { signals: skillSignals, warnings: skillDeriveWarnings } = await deriveSkillSignals(
+            sources,
+            createModelCaller(ctx, provider, modelId),
+          );
+          skillWarnings.push(...skillDeriveWarnings);
+          allSignals = [...result.signals, ...skillSignals];
+        } catch (error) {
+          skillWarnings.push(
+            `Skill-derived signals could not be computed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
         const written = await writeVerificationStatus({
           // ISO from the clock, recorded rather than derived, because a reader
           // needs to know when the picture was taken even when the digest
@@ -151,20 +182,23 @@ export default function orientStatusExtension(pi: ExtensionAPI) {
           capturedAt: new Date().toISOString(),
           inputsDigest: result.inputsDigest,
           root: cwd,
-          signals: result.signals,
+          signals: allSignals,
         });
 
         return {
           content: [
             {
-              text: renderDiscoveryResult(result, { root: cwd, statusPath: written.path }),
+              text: renderDiscoveryResult(
+                { ...result, signals: allSignals },
+                { root: cwd, statusPath: written.path },
+              ),
               type: "text",
             },
           ],
           details: {
             type: "orient-status",
             verification: written.status,
-            warnings: result.warnings,
+            warnings: [...result.warnings, ...skillWarnings],
           } satisfies OrientStatusDetails as OrientStatusDetails,
         };
       }
