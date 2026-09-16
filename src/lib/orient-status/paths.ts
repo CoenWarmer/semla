@@ -1,11 +1,27 @@
 /**
  * Where a project's orient status lives on disk.
  *
- * Rooted at an overridable home for the reason index-paths.ts records: state
- * keyed by a `mkdtemp` cwd but rooted at the real home directory outlives the
- * temp directory it describes, and nothing collects it — 1,931 directories and
- * 127 MB in `~/.pi/workflows/projects`. These files are a handful of scalars,
- * so the exposure is directory count rather than bytes, but the mechanism is
+ * Rooted **inside Semla's own directory**, under the `.semla-state/` that
+ * already holds review marks, run records, panel layout and user settings.
+ * That is a correction: the first implementation followed `indexHomeDir()` to
+ * `~/.semla/orient`, which put per-project state in the user's home directory
+ * for no reason this module needs. `.semla-state/` is where this application's
+ * own state goes, it is already gitignored, and `SEMLA_STATE_DIR` already
+ * exists to relocate it.
+ *
+ * Note whose directory this is: Semla's, not the described project's. The
+ * alternative was `<project>/.semla-state/orient/`, which is self-collecting —
+ * delete the repo and its status goes with it. It was rejected because it
+ * writes an untracked directory into repositories Semla does not own, where it
+ * would surface in that repo's `git status` and in the review panel as a
+ * change the agent did not make. So the path is keyed by project and rooted
+ * here.
+ *
+ * Still overridable, for the reason index-paths.ts records: state keyed by a
+ * `mkdtemp` cwd but rooted at a fixed directory outlives the temp directory it
+ * describes, and nothing collects it — 1,931 directories and 127 MB in
+ * `~/.pi/workflows/projects`. These files are a handful of scalars, so the
+ * exposure is directory count rather than bytes, but the mechanism is
  * identical and the fix is one env var.
  *
  * `projectKey` is imported from code-index rather than copied. index-paths.ts's
@@ -22,16 +38,29 @@
  * nesting it there would put it inside a directory the indexer may clear.
  */
 
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { projectKey } from "@/lib/code-index/index-paths";
+import { SEMLA_STATE_DIR } from "@/lib/stores/user-settings-store";
 
-/** Root of all orient status, overridable via SEMLA_ORIENT_HOME. */
+/**
+ * Root of all orient status.
+ *
+ * `SEMLA_ORIENT_HOME` overrides it outright; otherwise it sits under
+ * `SEMLA_STATE_DIR` (or Semla's `.semla-state/`), so relocating Semla's state
+ * moves orient status with it rather than leaving one directory behind in the
+ * home directory.
+ */
 export function orientStatusHomeDir(): string {
   // Read per call, not captured at import, so a test can point it somewhere
-  // disposable without controlling module load order.
-  return process.env.SEMLA_ORIENT_HOME ?? join(homedir(), ".semla", "orient");
+  // disposable without controlling module load order. `SEMLA_STATE_DIR` is
+  // imported rather than re-read from the environment because it is one
+  // install-wide directory with one definition, and a second copy of the
+  // `process.cwd()` fallback is a second thing to keep in step.
+  const explicit = process.env.SEMLA_ORIENT_HOME?.trim();
+  if (explicit) return explicit;
+
+  return join(SEMLA_STATE_DIR, "orient");
 }
 
 /** Directory holding one project's orient status files. */
