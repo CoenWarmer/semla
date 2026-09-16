@@ -60,7 +60,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 {/* Above both the frame and the page: the bar lives in one and
                     its panels are rendered by the other. */}
                 <BottomPanelProvider>
-                  <SidebarProvider className="flex-1 min-h-0">
+                  <SidebarProvider className="flex-1 min-h-0" defaultOpen={false}>
                     <AppSidebar />
                     <main className="flex min-w-0 w-full flex-col">
                       {/* Named group: controls that only appear on hover key off

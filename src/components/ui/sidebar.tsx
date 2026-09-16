@@ -33,6 +33,7 @@ const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_WIDTH_MIN = 160
 const SIDEBAR_WIDTH_MAX = 600
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-px"
+const SIDEBAR_OPEN_STORAGE_KEY = "sidebar-open"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
@@ -75,9 +76,15 @@ function SidebarProvider({
   const [openMobile, setOpenMobile] = React.useState(false)
 
   const [widthPx, _setWidthPx] = React.useState(SIDEBAR_WIDTH_DEFAULT)
-  // useLayoutEffect reads localStorage to restore the persisted width before
-  // first paint (skipped on server, so no hydration mismatch). The setState
-  // call is intentional — this is the correct pattern for browser-only init.
+  // This is the internal state of the sidebar.
+  // We use openProp and setOpenProp for control from outside the component.
+  const [_open, _setOpen] = React.useState(defaultOpen)
+  // useLayoutEffect reads localStorage to restore the persisted width and
+  // open/collapsed state before first paint (skipped on server, so no
+  // hydration mismatch). The setState calls are intentional — this is the
+  // correct pattern for browser-only init. The open state is only restored
+  // when uncontrolled (no openProp), matching how setOpen below only
+  // persists in that case.
   React.useLayoutEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
     if (stored) {
@@ -85,15 +92,21 @@ function SidebarProvider({
       // oxlint-disable-next-line react/set-state-in-effect
       if (!isNaN(n)) _setWidthPx(n)
     }
+
+    if (openProp === undefined) {
+      const storedOpen = localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
+      if (storedOpen !== null) {
+        // oxlint-disable-next-line react/set-state-in-effect
+        _setOpen(storedOpen === "true")
+      }
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const setWidthPx = React.useCallback((w: number) => {
     _setWidthPx(w)
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(w))
   }, [])
 
-  // This is the internal state of the sidebar.
-  // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -106,6 +119,13 @@ function SidebarProvider({
 
       // This sets the cookie to keep the sidebar state.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      // Also persist to localStorage, read back by the useLayoutEffect above
+      // before first paint on reload — the cookie alone was written but never
+      // read back anywhere, so the collapsed/expanded state did not survive a
+      // reload even though it looked like it was being persisted.
+      if (setOpenProp === undefined) {
+        localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, String(openState))
+      }
     },
     [setOpenProp, open]
   )
