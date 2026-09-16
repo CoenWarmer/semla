@@ -45,6 +45,7 @@ import specPersistenceExtension from "@/lib/pi/extensions/architecture-awareness
 import codeMapExtension from "@/lib/pi/extensions/code-map";
 import codeSearchExtension from "@/lib/pi/extensions/code-search";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
+import orientStatusExtension from "@/lib/pi/extensions/orient-status";
 import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
 import workflowExtension from "@/lib/pi/extensions/workflow";
@@ -55,6 +56,7 @@ export type ExtensionId =
   | "feature-spec"
   | "code-map"
   | "code-search"
+  | "orient-status"
   | "code-intelligence"
   | "install-guard"
   | "read-router"
@@ -224,6 +226,21 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/code-search.ts.",
+  },
+  {
+    id: "orient-status",
+    source: { factory: orientStatusExtension, kind: "factory" },
+    requires: [],
+    // Every answer is about one project: which package.json, which tool
+    // configs, which status file. Without an anchor there is nothing to report
+    // on, and reporting against process.cwd() would be silently wrong rather
+    // than empty.
+    requiresProjectAnchor: true,
+    providesTools: ["orient_status"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/orient-status.ts.",
   },
   {
     id: "code-intelligence",
