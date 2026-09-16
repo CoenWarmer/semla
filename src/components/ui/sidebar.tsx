@@ -25,8 +25,6 @@ import {
 } from "@/components/ui/tooltip"
 import { SidebarIcon } from "@phosphor-icons/react"
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state"
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH_DEFAULT = 256
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
@@ -117,12 +115,8 @@ function SidebarProvider({
         _setOpen(openState)
       }
 
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
-      // Also persist to localStorage, read back by the useLayoutEffect above
-      // before first paint on reload — the cookie alone was written but never
-      // read back anywhere, so the collapsed/expanded state did not survive a
-      // reload even though it looked like it was being persisted.
+      // Persist to localStorage, read back by the useLayoutEffect above
+      // before first paint on reload.
       if (setOpenProp === undefined) {
         localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, String(openState))
       }

@@ -396,7 +396,8 @@ export function ClientSessionComponent({
   // The dragged split between the review pane and the conversation,
   // restored on reload. Keyed by orientation so a horizontal drag does not
   // leak into the vertical layout's percentages.
-  const panelLayouts = usePanelLayouts().data;
+  const panelLayoutsQuery = usePanelLayouts();
+  const panelLayouts = panelLayoutsQuery.data;
   const reviewSplitKey = `review-split-${reviewLayout}`;
   const reviewSplitLayout = panelLayouts?.[reviewSplitKey] as
     | Record<string, number>
@@ -809,9 +810,20 @@ export function ClientSessionComponent({
             // of resetting to a sane split for the new axis. The saved layout
             // is keyed by orientation for the same reason: a horizontal split
             // and a vertical one are unrelated preferences.
+            //
+            // Also keyed on the panel-layout fetch settling: react-resizable-
+            // panels reads `defaultLayout` once, in the effect that runs on
+            // mount, and never re-reads it once the query resolves. Without
+            // this the group mounts with `defaultLayout={undefined}` on every
+            // cold reload (usePanelLayouts() has not fetched yet) and keeps
+            // that default layout for the rest of the page's life even after
+            // the real saved split arrives — the drag never visibly "failed
+            // to persist", it just rendered before its own answer came back.
+            // Remounting once, when the fetch settles, gives it the real
+            // value the one time it reads it.
             className="min-h-0 flex-1"
             defaultLayout={reviewSplitLayout}
-            key={reviewLayout}
+            key={`${reviewLayout}-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
             onLayoutChanged={(layout, meta) => {
               if (meta.isUserInteraction) saveReviewSplit(layout);
             }}

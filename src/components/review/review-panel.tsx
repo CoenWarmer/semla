@@ -238,7 +238,8 @@ export function ReviewPanel({
 
   // The two dragged splits inside the review surface — sidebar/editor, and
   // changed-files/file-tree within the sidebar — restored on reload.
-  const panelLayouts = usePanelLayouts().data;
+  const panelLayoutsQuery = usePanelLayouts();
+  const panelLayouts = panelLayoutsQuery.data;
   const sidebarSplitLayout = panelLayouts?.["review-sidebar-split"] as
     | Record<string, number>
     | undefined;
@@ -249,6 +250,13 @@ export function ReviewPanel({
   const saveSidebarInnerSplit = usePanelLayoutSaver(
     "review-sidebar-inner-split",
   );
+  // react-resizable-panels reads `defaultLayout` once, in the effect that
+  // runs on mount, and never re-reads it once the panel-layout query
+  // resolves later — so a group that mounts before the fetch settles keeps
+  // an undefined default for the rest of the page's life even after the
+  // real saved split arrives. Remounting once the query settles gives it
+  // the real value the one time it actually reads the prop.
+  const layoutRemountKey = panelLayoutsQuery.isPending ? "pending" : "ready";
 
   /**
    * Open a stop from the scrubber.
@@ -586,16 +594,28 @@ export function ReviewPanel({
             orientation="horizontal"
             className="h-full"
             defaultLayout={sidebarSplitLayout}
+            key={layoutRemountKey}
             onLayoutChanged={(layout, meta) => {
               if (meta.isUserInteraction) saveSidebarSplit(layout);
             }}
           >
-            <ResizablePanel className="overflow-y-auto py-2" id="sidebar">
+            <ResizablePanel
+              className="overflow-y-auto py-2"
+              id="sidebar"
+              // Fixed in pixels rather than the default `preserve-relative-
+              // size`, so dragging the outer conversation/review split does
+              // not rescale the file-tree/editor split inside it — the
+              // sidebar holds its width and the editor panel absorbs the
+              // change instead, matching what a resize of the outer group
+              // should mean for a sidebar with independent content.
+              groupResizeBehavior="preserve-pixel-size"
+            >
               <aside className="flex shrink-0 flex-col border-r h-full">
                 <ResizablePanelGroup
                   orientation="vertical"
                   className="h-full"
                   defaultLayout={sidebarInnerSplitLayout}
+                  key={layoutRemountKey}
                   onLayoutChanged={(layout, meta) => {
                     if (meta.isUserInteraction) saveSidebarInnerSplit(layout);
                   }}
