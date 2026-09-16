@@ -1,3 +1,4 @@
+import { orientDriftSentences } from "@/lib/orient-status/prompt-drift";
 import { buildMemoryContextBlock } from "@/lib/pi/prompt/prompts";
 import { otherActiveSessionsByProject } from "@/lib/pi/session/session-concurrency";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/pi/prompt/system-prompt";
@@ -60,9 +61,15 @@ export async function resolveSessionPromptContext(
 
   const otherActiveSessions = otherActiveSessionsByProject(projects, sessionId);
 
+  // Awaited, because the prompt is the return value and there is nowhere to
+  // put a late answer. It contains its own failures and returns no sentences
+  // rather than rejecting — see prompt-drift.ts on why a staleness check must
+  // never be able to fail a turn.
+  const orientDrift = await orientDriftSentences(projects);
+
   return {
     projects,
-    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projects, otherActiveSessions)}`,
+    systemPrompt: `${basePrompt}\n\n---\n\n${buildMemoryContextBlock(projects, otherActiveSessions, orientDrift)}`,
     defaultModel: provider && modelId ? { provider, modelId } : null,
   };
 }

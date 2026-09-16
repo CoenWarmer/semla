@@ -83,3 +83,32 @@ describe("buildMemoryContextBlock — concurrency (phase 1 of session-isolation.
     expect(block).not.toContain("`kibana`:");
   });
 });
+
+describe("buildMemoryContextBlock — orientation drift (§6.1)", () => {
+  it("says nothing when no phase is stale", () => {
+    // The whole point of gating it: a nudge that appears every turn regardless
+    // of state is wallpaper, and the model learns to skip the section it is in.
+    expect(buildMemoryContextBlock(["semla"], {}, [])).not.toContain("Orientation drift");
+  });
+
+  it("names the anchor and lists each stale phase", () => {
+    const block = buildMemoryContextBlock(["semla"], {}, [
+      "Code index: never indexed for this project.",
+      "Wiki orient: HEAD has moved.",
+    ]);
+
+    expect(block).toContain("## Orientation drift");
+    expect(block).toContain("about `semla` is current");
+    expect(block).toContain("- Code index: never indexed for this project.");
+    expect(block).toContain("- Wiki orient: HEAD has moved.");
+    expect(block).toContain("Call `orient_status` for the detail.");
+  });
+
+  it("omits the drift section for a session with no anchor", () => {
+    // Every phase's status is keyed to a project root; with no anchor there is
+    // nothing the sentences could be about.
+    expect(buildMemoryContextBlock([], {}, ["Code index: never indexed."])).not.toContain(
+      "Orientation drift",
+    );
+  });
+});

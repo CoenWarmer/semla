@@ -19,6 +19,18 @@ export const buildMemoryContextBlock = (
    * commit or a changed-files list it did not produce.
    */
   otherActiveSessions: Readonly<Record<string, readonly string[]>> = {},
+  /**
+   * One sentence per stale orient phase for the anchor project, from
+   * `describeStalePhases`. Empty when everything is current, which is the
+   * whole point: a nudge that appears every turn regardless of state is
+   * wallpaper, and the model learns to skip the section it is in.
+   *
+   * Passed in rather than computed here because this function is synchronous
+   * and the check reads files and shells out to git. Its async caller
+   * (`resolveSessionPromptContext`) owns that, and owns swallowing its
+   * failures — a staleness check that can fail a turn is worse than none.
+   */
+  orientDrift: readonly string[] = [],
 ): string => {
   const lines = [
     "# Codebase wiki",
@@ -125,6 +137,26 @@ export const buildMemoryContextBlock = (
       "",
       "Before starting work: call `wiki_recall` with the project name to check for existing codebase knowledge. If no pages are returned, invoke the `orient` skill to initialise the wiki for this repo.",
     );
+
+    // Beside the wiki_recall line deliberately: that line is the mechanism
+    // that already turns a repo fact into an agent action, and this is the
+    // same kind of fact. Nudging rather than auto-invoking is the right
+    // default for the reason `code_search` is registered unconditionally — a
+    // capability the model is told about is one it can act on or explain
+    // declining, whereas work that happens to it mid-task is neither.
+    if (orientDrift.length > 0) {
+      lines.push(
+        "",
+        "## Orientation drift",
+        "",
+        `Not everything Semla knows about \`${anchor}\` is current:`,
+      );
+      for (const sentence of orientDrift) lines.push(`- ${sentence}`);
+      lines.push(
+        "",
+        "Call `orient_status` for the detail. Refresh a phase when the task depends on it — do not re-orient the whole repo as a reflex.",
+      );
+    }
   }
 
   const concurrent = projects
