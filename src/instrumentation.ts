@@ -51,6 +51,17 @@ export async function register() {
     console.warn(describeShadowingVaults(shadowing, WIKI_HOME));
   }
 
+  // The wiki's embedding path is dormant unless a provider is configured, and
+  // says nothing when it is not — every recall silently falls back to lexical
+  // substring matching. Wired here, before any session can recall, and logged
+  // either way so the ranking in use is never a guess.
+  const { configureWikiEmbeddings, describeWikiEmbeddings } = await import(
+    "@/lib/pi/wiki/wiki-embedding-config"
+  );
+  const embeddings = configureWikiEmbeddings();
+  if (embeddings.configured) console.log(describeWikiEmbeddings(embeddings));
+  else console.warn(describeWikiEmbeddings(embeddings));
+
   // The seeded catalog is a snapshot; refresh it once now so new provider
   // models show up, rather than on every ModelRuntime.create.
   const { refreshModelCatalog } = await import("@/lib/pi/runtime/model-catalog");

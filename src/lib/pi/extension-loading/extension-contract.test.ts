@@ -20,6 +20,7 @@ import {
   readSlot,
   slotName,
   WIKI_INGEST_DISPATCHER,
+  WIKI_RECALL_FILTER,
   WIKI_REINDEX_DISPATCHER,
   WORKFLOW_EXTRA_TOOLSETS,
   WORKFLOW_MANAGER_REGISTRY,
@@ -43,6 +44,7 @@ describe("slot keys", () => {
     expect(WIKI_REINDEX_DISPATCHER.description).toBe(
       "semla.wiki-reindex-dispatcher",
     );
+    expect(WIKI_RECALL_FILTER.description).toBe("semla.wiki-recall-filter");
     expect(BRIDGE_RUN_STARTED.description).toBe("semla.bridge-run-started");
     expect(WORKFLOW_MANAGER_REGISTRY.description).toBe(
       "semla.workflow.managers",
@@ -62,7 +64,7 @@ describe("slot keys", () => {
 
   it("are all listed in CONTRACT_SLOT_KEYS", () => {
     expect(new Set(CONTRACT_SLOT_KEYS).size).toBe(CONTRACT_SLOT_KEYS.length);
-    expect(CONTRACT_SLOT_KEYS).toHaveLength(10);
+    expect(CONTRACT_SLOT_KEYS).toHaveLength(11);
   });
 
   it("exposes a contract version", () => {

@@ -202,3 +202,97 @@
          },
          buildConceptPageBody(c.title, c.definition, sourceId, lang),
          [{ id: sourceId, resource: `/sources/${sourceId}.md` }],
+--- a/extensions/llm-wiki/index.ts
++++ b/extensions/llm-wiki/index.ts
+@@ -300,9 +300,55 @@
+       // query embedding); degrades to pure lexical otherwise. minScore=5 still
+       // gates noise — a semantic-only match must be strongly relevant to pass.
+       runtime.ensureConfig(process.cwd());
+-      const results = await searchWikiHybrid(paths, prompt, 3, 5, false, {
++      // ── Semla recall scoping ───────────────────────────────────────────────
++      // A repo filter supplied by the host, and a floor left at the package's
++      // own 5 — but now on the normalised scale `recall.ts` divides into, where
++      // 5 means what this file's comment above always claimed and the code
++      // could not deliver.
++      //
++      // Measured over 394 real injections in 91 Semla sessions: 91% were inert
++      // (no page opened, none named in the reply), and 47% of the pages offered
++      // belonged to a repo the session was not working in. Raising the floor was
++      // tried first, to 40, and is the wrong instrument. Unnormalised, the score
++      // grows with prompt length — median top score 35 under ten query terms
++      // against 107 over twenty-five — so 40 rejected roughly half of all short
++      // prompts while passing everything longer, and no paraphrase-only match
++      // could ever reach it, the semantic term being capped at 6.
++      //
++      // 5 is in fact the highest floor that still admits a page found on meaning
++      // alone: `fuseScores` adds `weight * SEMANTIC_SCALE * cosine`, so at the
++      // default weight a cosine of 0.84 contributes 5.04 — the calibration
++      // `SEMANTIC_SCALE` was chosen for. Normalised, that leaves 88% of recalls
++      // firing and drops the weakest fifth of offered slots.
++      //
++      // Precision is the repo filter's job, and it is the measured part: it
++      // takes cross-repo share from 47% to nil, while turning the semantic
++      // signal on takes the remaining lexical noise from 33% to 27% of slots.
++      //
++      // Widened to 12 candidates so the filter has something to keep: the top
++      // 3 vault-wide are frequently all off-repo, and slicing to 3 *after*
++      // filtering is what fills those slots with on-repo pages rather than
++      // leaving the injection empty.
++      //
++      // The filter lives in Semla because this package cannot answer the
++      // question: process.cwd() names one directory, while a session can be
++      // anchored to several projects. See
++      // src/lib/pi/extensions/wiki-recall-filter.ts and the WIKI_RECALL_FILTER
++      // slot in src/lib/pi/extension-loading/extension-contract.ts.
++      const candidates = await searchWikiHybrid(paths, prompt, 12, 5, false, {
+         config: runtime.config,
+       });
++      const semlaRecallFilter = (globalThis as Record<symbol, unknown>)[
++        Symbol.for("semla.wiki-recall-filter")
++      ] as ((c: unknown[], sessionId?: string) => unknown[]) | undefined;
++      const semlaSessionId = (
++        ctx as { sessionManager?: { getSessionId?: () => string | undefined } } | undefined
++      )?.sessionManager?.getSessionId?.();
++      const results = (
++        semlaRecallFilter
++          ? (semlaRecallFilter(candidates, semlaSessionId) as typeof candidates)
++          : candidates
++      ).slice(0, 3);
+       if (results.length > 0) {
+         // Two-stage gate (issue #68): above the vault-size threshold, inject
+         // ranked LINKS only (the agent expands them on demand via `read`) so a
+--- a/extensions/llm-wiki/lib/recall.ts
++++ b/extensions/llm-wiki/lib/recall.ts
+@@ -520,6 +520,32 @@
+       item.score += expChunkScore * 0.4;
+     }
+   }
++
++  // ── Semla: query-length normalisation ───────────────
++  // The score above is an unnormalised sum: every field containing every query
++  // term adds its weight, across sixteen metadata fields plus the best chunk,
++  // with no division by term count and no IDF. It therefore scales with how
++  // wordy the prompt was. Measured over 394 recalls in this repository's
++  // session corpus, the median top score rises from 35 for prompts under ten
++  // distinct terms to 107 for prompts over twenty-five, which makes an
++  // absolute `minScore` a test of verbosity rather than of relevance — it
++  // turns recall off for about half of short prompts and passes everything for
++  // long ones.
++  //
++  // Dividing by the term count is a per-query constant, so it reorders
++  // nothing. It buys the two things that are not ranking:
++  //
++  //  - `minScore` compares like with like across prompts of different lengths;
++  //  - the semantic term becomes able to matter. `fuseScores` adds at most
++  //    `weight * SEMANTIC_SCALE` — 6 at the default weight — to a lexical
++  //    score whose median was 56 and maximum 189 in that corpus, so a perfect
++  //    paraphrase carrying no shared words could never outrank a page that
++  //    happens to share one common one. Replaying the corpus across semantic
++  //    weights put the best cross-repo precision at an effective weight near
++  //    5 (28% of injected pages belonging to another repository, against 33%
++  //    for lexical alone) with no loss among the pages the agent chose to
++  //    read; normalised, the package's own default of 0.5 is that weight.
++  for (const item of scored) item.score /= terms.length;
+ 
+   // ── Semantic fusion ─────────────────────────────────
+   // Blend the precomputed cosine similarity into the (lexical + PRF) score.

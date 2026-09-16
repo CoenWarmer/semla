@@ -31,6 +31,7 @@ import {
 } from "@/lib/pi/extensions/wiki-frontmatter";
 import { WIKI_HOME } from "@/lib/pi/runtime/runtime-config";
 import { sweepIdentityPages } from "@/lib/pi/extensions/identity-page-sweep";
+import { sweepRelatedLinks } from "@/lib/pi/extensions/related-links-sweep";
 import { ensureRepositoryPage } from "@/lib/pi/extensions/repository-page";
 
 export {
@@ -166,6 +167,18 @@ export async function stampSessionWikiPages(options: {
   for (const slug of slugs) {
     const repoPage = ensureRepositoryPage({ wikiHome, repo: slug });
     if (repoPage.created) console.info(`[wiki] created the repository page for ${slug}`);
+  }
+
+  // After the hubs exist, because the hub link is the only one that is always
+  // available: pi-llm-wiki writes a `## Related` placeholder on every retro
+  // note and never fills it, which leaves the notes carrying most of the
+  // repo's prose invisible to anything that reads the graph.
+  const connected = sweepRelatedLinks({ wikiHome, since: options.since, slugs });
+  if (connected.length > 0) {
+    console.info(
+      `[wiki] filled the Related section on ${connected.length} page(s): ` +
+        connected.map((fix) => `${fix.id} → ${fix.links.length}`).join(", "),
+    );
   }
 
   // After the stamp, never before: canonicalising a person's page means

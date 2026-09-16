@@ -21,9 +21,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  slotName,
   WIKI_INGEST_DISPATCHER,
+  WIKI_RECALL_FILTER,
   WIKI_REINDEX_DISPATCHER,
 } from "../extension-loading/extension-contract.ts";
+import { RELATED_PLACEHOLDER } from "./related-links-sweep.ts";
 import { WIKI_PACKAGE_DEEP_IMPORTS } from "./wiki-ingest-bridge.ts";
 import { WIKI_SUBAGENT_DEEP_IMPORTS } from "./wiki-subagent-tools.ts";
 
@@ -274,5 +277,143 @@ describe(`${WIKI_PACKAGE} page types`, () => {
     // NAV_GROUP_ORDER in wiki-types.ts renders an "analysis" group; a page
     // filed elsewhere would exist but never appear in the browser.
     expect(toolsSource).toContain('analysis: "analyses"');
+  });
+});
+
+/**
+ * The auto-recall scoping added by `patches/`. Three separate things have to
+ * survive a package upgrade, and all three fail silently:
+ *
+ *  - the candidate width and the `minScore` floor, which have to move together.
+ *    The floor matches the package's shipped 5, so a diff that reverted it
+ *    looks like a no-op — but 5 on the unnormalised scale admits nearly
+ *    everything, and this pairing only holds while `recall.ts` normalises;
+ *  - the `Symbol.for("semla.wiki-recall-filter")` lookup, which is the only
+ *    thing that drops off-repo pages. Losing it puts 47.4% cross-repo hits
+ *    back, and nothing errors because the slot is simply never read;
+ *  - the `.slice(0, 3)`, which is what keeps the widened 12-candidate search
+ *    from injecting twelve pages per turn. Losing this one is the expensive
+ *    failure, so it is asserted separately from the widening it pairs with.
+ */
+describe(`${WIKI_PACKAGE} auto-recall scoping`, () => {
+  const indexSource = readFileSync(
+    join(INSTALLED_DIR, "extensions/llm-wiki/index.ts"),
+    "utf8",
+  );
+
+  it("searches the widened candidate set, at the paraphrase floor", () => {
+    expect(
+      /searchWikiHybrid\(paths,\s*prompt,\s*12,\s*5,/.test(indexSource),
+      "The auto-recall search is no longer (12, 5). The 12 is what gives the " +
+        "repo filter something to keep — at 3, the top candidates are " +
+        "frequently all off-repo and the injection lands empty. The 5 is the " +
+        "highest floor that still admits a page matched on meaning alone " +
+        "(cosine 0.84 contributes 5.04 at the default weight), and it is only " +
+        "meaningful because recall.ts normalises the lexical score. Re-cut the " +
+        "patch rather than adjusting either number alone.",
+    ).toBe(true);
+  });
+
+  it("reads the recall filter out of the contract slot", () => {
+    expect(indexSource).toContain(slotName(WIKI_RECALL_FILTER));
+  });
+
+  it("still caps the injection at three pages after filtering", () => {
+    expect(
+      /\.slice\(0,\s*3\)/.test(indexSource),
+      "The slice after the recall filter is gone, so the widened 12-candidate " +
+        "search would inject up to 12 pages on every prompt.",
+    ).toBe(true);
+  });
+
+  it("passes the calling session's id to the filter", () => {
+    // Without it the filter cannot tell which session's repos to scope to, and
+    // it fails open — no error, just unfiltered recall again.
+    expect(indexSource).toContain("sessionManager?.getSessionId?.()");
+  });
+});
+
+/**
+ * The query-length normalisation added by `patches/`, and the two package
+ * constants the floor is calibrated against.
+ *
+ * The package scores a page by adding a field weight for every query term found
+ * in each of sixteen metadata fields, with no division by term count. The sum
+ * therefore grows with prompt length — 35 at the median for prompts under ten
+ * distinct terms, 107 for prompts over twenty-five, measured over 394 recalls —
+ * so an absolute `minScore` tests verbosity, and the semantic term, capped at
+ * `weight * SEMANTIC_SCALE`, cannot outrank a page that merely shares a common
+ * word.
+ *
+ * Losing the division is silent in the worst way: recall keeps working, scores
+ * return to their old magnitude, and the floor in `index.ts` — set on the
+ * normalised scale — then admits everything it was chosen to exclude while the
+ * semantic ranking goes back to being a rounding error.
+ */
+describe(`${WIKI_PACKAGE} recall score normalisation`, () => {
+  const recallSource = readFileSync(
+    join(INSTALLED_DIR, "extensions/llm-wiki/lib/recall.ts"),
+    "utf8",
+  );
+
+  it("divides the lexical score by the query's term count", () => {
+    expect(
+      /for \(const item of scored\) item\.score \/= terms\.length;/.test(recallSource),
+      "The normalisation is gone. Scores revert to an unnormalised sum, which " +
+        "makes the floor in index.ts a prompt-length test and reduces the " +
+        "semantic signal to a tiebreaker. Re-cut the patch.",
+    ).toBe(true);
+  });
+
+  it("normalises after pseudo-relevance feedback and before semantic fusion", () => {
+    // PRF adds points on the lexical scale, so it has to be inside the
+    // division; fusion adds points on the semantic scale, so it has to be
+    // outside it. Getting either side wrong silently rescales one signal.
+    const prf = recallSource.indexOf("item.score += expChunkScore * 0.4");
+    const normalise = recallSource.indexOf("item.score /= terms.length");
+    const fuse = recallSource.indexOf("item.score = fuseScores(");
+
+    expect(prf).toBeGreaterThan(-1);
+    expect(fuse).toBeGreaterThan(-1);
+    expect(normalise).toBeGreaterThan(prf);
+    expect(normalise).toBeLessThan(fuse);
+  });
+
+  it("pins the constants the floor was calibrated against", () => {
+    // The floor is a number on a scale these two define. A release that
+    // changed either would move every score without changing a line here.
+    expect(recallSource).toContain("export const SEMANTIC_SCALE = 12;");
+    expect(recallSource).toContain("export const DEFAULT_SEMANTIC_WEIGHT = 0.5;");
+  });
+});
+
+/**
+ * `related-links-sweep.ts` fills in a section this package writes and never
+ * completes, and it recognises that section by matching the placeholder line
+ * verbatim. So the literal is the contract: a release that reworded it, or
+ * started filling the section itself, would turn the sweep into a silent no-op
+ * and put every retro note back on the consolidate skill's deletion list.
+ *
+ * Matching the literal rather than the heading is deliberate — it is what
+ * makes the sweep idempotent and keeps it from overwriting a Related section
+ * the agent did fill in.
+ */
+describe(`${WIKI_PACKAGE} Related placeholder`, () => {
+  const retroSource = readFileSync(
+    join(INSTALLED_DIR, "extensions/llm-wiki/lib/retro.ts"),
+    "utf8",
+  );
+
+  it("still writes the placeholder the sweep replaces", () => {
+    expect(
+      retroSource.includes(RELATED_PLACEHOLDER),
+      `saveInsight no longer writes "${RELATED_PLACEHOLDER}". Either it fills ` +
+        "the Related section itself now — in which case delete the sweep — or " +
+        "it reworded the line and the sweep silently stopped connecting notes.",
+    ).toBe(true);
+  });
+
+  it("still writes it under a Related heading", () => {
+    expect(retroSource).toContain("## Related");
   });
 });

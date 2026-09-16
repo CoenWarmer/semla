@@ -40,11 +40,13 @@ import {
   readSessionSlot,
   readSessionWorkflowManager,
   WIKI_INGEST_DISPATCHER,
+  WIKI_RECALL_FILTER,
   WIKI_REINDEX_DISPATCHER,
   WIKI_SESSION_REPOS,
   WORKFLOW_EXTRA_TOOLSETS,
   writeSlot,
   type WikiIngestDispatcher,
+  type WikiRecallFilter,
   type WikiReindexDispatcher,
 } from "../extension-loading/extension-contract";
 import {
@@ -52,6 +54,7 @@ import {
   wikiToolsetKey,
 } from "./wiki-subagent-tools";
 import { mergeProvenance, withNamespacedEntities } from "./wiki-page-merge";
+import { filterRecallToRepos } from "./wiki-recall-filter";
 import { readRepoField } from "./wiki-frontmatter";
 import { withVaultLock } from "./wiki-vault-lock";
 import {
@@ -759,4 +762,19 @@ export default function wikiIngestBridge(pi: ExtensionAPI) {
   };
 
   writeSlot(WIKI_REINDEX_DISPATCHER, reindexDispatcher);
+
+  // Scopes the package's per-turn auto-recall to the calling session's repos —
+  // see wiki-recall-filter.ts for what that is worth, and WIKI_RECALL_FILTER
+  // for why the package cannot decide it alone.
+  //
+  // Deliberately does NOT route through `dispatchOwner`: this runs on every
+  // prompt of every session, so an unpatched package would turn that one-shot
+  // warning into a per-turn one, and falling back to `sessionId` here would
+  // scope one session's recall by another session's repos. Without an id the
+  // filter passes everything through, which is the unfiltered behaviour it
+  // replaces.
+  const recallFilter: WikiRecallFilter = (candidates, callerSessionId) =>
+    filterRecallToRepos(candidates, reposOf(callerSessionId));
+
+  writeSlot(WIKI_RECALL_FILTER, recallFilter);
 }

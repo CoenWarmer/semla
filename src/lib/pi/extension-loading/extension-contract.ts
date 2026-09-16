@@ -80,6 +80,26 @@ export const WIKI_REINDEX_DISPATCHER = Symbol.for(
 );
 
 /**
+ * Read by @zosmaai/pi-llm-wiki (external). Set by wiki-ingest-bridge.ts.
+ *
+ * Narrows the per-turn auto-recall injection to the repos the calling session
+ * is actually working in. The package's `before_agent_start` hook searches the
+ * whole vault and cannot do this itself: `process.cwd()` names one directory,
+ * while a Semla session can be anchored to several projects, and only
+ * WIKI_SESSION_REPOS knows which. Measured over 441 real injections, 47.4% of
+ * the pages offered belonged to a repo the session was not in.
+ *
+ * Unkeyed for the same reason as the two dispatchers above — an external
+ * caller cannot index a session map — so the session id travels as an
+ * argument. With no id the filter must pass everything through: injecting too
+ * much is recoverable, and silently injecting nothing is not.
+ *
+ * Supplied by a `patches/` change to the package, asserted in
+ * `wiki-package-contract.test.ts`.
+ */
+export const WIKI_RECALL_FILTER = Symbol.for("semla.wiki-recall-filter");
+
+/**
  * Published per prompt turn by session-service.ts; called by the wiki bridge.
  *
  * Keyed by pi session id — see SessionKeyedSlotKey. Unkeyed, two concurrent
@@ -171,6 +191,35 @@ export type WikiIngestDispatcher = (
   sessionId?: string,
 ) => boolean;
 
+/**
+ * One page pi-llm-wiki is about to auto-inject, as the filter sees it.
+ *
+ * The package passes its own `RecallResult` objects, which carry a title,
+ * preview and type as well. Only these three are named because they are all
+ * the filter reads — `path` rather than `id` is what identifies the page on
+ * disk, and reading `repo:` from the file avoids depending on the registry
+ * being current.
+ */
+export type WikiRecallCandidate = {
+  id: string;
+  /** Absolute path to the page's `.md` file. */
+  path: string;
+  score: number;
+};
+
+/**
+ * Drops pages that belong to another repo, preserving order.
+ *
+ * Must return the *same object references* it was given rather than copies:
+ * the package carries fields this type does not name and goes on to render
+ * them. Returning everything is the correct answer when the session's repos
+ * are unknown — see WIKI_RECALL_FILTER.
+ */
+export type WikiRecallFilter = (
+  candidates: readonly WikiRecallCandidate[],
+  sessionId?: string,
+) => WikiRecallCandidate[];
+
 /** Returns true when the bridge took ownership of the reindex. */
 export type WikiReindexDispatcher = (args: {
   paths: unknown;
@@ -238,6 +287,7 @@ export interface ContractSlots {
   [WORKFLOW_EXTRA_TOOLSETS]: ExtraToolsets;
   [WIKI_INGEST_DISPATCHER]: WikiIngestDispatcher;
   [WIKI_REINDEX_DISPATCHER]: WikiReindexDispatcher;
+  [WIKI_RECALL_FILTER]: WikiRecallFilter;
   /** Keyed by session — see SessionKeyedSlotKey. */
   [BRIDGE_RUN_STARTED]: Map<string, BridgeRunNotifier>;
   /**
@@ -299,6 +349,7 @@ export const CONTRACT_SLOT_KEYS = [
   WORKFLOW_EXTRA_TOOLSETS,
   WIKI_INGEST_DISPATCHER,
   WIKI_REINDEX_DISPATCHER,
+  WIKI_RECALL_FILTER,
   BRIDGE_RUN_STARTED,
   WIKI_SESSION_REPOS,
   WORKFLOW_MANAGER_REGISTRY,
