@@ -19,10 +19,9 @@ import type {
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 
+import { chooseCheapModel } from "@/lib/pi/runtime/cheap-model";
 import { getSpanSink } from "@/lib/pi/telemetry/sink-registry";
 import { loadWorkflowSettings } from "./dynamic-workflows/src/workflow-settings";
-
-const DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001";
 
 // Lines at which grep/find output is compressed (matches are one per line).
 const GREP_FIND_LINE_THRESHOLD = 40;
@@ -254,62 +253,17 @@ async function callModel(
   return { ok: true, summary: text };
 }
 
-function parseModel(modelSpec: string): { provider: string; modelId: string } {
-  const slash = modelSpec.indexOf("/");
-  if (slash === -1) return { provider: modelSpec, modelId: modelSpec };
-  return { provider: modelSpec.slice(0, slash), modelId: modelSpec.slice(slash + 1) };
-}
-
 /**
- * Which model to summarise with, preferring one the host can actually reach.
- *
- * An explicit `readRouterModel` is obeyed as given — a configured value is a
- * decision, and silently substituting something else would be worse than
- * failing. Otherwise the session's own provider wins over the hardcoded
- * default: whatever model is driving the session is by definition configured,
- * so a Haiku on that provider is reachable where `anthropic/...` may not be.
- *
- * Only the provider is borrowed, never the session's model id — that is the
- * frontier model, and summarising cheap output with it would cost more than
- * the context it saves.
- *
- * Two exclusions here were found by running this against a live catalogue
- * rather than reasoned out. A reasoning model is rejected because pi sends
- * `reasoning.effort: "none"` for a plain completion and OpenAI's o-series
- * answers 400 `unsupported_value` — a summariser that cannot be called is
- * worse than the default, since it fails on every result. And the name test is
- * anchored: an unanchored `/mini/` matched `minimax/minimax-m1`, a different
- * vendor's frontier model, which is the opposite of choosing something cheap.
+ * Which model to summarise with. `readRouterModel`, if set, is this
+ * extension's own override; delegated to the shared cheap-model picker
+ * (cheap-model.ts) otherwise, which read-router.ts and skill-signals.ts both
+ * use so the picking logic exists once.
  */
 function chooseModel(
   settings: { readRouterModel?: string },
   ctx: ExtensionContext,
 ): { provider: string; modelId: string } {
-  if (settings.readRouterModel) return parseModel(settings.readRouterModel);
-
-  const fallback = parseModel(DEFAULT_MODEL);
-  const sessionProvider = ctx.model?.provider;
-  if (!sessionProvider || sessionProvider === fallback.provider) return fallback;
-
-  // A same-provider Haiku, addressed as that provider spells it. Gateways
-  // prefix the vendor (openrouter: "anthropic/claude-haiku-4.5"), so the id is
-  // matched rather than constructed.
-  const candidate = ctx.modelRegistry
-    .getAll()
-    .filter((model) => model.provider === sessionProvider)
-    // `-mini`/`-flash` as a suffix or path segment, never as a substring of a
-    // vendor's name. Haiku is matched loosely because Anthropic only uses it
-    // for the cheap tier.
-    .filter((model) => /haiku|[-/](?:flash|mini)\b/i.test(model.id))
-    // A batch endpoint does not answer synchronously; `~` marks an alias.
-    .filter((model) => !/batch|^~/.test(model.id))
-    // Reasoning models reject the `reasoning.effort: "none"` pi sends here.
-    .filter((model) => !model.reasoning)
-    .sort((a, b) => a.id.length - b.id.length)[0];
-
-  return candidate
-    ? { modelId: candidate.id, provider: sessionProvider }
-    : fallback;
+  return chooseCheapModel(ctx, settings.readRouterModel);
 }
 
 function contentHash(text: string): string {
