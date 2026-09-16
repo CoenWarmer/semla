@@ -283,7 +283,7 @@ export function SessionConversation({
           </button>
         </div>
       )}
-      <div className="shrink-0">
+      <div className="shrink-0 px-4">
         <PromptEditor
           defaultTools={defaultTools}
           costPerTurn={costPerTurn}
