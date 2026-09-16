@@ -41,7 +41,7 @@ export function orientStatusDir(projectRoot: string): string {
 
 export interface OrientStatusPaths {
   dir: string;
-  /** WikiStatus: capture time, commit sha, dirty flag. Not written yet. */
+  /** WikiStatus: capture time, commit sha, dirty flag. See wiki-status.ts. */
   wiki: string;
   /** VerificationStatus: capture time, inputs digest, signals. */
   verification: string;
