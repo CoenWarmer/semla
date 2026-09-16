@@ -170,6 +170,34 @@ Aim for the handful that would change how someone edits the code. Skip anything
 that is merely a description of current behaviour, and skip decisions that have
 since been reversed unless the reversal is itself instructive.
 
-### 7. Report
+### 7. Verification signals and status
+
+Orienting is not only about the wiki. Record what can verify a change in this
+repo, and record that the wiki phase is done, so the next session does not have
+to rediscover either:
+
+```
+orient_status(run: "verification-signals")
+orient_status(record: "wiki")
+```
+
+The first discovers and records the test / lint / typecheck / dev-server / MCP
+signals. The second stamps `wiki.json` with the current commit sha and dirty
+flag — **call it only after steps 5 and 6 have finished**, because it records
+that the wiki was oriented against this tree, and a stamp written before the
+ingest is a claim nothing backs.
+
+If `code_search` is unavailable for this repo because it has never been indexed,
+`orient_status(run: "code-index")` starts a run. It returns as soon as the run
+is registered, so report that indexing started and move on — do not poll it.
+
+Discovery is static: a `configured-not-verified` signal means something was
+declared, not that it works. Do not report a dev server as running or an MCP
+server as connected on the strength of these signals.
+
+### 8. Report
 
 Call `wiki_recall` once more with the repo name and report a one-paragraph summary of the key pages now available.
+
+Fold in the verification signals from step 7: which checks this repo has, and
+anything notable that it lacks.
