@@ -17,12 +17,17 @@ const STATE_HEADINGS: Record<SignalState, string> = {
   available: "Available (confirmed present, can be run)",
   "configured-not-verified": "Configured, not verified (declared; liveness not probed)",
   "possible-not-configured": "Possible, not configured (dependency present, nothing wires it up)",
+  "suggested-by-skill": "Suggested by a skill (a model's reading of skill prose, not a stated fact)",
 };
 
+// suggested-by-skill last: it is the one state built on a model's judgement
+// rather than something read directly off a file, so it belongs after every
+// signal a reader can trust without a second opinion.
 const STATE_ORDER: SignalState[] = [
   "available",
   "configured-not-verified",
   "possible-not-configured",
+  "suggested-by-skill",
 ];
 
 export interface RenderOptions {

@@ -23,11 +23,21 @@ export type SignalCategory =
  * - `possible-not-configured` — a dependency is *declared* but nothing wires it
  *   up. Only ever emitted off a real declaration, never inferred intent: "you
  *   could add a linter" is not a finding.
+ * - `suggested-by-skill` — an LLM read a skill's prose and judged that it
+ *   describes a way to check a change, e.g. "probe `/_next/mcp`'s `tools/list`
+ *   against a running dev server". This is the one state that is not a
+ *   directly-read fact: nothing here parsed a script name or a config key, a
+ *   model decided the sentence was actionable. It is kept separate from the
+ *   other three states, never folded into `configured-not-verified`, so a
+ *   reader always knows a signal in this state carries a model's judgement
+ *   rather than something `discoverVerificationSignals` read off disk itself.
+ *   See skill-signals.ts.
  */
 export type SignalState =
   | "available"
   | "configured-not-verified"
-  | "possible-not-configured";
+  | "possible-not-configured"
+  | "suggested-by-skill";
 
 export interface VerificationSignal {
   category: SignalCategory;
