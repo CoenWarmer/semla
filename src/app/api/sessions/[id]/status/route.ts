@@ -1,6 +1,10 @@
 import { handleRouteError } from "@/lib/api/api-helpers";
 import { readSessionMeta } from "@/lib/pi/session/session-meta";
-import { sessionIsRunning, sessionProjects } from "@/lib/pi/session/session-status-view";
+import {
+  sessionArtifacts,
+  sessionIsRunning,
+  sessionProjects,
+} from "@/lib/pi/session/session-status-view";
 import { requireSessionOwner } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
@@ -42,13 +46,19 @@ export async function GET(
     // it a session whose creation handoff was lost answers 404 to every prompt
     // typed into it, forever, with nothing on screen saying why.
     if (!meta) {
-      return Response.json({ exists: false, isRunning: false, projects: [] });
+      return Response.json({
+        exists: false,
+        isRunning: false,
+        projects: [],
+        artifacts: { chips: [], commits: 0, diffs: 0, prs: 0 },
+      });
     }
 
     return Response.json({
       exists: true,
       isRunning: sessionIsRunning(meta),
       projects: sessionProjects(meta.projects, meta.id),
+      artifacts: sessionArtifacts(meta.id),
     });
   } catch (error) {
     return handleRouteError(error, `[sessions/${id}/status]`);

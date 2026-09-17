@@ -10,12 +10,14 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { GitStatusBadge } from "@/components/git-status-badge";
+import { SessionArtifactChips } from "@/components/sidebar/session-artifacts";
 import {
   Item,
   ItemContent,
   ItemDescription,
   ItemTitle,
 } from "@/components/ui/item";
+import type { ArtifactChip, ArtifactSummary } from "@/lib/artifacts/artifact-summary";
 import { projectAbsolutePath, type SessionProject } from "@/lib/session/session-status";
 import { Spinner } from "@/components/ui/spinner";
 import { TokenUsage } from "@/components/token-usage";
@@ -38,6 +40,13 @@ interface SessionItemProps {
   isRunning?: boolean;
   /** Projects this session relates to, anchor first. */
   projects?: SessionProject[];
+  /** What this session produced. Omitted chip row when absent or empty. */
+  artifacts?: ArtifactSummary;
+  /**
+   * Opens the clicked output in ReviewPanel via `ElementTargetProvider`; see
+   * `handleOpenArtifact` in sessions-list-client.tsx.
+   */
+  onOpenArtifact?: (chip: ArtifactChip) => void;
   /** Absolute path the project paths are relative to. */
   workspaceRoot: string;
   title: string | null;
@@ -51,6 +60,8 @@ export function SessionItem({
   hasRun,
   isRunning,
   projects = [],
+  artifacts,
+  onOpenArtifact,
   workspaceRoot,
   title,
   usage,
@@ -155,6 +166,12 @@ export function SessionItem({
                 </span>
               )}
             </span>
+          )}
+          {artifacts && (
+            <SessionArtifactChips
+              onOpenArtifact={onOpenArtifact ?? (() => {})}
+              summary={artifacts}
+            />
           )}
           {usage && (
             <TokenUsage

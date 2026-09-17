@@ -8,6 +8,8 @@
  * is present on one endpoint and quietly missing on the other.
  */
 
+import { summarizeArtifacts } from "@/lib/artifacts/artifact-summary";
+import { readSessionArtifacts } from "@/lib/pi/artifacts/artifact-store";
 import { otherActiveSessionCount } from "@/lib/pi/session/session-concurrency";
 import {
   hasTranscript,
@@ -58,6 +60,16 @@ export const sessionProjects = (
     ),
   }));
 
+/**
+ * A session's produced diffs/commits/PRs, summarized for a chip row.
+ *
+ * Read from the disk-authoritative JSONL, not the Postgres mirror: both
+ * status routes poll this every 2-15s, and the mirror exists for a machine
+ * other than this one to read, not for this one to read twice.
+ */
+export const sessionArtifacts = (sessionId: string, dir?: string) =>
+  summarizeArtifacts(readSessionArtifacts(sessionId, dir));
+
 /** One session's row for the sidebar's list. */
 export const toSessionStatus = (
   meta: SessionMeta,
@@ -71,4 +83,5 @@ export const toSessionStatus = (
   // never used has nothing to report as complete.
   hasRun: hasTranscript(meta.id),
   projects: sessionProjects(meta.projects, meta.id, allSessions),
+  artifacts: sessionArtifacts(meta.id),
 });

@@ -3,9 +3,12 @@
 import { startTransition, useOptimistic, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useElementTarget } from "@/components/element-target-provider";
+import { artifactTargetFor } from "@/components/sidebar/session-artifact-click";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/sidebar/session-item";
 import { formatSessionDate } from "@/lib/session/session-date";
+import type { ArtifactChip } from "@/lib/artifacts/artifact-summary";
 import {
   fetchSessionStatus,
   SESSION_STATUS_KEY,
@@ -81,6 +84,7 @@ export function SessionsListClient({
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const elementTarget = useElementTarget();
 
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -109,6 +113,26 @@ export function SessionsListClient({
   // triggered. Anything the poll knows about and the server render did not is
   // added here, newest first, so it shows up as soon as it exists.
   const rows = mergeDiscoveredSessions(optimistic, status ?? [], deleted);
+
+  /**
+   * Open a session's artifact in ReviewPanel: select its project + file, and
+   * — through `anchor` — scroll to the hunk it was captured from.
+   *
+   * `request()` is called before `push()`, deliberately. `ElementTargetProvider`
+   * lives above this component in the root layout (see layout.tsx) and
+   * survives the client navigation below, so the target is already in the
+   * store by the time `ClientSessionComponent` mounts on the destination
+   * page — no effect and no second click needed to pick it up there.
+   */
+  const handleOpenArtifact = (sessionId: string, chip: ArtifactChip) => {
+    const next = artifactTargetFor(chip);
+    if (!next) return;
+
+    elementTarget.request(next);
+    if (!isOnSessionPage(pathname, sessionId)) {
+      router.push(`/sessions/${sessionId}`);
+    }
+  };
 
   const handleDelete = (id: string) => {
     // Held for the life of the page: an optimistic removal lasts only as long
@@ -191,6 +215,8 @@ export function SessionsListClient({
           // persists across navigation, so it goes stale as the agent attaches
           // projects mid-session while the poll does not.
           projects={statusById.get(s.id)?.projects ?? []}
+          artifacts={statusById.get(s.id)?.artifacts}
+          onOpenArtifact={(chip) => handleOpenArtifact(s.id, chip)}
           workspaceRoot={workspaceRoot}
           onDelete={handleDelete}
         />

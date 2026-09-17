@@ -24,6 +24,7 @@ const polled = (id: string, createdAt: string) => ({
   isRunning: false,
   hasRun: false,
   projects: [],
+  artifacts: { chips: [], chipsByKey: {}, commits: 0, diffs: 0, plans: 0, prs: 0, specs: 0 },
 });
 
 describe("mergeDiscoveredSessions", () => {

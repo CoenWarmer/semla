@@ -13,6 +13,11 @@
  * each.
  */
 
+// Type-only: ArtifactSummary itself is pure and client-safe (see
+// artifact-summary.ts), but the disk read that produces one is server-only
+// and lives in session-status-view.ts, which this file must not import.
+import type { ArtifactSummary } from "@/lib/artifacts/artifact-summary";
+
 /**
  * One project chip on a session row.
  *
@@ -41,6 +46,12 @@ export type SessionStatus = {
   hasRun: boolean;
   /** Anchor first. Empty for a session that relates to no project. */
   projects: SessionProject[];
+  /**
+   * What this session produced — diffs, commits, PRs — per
+   * artifact-summary.ts. Client-safe type only: the disk read that builds it
+   * lives in session-status-view.ts, which this file must not import.
+   */
+  artifacts: ArtifactSummary;
 };
 
 /** The whole list. Only the sidebar needs it. */
@@ -102,6 +113,8 @@ export type SingleSessionStatus = {
   exists?: boolean;
   isRunning: boolean;
   projects: SessionProject[];
+  /** Same shape as SessionStatus.artifacts — the shared-shape rule this file states. */
+  artifacts: ArtifactSummary;
 };
 
 /**
