@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { HunkAnchor } from "@/lib/artifacts/artifact-types";
+
 /** Where the Review panel should open, resolved from a picked DOM element. */
 export type ElementTarget = {
   path: string;
@@ -35,6 +37,16 @@ export type ElementTarget = {
    * clicked.
    */
   precision: "exact" | "component";
+  /**
+   * The hunk this target came from, as it stood when it was captured —
+   * produced by a click on a session-item artifact chip. `ReviewPanel`
+   * re-finds it against the live diff during render rather than trusting the
+   * position (see `review-anchor-reveal.ts`); every other producer of a
+   * target leaves this undefined.
+   */
+  anchor?: HunkAnchor | null;
+  /** A commit to select in ReviewCommitNav, from a commit artifact chip. */
+  commitSha?: string | null;
   /**
    * Unique per pick, including a second pick of the exact same file and line.
    *
@@ -65,6 +77,11 @@ const Context = createContext<ElementTargetStore | null>(null);
  * layout (see layout.tsx), not ancestor and descendant, so a prop cannot pass
  * between them; this is the same shape as `BottomPanelProvider` for the same
  * reason.
+ *
+ * A third producer, `SessionArtifactChips` in the sidebar, is a sibling of
+ * both — the sidebar is also mounted above `{children}` in layout.tsx — and
+ * requests a target the same way the picker does, carrying `anchor` and
+ * `commitSha` where the picker leaves them undefined.
  */
 export function ElementTargetProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<ElementTarget | null>(null);

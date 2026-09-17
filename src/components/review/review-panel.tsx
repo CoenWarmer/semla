@@ -24,6 +24,7 @@ import {
 import {
   useCommitReview,
   useReview,
+  useReviewHunks,
   useSaveFile,
   useStageHunks,
   workspacePath,
@@ -45,6 +46,8 @@ import {
 } from "@/lib/session/session-live-state";
 import { cn } from "@/lib/utils";
 
+import { anchorRevealRequest } from "./review-anchor-reveal";
+import { activeCommitSha, BLANK_COMMIT_SELECTION } from "./review-artifact-commit";
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
 import { ReviewCommitNav } from "./review-commit-nav";
@@ -127,9 +130,21 @@ export function ReviewPanel({
     [ownRequest, target],
   );
 
-  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(
-    null,
+  /**
+   * A commit artifact chip names a commit to select in `ReviewCommitNav`.
+   * Same precedence rule as `chosenRequest`, applied to this one extra field
+   * a target can carry — see review-artifact-commit.ts.
+   */
+  const [ownCommitSelection, setOwnCommitSelection] = useState(
+    BLANK_COMMIT_SELECTION,
   );
+  const selectedCommitSha = activeCommitSha(ownCommitSelection, target);
+  const setSelectedCommitSha = useCallback(
+    (sha: string | null) =>
+      setOwnCommitSelection({ overNonce: target?.nonce ?? 0, sha }),
+    [target],
+  );
+
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(
@@ -384,10 +399,28 @@ export function ReviewPanel({
 
   // Following outranks everything: it is a mode the operator switched on, and
   // while it is on the panel's job is to be wherever the agent is.
-  const request = followRequest ?? chosenRequest;
+  const baseRequest = followRequest ?? chosenRequest;
+  const baseSelection = baseRequest.selection ?? defaultSelection(review.data);
+
+  /**
+   * The live hunks of whatever file is about to be shown, so an artifact
+   * chip's anchor can be re-found against them. Reused, not a second fetch:
+   * this is the same query key `ReviewEditorPane` reads for the selected
+   * file's coloring, so react-query dedupes the two.
+   */
+  const activeHunks = useReviewHunks(
+    sessionId,
+    baseSelection?.project ?? null,
+    baseSelection?.path ?? null,
+  ).data?.full?.hunks;
+
+  const request = useMemo(
+    () => anchorRevealRequest(baseRequest, target, activeHunks),
+    [activeHunks, baseRequest, target],
+  );
 
   const { expanded, highlight, reveal } = request;
-  const selection = request.selection ?? defaultSelection(review.data);
+  const selection = request.selection ?? baseSelection;
 
   const liveToolCalls = useSessionLiveToolCalls(sessionId).data;
   const calls = useMemo(

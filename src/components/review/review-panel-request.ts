@@ -19,6 +19,7 @@
  * anything having to clear it.
  */
 
+import type { HunkAnchor } from "@/lib/artifacts/artifact-types";
 import type { LineRange } from "@/lib/pi/file-access/access-types";
 
 import type { FileSelection } from "./review-changed-files";
@@ -39,6 +40,17 @@ export interface PanelTarget {
   path: string;
   line?: number;
   precision?: "exact" | "component";
+  /**
+   * The hunk this target came from, as it stood when it was captured.
+   *
+   * An anchor, not an address: it is re-found against the live diff during
+   * render (see review-anchor-reveal.ts) and falls back to `line` when it
+   * cannot be. Set by a sidebar artifact chip; every other caller leaves it
+   * undefined.
+   */
+  anchor?: HunkAnchor | null;
+  /** A commit to select in ReviewCommitNav, for a commit artifact chip. */
+  commitSha?: string | null;
   /** Unique per request, including a repeat of the same file and line. */
   nonce: number;
 }
