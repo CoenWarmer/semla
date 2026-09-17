@@ -15,6 +15,7 @@
  */
 
 import { resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
+import { seedSnapshots } from "@/lib/pi/artifacts/artifact-snapshot-cache";
 import {
   readChangedFiles,
   readHeadSha,
@@ -190,12 +191,19 @@ export async function readSessionReview(
  * swallowed there, because a mark that cannot be written should cost the
  * auto-open and not the turn.
  */
-export async function recordTurnStart(sessionId: string): Promise<void> {
+export async function recordTurnStart(
+  sessionId: string,
+  turnId: string | null = null,
+): Promise<void> {
   const links = await sessionProjects(sessionId);
   if (links.length === 0) return;
 
   const projects: Record<string, ProjectMark> = {};
 
+  // Same two git reads artifact-snapshot.ts would otherwise pay again on the
+  // first mutating tool call of the turn — seeding the cache here means the
+  // chained "before" snapshot (see artifact-snapshot-cache.ts) is already in
+  // place and that call costs zero extra subprocesses on the before side.
   await Promise.all(
     links.map(async (link) => {
       const root = projectAbsolutePath(link);
@@ -203,7 +211,11 @@ export async function recordTurnStart(sessionId: string): Promise<void> {
         readChangedFiles(root),
         readHeadSha(root),
       ]);
-      projects[link.path] = { head, state: fingerprint(head, files) };
+      const state = fingerprint(head, files);
+      projects[link.path] = { head, state };
+      seedSnapshots(sessionId, [
+        { at: new Date().toISOString(), files, head, projectPath: link.path, root, state },
+      ]);
     }),
   );
 
@@ -213,5 +225,6 @@ export async function recordTurnStart(sessionId: string): Promise<void> {
     // that no longer describes anything.
     reviewed: null,
     startedAt: new Date().toISOString(),
+    turnId,
   });
 }

@@ -70,6 +70,7 @@ const setup = (state: TurnBackgroundState = createTurnBackgroundState()) => {
     semlaSessionId: "s1",
     session,
     state,
+    turnId: "20260101T000000000Z-aaaaaaaa",
     turnRepoSlugs: () => ["semla", ...attachedThisTurn],
   });
 

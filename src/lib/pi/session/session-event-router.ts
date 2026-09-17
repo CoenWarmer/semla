@@ -13,6 +13,12 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
 import { retainBackgroundSession } from "@/lib/pi/background/background-sessions";
+import { candidateProjects, isMutatingTool } from "@/lib/pi/artifacts/artifact-attribution";
+import { captureAndRecord } from "@/lib/pi/artifacts/artifact-record";
+import { projectOfPath } from "@/lib/pi/workspace/project-of-path";
+import { getWorkspaceProjects } from "@/lib/pi/workspace/workspace";
+import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
+import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 import { accessesFromToolCall } from "@/lib/pi/file-access/access-from-tool-call";
 import {
   existenceCache,
@@ -91,6 +97,7 @@ export const createTurnEventRouter = ({
   semlaSessionId,
   session,
   state,
+  turnId,
   turnRepoSlugs,
 }: {
   /**
@@ -113,6 +120,12 @@ export const createTurnEventRouter = ({
   semlaSessionId: string;
   session: RetainableSession;
   state: TurnBackgroundState;
+  /**
+   * The durable id minted for this turn (src/lib/pi/session/turn-id.ts), or
+   * null for a programmatic continuation that has none. Stamped onto every
+   * artifact this turn's tool calls produce — see ArtifactCore.turnId.
+   */
+  turnId: string | null;
   turnRepoSlugs: () => string[];
 }): TurnEventRouter => {
   // Which file each in-flight edit/write is about to change. The path is only
@@ -192,6 +205,46 @@ export const createTurnEventRouter = ({
       run: runId,
     });
     return true;
+  };
+
+  /**
+   * Resolve a mutating call's candidate projects to snapshot.
+   *
+   * edit/write already carry a resolved written path; bash does not, so its
+   * candidates are the project owning `agentCwd` plus this session's already
+   * linked projects — see candidateProjects' docblock in artifact-attribution.ts
+   * for why a `cd ../other && git commit` is a real case to cover.
+   */
+  const captureCandidateProjects = async ({
+    toolName,
+    writtenPath: written,
+  }: {
+    agentCwd: string;
+    semlaSessionId: string;
+    toolName: string;
+    writtenPath: string | null;
+  }): Promise<{ projectPath: string; root: string }[]> => {
+    const workspaceProjects = await getWorkspaceProjects();
+    const projectNames = new Set(workspaceProjects.map((project) => project.name));
+
+    const writtenProject = written
+      ? projectOfPath(written, PI_WORKSPACE_ROOT, projectNames, agentCwd)
+      : null;
+    const cwdProject = projectOfPath(agentCwd, PI_WORKSPACE_ROOT, projectNames);
+
+    const links = await sessionProjects(semlaSessionId);
+
+    const candidates = candidateProjects({
+      cwdProject,
+      linkedProjects: links.map((link) => link.path),
+      toolName,
+      writtenPath: writtenProject,
+    });
+
+    return candidates.map((projectPath) => ({
+      projectPath,
+      root: projectAbsolutePath({ path: projectPath }),
+    }));
   };
 
   const onToolStart = (
@@ -279,6 +332,54 @@ export const createTurnEventRouter = ({
           ),
         );
       }
+    }
+
+    // What this call produced: a diff, a commit, or a PR. Only on success —
+    // a failed call changed nothing worth recording — and only for the tools
+    // that can mutate a working copy at all. Detached: the snapshot chain in
+    // artifact-snapshot-cache.ts must never cost the turn, and its failures
+    // cost only this call's artifact, not the turn that earned it.
+    if (!event.isError && isMutatingTool(event.toolName)) {
+      const capturedArgs = pendingArgs.get(event.toolCallId);
+      const capturedWritten = writtenPath(event.toolName, capturedArgs);
+      const command =
+        event.toolName === "bash" &&
+        typeof capturedArgs === "object" &&
+        capturedArgs !== null &&
+        typeof (capturedArgs as { command?: unknown }).command === "string"
+          ? (capturedArgs as { command: string }).command
+          : null;
+      detach(
+        semlaSessionId,
+        "capture artifacts",
+        captureCandidateProjects({
+          agentCwd,
+          semlaSessionId,
+          toolName: event.toolName,
+          writtenPath: capturedWritten,
+        }).then((projects) =>
+          captureAndRecord({
+            attribution: "tool-call",
+            command,
+            // Both halves of a diff's role (diff-role.ts): what the agent
+            // declared on the call, and the path it wrote. Read from the
+            // args this router already captured for attribution, so the
+            // role costs no extra bookkeeping.
+            declaredRole:
+              typeof capturedArgs === "object" && capturedArgs !== null
+                ? (capturedArgs as { role?: unknown }).role
+                : null,
+            output: resultText || null,
+            projects,
+            writtenPath: capturedWritten,
+            roundId: roundId ?? "live-round-0",
+            sessionId: semlaSessionId,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            turnId,
+          }),
+        ),
+      );
     }
 
     /**

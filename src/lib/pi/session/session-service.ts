@@ -41,9 +41,11 @@ import {
 import {
   BRIDGE_RUN_STARTED,
   clearSessionSlot,
+  CURRENT_TURN,
   readSessionWorkflowManager,
   writeSessionSlot,
   type BridgeRunNotifier,
+  type CurrentTurn,
 } from "@/lib/pi/extension-loading/extension-contract";
 import { recordExtensionLoad } from "@/lib/pi/extension-loading/extension-health";
 import {
@@ -275,6 +277,7 @@ export const runPiPrompt = async ({
   systemPrompt,
   text,
   tools,
+  turnId = null,
 }: {
   /**
    * Replace this entry instead of continuing from the end of the conversation.
@@ -307,6 +310,13 @@ export const runPiPrompt = async ({
   systemPrompt?: string | null;
   text: string;
   tools: string[];
+  /**
+   * The durable id minted for this turn by the prompt route
+   * (src/lib/pi/session/turn-id.ts), or null for a programmatic continuation
+   * that has none. Threaded into `createTurnEventRouter` so every artifact
+   * this turn's tool calls produce carries it — see ArtifactCore.turnId.
+   */
+  turnId?: string | null;
 }) => {
   assertSandboxedRuntime();
 
@@ -480,6 +490,18 @@ export const runPiPrompt = async ({
   // id made every lookup miss, so entity namespacing and capture-time
   // attribution silently did nothing while the turn-end sweep covered for them.
   const piRuntimeSessionId = sessionManager.getSessionId();
+
+  // Published so spec-persistence.ts and feature-spec.ts — loaded into a
+  // separate module scope via jiti or a factory closure — can stamp a spec
+  // artifact with the same turnId every code artifact this turn's tool calls
+  // produce carries. Keyed by the *pi runtime* session id, the identity both
+  // sides can see — see SessionKeyedSlotKey's docblock. A caller with no
+  // turnId (a background continuation) publishes nothing, so a read finds
+  // nothing rather than a stale value.
+  const currentTurn: CurrentTurn | null = turnId
+    ? { startedAt: new Date().toISOString(), turnId }
+    : null;
+  if (currentTurn) writeSessionSlot(CURRENT_TURN, piRuntimeSessionId, currentTurn);
 
   // The projects this turn has already linked. Declared before turnRepoSlugs,
   // which reads it: the other way round, every prompt threw on the temporal
@@ -738,6 +760,7 @@ export const runPiPrompt = async ({
     semlaSessionId,
     session,
     state,
+    turnId,
     turnRepoSlugs,
   });
 
@@ -880,6 +903,11 @@ export const runPiPrompt = async ({
     // `readSessionSlot(...)?.(runId)` is an optional call — so that session's
     // bridge runs then reported no progress at all, with nothing logged.
     clearSessionSlot(BRIDGE_RUN_STARTED, piRuntimeSessionId, bridgeRunNotifier);
+    // Identity-guarded for the same reason: a programmatic continuation fires
+    // `before_agent_start` with an empty prompt, and an uncleared or
+    // wrongly-cleared slot would stamp the next reader with a superseded
+    // turn's id. See CURRENT_TURN's docblock.
+    if (currentTurn) clearSessionSlot(CURRENT_TURN, piRuntimeSessionId, currentTurn);
     stampWikiRepo(semlaSessionId, turnRepoSlugs(), turnStartedAt);
 
     if (decision.kind === "settled") {

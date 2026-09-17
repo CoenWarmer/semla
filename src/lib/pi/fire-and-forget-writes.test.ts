@@ -24,6 +24,7 @@ const THROWING_WRITES = [
   "setSessionRunning",
   "updateSessionTitle",
   "finalizeBackgroundRun",
+  "persistArtifacts",
 ] as const;
 
 /**
@@ -37,6 +38,7 @@ const CALLERS = [
   "src/lib/pi/background/background-continuation.ts",
   "src/lib/pi/session/session-event-router.ts",
   "src/lib/pi/session/session-service.ts",
+  "src/lib/pi/artifacts/artifact-persist-queue.ts",
 ] as const;
 
 const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
@@ -77,6 +79,7 @@ describe("fire-and-forget persistence calls", () => {
         !(CALLERS as readonly string[]).includes(path) &&
         // Where they are defined, so its own calls are the definitions.
         path !== "src/lib/pi/session/session-persistence.ts" &&
+        path !== "src/lib/pi/artifacts/artifact-persistence.ts" &&
         THROWING_WRITES.some((write) =>
           new RegExp(String.raw`\b${write}\s*\(`).test(read(path)),
         ),

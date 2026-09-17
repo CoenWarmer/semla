@@ -7,6 +7,11 @@ import {
 import { parseRequestedSessionId } from "@/lib/pi/session/session-id";
 import { resolveSessionPromptContext } from "@/lib/pi/session/session-prompt-context";
 import { recordTurnStart } from "@/lib/pi/review/review-service";
+import { readTurnMark } from "@/lib/pi/review/review-turn-mark";
+import { captureTurnResidual } from "@/lib/pi/artifacts/artifact-record";
+import { drainArtifacts } from "@/lib/pi/artifacts/artifact-persist-queue";
+import { mintTurnId } from "@/lib/pi/session/turn-id";
+import { projectAbsolutePath } from "@/lib/pi/session/session-project";
 import { runPiPrompt } from "@/lib/pi/session/session-service";
 import { requireSessionOwner } from "@/lib/auth/session-auth";
 import { createClient } from "@/lib/supabase/server";
@@ -141,6 +146,14 @@ export async function POST(
   );
 
   /**
+   * Minted here, once, before anything this turn does — the last point that
+   * provably predates every tool call, the spec-persistence hook, and the
+   * artifact router. See src/lib/pi/session/turn-id.ts for why this is the
+   * one mint site rather than a value re-derived downstream.
+   */
+  const turnId = mintTurnId();
+
+  /**
    * Mark where each project stands before the agent can touch anything.
    *
    * Awaited rather than fired off, because the whole value of the mark is that
@@ -153,7 +166,7 @@ export async function POST(
    * opens by itself and the operator opens it by hand.
    */
   try {
-    await recordTurnStart(id);
+    await recordTurnStart(id, turnId);
   } catch (error) {
     console.error("[api:sessions/prompt] Unable to mark the turn start:", error);
   }
@@ -206,6 +219,7 @@ export async function POST(
         systemPrompt,
         text,
         tools: selectedTools,
+        turnId,
       })
         .catch((error: unknown) => {
           send({
@@ -215,6 +229,31 @@ export async function POST(
           });
         })
         .finally(() => {
+          // Whatever the chained snapshot cache still holds but no tool call
+          // claimed — a bash change no candidate resolved to, say. Detached:
+          // this must never hold the stream open. See captureTurnResidual's
+          // docblock for why no id is invented for it.
+          const mark = readTurnMark(id);
+          void captureTurnResidual(
+            id,
+            mark?.startedAt ?? new Date().toISOString(),
+            mark?.turnId ?? turnId,
+            projects.map((path) => ({ projectPath: path, root: projectAbsolutePath({ path }) })),
+          )
+            .catch((error: unknown) => {
+              console.error("[api:sessions/prompt] Turn residual capture failed:", error);
+            })
+            .finally(() => {
+              // The Postgres mirror for whatever this turn's tool calls (and
+              // the residual sweep above) queued. Detached, same reason as
+              // captureTurnResidual itself: it must never hold the stream
+              // open, and a failed drain is logged rather than thrown — see
+              // artifact-persist-queue.ts.
+              void drainArtifacts(id).catch((error: unknown) => {
+                console.error("[api:sessions/prompt] Artifact drain failed:", error);
+              });
+            });
+
           stopHeartbeat();
           clearTimeout(deadline);
           close();
