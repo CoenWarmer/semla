@@ -22,6 +22,10 @@ import {
   readTurnCommits,
 } from "@/lib/pi/review/review-status";
 import {
+  filterSessionCommits,
+  sessionCommitShas,
+} from "@/lib/pi/review/review-session-commits";
+import {
   fingerprint,
   readTurnMark,
   writeTurnMark,
@@ -93,9 +97,12 @@ export function resolveReviewFile(
  * range `ReviewCommitNav` drew its dots from, so a sha the client can name is
  * by construction a sha this accepts.
  *
- * Null covers three cases that are all "no" to the caller: no turn mark, so no
- * range; a sha outside the range; and a repository whose start sha is no longer
- * an ancestor of HEAD, which `readTurnCommits` already refuses.
+ * Null covers four cases that are all "no" to the caller: no turn mark, so no
+ * range; a sha outside the range; a sha inside the range that this session did
+ * not commit (see review-session-commits.ts — the range is a fact about the
+ * repository, and the operator's own commits land in it too); and a repository
+ * whose start sha is no longer an ancestor of HEAD, which `readTurnCommits`
+ * already refuses.
  */
 export async function resolveSessionCommit(
   sessionId: string,
@@ -106,7 +113,10 @@ export async function resolveSessionCommit(
   const startSha = mark?.projects[target.link.path]?.head ?? null;
   if (!startSha) return null;
 
-  const commits = await readTurnCommits(target.root, startSha);
+  const commits = filterSessionCommits(
+    await readTurnCommits(target.root, startSha),
+    sessionCommitShas(sessionId, target.link.path),
+  );
   return commits.find((commit) => commit.sha === sha) ?? null;
 }
 
@@ -116,9 +126,10 @@ async function readProjectReview(
   sessionId: string,
 ): Promise<ProjectReview> {
   const root = projectAbsolutePath(link);
-  const [{ files, omitted }, headSha] = await Promise.all([
+  const [{ files, omitted }, headSha, rangeCommits] = await Promise.all([
     readChangedFiles(root),
     readHeadSha(root),
+    readTurnCommits(root, startSha),
   ]);
 
   return {
@@ -129,7 +140,14 @@ async function readProjectReview(
     otherActiveSessions: otherActiveSessionCount(link.path, sessionId),
     path: link.path,
     startSha,
-    turnCommits: await readTurnCommits(root, startSha),
+    // The range narrowed to what this session is on record as having
+    // committed. Without this the nav drew a dot for the operator's own
+    // terminal commits and for a sibling session's, because `startSha..HEAD`
+    // cannot tell them apart. See review-session-commits.ts.
+    turnCommits: filterSessionCommits(
+      rangeCommits,
+      sessionCommitShas(sessionId, link.path),
+    ),
   };
 }
 
