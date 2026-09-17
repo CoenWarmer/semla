@@ -58,7 +58,11 @@
  * without a DOM, and the component that renders it should be thin.
  */
 
-import type { WorkflowAgentSnapshot, WorkflowSnapshot } from "@/types/workflow";
+import type {
+  WorkflowAgentSnapshot,
+  WorkflowAgentStatus,
+  WorkflowSnapshot,
+} from "@/types/workflow";
 
 /** Per-agent statuses after which an agent does no further work. */
 const TERMINAL_AGENT_STATUSES = new Set(["done", "error", "skipped"]);
@@ -96,6 +100,36 @@ function isActivelyRunning(snapshot: WorkflowSnapshot): boolean {
 
 export type WorkflowPhaseStatus = "done" | "running" | "planned";
 
+/**
+ * An agent slice's status. Unlike a phase's, this is *read* rather than
+ * derived — `WorkflowAgentSnapshot.status` is a fact the runtime records per
+ * agent — so it keeps the two outcomes a phase has to collapse into "done":
+ * `error` and `skipped`. A phase cannot distinguish them (see this module's
+ * doc comment); an agent can, and flattening that here would discard
+ * information the snapshot actually has.
+ *
+ * `queued` maps to "planned" so the vocabulary matches the phase bar's, since
+ * both render through the same three visual treatments plus two failure ones.
+ */
+export type WorkflowAgentSliceStatus =
+  | "done"
+  | "running"
+  | "planned"
+  | "error"
+  | "skipped";
+
+/** One agent's slice within its phase's segment. */
+export type WorkflowPhaseAgentSlice = {
+  /** `WorkflowAgentSnapshot.id` — the run's creation order, and the React key. */
+  id: number;
+  label: string;
+  status: WorkflowAgentSliceStatus;
+  /** Resolved model id, when the run recorded one. */
+  model?: string;
+  tokens?: number;
+  cost?: number;
+};
+
 export type WorkflowPhaseSegment = {
   /** The phase's declared or first-reached title. */
   title: string;
@@ -107,7 +141,72 @@ export type WorkflowPhaseSegment = {
    * missing data.
    */
   agentCount: number;
+  /**
+   * Those same agents as ordered slices, for rendering inside the phase's
+   * box. Always `agentCount` long — it is the same set, not a filtered view.
+   *
+   * IMPORTANT, and the reason this cannot be made to look stable: a workflow
+   * script creates agents lazily, so for a phase whose `agent()` calls are
+   * sequential (`await`ed one after another) this array GROWS as the run
+   * proceeds. The snapshot cannot know the eventual count — the agents do not
+   * exist until the preceding `await` returns, and the script is arbitrary
+   * JavaScript, so there is nothing to look ahead at. A three-agent
+   * sequential phase therefore renders one slice, then two, then three, each
+   * re-dividing the same phase box. That is the runtime being honest about
+   * what has happened, not a rendering bug, and no derivation here can fix
+   * it.
+   *
+   * Ordered by `id` (creation order) so existing slices keep their position
+   * when a new one appears, rather than reshuffling.
+   */
+  agents: WorkflowPhaseAgentSlice[];
 };
+
+/** Maps a recorded agent status onto the slice vocabulary above. */
+function agentSliceStatus(status: WorkflowAgentStatus): WorkflowAgentSliceStatus {
+  switch (status) {
+    case "queued":
+      return "planned";
+    case "running":
+      return "running";
+    case "done":
+      return "done";
+    case "error":
+      return "error";
+    case "skipped":
+      return "skipped";
+  }
+}
+
+/**
+ * The slices for one phase, in creation order.
+ *
+ * Sorted by `id` rather than trusting `snapshot.agents` order: the snapshot is
+ * merged from a live manager and a persisted run file
+ * (workflow-snapshot-merge.ts), and only `id` is a stable creation ordinal.
+ */
+function agentSlicesForPhase(
+  agents: readonly WorkflowAgentSnapshot[],
+  title: string,
+): WorkflowPhaseAgentSlice[] {
+  return agents
+    .filter((agent) => agent.phase === title)
+    .slice()
+    .sort((a, b) => a.id - b.id)
+    .map(toAgentSlice);
+}
+
+/** Projects one agent snapshot onto the fields a slice renders. */
+function toAgentSlice(agent: WorkflowAgentSnapshot): WorkflowPhaseAgentSlice {
+  return {
+    cost: agent.cost,
+    id: agent.id,
+    label: agent.label,
+    model: agent.model,
+    status: agentSliceStatus(agent.status),
+    tokens: agent.tokens,
+  };
+}
 
 /**
  * Builds the segment list for the phase-progress bar, or `null` when a bar
@@ -131,9 +230,8 @@ export function deriveWorkflowPhaseProgress(
   const running = !terminal && isActivelyRunning(snapshot);
 
   return phases.map((title, index) => {
-    const agentCount = snapshot.agents.filter(
-      (agent) => agent.phase === title,
-    ).length;
+    const agents = agentSlicesForPhase(snapshot.agents, title);
+    const agentCount = agents.length;
 
     let status: WorkflowPhaseStatus;
     if (currentIndex === -1) {
@@ -155,8 +253,46 @@ export function deriveWorkflowPhaseProgress(
       status = "planned";
     }
 
-    return { agentCount, status, title };
+    return { agentCount, agents, status, title };
   });
+}
+
+/**
+ * A single segment standing in for a whole run, for a run that declared no
+ * phases or only one.
+ *
+ * `deriveWorkflowPhaseProgress` returns `null` for those — there is nothing to
+ * show progress *through*, so a phase bar would be noise. But in a stack of
+ * runs, omitting the row entirely would leave a silent gap in the session's
+ * history, so the caller renders one full-width bar instead, subdivided by the
+ * run's agents like any other segment.
+ *
+ * Status is the run's own, not a phase's: `done` when terminal, `running` on
+ * direct evidence of live work, `planned` otherwise — the same
+ * "absence of information is not evidence of running" rule this module exists
+ * to enforce, minus the array-position reasoning that needs phases to work.
+ *
+ * The title prefers the one declared phase, falling back to the run's name, so
+ * a one-phase run's tooltip still names that phase rather than restating the
+ * run label the row already shows.
+ */
+export function deriveWholeRunSegment(
+  snapshot: WorkflowSnapshot,
+): WorkflowPhaseSegment {
+  const terminal = isRunTerminal(snapshot);
+  const running = !terminal && isActivelyRunning(snapshot);
+
+  const agents = snapshot.agents
+    .slice()
+    .sort((a, b) => a.id - b.id)
+    .map(toAgentSlice);
+
+  return {
+    agentCount: agents.length,
+    agents,
+    status: running ? "running" : terminal ? "done" : "planned",
+    title: snapshot.phases?.[0] ?? snapshot.name,
+  };
 }
 
 /** Human-readable status label for the tooltip. */
@@ -168,5 +304,27 @@ export function phaseStatusLabel(status: WorkflowPhaseStatus): string {
       return "In progress";
     case "planned":
       return "Planned";
+  }
+}
+
+/**
+ * Human-readable status label for an agent slice's tooltip.
+ *
+ * "Queued" rather than the phase bar's "Planned" for that status: an agent
+ * that exists but has not started is genuinely queued, where a phase with no
+ * agents yet is only planned.
+ */
+export function agentSliceStatusLabel(status: WorkflowAgentSliceStatus): string {
+  switch (status) {
+    case "done":
+      return "Done";
+    case "running":
+      return "In progress";
+    case "planned":
+      return "Queued";
+    case "error":
+      return "Failed";
+    case "skipped":
+      return "Skipped";
   }
 }

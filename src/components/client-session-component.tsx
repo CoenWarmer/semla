@@ -312,6 +312,21 @@ export function ClientSessionComponent({
     };
   }, [isActive, messages.length, activeTool]);
 
+  /**
+   * Every run's snapshot for the conversation's phase bar, newest first.
+   *
+   * Distinct from `snapshot` below on purpose. That one collapses to a single
+   * run and falls back to `sessionAgentSnapshot` so the workflow PANEL always
+   * has a node to draw; the phase bar must not receive that synthetic value,
+   * or a session that ran no workflow would grow a bar describing its own main
+   * agent. Here a session with no runs yields an empty list, and the bar
+   * renders nothing.
+   */
+  const workflowRunSnapshots = useMemo(
+    () => (workflowRunsQuery.data ?? []).map((run) => run.snapshot),
+    [workflowRunsQuery.data],
+  );
+
   const snapshot =
     workflowSnapshot &&
     persistedWorkflowSnapshot &&
@@ -765,7 +780,8 @@ export function ClientSessionComponent({
       sessionId={sessionId}
       sessionMissing={sessionMissing}
       viewingLeafId={viewingLeafId}
-      workflowSnapshot={snapshot}
+      workflowRunSnapshots={workflowRunSnapshots}
+      workflowSnapshot={workflowSnapshot}
     />
   );
 

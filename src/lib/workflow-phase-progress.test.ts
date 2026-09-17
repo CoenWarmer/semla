@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agentSliceStatusLabel,
+  deriveWholeRunSegment,
   deriveWorkflowPhaseProgress,
   phaseStatusLabel,
+  type WorkflowPhaseAgentSlice,
 } from "@/lib/workflow-phase-progress";
 import type { WorkflowAgentSnapshot, WorkflowSnapshot } from "@/types/workflow";
 
@@ -10,6 +13,26 @@ function agent(
   overrides: Partial<WorkflowAgentSnapshot> & { id: number },
 ): WorkflowAgentSnapshot {
   return { label: `agent-${overrides.id}`, status: "running", ...overrides };
+}
+
+/**
+ * The slice the `agent` builder above is expected to derive into. Mirrors its
+ * defaults (label `agent-N`, status `running`) so a shape assertion does not
+ * restate them.
+ */
+function slice(
+  id: number,
+  overrides: Partial<WorkflowPhaseAgentSlice> = {},
+): WorkflowPhaseAgentSlice {
+  return {
+    cost: undefined,
+    id,
+    label: `agent-${id}`,
+    model: undefined,
+    status: "running",
+    tokens: undefined,
+    ...overrides,
+  };
 }
 
 function snapshot(overrides: Partial<WorkflowSnapshot>): WorkflowSnapshot {
@@ -40,9 +63,14 @@ describe("deriveWorkflowPhaseProgress", () => {
     );
 
     expect(result).toEqual([
-      { agentCount: 1, status: "done", title: "collect" },
-      { agentCount: 2, status: "running", title: "analyze" },
-      { agentCount: 0, status: "planned", title: "report" },
+      { agentCount: 1, agents: [slice(1)], status: "done", title: "collect" },
+      {
+        agentCount: 2,
+        agents: [slice(2), slice(3)],
+        status: "running",
+        title: "analyze",
+      },
+      { agentCount: 0, agents: [], status: "planned", title: "report" },
     ]);
   });
 
@@ -80,8 +108,8 @@ describe("deriveWorkflowPhaseProgress", () => {
     );
 
     expect(result).toEqual([
-      { agentCount: 0, status: "done", title: "collect" },
-      { agentCount: 0, status: "running", title: "surprise" },
+      { agentCount: 0, agents: [], status: "done", title: "collect" },
+      { agentCount: 0, agents: [], status: "running", title: "surprise" },
     ]);
   });
 
@@ -96,6 +124,7 @@ describe("deriveWorkflowPhaseProgress", () => {
 
     expect(result?.[1]).toEqual({
       agentCount: 0,
+      agents: [],
       status: "planned",
       title: "analyze",
     });
@@ -174,7 +203,12 @@ describe("deriveWorkflowPhaseProgress", () => {
     );
 
     expect(result?.map((s) => s.status)).not.toContain("running");
-    expect(result?.[1]).toEqual({ agentCount: 1, status: "done", title: "analyze" });
+    expect(result?.[1]).toEqual({
+      agentCount: 1,
+      agents: [slice(1, { status: "error" })],
+      status: "done",
+      title: "analyze",
+    });
   });
 
   it("marks an aborted run's reached phase done, not running", () => {
@@ -203,7 +237,12 @@ describe("deriveWorkflowPhaseProgress", () => {
       }),
     );
 
-    expect(result?.[0]).toEqual({ agentCount: 1, status: "done", title: "collect" });
+    expect(result?.[0]).toEqual({
+      agentCount: 1,
+      agents: [slice(1, { status: "done" })],
+      status: "done",
+      title: "collect",
+    });
     expect(result?.[1].status).not.toBe("done");
     expect(result?.[1].status).not.toBe("running");
     expect(result?.[2].status).not.toBe("done");
@@ -268,6 +307,287 @@ describe("deriveWorkflowPhaseProgress", () => {
     // is "running", runningCount is 0) — so the current phase is "planned",
     // never "done" (which would require terminality) and never "running".
     expect(result?.[0].status).toBe("planned");
+  });
+});
+
+describe("deriveWorkflowPhaseProgress agent slices", () => {
+  it("exposes each phase's agents as slices in creation order, not snapshot order", () => {
+    // `snapshot.agents` arrives merged from a live manager and a persisted run
+    // file, so only `id` is a stable creation ordinal — hence the out-of-order
+    // input here.
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [
+          agent({ id: 3, phase: "analyze", status: "queued" }),
+          agent({ id: 1, phase: "analyze", status: "done" }),
+          agent({ id: 2, phase: "analyze", status: "running" }),
+        ],
+        currentPhase: "analyze",
+        phases: ["collect", "analyze"],
+        runningCount: 1,
+      }),
+    );
+
+    expect(result?.[1].agents.map((s) => s.id)).toEqual([1, 2, 3]);
+    expect(result?.[1].agents.map((s) => s.status)).toEqual([
+      "done",
+      "running",
+      "planned",
+    ]);
+  });
+
+  it("keeps error and skipped distinct on a slice, though its phase collapses both to done", () => {
+    // This is most of the point of drawing agents: the phase bar cannot say
+    // which of its agents failed, and the snapshot does know.
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [
+          agent({ id: 1, phase: "work", status: "error" }),
+          agent({ id: 2, phase: "work", status: "skipped" }),
+          agent({ id: 3, phase: "work", status: "done" }),
+        ],
+        currentPhase: "work",
+        phases: ["work", "report"],
+        runStatus: "failed",
+      }),
+    );
+
+    expect(result?.[0].status).toBe("done");
+    expect(result?.[0].agents.map((s) => s.status)).toEqual([
+      "error",
+      "skipped",
+      "done",
+    ]);
+  });
+
+  it("carries model, tokens and cost through for the slice tooltip", () => {
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [
+          agent({
+            cost: 0.42,
+            id: 1,
+            model: "openrouter/anthropic/claude-opus-5",
+            phase: "work",
+            status: "done",
+            tokens: 12_600,
+          }),
+        ],
+        currentPhase: "work",
+        phases: ["work", "report"],
+        runStatus: "completed",
+      }),
+    );
+
+    expect(result?.[0].agents[0]).toEqual({
+      cost: 0.42,
+      id: 1,
+      label: "agent-1",
+      model: "openrouter/anthropic/claude-opus-5",
+      status: "done",
+      tokens: 12_600,
+    });
+  });
+
+  it("gives a phase with no agents an empty slice list, not a placeholder slice", () => {
+    // The component renders one solid phase-styled bar in this case; it must
+    // be able to tell "no agents yet" from "one queued agent".
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [agent({ id: 1, phase: "collect", status: "done" })],
+        currentPhase: "collect",
+        phases: ["collect", "analyze"],
+        runningCount: 1,
+      }),
+    );
+
+    expect(result?.[1].agents).toEqual([]);
+    expect(result?.[1].agentCount).toBe(0);
+  });
+
+  it("keeps agentCount and agents.length in agreement", () => {
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [
+          agent({ id: 1, phase: "a" }),
+          agent({ id: 2, phase: "b" }),
+          agent({ id: 3, phase: "b" }),
+          agent({ id: 4, phase: undefined }),
+        ],
+        currentPhase: "b",
+        phases: ["a", "b"],
+        runningCount: 1,
+      }),
+    );
+
+    for (const segment of result ?? []) {
+      expect(segment.agents).toHaveLength(segment.agentCount);
+    }
+  });
+
+  it("ignores an agent whose phase matches no declared phase", () => {
+    // An unphased agent (no `phase`) belongs to no segment and must not be
+    // silently attributed to one.
+    const result = deriveWorkflowPhaseProgress(
+      snapshot({
+        agents: [
+          agent({ id: 1, phase: undefined }),
+          agent({ id: 2, phase: "ghost" }),
+          agent({ id: 3, phase: "a" }),
+        ],
+        currentPhase: "a",
+        phases: ["a", "b"],
+        runningCount: 1,
+      }),
+    );
+
+    expect(result?.[0].agents.map((s) => s.id)).toEqual([3]);
+    expect(result?.[1].agents).toEqual([]);
+  });
+
+  it("grows a sequential phase's slice list as agents are created (the lazy-creation case)", () => {
+    // A three-agent sequential phase genuinely has 1, then 2, then 3 agents:
+    // the runtime cannot know the eventual count, so the bar re-divides. This
+    // pins that as intended behaviour rather than a regression.
+    const phases = ["implement"];
+    const at = (count: number) =>
+      deriveWorkflowPhaseProgress(
+        snapshot({
+          agents: Array.from({ length: count }, (_, i) =>
+            agent({ id: i + 1, phase: "implement" }),
+          ),
+          currentPhase: "implement",
+          phases: [...phases, "validate"],
+          runningCount: 1,
+        }),
+      )?.[0].agents.length;
+
+    expect(at(1)).toBe(1);
+    expect(at(2)).toBe(2);
+    expect(at(3)).toBe(3);
+  });
+});
+
+describe("deriveWholeRunSegment", () => {
+  it("collapses a phaseless run into one segment carrying all its agents", () => {
+    const result = deriveWholeRunSegment(
+      snapshot({
+        agents: [
+          agent({ id: 2, status: "done" }),
+          agent({ id: 1, status: "done" }),
+        ],
+        name: "flat run",
+        phases: [],
+        runStatus: "completed",
+      }),
+    );
+
+    expect(result.status).toBe("done");
+    expect(result.title).toBe("flat run");
+    // Sorted by id (creation order), like the per-phase slices.
+    expect(result.agents.map((s) => s.id)).toEqual([1, 2]);
+    expect(result.agentCount).toBe(2);
+  });
+
+  it("includes agents regardless of their phase, since no phase splits them", () => {
+    // A one-phase run's agents all carry that phase; a phaseless run's carry
+    // none. Both must appear, so this must not filter on `phase` at all.
+    const result = deriveWholeRunSegment(
+      snapshot({
+        agents: [
+          agent({ id: 1, phase: "only", status: "done" }),
+          agent({ id: 2, phase: undefined, status: "done" }),
+        ],
+        currentPhase: "only",
+        phases: ["only"],
+        runStatus: "completed",
+      }),
+    );
+
+    expect(result.agents.map((s) => s.id)).toEqual([1, 2]);
+  });
+
+  it("prefers the single declared phase as its title, over the run name", () => {
+    const result = deriveWholeRunSegment(
+      snapshot({ name: "run name", phases: ["the phase"] }),
+    );
+
+    expect(result.title).toBe("the phase");
+  });
+
+  it("reports running only on direct evidence, never from absence of information", () => {
+    // The same rule the phase derivation enforces: a run with nothing saying
+    // it is live must not render as running.
+    const silent = deriveWholeRunSegment(
+      snapshot({ name: "silent", phases: [] }),
+    );
+    expect(silent.status).toBe("planned");
+
+    const live = deriveWholeRunSegment(
+      snapshot({
+        agents: [agent({ id: 1, status: "running" })],
+        name: "live",
+        phases: [],
+        runningCount: 1,
+      }),
+    );
+    expect(live.status).toBe("running");
+  });
+
+  it("reports a terminal run done, whether it completed, failed or was aborted", () => {
+    for (const runStatus of ["completed", "failed", "aborted"] as const) {
+      const result = deriveWholeRunSegment(
+        snapshot({
+          agents: [agent({ id: 1, status: "error" })],
+          name: runStatus,
+          phases: [],
+          runStatus,
+        }),
+      );
+      expect(result.status).toBe("done");
+    }
+  });
+
+  it("keeps a failed agent's own status distinct inside a done run", () => {
+    const result = deriveWholeRunSegment(
+      snapshot({
+        agents: [
+          agent({ id: 1, status: "error" }),
+          agent({ id: 2, status: "skipped" }),
+        ],
+        name: "failed run",
+        phases: [],
+        runStatus: "failed",
+      }),
+    );
+
+    expect(result.status).toBe("done");
+    expect(result.agents.map((s) => s.status)).toEqual(["error", "skipped"]);
+  });
+
+  it("returns an empty agent list for a run with no agents, not a placeholder", () => {
+    const result = deriveWholeRunSegment(
+      snapshot({ name: "empty", phases: [] }),
+    );
+
+    expect(result.agents).toEqual([]);
+    expect(result.agentCount).toBe(0);
+  });
+});
+
+describe("agentSliceStatusLabel", () => {
+  it("labels each slice status, distinguishing the two failure outcomes", () => {
+    expect(agentSliceStatusLabel("done")).toBe("Done");
+    expect(agentSliceStatusLabel("running")).toBe("In progress");
+    expect(agentSliceStatusLabel("error")).toBe("Failed");
+    expect(agentSliceStatusLabel("skipped")).toBe("Skipped");
+  });
+
+  it("calls a queued agent queued, where the phase bar would say planned", () => {
+    // An agent that exists but has not started is queued; a phase with no
+    // agents at all is merely planned. Same derived status, different words.
+    expect(agentSliceStatusLabel("planned")).toBe("Queued");
+    expect(phaseStatusLabel("planned")).toBe("Planned");
   });
 });
 

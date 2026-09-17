@@ -70,6 +70,7 @@ export function SessionConversation({
   sessionId,
   sessionMissing,
   viewingLeafId,
+  workflowRunSnapshots,
   workflowSnapshot,
 }: {
   activeTool: string | undefined;
@@ -104,7 +105,13 @@ export function SessionConversation({
   sessionId: string;
   sessionMissing: boolean;
   viewingLeafId: string | null;
-  /** Present for workflow runs; used to render the phase-progress bar. */
+  /**
+   * Every workflow run this session has, newest first, so the phase bar can
+   * stack them. Never the synthetic session-agent snapshot — see
+   * `workflowRunSnapshots` in client-session-component.tsx.
+   */
+  workflowRunSnapshots?: readonly (WorkflowSnapshot | null | undefined)[] | null;
+  /** The live in-flight run, when there is one. */
   workflowSnapshot: WorkflowSnapshot | null | undefined;
 }) {
   const router = useRouter();
@@ -191,7 +198,10 @@ export function SessionConversation({
             below. Passing one signal to both is what stops the stop button
             and this line disagreeing about whether anything is happening.
           */}
-          <WorkflowPhaseBar snapshot={workflowSnapshot} />
+          <WorkflowPhaseBar
+            runs={workflowRunSnapshots}
+            snapshot={workflowSnapshot}
+          />
           <SessionActivityLine
             active={isActive}
             activeTool={activeTool}
