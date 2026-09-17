@@ -292,6 +292,57 @@ export async function readFileDiff(
   return parseUnifiedDiff(result.stdout)[0] ?? null;
 }
 
+/** A full 40-character hex object name, and nothing else. */
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * What one commit did to one file.
+ *
+ * `git show` rather than `diff <sha>^..<sha>`: the root commit has no parent,
+ * so the range form fails there — on the one commit in a repository's history
+ * most likely to be the interesting one in a fresh project. `--format=` drops
+ * the commit header so the output is a plain unified diff that
+ * `parseUnifiedDiff` already handles, and `-m --first-parent` makes a merge
+ * commit diffable at all instead of printing nothing.
+ *
+ * `sha` is validated here rather than trusted. It reaches this function from
+ * an HTTP query parameter, and while `gitResult` takes an argv array so there
+ * is no shell to inject into, `git show` accepts revision *expressions* —
+ * `HEAD@{upstream}`, `:/subject`, `sha^{tree}` — and an unvalidated one turns
+ * a per-commit read into an arbitrary-revision read. The route additionally
+ * requires the sha to be one of the session's own turn commits; this is the
+ * half that does not depend on the caller having done so.
+ */
+export async function readCommitFileDiff(
+  projectPath: string,
+  sha: string,
+  relPath: string,
+): Promise<FileDiff | null> {
+  if (!FULL_SHA.test(sha)) return null;
+
+  const result = await gitResult(
+    projectPath,
+    [
+      "-c",
+      "core.quotePath=false",
+      "show",
+      "--no-color",
+      "-U3",
+      "-M",
+      "-m",
+      "--first-parent",
+      "--format=",
+      sha,
+      "--",
+      relPath,
+    ],
+    { timeout: DIFF_TIMEOUT_MS },
+  );
+
+  if (result.stdout === "") return null;
+  return parseUnifiedDiff(result.stdout)[0] ?? null;
+}
+
 /**
  * An untracked file's diff, without touching the index.
  *

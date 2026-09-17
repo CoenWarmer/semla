@@ -160,18 +160,19 @@ describe("readChangedFiles", () => {
 });
 
 describe("parseTurnCommits", () => {
-  /** Real `git log --format=%x1e...%aI --name-only` output for two commits. */
+  /** Real `git log --format=%x1e...%aI --name-status -M` output, two commits. */
   const LOG =
     "\x1ea1d4e530242bc5c1f04beb02cbca8634d754099f\x1fa1d4e53\x1f" +
-    "third: two files\x1ft\x1f2026-09-03T14:55:35+02:00\n\nkeep.txt\n" +
+    "third: two files\x1ft\x1f2026-09-03T14:55:35+02:00\n\nM\tkeep.txt\n" +
     "\x1e1c0aa73e52c50f0dab9e60d338d935698e671dda\x1f1c0aa73\x1f" +
-    "second\x1ft\x1f2026-09-03T14:55:35+02:00\n\nmod.txt\nnew.txt\n";
+    "second\x1ft\x1f2026-09-03T14:55:35+02:00\n\nM\tmod.txt\nA\tnew.txt\n";
 
   it("reads each commit and counts its files", () => {
     expect(parseTurnCommits(LOG)).toEqual([
       {
         at: "2026-09-03T14:55:35+02:00",
         author: "t",
+        fileChanges: [{ oldPath: null, path: "keep.txt", status: "modified" }],
         fileCount: 1,
         files: ["keep.txt"],
         sha: "a1d4e530242bc5c1f04beb02cbca8634d754099f",
@@ -181,12 +182,59 @@ describe("parseTurnCommits", () => {
       {
         at: "2026-09-03T14:55:35+02:00",
         author: "t",
+        fileChanges: [
+          { oldPath: null, path: "mod.txt", status: "modified" },
+          { oldPath: null, path: "new.txt", status: "added" },
+        ],
         fileCount: 2,
         files: ["mod.txt", "new.txt"],
         sha: "1c0aa73e52c50f0dab9e60d338d935698e671dda",
         shortSha: "1c0aa73",
         subject: "second",
       },
+    ]);
+  });
+
+  it("reads a deletion as one, rather than as a change to a file that is gone", () => {
+    const log =
+      "\x1e" +
+      "b".repeat(40) +
+      "\x1fbbbbbbb\x1fdrop it\x1ft\x1f2026-09-03T14:55:35+02:00\n\nD\tgone.txt\n";
+
+    expect(parseTurnCommits(log)[0].fileChanges).toEqual([
+      { oldPath: null, path: "gone.txt", status: "deleted" },
+    ]);
+  });
+
+  it("reads a rename's original path from the FIRST field", () => {
+    // --name-status prints `R100<TAB>old<TAB>new`, which is the opposite order
+    // to porcelain's `-z` form where the new path comes first. Getting these
+    // the wrong way round reports every rename backwards, and both parsers
+    // live in this file.
+    const log =
+      "\x1e" +
+      "c".repeat(40) +
+      "\x1fccccccc\x1fmove it\x1ft\x1f2026-09-03T14:55:35+02:00\n\n" +
+      "R100\tsrc/old.ts\tsrc/new.ts\n";
+
+    const commit = parseTurnCommits(log)[0];
+    expect(commit.fileChanges).toEqual([
+      { oldPath: "src/old.ts", path: "src/new.ts", status: "renamed" },
+    ]);
+    // `files` is the post-image, because that is the path every other route
+    // keys by and what the artifact store persists.
+    expect(commit.files).toEqual(["src/new.ts"]);
+  });
+
+  it("reads a copy the same way, score and all", () => {
+    const log =
+      "\x1e" +
+      "d".repeat(40) +
+      "\x1fddddddd\x1fcopy it\x1ft\x1f2026-09-03T14:55:35+02:00\n\n" +
+      "C75\tsrc/a.ts\tsrc/b.ts\n";
+
+    expect(parseTurnCommits(log)[0].fileChanges).toEqual([
+      { oldPath: "src/a.ts", path: "src/b.ts", status: "copied" },
     ]);
   });
 

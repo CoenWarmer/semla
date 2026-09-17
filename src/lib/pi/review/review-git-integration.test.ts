@@ -17,7 +17,12 @@ import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { readFileDiff, readFileDiffSet, readUntrackedDiff } from "./review-diff.ts";
+import {
+  readCommitFileDiff,
+  readFileDiff,
+  readFileDiffSet,
+  readUntrackedDiff,
+} from "./review-diff.ts";
 import { readChangedFiles, readHeadSha, readTurnCommits } from "./review-status.ts";
 
 let repo: string;
@@ -212,5 +217,81 @@ describe("readTurnCommits against real git", () => {
     // commits that has nothing to do with the turn.
     const orphan = run("commit-tree", run("rev-parse", "HEAD^{tree}"), "-m", "orphan");
     expect(await readTurnCommits(repo, orphan)).toEqual([]);
+  });
+});
+
+/**
+ * `readCommitFileDiff` in its own repository, because every assertion here is
+ * about a specific commit's content and the shared fixture above is mutated by
+ * the describes that precede it.
+ */
+describe("readCommitFileDiff against real git", () => {
+  let dir: string;
+  const at = (...args: string[]) =>
+    execFileSync("git", args, { cwd: dir, encoding: "utf8" }).trim();
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "semla-commit-diff-"));
+    at("init", "-q", ".");
+    at("config", "user.email", "test@example.com");
+    at("config", "user.name", "Test");
+    at("config", "commit.gpgsign", "false");
+
+    writeFileSync(join(dir, "first.txt"), "root\n");
+    at("add", "-A");
+    at("commit", "-qm", "root commit");
+
+    writeFileSync(join(dir, "second.txt"), "committed\n");
+    at("add", "-A");
+    at("commit", "-qm", "second commit");
+  });
+
+  afterAll(() => rmSync(dir, { force: true, recursive: true }));
+
+  it("reads the commit's own change, not the working tree's", async () => {
+    const sha = at("rev-parse", "HEAD");
+    // Edit the file again *after* committing it. This is the case the old
+    // working-tree intersection got wrong: the commit's diff must still
+    // describe what the commit did.
+    writeFileSync(join(dir, "second.txt"), "edited after the commit\n");
+
+    const diff = await readCommitFileDiff(dir, sha, "second.txt");
+
+    expect(diff?.hunks[0].lines).toEqual([
+      expect.objectContaining({ kind: "added", text: "committed" }),
+    ]);
+  });
+
+  it("reads a file that is clean now, which git status does not report", async () => {
+    const sha = at("rev-parse", "HEAD");
+    const { files } = await readChangedFiles(dir);
+    expect(files.map((file) => file.path)).not.toContain("first.txt");
+
+    // first.txt was committed in the root commit and never touched since.
+    const diff = await readCommitFileDiff(dir, at("rev-parse", `${sha}~1`), "first.txt");
+    expect(diff?.hunks[0].lines).toEqual([
+      expect.objectContaining({ kind: "added", text: "root" }),
+    ]);
+  });
+
+  it("diffs the root commit, which has no parent to range from", async () => {
+    // `git diff <sha>^..<sha>` fails here. `git show` does not, which is why
+    // it is what the reader uses.
+    const root = at("rev-list", "--max-parents=0", "HEAD");
+    const diff = await readCommitFileDiff(dir, root, "first.txt");
+    expect(diff?.hunks[0].lines).toHaveLength(1);
+  });
+
+  it("says nothing for a path the commit did not touch", async () => {
+    const root = at("rev-list", "--max-parents=0", "HEAD");
+    expect(await readCommitFileDiff(dir, root, "second.txt")).toBeNull();
+  });
+
+  it("refuses a revision expression, accepting only a full sha", async () => {
+    // `git show` would happily resolve every one of these. A per-commit read
+    // that accepts them is an arbitrary-revision read.
+    for (const rev of ["HEAD", "HEAD~1", "HEAD@{0}", ":/root", "main"]) {
+      expect(await readCommitFileDiff(dir, rev, "first.txt")).toBeNull();
+    }
   });
 });

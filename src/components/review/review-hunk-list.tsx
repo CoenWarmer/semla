@@ -53,12 +53,14 @@ function HunkRow({
   hunk,
   onApply,
   onReveal,
+  readOnly = false,
 }: {
   busy: boolean;
   direction: "stage" | "unstage";
   hunk: Hunk;
   onApply: () => void;
   onReveal: () => void;
+  readOnly?: boolean;
 }) {
   const { added, removed } = hunkSummary(hunk);
 
@@ -79,23 +81,28 @@ function HunkRow({
         ) : null}
       </button>
 
-      <Button
-        aria-label={
-          direction === "stage" ? "Stage this hunk" : "Unstage this hunk"
-        }
-        className="size-6 shrink-0"
-        disabled={busy}
-        onClick={onApply}
-        size="icon"
-        title={direction === "stage" ? "Stage this hunk" : "Unstage this hunk"}
-        variant="ghost"
-      >
-        {direction === "stage" ? (
-          <PlusIcon className="size-3.5" />
-        ) : (
-          <MinusIcon className="size-3.5" />
-        )}
-      </Button>
+      {/* Omitted rather than disabled when read-only: a greyed button says
+          "not right now", and there is no later in which a commit's hunk
+          becomes stageable. */}
+      {readOnly ? null : (
+        <Button
+          aria-label={
+            direction === "stage" ? "Stage this hunk" : "Unstage this hunk"
+          }
+          className="size-6 shrink-0"
+          disabled={busy}
+          onClick={onApply}
+          size="icon"
+          title={direction === "stage" ? "Stage this hunk" : "Unstage this hunk"}
+          variant="ghost"
+        >
+          {direction === "stage" ? (
+            <PlusIcon className="size-3.5" />
+          ) : (
+            <MinusIcon className="size-3.5" />
+          )}
+        </Button>
+      )}
     </div>
   );
 }
@@ -107,6 +114,7 @@ function Group({
   onlyShowStaged = false,
   onApply,
   onReveal,
+  readOnly = false,
   title,
 }: {
   busy: boolean;
@@ -115,6 +123,7 @@ function Group({
   onlyShowStaged?: boolean;
   onApply: (hunks: number[]) => void;
   onReveal: (line: number) => void;
+  readOnly?: boolean;
   title: string;
 }) {
   const hunks = diff?.hunks ?? [];
@@ -123,15 +132,16 @@ function Group({
   // edits — is still stageable, and an empty group would make it look as
   // though there were nothing there.
   const hunkless = diff !== null && hunks.length === 0 && !diff.binary;
+  const heading = readOnly ? null : title;
 
   if (!diff || (hunks.length === 0 && !hunkless)) return null;
 
   return (
     <div className="flex flex-col gap-0.5">
-      {onlyShowStaged ? null : (
+      {onlyShowStaged || heading === null ? null : (
         <div className="flex items-center gap-2 px-2 pb-0.5">
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {title}
+            {heading}
           </p>
           <Button
             className="ml-auto h-5 px-1.5 text-[10px]"
@@ -160,6 +170,7 @@ function Group({
             hunk={hunk}
             onApply={() => onApply([hunk.index])}
             onReveal={() => onReveal(hunkAnchorLine(hunk))}
+            readOnly={readOnly}
           />
         ))
       )}
@@ -172,6 +183,7 @@ export function ReviewHunkList({
   onlyShowStaged = false,
   onReveal,
   onStage,
+  readOnly = false,
   staged,
   unstaged,
   untracked,
@@ -180,11 +192,18 @@ export function ReviewHunkList({
   onlyShowStaged?: boolean;
   onReveal: (line: number) => void;
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  /**
+   * There is nothing to stage and no later in which there will be — these
+   * hunks are a commit's, so it is the *history* being shown, not a working
+   * copy. Suppresses every apply control and both group headings, which are
+   * about the index and would be a lie here.
+   */
+  readOnly?: boolean;
   staged: FileDiff | null;
   unstaged: FileDiff | null;
   untracked: boolean;
 }) {
-  if (untracked) {
+  if (untracked && !readOnly) {
     return (
       <div className="flex flex-col gap-2 px-2 py-2">
         <p className="text-[11px] text-muted-foreground">This file is new.</p>
@@ -212,6 +231,7 @@ export function ReviewHunkList({
         onlyShowStaged
         onApply={(hunks) => onStage(hunks, "unstage")}
         onReveal={onReveal}
+        readOnly={readOnly}
         title="Staged"
       />
       <Group
@@ -221,11 +241,14 @@ export function ReviewHunkList({
         onlyShowStaged={onlyShowStaged}
         onApply={(hunks) => onStage(hunks, "stage")}
         onReveal={onReveal}
+        readOnly={readOnly}
         title="Not staged"
       />
       {nothing && !staged && !unstaged ? (
         <p className="px-2 text-[11px] text-muted-foreground">
-          Nothing to stage in this file.
+          {readOnly
+            ? "This commit changed no lines in this file."
+            : "Nothing to stage in this file."}
         </p>
       ) : null}
     </div>

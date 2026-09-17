@@ -94,6 +94,10 @@ describe("shouldOpenReview", () => {
             {
               at: "2026-09-03T10:00:00Z",
               author: "Test",
+              fileChanges: [
+                { oldPath: null, path: "src/a.ts", status: "modified" as const },
+                { oldPath: null, path: "src/b.ts", status: "added" as const },
+              ],
               fileCount: 2,
               files: ["src/a.ts", "src/b.ts"],
               sha: "a".repeat(40),

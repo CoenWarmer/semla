@@ -29,7 +29,11 @@ import {
 import { otherActiveSessionCount } from "@/lib/pi/session/session-concurrency";
 import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
 import type { ProjectLink } from "@/lib/pi/session/session-meta";
-import type { ProjectReview, SessionReview } from "@/lib/review/review-types";
+import type {
+  ProjectReview,
+  SessionReview,
+  TurnCommit,
+} from "@/lib/review/review-types";
 
 /** Last segment of a workspace-relative path — the project's own name. */
 const projectName = (path: string) => path.split("/").pop() ?? path;
@@ -75,6 +79,34 @@ export function resolveReviewFile(
 ): string | null {
   if (!relPath) return null;
   return resolveInsideRoot(target.root, relPath);
+}
+
+/**
+ * One of *this session's own* turn commits, by sha, or null.
+ *
+ * The narrowing matters. `readCommitFileDiff` refuses anything that is not a
+ * 40-hex object name, which stops a revision expression, but any commit in the
+ * repository's history is still a valid sha — and the panel's contract is that
+ * a commit dot shows a commit this turn made. Resolving through the turn range
+ * keeps the route answering that question and no wider one, and it is the same
+ * range `ReviewCommitNav` drew its dots from, so a sha the client can name is
+ * by construction a sha this accepts.
+ *
+ * Null covers three cases that are all "no" to the caller: no turn mark, so no
+ * range; a sha outside the range; and a repository whose start sha is no longer
+ * an ancestor of HEAD, which `readTurnCommits` already refuses.
+ */
+export async function resolveSessionCommit(
+  sessionId: string,
+  target: ReviewTarget,
+  sha: string,
+): Promise<TurnCommit | null> {
+  const mark = readTurnMark(sessionId);
+  const startSha = mark?.projects[target.link.path]?.head ?? null;
+  if (!startSha) return null;
+
+  const commits = await readTurnCommits(target.root, startSha);
+  return commits.find((commit) => commit.sha === sha) ?? null;
 }
 
 async function readProjectReview(

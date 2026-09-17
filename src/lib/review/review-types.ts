@@ -46,6 +46,21 @@ export interface ChangedFile {
   unstaged: boolean;
 }
 
+/**
+ * One file's fate within a commit.
+ *
+ * Separate from `ChangedFile` on purpose: that type carries porcelain's two
+ * status columns and staged/unstaged flags, none of which mean anything for a
+ * file inside a commit — a commit has no index and no worktree.
+ */
+export interface CommitFileChange {
+  /** Repo-relative, the post-image path. */
+  path: string;
+  /** Where a rename or copy came from, else null. */
+  oldPath: string | null;
+  status: ChangeStatus;
+}
+
 /** A commit made between the turn's start and its end. */
 export interface TurnCommit {
   sha: string;
@@ -55,8 +70,24 @@ export interface TurnCommit {
   /** ISO 8601, author date. */
   at: string;
   fileCount: number;
-  /** Repo-relative paths of every file the commit touched. */
+  /**
+   * Repo-relative paths of every file the commit touched.
+   *
+   * Kept alongside `fileChanges` rather than derived from it at each call
+   * site: the artifact store persists this exact array (see
+   * src/lib/pi/artifacts/artifact-capture.ts), so it is part of a written
+   * record and not just a convenience.
+   */
   files: string[];
+  /**
+   * The same files, with what the commit did to each. Same order as `files`.
+   *
+   * This is what lets the review panel list a commit's files without asking
+   * the working tree: a file committed and not touched since is clean, so
+   * `git status` does not report it, and a list built from the intersection of
+   * the two showed nothing at all for exactly the commits worth inspecting.
+   */
+  fileChanges: CommitFileChange[];
 }
 
 /**

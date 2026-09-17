@@ -404,16 +404,14 @@ export function ReviewPanel({
 
   const busy = stage.isPending || commit.isPending || save.isPending;
 
-  // When the operator selects a commit, filter the changed-files list to only
-  // the files that commit touched. The commit stores repo-relative paths;
-  // changedFiles.path is also repo-relative, so the match is direct.
-  const selectedCommit =
-    activeProject?.turnCommits.find((c) => c.sha === selectedCommitSha) ?? null;
-  const visibleFiles = selectedCommit
-    ? (activeProject?.changedFiles ?? []).filter((f) =>
-        selectedCommit.files.includes(f.path),
-      )
-    : (activeProject?.changedFiles ?? []);
+  // Which files the changed-files list shows is decided in that component,
+  // from `selectedCommitSha`, by the pure rule in review-commit-scope.ts.
+  //
+  // It used to be decided here, by intersecting the selected commit's paths
+  // with `git status` output — so a file the agent committed and did not touch
+  // again was clean, absent from `changedFiles`, and therefore vanished from
+  // the very commit that changed it. The panel keeps the selection; it no
+  // longer reshapes the projects it passes down.
 
   // Escape closes, which is what every overlay in the app does. Registered on
   // the document because the editor swallows keys inside itself.
@@ -635,6 +633,7 @@ export function ReviewPanel({
                           <ReviewChangedFiles
                             busy={busy}
                             expanded={expanded}
+                            onClearCommit={() => setSelectedCommitSha(null)}
                             onReveal={revealLine}
                             onSelect={(next) => {
                               // Toggle: clicking the already-expanded file's row
@@ -652,16 +651,9 @@ export function ReviewPanel({
                               }));
                             }}
                             onStage={onStageFile}
-                            projects={
-                              selectedCommit
-                                ? projects.map((p) =>
-                                    p.path === activeProject?.path
-                                      ? { ...p, changedFiles: visibleFiles }
-                                      : p,
-                                  )
-                                : projects
-                            }
+                            projects={projects}
                             selected={selection}
+                            selectedCommitSha={selectedCommitSha}
                             sessionId={sessionId}
                           />
                         <ReviewCommitBar

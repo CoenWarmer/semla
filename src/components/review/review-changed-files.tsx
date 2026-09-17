@@ -16,10 +16,15 @@
  * second, separate list.
  */
 
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { ChangedFile, ProjectReview } from "@/lib/review/review-types";
+import { commitScope } from "@/lib/review/review-commit-scope";
+import type {
+  ChangedFile,
+  ProjectReview,
+  TurnCommit,
+} from "@/lib/review/review-types";
 import { useReviewHunks } from "@/hooks/use-review";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -48,18 +53,26 @@ export type StageFileHunks = (
 /** The hunks of one expanded file, fetched only while it is open. */
 function ExpandedHunks({
   busy,
+  commitSha,
   onReveal,
   onStage,
   selection,
   sessionId,
 }: {
   busy: boolean;
+  /** Read this commit's diff instead of the working tree's. */
+  commitSha: string | null;
   onReveal: (line: number) => void;
   onStage: StageFileHunks;
   selection: FileSelection;
   sessionId: string;
 }) {
-  const hunks = useReviewHunks(sessionId, selection.project, selection.path);
+  const hunks = useReviewHunks(
+    sessionId,
+    selection.project,
+    selection.path,
+    commitSha,
+  );
 
   if (hunks.isPending) {
     return (
@@ -78,6 +91,23 @@ function ExpandedHunks({
       <p className="px-2 py-2 text-[11px] text-muted-foreground">
         Unable to read this file&rsquo;s hunks.
       </p>
+    );
+  }
+
+  // A commit's diff, with no staging controls: `staged` and `unstaged` come
+  // back null from the route precisely because a commit has no index, and
+  // `ReviewHunkList`'s groups are built from those two.
+  if (commitSha) {
+    return (
+      <ReviewHunkList
+        busy={busy}
+        onReveal={onReveal}
+        onStage={() => {}}
+        readOnly
+        staged={null}
+        unstaged={hunks.data.full}
+        untracked={false}
+      />
     );
   }
 
@@ -107,6 +137,7 @@ function ExpandedHunks({
 
 export function FileRow({
   busy,
+  commitSha = null,
   expanded,
   file,
   onReveal,
@@ -117,6 +148,8 @@ export function FileRow({
   sessionId,
 }: {
   busy: boolean;
+  /** Show this commit's diff rather than the working tree's. */
+  commitSha?: string | null;
   expanded: boolean;
   file: ChangedFile;
   onReveal: (line: number) => void;
@@ -172,6 +205,7 @@ export function FileRow({
         <div className="pl-1 border rounded mb-3">
           <ExpandedHunks
             busy={busy}
+            commitSha={commitSha}
             onReveal={onReveal}
             onStage={onStage}
             selection={{ path: file.path, project }}
@@ -183,19 +217,69 @@ export function FileRow({
   );
 }
 
+/**
+ * "Changed files in semla", or "Changed files in #eafa5" with a way out.
+ *
+ * The close button is on the label rather than beside the commit nav because
+ * the label is where the scope is *stated* — an operator who has scrolled the
+ * sidebar and is wondering why a file they just edited is missing is looking
+ * here, not at the dots above.
+ */
+function ScopeLabel({
+  commit,
+  onClear,
+  projectName,
+}: {
+  commit: TurnCommit | null;
+  onClear: () => void;
+  projectName: string;
+}) {
+  if (!commit) {
+    return (
+      <p className="pb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Changed files in {projectName}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 pb-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Changed files in{" "}
+        <span className="font-mono normal-case text-foreground">
+          {commit.shortSha}
+        </span>
+      </p>
+      <button
+        aria-label="Show uncommitted changes instead"
+        className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        onClick={onClear}
+        title={`Stop showing only ${commit.shortSha} — show uncommitted changes`}
+        type="button"
+      >
+        <XIcon className="size-3" />
+      </button>
+    </div>
+  );
+}
+
 export function ReviewChangedFiles({
   busy,
   expanded,
+  onClearCommit,
   onReveal,
   onSelect,
   onStage,
   projects,
+  selectedCommitSha,
   selected,
   sessionId,
 }: {
   busy: boolean;
   /** The one file currently folded open, or null when none is. */
   expanded: FileSelection | null;
+  /** Drop the commit selection, back to the working tree. */
+  onClearCommit: () => void;
   onReveal: (line: number) => void;
   /**
    * Clicking a row both opens it in the editor and folds its hunks open —
@@ -205,52 +289,75 @@ export function ReviewChangedFiles({
   onSelect: (selection: FileSelection) => void;
   onStage: StageFileHunks;
   projects: readonly ProjectReview[];
+  /**
+   * The commit the nav has selected, or null for the working tree. Applies to
+   * every project listed: the nav draws the active project's commits, and a
+   * sha is unique to one repository anyway.
+   */
+  selectedCommitSha: string | null;
   selected: FileSelection | null;
   sessionId: string;
 }) {
-  const withChanges = projects.filter(
-    (project) => project.changedFiles.length > 0,
-  );
+  const scopes = projects
+    .map((project) => ({
+      project,
+      scope: commitScope(project, selectedCommitSha),
+    }))
+    .filter(({ scope }) => scope.files.length > 0);
 
-  if (withChanges.length === 0) {
+  if (scopes.length === 0) {
     return (
       <p className="px-2 py-3 text-xs text-muted-foreground">
-        Nothing has changed in this session&rsquo;s projects.
+        {selectedCommitSha
+          ? "That commit changed nothing in this project."
+          : "Nothing has changed in this session\u2019s projects."}
       </p>
     );
   }
 
   return (
     <div className="flex flex-col gap-2 px-2">
-      {withChanges.map((project) => (
+      {scopes.map(({ project, scope }) => (
         <div key={project.path}>
-          <p className="pb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Changed files in {project.name}
-          </p>
-
-          <ReviewStagedFiles
-            busy={busy}
-            files={project.changedFiles}
-            onReveal={onReveal}
-            onSelect={onSelect}
-            onStage={onStage}
-            project={project.path}
-            sessionId={sessionId}
+          <ScopeLabel
+            commit={scope.commit}
+            onClear={onClearCommit}
+            projectName={project.name}
           />
 
+          {/* The staged bucket and the "to review" heading are both about the
+              index, which a commit does not have. Showing them under a commit
+              selection would mix the two things this feature exists to
+              separate. */}
+          {scope.commit ? null : (
+            <>
+              <ReviewStagedFiles
+                busy={busy}
+                files={scope.files}
+                onReveal={onReveal}
+                onSelect={onSelect}
+                onStage={onStage}
+                project={project.path}
+                sessionId={sessionId}
+              />
+              <span className="text-[10px] uppercase font-medium text-muted-foreground">
+                To review
+              </span>
+            </>
+          )}
+
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-medium text-muted-foreground">
-              To review
-            </span>
             {/* A file entirely staged has nothing left to review here — it
                 already has its own row in ReviewStagedFiles above, and a
                 second row here with no unstaged hunks to show would just be
-                an empty accordion. */}
-            {project.changedFiles
+                an empty accordion. A commit's rows are never staged, so this
+                filter passes all of them. */}
+            {scope.files
               .filter((file) => file.unstaged || !file.staged)
               .map((file) => (
                 <FileRow
                   busy={busy}
+                  commitSha={scope.commit?.sha ?? null}
                   expanded={
                     expanded?.project === project.path &&
                     expanded.path === file.path
@@ -272,7 +379,9 @@ export function ReviewChangedFiles({
               ))}
           </div>
 
-          {project.omitted > 0 ? (
+          {/* The cap applies to the working-tree read, not to a commit's own
+              file list, so it is only true of the unscoped list. */}
+          {!scope.commit && project.omitted > 0 ? (
             <p className="px-2 pt-1 text-[10px] text-muted-foreground">
               {project.omitted} more not listed
             </p>

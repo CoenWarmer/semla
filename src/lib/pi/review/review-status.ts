@@ -20,6 +20,7 @@ import {
   CHANGED_FILE_CAP,
   type ChangedFile,
   type ChangeStatus,
+  type CommitFileChange,
   type TurnCommit,
 } from "@/lib/review/review-types";
 
@@ -147,6 +148,32 @@ export async function readHeadSha(projectPath: string): Promise<string | null> {
 const RECORD = "\x1e";
 const UNIT = "\x1f";
 
+/**
+ * One `--name-status` line: a status letter, a tab, then one or two paths.
+ *
+ * `R100\told\tnew` and `C75\told\tnew` spend two paths, and — unlike
+ * porcelain's `-z` form, which puts the new path first — `--name-status` puts
+ * the **original** first. Reading one format's documentation while testing
+ * against the other is how a parser comes to report every rename backwards,
+ * so both orders are pinned by tests rather than inferred.
+ *
+ * A similarity score is appended to `R` and `C` (`R100`), so the letter is
+ * taken from position 0 and the rest discarded.
+ */
+function parseNameStatusLine(line: string): CommitFileChange | null {
+  const [code, first, second] = line.split("\t");
+  if (!code || !first) return null;
+
+  const letter = code[0];
+  const status = CODE_STATUS[letter] ?? "modified";
+
+  if ((letter === "R" || letter === "C") && second) {
+    return { oldPath: first, path: second, status };
+  }
+
+  return { oldPath: null, path: first, status };
+}
+
 /** Parse the one-subprocess `git log` record format used below. */
 export function parseTurnCommits(output: string): TurnCommit[] {
   return output
@@ -155,13 +182,17 @@ export function parseTurnCommits(output: string): TurnCommit[] {
     .map((record) => {
       const [meta, ...rest] = record.split("\n");
       const [sha, shortSha, subject, author, at] = meta.split(UNIT);
-      // --name-only prints a blank line, then one path per line.
-      const files = rest.map((line) => line.trim()).filter((line) => line !== "");
+      // --name-status prints a blank line, then one "X\tpath" per line.
+      const fileChanges = rest
+        .filter((line) => line.trim() !== "")
+        .map(parseNameStatusLine)
+        .filter((change): change is CommitFileChange => change !== null);
       return {
         at: at ?? "",
         author: author ?? "",
-        fileCount: files.length,
-        files,
+        fileChanges,
+        fileCount: fileChanges.length,
+        files: fileChanges.map((change) => change.path),
         sha: sha ?? "",
         shortSha: shortSha ?? "",
         subject: subject ?? "",
@@ -203,12 +234,19 @@ export async function readTurnCommits(
   ]);
   if (!ancestor.ok) return [];
 
+  // `-c core.quotePath=false` so a non-ASCII path arrives as itself rather
+  // than as octal escapes. `--name-status` separates its fields with tabs,
+  // which cannot occur in a path git prints unquoted, so there is no need for
+  // `-z` and the record format stays line-oriented.
   const output = await git(
     projectPath,
     [
+      "-c",
+      "core.quotePath=false",
       "log",
       `--format=${RECORD}%H${UNIT}%h${UNIT}%s${UNIT}%an${UNIT}%aI`,
-      "--name-only",
+      "--name-status",
+      "-M",
       `${startSha}..HEAD`,
     ],
     { timeout: STATUS_TIMEOUT_MS },

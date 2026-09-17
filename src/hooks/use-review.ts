@@ -17,11 +17,18 @@ import type { ChangedFile, SessionReview } from "@/lib/review/review-types";
 export const reviewQueryKey = (sessionId: string) =>
   ["review", sessionId] as const;
 
+/**
+ * `sha` is part of the key, not an argument the fetcher merely happens to
+ * carry: a commit's hunks and the working tree's hunks for the same file are
+ * different answers, and sharing one cache entry between them would serve
+ * whichever was fetched first when the operator switched commit dots.
+ */
 export const reviewHunksQueryKey = (
   sessionId: string,
   project: string | null,
   path: string | null,
-) => ["review", sessionId, "hunks", project, path] as const;
+  sha: string | null = null,
+) => ["review", sessionId, "hunks", project, path, sha] as const;
 
 async function fetchReview(sessionId: string): Promise<SessionReview> {
   const res = await fetch(`/api/sessions/${sessionId}/review`);
@@ -40,11 +47,19 @@ export function useReview(sessionId: string, enabled = true) {
 
 export interface FileHunks {
   full: FileDiff | null;
+  /**
+   * Null when these hunks are a commit's: a commit has no index, so there is
+   * nothing staged and nothing left unstaged. The staging controls read these
+   * rather than a separate flag, so null is what makes a commit's hunk list
+   * read-only.
+   */
   staged: FileDiff | null;
   unstaged: FileDiff | null;
   untracked: boolean;
   file: ChangedFile;
   project: string;
+  /** The commit these hunks are from, absent for the working tree. */
+  commitSha?: string;
 }
 
 /**
@@ -60,23 +75,34 @@ async function fetchHunks(
   sessionId: string,
   project: string,
   path: string,
+  sha: string | null,
 ): Promise<FileHunks | null> {
   const params = new URLSearchParams({ path, project });
+  if (sha) params.set("sha", sha);
   const res = await fetch(`/api/sessions/${sessionId}/review/hunks?${params}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`hunks ${res.status}`);
   return res.json();
 }
 
+/**
+ * One file's hunks, from the working tree or from a commit.
+ *
+ * With `sha` the route answers from that commit and does not consult the
+ * working tree at all, which is the only way to show a file that was committed
+ * and is clean now — `git status` does not report it, so the working-tree read
+ * 404s exactly the files a commit selection exists to show.
+ */
 export function useReviewHunks(
   sessionId: string,
   project: string | null,
   path: string | null,
+  sha: string | null = null,
 ) {
   return useQuery({
     enabled: Boolean(project && path),
-    queryFn: () => fetchHunks(sessionId, project!, path!),
-    queryKey: reviewHunksQueryKey(sessionId, project, path),
+    queryFn: () => fetchHunks(sessionId, project!, path!, sha),
+    queryKey: reviewHunksQueryKey(sessionId, project, path, sha),
     staleTime: 0,
   });
 }
