@@ -25,6 +25,16 @@
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
+  /*
+   * The follow-the-agent green, and a foreground dark enough to read on it.
+   *
+   * A variable rather than a literal because two things wear it now — the
+   * panel's pulse and the scrubber pill — and a second copy of an oklch
+   * triple is a drift waiting to happen. Spelled out rather than derived
+   * from `--chart-2`: that variable is orange in this theme.
+   */
+  --color-semla-following: var(--semla-following);
+  --color-semla-following-foreground: var(--semla-following-foreground);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
@@ -74,6 +84,8 @@
   --chart-4: oklch(0.555 0.163 48.998);
   --chart-5: oklch(0.473 0.137 46.201);
   --radius: 0.45rem;
+  --semla-following: oklch(0.72 0.19 150);
+  --semla-following-foreground: oklch(0.26 0.07 150);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0.008 326);
   --sidebar-primary: oklch(0.212 0.019 322.12);
@@ -116,6 +128,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.542 0.034 322.5);
+  /*
+   * Unchanged in dark mode on purpose: the surface it sits on is the green
+   * itself, not the theme background, so the contrast pair is the same in
+   * both. Flipping the foreground to white here would make the pill's text
+   * harder to read, not easier.
+   */
+  --semla-following: oklch(0.72 0.19 150);
+  --semla-following-foreground: oklch(0.26 0.07 150);
 }
 
 @layer base {
@@ -329,15 +349,17 @@ div.react-sigma {
   0%,
   100% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 40%, transparent),
+      inset 0 0 0 1px
+        color-mix(in oklch, var(--semla-following) 40%, transparent),
       inset 0 0 12px 0
-        color-mix(in oklch, oklch(0.72 0.19 150) 10%, transparent);
+        color-mix(in oklch, var(--semla-following) 10%, transparent);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 80%, transparent),
+      inset 0 0 0 1px
+        color-mix(in oklch, var(--semla-following) 80%, transparent),
       inset 0 0 22px 0
-        color-mix(in oklch, oklch(0.72 0.19 150) 26%, transparent);
+        color-mix(in oklch, var(--semla-following) 26%, transparent);
   }
 }
 
@@ -353,9 +375,10 @@ div.react-sigma {
   .semla-following {
     animation: none;
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, oklch(0.72 0.19 150) 70%, transparent),
+      inset 0 0 0 1px
+        color-mix(in oklch, var(--semla-following) 70%, transparent),
       inset 0 0 16px 0
-        color-mix(in oklch, oklch(0.72 0.19 150) 18%, transparent);
+        color-mix(in oklch, var(--semla-following) 18%, transparent);
   }
 }
 

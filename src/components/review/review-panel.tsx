@@ -34,10 +34,7 @@ import {
   useUpdateFollowMode,
   useUserSettings,
 } from "@/hooks/use-user-settings";
-import {
-  usePanelLayoutSaver,
-  usePanelLayouts,
-} from "@/hooks/use-panel-layout";
+import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import { isEmptyReview } from "@/lib/review/review-types";
 import type { SessionReview } from "@/lib/review/review-types";
 import {
@@ -48,7 +45,10 @@ import { cn } from "@/lib/utils";
 
 import { agentLabelFor } from "./review-access-labels";
 import { anchorRevealRequest } from "./review-anchor-reveal";
-import { activeCommitSha, BLANK_COMMIT_SELECTION } from "./review-artifact-commit";
+import {
+  activeCommitSha,
+  BLANK_COMMIT_SELECTION,
+} from "./review-artifact-commit";
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
 import { ReviewCommitBar } from "./review-commit-bar";
 import { ReviewCommitNav } from "./review-commit-nav";
@@ -260,9 +260,9 @@ export function ReviewPanel({
     | Record<string, number>
     | undefined;
   const saveSidebarSplit = usePanelLayoutSaver("review-sidebar-split");
-  const sidebarInnerSplitLayout = panelLayouts?.["review-sidebar-inner-split"] as
-    | Record<string, number>
-    | undefined;
+  const sidebarInnerSplitLayout = panelLayouts?.[
+    "review-sidebar-inner-split"
+  ] as Record<string, number> | undefined;
   const saveSidebarInnerSplit = usePanelLayoutSaver(
     "review-sidebar-inner-split",
   );
@@ -681,32 +681,32 @@ export function ReviewPanel({
                       </div>
                     ) : (
                       <div className="flex flex-col h-full w-full relative">
-                          <ReviewChangedFiles
-                            busy={busy}
-                            expanded={expanded}
-                            onClearCommit={() => setSelectedCommitSha(null)}
-                            onReveal={revealLine}
-                            onSelect={(next) => {
-                              // Toggle: clicking the already-expanded file's row
-                              // closes it again rather than being a no-op, since it
-                              // is already the open editor selection.
-                              revise((base) => ({
-                                expanded:
-                                  base.expanded?.project === next.project &&
-                                  base.expanded.path === next.path
-                                    ? null
-                                    : next,
-                                highlight: null,
-                                precision: null,
-                                selection: next,
-                              }));
-                            }}
-                            onStage={onStageFile}
-                            projects={projects}
-                            selected={selection}
-                            selectedCommitSha={selectedCommitSha}
-                            sessionId={sessionId}
-                          />
+                        <ReviewChangedFiles
+                          busy={busy}
+                          expanded={expanded}
+                          onClearCommit={() => setSelectedCommitSha(null)}
+                          onReveal={revealLine}
+                          onSelect={(next) => {
+                            // Toggle: clicking the already-expanded file's row
+                            // closes it again rather than being a no-op, since it
+                            // is already the open editor selection.
+                            revise((base) => ({
+                              expanded:
+                                base.expanded?.project === next.project &&
+                                base.expanded.path === next.path
+                                  ? null
+                                  : next,
+                              highlight: null,
+                              precision: null,
+                              selection: next,
+                            }));
+                          }}
+                          onStage={onStageFile}
+                          projects={projects}
+                          selected={selection}
+                          selectedCommitSha={selectedCommitSha}
+                          sessionId={sessionId}
+                        />
                         <ReviewCommitBar
                           busy={commit.isPending}
                           message={message}
@@ -799,7 +799,6 @@ export function ReviewPanel({
               </main>
             </ResizablePanel>
           </ResizablePanelGroup>
-          
         </div>
         {calls.length > 0 ? (
           <ReviewScrubber

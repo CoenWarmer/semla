@@ -8,6 +8,14 @@
  * tool calls sorted by name answers a different question, and the transcript
  * already answers it badly.
  *
+ * It is literally a pill now: fully rounded, inset from the panel's edges, and
+ * carrying the same green as the follow-the-agent glow — one variable, so the
+ * bar and the glow cannot drift apart. That green is a saturated mid-tone, so
+ * every control inside it is repainted against it rather than against the
+ * theme background: text is `--semla-following-foreground`, and the chips,
+ * borders and hover states are translucent black over the green instead of
+ * `muted`/`accent`, which would read as grey patches on a green field.
+ *
  * The unit is a tool call, not a file: a call that touched one or more files
  * shows a `tool: <name>` badge plus one badge per file, grouped together and
  * independently clickable; a call that touched none is a single stop with no
@@ -74,8 +82,10 @@ function ToolPill({ call }: { call: ToolCallStep }) {
   const label = (
     <span
       className={cn(
-        "shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]",
-        call.isError && "bg-destructive/15 text-destructive",
+        "shrink-0 truncate rounded-full bg-black/10 px-2 py-0.5 font-mono text-[11px]",
+        // On green, `text-destructive` at 15% opacity is not a failure
+        // signal — it is a slightly different green. A solid fill is.
+        call.isError && "bg-destructive text-white",
       )}
     >
       tool: {call.name}
@@ -111,10 +121,13 @@ function FileBadge({
   return (
     <button
       className={cn(
-        "flex min-w-0 shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors",
+        "flex min-w-0 shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs transition-colors",
+        // The active badge is the *lightest* thing in the bar rather than the
+        // darkest: `accent` is near-black here, and a black chip on green
+        // reads as a hole punched in the pill.
         active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:text-foreground",
+          ? "bg-white/85 text-semla-following-foreground"
+          : "text-semla-following-foreground/75 hover:bg-black/10 hover:text-semla-following-foreground",
       )}
       onClick={onClick}
       title={`${access.project ? `${access.project}/` : ""}${access.path}`}
@@ -137,7 +150,7 @@ function FileBadge({
               <button> by default, and this sits inside one already. */}
           <TooltipTrigger
             render={
-              <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400" />
+              <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-900" />
             }
           >
             ~
@@ -220,10 +233,14 @@ export function ReviewScrubber({
   if (calls.length === 0) return null;
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
+    // `m-2` rather than a full-width bar: a pill with square ends touching
+    // the panel's edges is not a pill. The margin is what makes the shape
+    // legible, and `rounded-full` is what makes it one.
+    <div className="m-2 flex shrink-0 items-center gap-2 rounded-full bg-semla-following px-3 py-1.5 text-semla-following-foreground">
       <div className="flex items-center gap-0.5">
         <Button
           aria-label="Previous step"
+          className="rounded-full text-semla-following-foreground hover:bg-black/10 hover:text-semla-following-foreground"
           disabled={index <= 0 || stops.length === 0}
           onClick={() => go(index - 1)}
           size="icon"
@@ -233,6 +250,7 @@ export function ReviewScrubber({
         </Button>
         <Button
           aria-label="Next step"
+          className="rounded-full text-semla-following-foreground hover:bg-black/10 hover:text-semla-following-foreground"
           disabled={index >= stops.length - 1 || stops.length === 0}
           onClick={() => go(index + 1)}
           size="icon"
@@ -242,7 +260,7 @@ export function ReviewScrubber({
         </Button>
       </div>
 
-      <span className="text-xs tabular-nums text-muted-foreground">
+      <span className="text-xs tabular-nums text-semla-following-foreground/80">
         {stops.length === 0 ? 0 : index + 1} / {stops.length}
       </span>
 
@@ -265,7 +283,7 @@ export function ReviewScrubber({
             : null}
         </div>
       ) : (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-semla-following-foreground/80">
           {skipped > 0
             ? "No files the agent opened are still on disk."
             : "Nothing to show under this filter."}
@@ -276,12 +294,15 @@ export function ReviewScrubber({
         {skipped > 0 ? (
           <Tooltip>
             <TooltipTrigger
-              render={<span className="text-xs text-muted-foreground" />}
+              render={
+                <span className="text-xs text-semla-following-foreground/80" />
+              }
             >
               {skipped} skipped
             </TooltipTrigger>
             <TooltipContent>
-              The arrows skip {missing > 0 ? `${missing} no longer on disk` : ""}
+              The arrows skip{" "}
+              {missing > 0 ? `${missing} no longer on disk` : ""}
               {missing > 0 && unlinked > 0 ? " and " : ""}
               {unlinked > 0
                 ? `${unlinked} outside this session's projects`
@@ -294,7 +315,7 @@ export function ReviewScrubber({
         {agents.length > 1 ? (
           <select
             aria-label="Filter by agent"
-            className="rounded border bg-transparent px-1 py-0.5 text-xs"
+            className="rounded-full border border-black/20 bg-black/10 px-2 py-0.5 text-xs text-semla-following-foreground"
             onChange={(event) => {
               setAgentId(event.target.value === "" ? null : event.target.value);
               setCursor(null);
@@ -311,7 +332,7 @@ export function ReviewScrubber({
         ) : null}
 
         <button
-          className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="rounded-full border border-black/20 px-2 py-0.5 text-xs text-semla-following-foreground/85 transition-colors hover:bg-black/10 hover:text-semla-following-foreground"
           onClick={() => {
             setShowAllTools((previous) => !previous);
             setCursor(null);
@@ -322,7 +343,7 @@ export function ReviewScrubber({
         </button>
 
         <button
-          className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="rounded-full border border-black/20 px-2 py-0.5 text-xs text-semla-following-foreground/85 transition-colors hover:bg-black/10 hover:text-semla-following-foreground"
           onClick={() => {
             setScope((previous) => (previous === "turn" ? "session" : "turn"));
             setCursor(null);
@@ -338,7 +359,13 @@ export function ReviewScrubber({
               <Button
                 aria-label="Follow the agent"
                 aria-pressed={following}
-                className={cn(following && "bg-accent text-accent-foreground")}
+                className={cn(
+                  "rounded-full text-semla-following-foreground hover:bg-black/10 hover:text-semla-following-foreground",
+                  // Pressed reads as white-on-green, the same inversion the
+                  // active file badge uses, so "on" means one thing in the bar.
+                  following &&
+                    "bg-white/85 hover:bg-white/85 text-semla-following-foreground",
+                )}
                 onClick={() => {
                   // Unfollowing leaves the cursor on the stop the agent
                   // reached, matching the file the panel keeps open. Without
