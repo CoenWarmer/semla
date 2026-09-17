@@ -133,6 +133,59 @@ export type Database = {
           },
         ]
       }
+      session_artifacts: {
+        Row: {
+          artifact_key: string
+          attribution: string
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          project_path: string | null
+          round_id: string | null
+          session_id: string
+          tool_call_id: string | null
+          tool_name: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          artifact_key: string
+          attribution: string
+          created_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          project_path?: string | null
+          round_id?: string | null
+          session_id: string
+          tool_call_id?: string | null
+          tool_name?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          artifact_key?: string
+          attribution?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          project_path?: string | null
+          round_id?: string | null
+          session_id?: string
+          tool_call_id?: string | null
+          tool_name?: string | null
+          turn_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_artifacts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_projects: {
         Row: {
           first_attached_at: string
