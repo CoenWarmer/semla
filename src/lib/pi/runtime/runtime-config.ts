@@ -173,6 +173,26 @@ export const GIT_FETCH_INTERVAL_MS = Number(
 export const PI_SESSION_DIR =
   process.env.PI_SESSION_DIR ?? join(process.cwd(), ".semla-sessions");
 
+/**
+ * Where session artifacts live: what a session produced, per tool call.
+ *
+ * A directory of its own, and three places it deliberately is not:
+ *
+ *  - not `.semla-debug/`, which is `NODE_ENV === "development"` only and is a
+ *    scratch transcript people delete without thinking. An artifact is the
+ *    product of the feature, not an aid to debugging it.
+ *  - not `.semla-sessions/`, because `listSessionMeta` reads every entry of
+ *    that directory as a session record; the review turn mark already lives
+ *    elsewhere for exactly this reason (see review-turn-mark.ts).
+ *  - not `.semla-state/`, which is per-install user state — settings, marks,
+ *    things that are meaningless on another machine. Artifacts are per-session
+ *    history and are the one thing here worth copying off a machine.
+ *
+ * Overridable so a test never writes to the real one.
+ */
+export const SEMLA_ARTIFACT_DIR =
+  process.env.SEMLA_ARTIFACT_DIR?.trim() || join(process.cwd(), ".semla-artifacts");
+
 // Resource discovery dir for Semla's Pi sessions, deliberately NOT the
 // developer's ~/.pi/agent. Sharing it made every session inherit whatever
 // packages that machine happened to have installed: the workflow extension was
