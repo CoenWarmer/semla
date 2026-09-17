@@ -30,6 +30,7 @@ import {
   clearSessionSlot,
   clearSlot,
   CONTRACT_SLOT_KEYS,
+  CURRENT_TURN,
   isSessionKeyedSlot,
   isSlotPublished,
   publishSessionWorkflowManager,
@@ -61,6 +62,7 @@ describe("the session-keyed slot family", () => {
       ACTIVE_WORKFLOW_MANAGER,
       BRIDGE_RUN_STARTED,
       WIKI_SESSION_REPOS,
+      CURRENT_TURN,
     ]);
     for (const key of SESSION_KEYED_SLOT_KEYS) {
       expect(isSessionKeyedSlot(key)).toBe(true);
@@ -207,5 +209,39 @@ describe("session repos, the slot that was already keyed", () => {
 
     expect(readSessionSlot(WIKI_SESSION_REPOS, SESSION_A)).toEqual(["repo-a"]);
     expect(readSessionSlot(WIKI_SESSION_REPOS, SESSION_B)).toEqual(["repo-b"]);
+  });
+});
+
+describe("the current-turn slot", () => {
+  it("hands each session its own turn without overwriting the other's", () => {
+    const turnA = { startedAt: "2026-01-01T00:00:00.000Z", turnId: "turn-a" };
+    const turnB = { startedAt: "2026-01-01T00:00:01.000Z", turnId: "turn-b" };
+
+    writeSessionSlot(CURRENT_TURN, SESSION_A, turnA);
+    writeSessionSlot(CURRENT_TURN, SESSION_B, turnB);
+
+    expect(readSessionSlot(CURRENT_TURN, SESSION_A)).toEqual(turnA);
+    expect(readSessionSlot(CURRENT_TURN, SESSION_B)).toEqual(turnB);
+  });
+
+  it("does not let a superseding turn's entry be cleared by the one it replaced", () => {
+    const first = { startedAt: "2026-01-01T00:00:00.000Z", turnId: "turn-1" };
+    const second = { startedAt: "2026-01-01T00:00:05.000Z", turnId: "turn-2" };
+
+    writeSessionSlot(CURRENT_TURN, SESSION_A, first);
+    writeSessionSlot(CURRENT_TURN, SESSION_A, second);
+
+    // The first turn's `finally` runs after the second has already taken the
+    // slot. Identity-guarded, so this must be a no-op.
+    clearSessionSlot(CURRENT_TURN, SESSION_A, first);
+
+    expect(readSessionSlot(CURRENT_TURN, SESSION_A)).toEqual(second);
+  });
+
+  it("clears cleanly when the identity matches", () => {
+    const turn = { startedAt: "2026-01-01T00:00:00.000Z", turnId: "turn-1" };
+    writeSessionSlot(CURRENT_TURN, SESSION_A, turn);
+    clearSessionSlot(CURRENT_TURN, SESSION_A, turn);
+    expect(readSessionSlot(CURRENT_TURN, SESSION_A)).toBeUndefined();
   });
 });

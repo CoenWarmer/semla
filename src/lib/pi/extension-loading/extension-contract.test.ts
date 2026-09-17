@@ -11,6 +11,7 @@ import {
   ASK_USER_RENDEZVOUS,
   BRIDGE_RUN_STARTED,
   clearSlot,
+  CURRENT_TURN,
   FEATURE_SPEC_RENDEZVOUS,
   CONTRACT_SLOT_KEYS,
   EXTENSION_HEALTH,
@@ -54,6 +55,7 @@ describe("slot keys", () => {
     expect(FEATURE_SPEC_RENDEZVOUS.description).toBe(
       "semla.feature-spec.rendezvous",
     );
+    expect(CURRENT_TURN.description).toBe("semla.current-turn");
   });
 
   it("are registry symbols, so separate module scopes resolve the same slot", () => {
@@ -64,7 +66,7 @@ describe("slot keys", () => {
 
   it("are all listed in CONTRACT_SLOT_KEYS", () => {
     expect(new Set(CONTRACT_SLOT_KEYS).size).toBe(CONTRACT_SLOT_KEYS.length);
-    expect(CONTRACT_SLOT_KEYS).toHaveLength(11);
+    expect(CONTRACT_SLOT_KEYS).toHaveLength(12);
   });
 
   it("exposes a contract version", () => {

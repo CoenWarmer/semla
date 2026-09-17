@@ -142,6 +142,30 @@ export const FEATURE_SPEC_RENDEZVOUS = Symbol.for(
   "semla.feature-spec.rendezvous",
 );
 
+/**
+ * The durable id of the turn currently in flight, published per prompt turn.
+ *
+ * Written by the prompt route immediately before `recordTurnStart`, so it
+ * predates every tool call and every `before_agent_start` hook for that
+ * turn. Read by spec-persistence.ts and feature-spec.ts so a spec artifact
+ * can be stamped with the same `turnId` a code artifact captured moments
+ * later carries — the one join between a requirement and what it produced.
+ * See src/lib/pi/session/turn-id.ts for why this is minted once, in one
+ * place, rather than re-derived.
+ *
+ * Keyed by session — see SessionKeyedSlotKey — for the same reason
+ * BRIDGE_RUN_STARTED is: two sessions running turns at once must not read or
+ * clear each other's current turn.
+ *
+ * Clearing is mandatory and must be identity-guarded, the same as
+ * BRIDGE_RUN_STARTED: a programmatic continuation fires `before_agent_start`
+ * with an empty `event.prompt`, so an uncleared slot would stamp whatever it
+ * reads with the *previous* turn's id, and an unguarded clear from a turn
+ * that has already been superseded would delete the entry belonging to the
+ * turn that displaced it.
+ */
+export const CURRENT_TURN = Symbol.for("semla.current-turn");
+
 // ── Payload types ────────────────────────────────────────────────────────────
 // Structural on purpose: importing the real WorkflowManager here would drag the
 // dynamic-workflows tree into every consumer's type graph, including files that
@@ -279,6 +303,10 @@ export type RendezvousSlotKey =
   | typeof ASK_USER_RENDEZVOUS
   | typeof FEATURE_SPEC_RENDEZVOUS;
 
+/** Payload of CURRENT_TURN. A value rather than a bare string, so a later
+ * field can be added without a second slot. */
+export type CurrentTurn = { turnId: string; startedAt: string };
+
 // ── Typed slot access ────────────────────────────────────────────────────────
 
 export interface ContractSlots {
@@ -304,6 +332,8 @@ export interface ContractSlots {
   [EXTENSION_HEALTH]: ExtensionHealthSnapshot;
   [ASK_USER_RENDEZVOUS]: RendezvousSlot;
   [FEATURE_SPEC_RENDEZVOUS]: RendezvousSlot;
+  /** Keyed by session — see SessionKeyedSlotKey. */
+  [CURRENT_TURN]: Map<string, CurrentTurn>;
 }
 
 export type ContractSlotKey = keyof ContractSlots;
@@ -356,6 +386,7 @@ export const CONTRACT_SLOT_KEYS = [
   EXTENSION_HEALTH,
   ASK_USER_RENDEZVOUS,
   FEATURE_SPEC_RENDEZVOUS,
+  CURRENT_TURN,
 ] as const satisfies readonly ContractSlotKey[];
 
 /** Human-readable slot name, for error messages and the health endpoint. */
@@ -398,12 +429,14 @@ export function slotName(key: ContractSlotKey): string {
 export type SessionKeyedSlotKey =
   | typeof ACTIVE_WORKFLOW_MANAGER
   | typeof BRIDGE_RUN_STARTED
-  | typeof WIKI_SESSION_REPOS;
+  | typeof WIKI_SESSION_REPOS
+  | typeof CURRENT_TURN;
 
 export const SESSION_KEYED_SLOT_KEYS = [
   ACTIVE_WORKFLOW_MANAGER,
   BRIDGE_RUN_STARTED,
   WIKI_SESSION_REPOS,
+  CURRENT_TURN,
 ] as const satisfies readonly SessionKeyedSlotKey[];
 
 export function isSessionKeyedSlot(

@@ -36,6 +36,14 @@ export interface ProjectMark {
 
 export interface ReviewTurnMark {
   startedAt: string;
+  /**
+   * The durable prompt-turn id minted for this turn
+   * (src/lib/pi/session/turn-id.ts), or null for a mark written before turn
+   * ids existed. This is what `captureTurnResidual` stamps onto whatever the
+   * end-of-turn sweep captures, so a residual artifact carries the same id a
+   * tool-call artifact from the same turn does.
+   */
+  turnId: string | null;
   /** Keyed by workspace-relative project path, as every other route keys. */
   projects: Record<string, ProjectMark>;
   /**
@@ -79,9 +87,13 @@ export function readTurnMark(
   dir = SEMLA_STATE_DIR,
 ): ReviewTurnMark | null {
   try {
-    return JSON.parse(
+    const parsed = JSON.parse(
       readFileSync(markPath(sessionId, dir), "utf8"),
     ) as ReviewTurnMark;
+    // A mark written before turnId existed has no such key at all — normalize
+    // to null rather than leaving it `undefined`, so every reader can rely on
+    // the field being present.
+    return { ...parsed, turnId: parsed.turnId ?? null };
   } catch {
     return null;
   }
@@ -117,6 +129,7 @@ export function markReviewed(
       projects: existing?.projects ?? {},
       reviewed,
       startedAt: existing?.startedAt ?? new Date().toISOString(),
+      turnId: existing?.turnId ?? null,
     },
     dir,
   );
