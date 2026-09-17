@@ -24,11 +24,8 @@ import {
   existenceCache,
   toFileAccess,
 } from "@/lib/pi/file-access/access-paths";
-import {
-  MAIN_AGENT,
-  workspaceForSession,
-} from "@/lib/pi/file-access/access-timeline";
-import { LIVE_TURN_ID } from "@/lib/pi/file-access/access-types";
+import { workspaceForSession } from "@/lib/pi/file-access/access-timeline";
+import { LIVE_TURN_ID, MAIN_AGENT } from "@/lib/pi/file-access/access-types";
 import { detach, sessionLog } from "@/lib/pi/session/session-log";
 import {
   asWorkflowSnapshot,

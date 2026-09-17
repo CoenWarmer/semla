@@ -46,6 +46,7 @@ import {
 } from "@/lib/session/session-live-state";
 import { cn } from "@/lib/utils";
 
+import { agentLabelFor } from "./review-access-labels";
 import { anchorRevealRequest } from "./review-anchor-reveal";
 import { activeCommitSha, BLANK_COMMIT_SELECTION } from "./review-artifact-commit";
 import { ReviewChangedFiles, type FileSelection } from "./review-changed-files";
@@ -305,9 +306,12 @@ export function ReviewPanel({
         const line = revealLineFor(stop);
         return {
           highlight: {
+            agent: agentLabelFor(access.agent),
             inferred: access.confidence === "inferred",
             kind: access.kind,
             ranges: access.ranges,
+            tool: access.tool,
+            via: access.via ?? null,
           },
           precision: null,
           reveal: line === null ? null : nextReveal(base, line),
@@ -354,9 +358,12 @@ export function ReviewPanel({
     return {
       expanded: null,
       highlight: {
+        agent: agentLabelFor(followAccess.agent),
         inferred: followAccess.confidence === "inferred",
         kind: followAccess.kind,
         ranges: followAccess.ranges,
+        tool: followAccess.tool,
+        via: followAccess.via ?? null,
       },
       // A follow request is not made "against" any target; it outranks both.
       overNonce: -1,

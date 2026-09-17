@@ -24,14 +24,13 @@ import {
   toFileAccess,
   type AccessWorkspace,
 } from "./access-paths";
-import type {
-  AccessAgent,
-  FileAccessTimeline,
-  ToolCallStep,
-  TimelineTurn,
+import {
+  MAIN_AGENT,
+  type AccessAgent,
+  type FileAccessTimeline,
+  type ToolCallStep,
+  type TimelineTurn,
 } from "./access-types";
-
-export const MAIN_AGENT: AccessAgent = { id: "main", label: "Main" };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

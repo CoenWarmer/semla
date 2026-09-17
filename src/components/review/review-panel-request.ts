@@ -32,6 +32,30 @@ export interface AccessHighlight {
   ranges: readonly LineRange[];
   /** Shown in the gutter hover, so a guess is labelled as one. */
   inferred: boolean;
+  /**
+   * The tool that caused the access — `FileAccess.tool`, passed through.
+   *
+   * Carried here rather than looked up in the editor because the editor has no
+   * route back to the timeline: it is handed a highlight, not an access. The
+   * label widget names this, so an operator looking at a marked band can tell
+   * a `read` from an `edit` from a `bash` the parser guessed at.
+   */
+  tool: string;
+  /**
+   * The shell verb behind a `bash` access — "sed", "rg", "redirect" — or null.
+   *
+   * Null for every typed tool, where `tool` is already the whole answer. See
+   * `RawAccess.via`.
+   */
+  via: string | null;
+  /**
+   * The agent that made it, or null for the host agent.
+   *
+   * Null rather than `"Main"` so the label can omit it: see
+   * `review-access-labels.ts` for why the host agent is not spelled out on
+   * every band.
+   */
+  agent: string | null;
 }
 
 /** Where the panel should open, from outside it. */

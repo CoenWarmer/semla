@@ -16,16 +16,12 @@
 
 import type { SessionToolCall } from "@/hooks/use-session-messages";
 
-import { LIVE_TURN_ID, type FileAccess, type ToolCallStep } from "./access-types";
-
-/**
- * Live tool calls are always the host agent's own — a subagent's calls
- * surface only after the fact, via its own transcript in
- * `withSubagentAccesses`. Not imported from `access-timeline.ts`'s
- * `MAIN_AGENT`: that module pulls in `node:fs` transitively, and this one is
- * meant to run in the browser.
- */
-const MAIN_AGENT = { id: "main", label: "Main" };
+import {
+  LIVE_TURN_ID,
+  MAIN_AGENT,
+  type FileAccess,
+  type ToolCallStep,
+} from "./access-types";
 
 /**
  * The running turn's tool calls, each carrying the files it touched.
@@ -47,6 +43,8 @@ export function toolCallStepsFromLive(
 
   return liveCalls.map((call) => ({
     accesses: accessesByCallId.get(call.id) ?? [],
+    // Always the host agent's own: a subagent's calls surface only after the
+    // fact, via its own transcript in `withSubagentAccesses`.
     agent: MAIN_AGENT,
     at: call.createdAt,
     id: call.id,

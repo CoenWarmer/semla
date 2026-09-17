@@ -22,6 +22,7 @@ describe("line ranges", () => {
         ranges: [{ end: 400, start: 330 }],
         rawPath: "src/x.ts",
         tool: "bash",
+        via: "sed",
       },
     ]);
   });
@@ -143,6 +144,8 @@ describe("writes", () => {
         ranges: [],
         rawPath: "notes/out.md",
         tool: "bash",
+        // Not "echo": the redirect is what wrote the file. See `writeMatches`.
+        via: "redirect",
       },
     ]);
   });
@@ -198,5 +201,47 @@ describe("commands that read no single file", () => {
 
   it("yields nothing for a bare listing", () => {
     expect(paths("cd semla && ls src/components | head -50")).toEqual([]);
+  });
+});
+
+/**
+ * `via` is what lets the review editor's label say "bash – sed" instead of
+ * just "bash". The verb has to come from the matcher that fired, not from the
+ * command text, which is why a segment that is both a read and a write gets
+ * two different ones.
+ */
+describe("the shell verb behind an access", () => {
+  const vias = (command: string) =>
+    parseBashAccesses(command).map((access) => `${access.kind}:${access.via}`);
+
+  it("names each matcher's own verb", () => {
+    expect(vias("sed -n 1,20p src/x.ts")).toEqual(["read:sed"]);
+    expect(vias("head -n 40 src/x.ts")).toEqual(["read:head"]);
+    expect(vias("tail -n +30 src/x.ts")).toEqual(["read:tail"]);
+    expect(vias("awk 'NR==5,NR==9' src/x.ts")).toEqual(["read:awk"]);
+    expect(vias("cat src/x.ts")).toEqual(["read:cat"]);
+    expect(vias("tee src/x.ts")).toEqual(["write:tee"]);
+  });
+
+  it("distinguishes rg from grep rather than reporting one for both", () => {
+    expect(vias("rg -n foo src/x.ts")).toEqual(["read:rg"]);
+    expect(vias("grep -n foo src/x.ts")).toEqual(["read:grep"]);
+  });
+
+  it("attributes an in-place sed to sed -i", () => {
+    expect(vias("sed -i '' 's/a/b/' src/x.ts")).toEqual(["write:sed -i"]);
+  });
+
+  it("gives a segment's read and its write different verbs", () => {
+    // Three accesses, not two: `grepMatches` claims every path in the segment,
+    // so the redirect target is reported as an rg operand as well as a write.
+    // That over-claim predates `via` and is what `confidence: "inferred"` is
+    // for — recorded here because the verbs are the point, and the write's
+    // verb must still be "redirect" rather than inheriting the segment's "rg".
+    expect(vias("rg -n foo src/x.ts > out.md")).toEqual([
+      "read:rg",
+      "read:rg",
+      "write:redirect",
+    ]);
   });
 });

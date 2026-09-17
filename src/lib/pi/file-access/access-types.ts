@@ -38,6 +38,18 @@ export interface AccessAgent {
   label: string;
 }
 
+/**
+ * The host agent.
+ *
+ * Here rather than in `access-timeline.ts`, which is the module that builds
+ * the timeline and therefore reaches the session file through `node:fs`. Both
+ * the live merge and the editor's access labels compare against this identity
+ * in the browser, and importing it from the timeline pulls that whole server
+ * graph — pi's own entry point included — into the client bundle. This module
+ * imports nothing, so it is the one place both sides can share a value.
+ */
+export const MAIN_AGENT: AccessAgent = { id: "main", label: "Main" };
+
 export type AccessKind = "read" | "write";
 
 export type AccessTool = "read" | "edit" | "write" | "code_resolve" | "bash";
@@ -67,6 +79,18 @@ export interface RawAccess {
   symbol?: AccessSymbol;
   tool: AccessTool;
   confidence: AccessConfidence;
+  /**
+   * For a `bash` access, the shell command that produced it — "sed", "grep".
+   *
+   * `tool: "bash"` on its own is the least informative attribution the
+   * timeline carries: it says the agent used a shell, which is true of three
+   * quarters of all tool calls. The parser already knows which matcher fired,
+   * so the verb is recorded rather than discarded, and the UI can say "bash ·
+   * sed" where it could previously only say "bash".
+   *
+   * Undefined for every typed tool, where `tool` is the whole answer.
+   */
+  via?: string;
 }
 
 /** A `RawAccess` resolved against a workspace, ready for the UI. */
@@ -95,6 +119,8 @@ export interface FileAccess {
   at: string;
   tool: AccessTool;
   confidence: AccessConfidence;
+  /** The shell verb behind a `bash` access — see `RawAccess.via`. */
+  via?: string;
   /** The path did not exist when the timeline was built. Not navigable. */
   missing: boolean;
 }

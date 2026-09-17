@@ -359,6 +359,52 @@ div.react-sigma {
   }
 }
 
+/*
+ * The chip naming the tool that caused a band to be read or written.
+ *
+ * A Monaco content widget anchored ABOVE the band's first line (see
+ * `review-access-label-widgets.tsx`), so it floats over the preceding line
+ * instead of pushing the code down. Everything here follows from that: it must
+ * not take the pointer from the line underneath, it must not be tall enough to
+ * obscure that line's glyphs, and it must read as an annotation rather than as
+ * content.
+ */
+.semla-access-label-host {
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.semla-access-label {
+  border-radius: 3px;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Smaller than the editor's own 12.5px and with a line height under one
+   * editor line, so the chip sits inside the row it overlays rather than
+   * straddling two.
+   */
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 13px;
+  padding: 0 4px;
+  text-transform: lowercase;
+}
+
+/*
+ * Matched to the gutter stripe of the same access kind, not to a generic
+ * accent: the chip's job is to name the band it belongs to, and sharing the
+ * band's hue is what makes that association readable without a connector.
+ */
+.semla-access-label-read {
+  background-color: color-mix(in oklch, oklch(0.6 0.16 250) 82%, transparent);
+  color: oklch(0.98 0 0);
+}
+
+.semla-access-label-write {
+  background-color: color-mix(in oklch, oklch(0.7 0.16 60) 85%, transparent);
+  color: oklch(0.22 0.02 60);
+}
+
 .dark .semla-access-read-line {
   background-color: color-mix(in oklch, oklch(0.65 0.16 250) 12%, transparent);
 }

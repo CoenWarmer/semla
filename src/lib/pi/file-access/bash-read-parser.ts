@@ -158,6 +158,17 @@ interface Found {
   rawPath: string;
   kind: "read" | "write";
   ranges: LineRange[];
+  /**
+   * The shell verb this came from, as the operator typed it conceptually:
+   * "sed", "head", "grep", "redirect".
+   *
+   * Each matcher names its own rather than the name being derived afterwards
+   * from the command text. A single segment can match several matchers —
+   * `grep -n x.ts > out.md` is both a read and a write — so the verb has to be
+   * attached where the decision is actually made, not inferred later from a
+   * string that contains both.
+   */
+  via: string;
 }
 
 /**
@@ -178,6 +189,7 @@ function sedMatches(segment: string): Found[] {
       kind: "read",
       ranges: [{ end: toInt(range[2]), start: toInt(range[1]) ?? 1 }],
       rawPath: range[3]!,
+      via: "sed",
     });
   }
 
@@ -190,13 +202,14 @@ function sedMatches(segment: string): Found[] {
       kind: "read",
       ranges: [{ end: line, start: line }],
       rawPath: single[2]!,
+      via: "sed",
     });
   }
 
   for (const match of segment.matchAll(
     new RegExp(String.raw`sed\s+(?:-[a-zA-Z]*i[a-zA-Z]*)\s+[^|;&\n]*?` + PATH, "g"),
   )) {
-    found.push({ kind: "write", ranges: [], rawPath: match[1]! });
+    found.push({ kind: "write", ranges: [], rawPath: match[1]!, via: "sed -i" });
   }
 
   return found;
@@ -212,7 +225,12 @@ function headMatches(segment: string): Found[] {
   // GNU and BSD both default to ten lines when no count is given.
   const count = toInt(match[1]) ?? toInt(match[2]) ?? 10;
   return [
-    { kind: "read", ranges: [{ end: count, start: 1 }], rawPath: match[3]! },
+    {
+      kind: "read",
+      ranges: [{ end: count, start: 1 }],
+      rawPath: match[3]!,
+      via: "head",
+    },
   ];
 }
 
@@ -233,6 +251,7 @@ function tailMatches(segment: string): Found[] {
         kind: "read",
         ranges: [{ end: null, start: toInt(fromLine[1]) ?? 1 }],
         rawPath: fromLine[2]!,
+        via: "tail",
       },
     ];
   }
@@ -240,7 +259,9 @@ function tailMatches(segment: string): Found[] {
   const plain = new RegExp(
     String.raw`\btail\s+(?:-n\s*\d+\s+|-\d+\s+)?` + PATH,
   ).exec(segment);
-  return plain ? [{ kind: "read", ranges: [], rawPath: plain[1]! }] : [];
+  return plain
+    ? [{ kind: "read", ranges: [], rawPath: plain[1]!, via: "tail" }]
+    : [];
 }
 
 /** `awk 'NR==N,NR==M'` and `awk 'NR>=N && NR<=M'`. */
@@ -254,7 +275,8 @@ function awkMatches(segment: string): Found[] {
   const file = path().exec(unquote(segment));
   if (!file) return [];
 
-  if (!bounded) return [{ kind: "read", ranges: [], rawPath: file[1]! }];
+  if (!bounded)
+    return [{ kind: "read", ranges: [], rawPath: file[1]!, via: "awk" }];
 
   return [
     {
@@ -263,6 +285,7 @@ function awkMatches(segment: string): Found[] {
         { end: toInt(bounded[2] ?? bounded[3]), start: toInt(bounded[1]) ?? 1 },
       ],
       rawPath: file[1]!,
+      via: "awk",
     },
   ];
 }
@@ -273,7 +296,7 @@ function catMatches(segment: string): Found[] {
   for (const match of segment.matchAll(
     new RegExp(String.raw`\bcat\s+(?:-\w+\s+)*` + PATH, "g"),
   )) {
-    found.push({ kind: "read", ranges: [], rawPath: match[1]! });
+    found.push({ kind: "read", ranges: [], rawPath: match[1]!, via: "cat" });
   }
   return found;
 }
@@ -286,11 +309,20 @@ function catMatches(segment: string): Found[] {
  * over a directory yields nothing here, correctly — no single file was read.
  */
 function grepMatches(segment: string): Found[] {
-  if (!/\b(?:grep|rg|ripgrep)\b/.test(segment)) return [];
+  // The verb as typed, so the label reads "bash · rg" for an `rg` and
+  // "bash · grep" for a `grep`. Reporting one name for both would be a small
+  // lie in exactly the place the operator is checking what actually ran.
+  const verb = /\b(grep|rg|ripgrep)\b/.exec(segment);
+  if (!verb) return [];
 
   const found: Found[] = [];
   for (const match of unquote(segment).matchAll(path("g"))) {
-    found.push({ kind: "read", ranges: [], rawPath: match[1]! });
+    found.push({
+      kind: "read",
+      ranges: [],
+      rawPath: match[1]!,
+      via: verb[1]!,
+    });
   }
   return found;
 }
@@ -302,13 +334,21 @@ function writeMatches(segment: string): Found[] {
   for (const match of segment.matchAll(
     new RegExp(String.raw`(?<![0-9<>])>>?\s*` + PATH, "g"),
   )) {
-    found.push({ kind: "write", ranges: [], rawPath: match[1]! });
+    found.push({
+      kind: "write",
+      ranges: [],
+      rawPath: match[1]!,
+      // Not a command name: the thing that wrote the file is the redirect, and
+      // naming whatever verb happened to precede it would attribute the write
+      // to a command that may only have produced the bytes.
+      via: "redirect",
+    });
   }
 
   for (const match of segment.matchAll(
     new RegExp(String.raw`\btee\s+(?:-a\s+)?` + PATH, "g"),
   )) {
-    found.push({ kind: "write", ranges: [], rawPath: match[1]! });
+    found.push({ kind: "write", ranges: [], rawPath: match[1]!, via: "tee" });
   }
 
   return found;
@@ -366,6 +406,7 @@ export function parseBashAccesses(command: string): RawAccess[] {
           ranges: found.ranges,
           rawPath: resolved,
           tool: "bash",
+          via: found.via,
         });
 
         if (accesses.length >= MAX_ACCESSES_PER_COMMAND) return accesses;

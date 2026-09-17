@@ -47,6 +47,8 @@ import {
 import { shouldAutoScroll, type AutoScrollState } from "./review-auto-scroll";
 import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
+import { AccessLabelWidgets } from "./review-access-label-widgets";
+import { buildAccessLabels } from "./review-access-labels";
 import { linesOutside } from "@/lib/pi/file-access/access-sequence";
 
 import type { AccessHighlight } from "./review-panel-request";
@@ -200,6 +202,14 @@ export default function CodeEditor({
     null,
   );
   const hunkGlyphsRef = useRef<HunkBracketWidgets | null>(null);
+  /**
+   * The "read by <tool>" chips floating above each accessed band.
+   *
+   * A third widget owner rather than part of the access decorations, because a
+   * decoration is a class name on a line Monaco owns and cannot host a DOM
+   * subtree — the same constraint `review-hunk-bracket-widgets.tsx` documents.
+   */
+  const accessLabelsRef = useRef<AccessLabelWidgets | null>(null);
   const stagingBusyRef = useRef(stagingBusy);
   /**
    * Which path the open-on-first-hunk effect has already scrolled for.
@@ -290,6 +300,7 @@ export default function CodeEditor({
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
     accessRef.current = editor.createDecorationsCollection([]);
+    accessLabelsRef.current = new AccessLabelWidgets(editor);
     hunkGlyphsRef.current = new HunkBracketWidgets(
       editor,
       (index, direction) => {
@@ -448,6 +459,7 @@ export default function CodeEditor({
       lspOpenedRef.current.clear();
       lspRegistration?.dispose();
       lspHandleRef.current = null;
+      accessLabelsRef.current?.dispose();
       hunkGlyphsRef.current?.dispose();
       editor.dispose();
       modelsRef.current.forEach((model) => model.dispose());
@@ -456,6 +468,7 @@ export default function CodeEditor({
       decorationsRef.current = null;
       accessRef.current = null;
       hunkGlyphsRef.current = null;
+      accessLabelsRef.current = null;
     };
   }, []);
 
@@ -567,12 +580,21 @@ export default function CodeEditor({
     const model = editor?.getModel();
     if (!editor || !collection || !model) return;
 
+    const modelLineCount = model.getLineCount();
+
+    /*
+     * The labels are set before the early return below, because a whole-file
+     * access highlights nothing and so is the one case where the chip is the
+     * *only* mark saying the agent touched this file at all.
+     */
+    accessLabelsRef.current?.set(buildAccessLabels(access, modelLineCount));
+
     if (!access || access.ranges.length === 0) {
       collection.set([]);
       return;
     }
 
-    const lineCount = model.getLineCount();
+    const lineCount = modelLineCount;
     const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
     const className =
       access.kind === "write"

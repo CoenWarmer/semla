@@ -108,6 +108,10 @@ export function toFileAccess(
     ...(raw.symbol ? { symbol: raw.symbol } : {}),
     tool: raw.tool,
     turnId: origin.turnId,
+    // Spread rather than assigned, like `symbol` above: an explicit
+    // `via: undefined` is a key the JSON the client receives would carry as
+    // null, and every typed tool would then ship one.
+    ...(raw.via ? { via: raw.via } : {}),
   };
 }
 
