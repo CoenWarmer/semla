@@ -57,6 +57,24 @@ const PlacementFieldsSchema = Type.Object({
   }),
 });
 
+/**
+ * What the file is for, when it is not ordinary source.
+ *
+ * Optional, and the only accepted value is "plan" — see
+ * src/lib/artifacts/diff-role.ts. This is the *declared* half of a diff's
+ * role: a fact the agent states about its own write, which is why it beats
+ * the path-based guess. Omitting it is normal and costs nothing; the path
+ * fallback still catches a write into docs/plans/.
+ */
+const RoleField = Type.Optional(
+  Type.Literal("plan", {
+    description:
+      'Set to "plan" when this file is an implementation plan or design document ' +
+      "that later turns will write code from, rather than source code itself. " +
+      "Omit for ordinary source changes.",
+  }),
+);
+
 const EditEntrySchema = Type.Object({
   oldText: Type.String(),
   newText: Type.String(),
@@ -67,6 +85,7 @@ const EditSchema = Type.Object({
   edits: Type.Array(EditEntrySchema),
   target_module: PlacementFieldsSchema.properties.target_module,
   rationale: PlacementFieldsSchema.properties.rationale,
+  role: RoleField,
 });
 
 const WriteSchema = Type.Object({
@@ -74,6 +93,7 @@ const WriteSchema = Type.Object({
   content: Type.String(),
   target_module: PlacementFieldsSchema.properties.target_module,
   rationale: PlacementFieldsSchema.properties.rationale,
+  role: RoleField,
 });
 
 /** Formats the rejection message so it quotes the PLACEMENT.md rule verbatim. */
