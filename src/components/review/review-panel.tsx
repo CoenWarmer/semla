@@ -617,7 +617,18 @@ export function ReviewPanel({
       {/* The glow says the panel is being driven by the agent, which is worth
           saying because the editor moving on its own is otherwise
           indistinguishable from the panel losing the operator's place. */}
-      <div className={cn("flex grow flex-col", following && "semla-following")}>
+      {/* `min-h-0` is load-bearing, not tidying. Without it this column keeps
+          `min-height: auto`, so its height is pinned to the min-content height
+          of the editor and scrubber inside it and it cannot shrink when the
+          panel does — opening the bottom bar's console then left the panel
+          1100px tall with 1300px of content, the surplus clipped by the
+          `overflow-hidden` above and the scrubber hidden behind the console. */}
+      <div
+        className={cn(
+          "flex min-h-0 grow flex-col",
+          following && "semla-following",
+        )}
+      >
         {request.precision === "component" && (
           <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
             <span className="text-xs text-muted-foreground">
