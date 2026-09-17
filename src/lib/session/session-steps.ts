@@ -32,10 +32,28 @@ import {
   parseFeatureSpecResult,
   type FeatureSpecField,
 } from "@/lib/tool-records/feature-spec-record";
+import type { StepTurnUsage } from "@/lib/session/step-usage";
 
+/**
+ * `usage` is the *turn's* usage, not the step's — see step-usage.ts for why
+ * there is no per-call figure to have. Absent where the turn reported none,
+ * which is every step of a live turn that has not closed yet.
+ */
 export type StepItem =
-  | { kind: "thinking"; id: string; messageId: string; text: string }
-  | { kind: "tool"; id: string; messageId: string; call: SessionToolCall };
+  | {
+      kind: "thinking";
+      id: string;
+      messageId: string;
+      text: string;
+      usage?: StepTurnUsage;
+    }
+  | {
+      kind: "tool";
+      id: string;
+      messageId: string;
+      call: SessionToolCall;
+      usage?: StepTurnUsage;
+    };
 
 export type ConversationItem =
   | { kind: "message"; message: SessionMessage }
@@ -152,6 +170,20 @@ export function groupConversation(
     }
 
     const steps: StepItem[] = [];
+    // The calls this turn contributes to the strip. Counted before the steps
+    // are built because every step of the turn is annotated with it, and it is
+    // what tells the reader that two dots share one figure.
+    const stepCalls = calls.filter(
+      (call) => call.name !== ASK_USER_TOOL && call.name !== FEATURE_SPEC_TOOL,
+    );
+    const usage: StepTurnUsage | undefined = message.tokenUsage
+      ? {
+          callsInTurn: stepCalls.length,
+          cost: message.tokenUsage.cost,
+          tokens: message.tokenUsage.total,
+        }
+      : undefined;
+
     // Reasoning first: it is why the calls beneath it happened.
     if (message.thinking?.trim()) {
       steps.push({
@@ -159,15 +191,16 @@ export function groupConversation(
         kind: "thinking",
         messageId: message.id,
         text: message.thinking,
+        ...(usage ? { usage } : {}),
       });
     }
-    for (const call of calls) {
-      if (call.name === ASK_USER_TOOL || call.name === FEATURE_SPEC_TOOL) continue;
+    for (const call of stepCalls) {
       steps.push({
         call,
         id: `${message.id}:${call.id}`,
         kind: "tool",
         messageId: message.id,
+        ...(usage ? { usage } : {}),
       });
     }
 

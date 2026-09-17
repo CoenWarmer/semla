@@ -25,7 +25,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { summariseSteps, type StepItem } from "@/lib/session/session-steps";
+import { describeStepUsage } from "@/lib/session/step-usage";
 import { cn } from "@/lib/utils";
 
 const DRAWER_WIDTH = 560;
@@ -106,31 +108,49 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
       <div className="flex items-center gap-1 py-1 flex-wrap">
         {items.map((item) => {
           const failed = item.kind === "tool" && item.call.isError;
-          const label =
-            item.kind === "thinking"
-              ? "Thinking"
-              : `${item.call.name}${item.call.summary ? ` — ${item.call.summary}` : ""}`;
+          const name = item.kind === "thinking" ? "Thinking" : item.call.name;
+          const summary = item.kind === "tool" ? item.call.summary : undefined;
+          const label = summary ? `${name} — ${summary}` : name;
+          const usage = describeStepUsage(item.usage);
 
           return (
-            <button
-              aria-label={label}
-              className={cn(
-                "flex size-5 items-center justify-center rounded-full border transition-colors",
-                failed
-                  ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                  : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-              key={item.id}
-              onClick={() => setOpenAt(item.id)}
-              title={label}
-              type="button"
-            >
-              {item.kind === "thinking" ? (
-                <BrainIcon className="size-3" />
-              ) : (
-                <WrenchIcon className="size-3" />
-              )}
-            </button>
+            <Tooltip key={item.id}>
+              <TooltipTrigger
+                aria-label={label}
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full border transition-colors",
+                  failed
+                    ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                    : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+                onClick={() => setOpenAt(item.id)}
+                type="button"
+              >
+                {item.kind === "thinking" ? (
+                  <BrainIcon className="size-3" />
+                ) : (
+                  <WrenchIcon className="size-3" />
+                )}
+              </TooltipTrigger>
+
+              {/*
+                Stacked rather than one line: the tool name is what the reader
+                is scanning for, and burying it in front of a token count is
+                how a strip of twenty dots stays unreadable.
+              */}
+              <TooltipContent className="flex-col items-start gap-0.5">
+                <span className="font-medium">{name}</span>
+                {summary && (
+                  <span className="max-w-[28ch] truncate font-mono text-[11px] opacity-80">
+                    {summary}
+                  </span>
+                )}
+                {usage && (
+                  <span className="tabular-nums text-[11px] opacity-80">{usage}</span>
+                )}
+                {failed && <span className="text-[11px]">failed</span>}
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>

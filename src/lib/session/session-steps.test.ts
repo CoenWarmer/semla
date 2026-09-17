@@ -280,6 +280,38 @@ describe("groupConversation", () => {
     const steps = items[0].kind === "steps" ? items[0].items : [];
     expect(summariseSteps(steps)).toBe("bash");
   });
+
+  it("annotates every step of a turn with that turn's usage and call count", () => {
+    const silent: SessionMessage = {
+      ...message("s1", "assistant", "", "why"),
+      tokenUsage: { cost: 0.05, total: 20_000 },
+    };
+
+    const items = groupConversation(
+      [message("u", "user", "question"), silent],
+      [call("c1", "s1", "bash"), call("c2", "s1", "read")],
+    );
+
+    const steps = items[1].kind === "steps" ? items[1].items : [];
+    // Thinking plus two calls, all three carrying the same figures, and all
+    // three saying the turn made two calls so the reader can see it is shared.
+    expect(steps).toHaveLength(3);
+    expect(steps.map((step) => step.usage)).toEqual([
+      { callsInTurn: 2, cost: 0.05, tokens: 20_000 },
+      { callsInTurn: 2, cost: 0.05, tokens: 20_000 },
+      { callsInTurn: 2, cost: 0.05, tokens: 20_000 },
+    ]);
+  });
+
+  it("leaves usage absent on a turn that reported none", () => {
+    const items = groupConversation(
+      [message("s1", "assistant", "", "why")],
+      [call("c1", "s1", "bash")],
+    );
+
+    const steps = items[0].kind === "steps" ? items[0].items : [];
+    expect(steps.every((step) => step.usage === undefined)).toBe(true);
+  });
 });
 
 describe("summariseSteps", () => {
