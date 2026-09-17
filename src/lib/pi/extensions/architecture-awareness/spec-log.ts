@@ -36,6 +36,15 @@ export interface SpecTurn {
   text: string;
   /** Whether this turn carried the `@spec` marker. */
   loadBearing: boolean;
+  /**
+   * The durable prompt-turn id this turn was appended under
+   * (src/lib/pi/session/turn-id.ts), or null for a line written before turn
+   * ids existed. Bookkeeping only — never injected into the prompt by
+   * `renderSpecLog` — but it is what lets a human reading SPEC.md match a
+   * line back to the spec artifact it produced, and what
+   * spec-persistence.ts stamps a captured spec artifact with.
+   */
+  turnId: string | null;
 }
 
 export function specLogPath(sessionDir: string, sessionId: string): string {
@@ -66,11 +75,12 @@ export function parseSpecMarker(rawText: string): { loadBearing: boolean; text: 
  */
 function formatSpecLine(turn: SpecTurn): string {
   const marker = turn.loadBearing ? " [@spec]" : "";
+  const idTag = turn.turnId ? ` [id:${turn.turnId}]` : "";
   // Turn text is stored on one line: embedded newlines are escaped so the
   // log's one-line-per-turn invariant holds and a later read can split on "\n"
   // without ambiguity.
   const escaped = turn.text.replace(/\r?\n/g, "\\n");
-  return `[turn ${turn.turnIndex}] [${turn.timestamp}]${marker} \u2014 ${escaped}`;
+  return `[turn ${turn.turnIndex}] [${turn.timestamp}]${marker}${idTag} \u2014 ${escaped}`;
 }
 
 /**
@@ -98,16 +108,20 @@ export function readSpecLog(sessionDir: string, sessionId: string): SpecTurn[] {
   const contents = readFileSync(path, "utf-8");
   const turns: SpecTurn[] = [];
 
-  const lineRe = /^\[turn (\d+)\] \[([^\]]+)\](?: \[@spec\])? \u2014 (.*)$/;
+  // Backward compatible: `[id:<turnId>]` is optional, so a line written
+  // before turn ids existed still parses, with `turnId: null`.
+  const lineRe =
+    /^\[turn (\d+)\] \[([^\]]+)\](?: \[@spec\])?(?: \[id:([^\]]+)\])? \u2014 (.*)$/;
   for (const line of contents.split("\n")) {
     if (!line.trim()) continue;
     const match = lineRe.exec(line);
     if (!match) continue;
-    const [, turnIndexStr, timestamp, escaped] = match;
+    const [, turnIndexStr, timestamp, turnId, escaped] = match;
     turns.push({
       loadBearing: line.includes("[@spec]"),
       text: escaped.replace(/\\n/g, "\n"),
       timestamp,
+      turnId: turnId ?? null,
       turnIndex: Number(turnIndexStr),
     });
   }

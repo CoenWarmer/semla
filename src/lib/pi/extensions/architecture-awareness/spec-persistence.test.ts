@@ -11,6 +11,7 @@ import type { BeforeAgentStartEvent, ExtensionContext } from "@earendil-works/pi
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readSpecLog, specLogPath } from "./spec-log";
+import { SEMLA_ARTIFACT_DIR } from "@/lib/pi/runtime/runtime-config";
 
 const specPersistenceExtension = (await import("./spec-persistence")).default;
 
@@ -62,6 +63,15 @@ describe("spec-persistence extension", () => {
 
   afterEach(() => {
     if (dir && existsSync(dir)) rmSync(dir, { force: true, recursive: true });
+    // recordMarkerSpec (called from the extension when a turn is a captured
+    // spec) writes through the real SEMLA_ARTIFACT_DIR — it takes no `dir`
+    // override, the same as every other artifact-capture caller — so the
+    // "session-1" fixture id used throughout this file needs its own
+    // cleanup, separate from the sessionDir/`dir` above.
+    rmSync(join(SEMLA_ARTIFACT_DIR, "sessions", "session-1"), {
+      force: true,
+      recursive: true,
+    });
   });
 
   it("appends the verbatim user turn and injects the rendered log into the system prompt", async () => {

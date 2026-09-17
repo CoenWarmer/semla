@@ -11,6 +11,14 @@
  *     → <value>
  *
  * blocks joined by a blank line, in the order feature-spec.ts emits them.
+ *
+ * Structured fields are now also captured directly, at the source, in
+ * `SpecArtifact.fields` (src/lib/pi/artifacts/spec-capture.ts) — so a new
+ * session's form no longer depends on this re-derivation at all. This parser
+ * remains the fallback for a transcript written before that existed, and the
+ * transcript (session-steps.ts's `featureSpecItem`) stays the render source
+ * for the conversation view either way; the artifact is for the sidebar/UI
+ * join, not for replacing this reader.
  */
 
 const ANSWER_PREFIX = "→ ";

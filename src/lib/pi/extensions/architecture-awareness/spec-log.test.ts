@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,12 +55,14 @@ describe("appendSpecTurn / readSpecLog", () => {
       loadBearing: false,
       text: "first constraint",
       timestamp: "2026-01-01T00:00:00.000Z",
+      turnId: null,
       turnIndex: 0,
     });
     appendSpecTurn(dir, sessionId, {
       loadBearing: false,
       text: "second constraint, contradicts the first",
       timestamp: "2026-01-01T00:01:00.000Z",
+      turnId: null,
       turnIndex: 1,
     });
 
@@ -79,6 +81,7 @@ describe("appendSpecTurn / readSpecLog", () => {
       loadBearing: true,
       text: "always use tabs",
       timestamp: "2026-01-01T00:00:00.000Z",
+      turnId: null,
       turnIndex: 0,
     });
 
@@ -87,9 +90,43 @@ describe("appendSpecTurn / readSpecLog", () => {
         loadBearing: true,
         text: "always use tabs",
         timestamp: "2026-01-01T00:00:00.000Z",
+        turnId: null,
         turnIndex: 0,
       },
     ]);
+  });
+
+  it("round-trips a line carrying a turnId", () => {
+    dir = mkdtempSync(join(tmpdir(), "spec-log-test-"));
+    const sessionId = "session-2b";
+
+    appendSpecTurn(dir, sessionId, {
+      loadBearing: false,
+      text: "use the new join",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      turnId: "20260101T000000000Z-aaaaaaaa",
+      turnIndex: 0,
+    });
+
+    expect(readSpecLog(dir, sessionId)[0].turnId).toBe(
+      "20260101T000000000Z-aaaaaaaa",
+    );
+  });
+
+  it("parses an old-format line (no [id:...] tag) with turnId null", () => {
+    dir = mkdtempSync(join(tmpdir(), "spec-log-test-"));
+    const sessionId = "session-2c";
+
+    writeFileSync(
+      specLogPath(dir, sessionId),
+      "[turn 0] [2026-01-01T00:00:00.000Z] [@spec] \u2014 old format line\n",
+    );
+
+    const turns = readSpecLog(dir, sessionId);
+    expect(turns).toHaveLength(1);
+    expect(turns[0].turnId).toBeNull();
+    expect(turns[0].loadBearing).toBe(true);
+    expect(turns[0].text).toBe("old format line");
   });
 
   it("escapes and restores embedded newlines so one turn is one line on disk", () => {
@@ -100,6 +137,7 @@ describe("appendSpecTurn / readSpecLog", () => {
       loadBearing: false,
       text: "line one\nline two",
       timestamp: "2026-01-01T00:00:00.000Z",
+      turnId: null,
       turnIndex: 0,
     });
 
@@ -118,9 +156,21 @@ describe("appendSpecTurn / readSpecLog", () => {
 describe("renderSpecLog", () => {
   it("hoists @spec turns before chronological ones, later chronological order preserved", () => {
     const rendered = renderSpecLog([
-      { loadBearing: false, text: "first", timestamp: "t0", turnIndex: 0 },
-      { loadBearing: true, text: "load-bearing constraint", timestamp: "t1", turnIndex: 1 },
-      { loadBearing: false, text: "second, supersedes first", timestamp: "t2", turnIndex: 2 },
+      { loadBearing: false, text: "first", timestamp: "t0", turnId: null, turnIndex: 0 },
+      {
+        loadBearing: true,
+        text: "load-bearing constraint",
+        timestamp: "t1",
+        turnId: null,
+        turnIndex: 1,
+      },
+      {
+        loadBearing: false,
+        text: "second, supersedes first",
+        timestamp: "t2",
+        turnId: null,
+        turnIndex: 2,
+      },
     ]);
 
     const loadBearingIndex = rendered.indexOf("load-bearing constraint");
@@ -135,6 +185,19 @@ describe("renderSpecLog", () => {
   it("returns an empty string for no turns", () => {
     expect(renderSpecLog([])).toBe("");
   });
+
+  it("never injects the turnId into the rendered output", () => {
+    const rendered = renderSpecLog([
+      {
+        loadBearing: false,
+        text: "a requirement",
+        timestamp: "t0",
+        turnId: "20260101T000000000Z-aaaaaaaa",
+        turnIndex: 0,
+      },
+    ]);
+    expect(rendered).not.toContain("20260101T000000000Z-aaaaaaaa");
+  });
 });
 
 describe("shouldConsiderDistillation", () => {
@@ -143,6 +206,7 @@ describe("shouldConsiderDistillation", () => {
       loadBearing: false,
       text: `turn ${i}`,
       timestamp: "t",
+      turnId: null,
       turnIndex: i,
     }));
     expect(shouldConsiderDistillation(turns)).toBe(false);
@@ -153,6 +217,7 @@ describe("shouldConsiderDistillation", () => {
       loadBearing: false,
       text: `turn ${i}`,
       timestamp: "t",
+      turnId: null,
       turnIndex: i,
     }));
     expect(shouldConsiderDistillation(turns)).toBe(true);

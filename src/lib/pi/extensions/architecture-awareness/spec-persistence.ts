@@ -27,6 +27,9 @@ import {
   renderSpecLog,
 } from "./spec-log";
 import { loadArchitectureAwarenessSettings } from "./settings";
+import { isCapturedSpec } from "@/lib/artifacts/spec-inclusion";
+import { recordMarkerSpec } from "@/lib/pi/artifacts/spec-capture";
+import { CURRENT_TURN, readSessionSlot } from "@/lib/pi/extension-loading/extension-contract";
 
 export const SPEC_LOG_HEADER =
   "# Session requirements (SPEC.md)\n\n" +
@@ -48,15 +51,35 @@ export default function specPersistenceExtension(pi: ExtensionAPI) {
     // the append-only log with nothing to show for it.
     if (event.prompt.trim().length > 0) {
       const { loadBearing, text } = parseSpecMarker(event.prompt);
+      // Read, not written, by this extension: the prompt route publishes it
+      // (CURRENT_TURN's docblock) before this hook ever fires, and this is a
+      // factory extension imported through Next's own module graph — not
+      // jiti — so the "@/" import above resolves the same slot the route
+      // wrote to. `ctx.sessionManager.getSessionId()` is the *pi runtime*
+      // session id, the key both sides agree on.
+      const currentTurn = readSessionSlot(CURRENT_TURN, sessionId);
+      const turnId = currentTurn?.turnId ?? null;
+
       appendSpecTurn(sessionDir, sessionId, {
         loadBearing,
         text,
         timestamp: new Date().toISOString(),
+        turnId,
         // Best-effort ordinal: the file's own line count is the turn index,
         // since this hook fires once per real user turn and nothing else
         // appends to this file.
         turnIndex: readSpecLog(sessionDir, sessionId).length,
       });
+
+      if (isCapturedSpec({ loadBearing, source: "marker", text })) {
+        recordMarkerSpec({
+          roundId: null,
+          sessionId,
+          text,
+          turnId,
+          turnIndex: readSpecLog(sessionDir, sessionId).length - 1,
+        });
+      }
     }
 
     const turns = readSpecLog(sessionDir, sessionId);

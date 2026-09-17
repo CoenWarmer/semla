@@ -21,6 +21,9 @@ import {
   waitForFeatureSpec,
   type FeatureSpecAnswers,
 } from "../bridge/feature-spec-bridge";
+import { isCapturedSpec } from "@/lib/artifacts/spec-inclusion";
+import { recordFeatureSpec } from "@/lib/pi/artifacts/spec-capture";
+import { CURRENT_TURN, readSessionSlot } from "@/lib/pi/extension-loading/extension-contract";
 
 // No parameters: the fields are fixed, so there is nothing for the model to
 // pass beyond triggering the tool.
@@ -31,6 +34,17 @@ const FIELD_LABELS: Record<keyof FeatureSpecAnswers, string> = {
   goal: "Overarching goal",
   nonFunctionalRequirements: "Non-functional requirements",
 };
+
+/**
+ * Label order, declared once, so the artifact's `fields` and this tool's own
+ * result text (built below from the same array) can never disagree about
+ * which field came first.
+ */
+const FIELD_ORDER: (keyof FeatureSpecAnswers)[] = [
+  "goal",
+  "functionalRequirements",
+  "nonFunctionalRequirements",
+];
 
 export default function featureSpecExtension(pi: ExtensionAPI) {
   pi.registerTool({
@@ -49,7 +63,7 @@ export default function featureSpecExtension(pi: ExtensionAPI) {
     ],
     parameters: FeatureSpecSchema,
     executionMode: "sequential",
-    async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
+    async execute(toolCallId, _params, signal, _onUpdate, ctx) {
       const sessionId = ctx.sessionManager.getSessionId();
 
       let answers: FeatureSpecAnswers;
@@ -66,7 +80,28 @@ export default function featureSpecExtension(pi: ExtensionAPI) {
         };
       }
 
-      const lines = (Object.keys(FIELD_LABELS) as (keyof FeatureSpecAnswers)[]).map(
+      const fields = FIELD_ORDER.map((key) => ({
+        label: FIELD_LABELS[key],
+        value: answers[key] || "",
+      }));
+
+      if (isCapturedSpec({ fields, source: "form" })) {
+        // Read, not written, by this extension — see CURRENT_TURN's docblock.
+        // This is a factory extension, imported through Next's own module
+        // graph, so the "@/" import above resolves the same slot the prompt
+        // route wrote to.
+        const currentTurn = readSessionSlot(CURRENT_TURN, sessionId);
+        recordFeatureSpec({
+          fields,
+          roundId: null,
+          sessionId,
+          text: answers.goal,
+          toolCallId,
+          turnId: currentTurn?.turnId ?? null,
+        });
+      }
+
+      const lines = FIELD_ORDER.map(
         (key) => `${FIELD_LABELS[key]}\n→ ${answers[key] || "(none given)"}`,
       );
 
