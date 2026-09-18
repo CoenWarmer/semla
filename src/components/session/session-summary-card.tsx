@@ -27,14 +27,17 @@
 import {
   BookOpenIcon,
   BotIcon,
+  ClockIcon,
   FileDiffIcon,
   FileTextIcon,
   FolderIcon,
   GitCommitHorizontalIcon,
   GitPullRequestIcon,
   MapIcon,
+  MessageSquareIcon,
   PencilLineIcon,
   SparklesIcon,
+  WrenchIcon,
 } from "lucide-react";
 
 import { TokenUsage, formatCost } from "@/components/token-usage";
@@ -46,10 +49,35 @@ import {
 } from "@/lib/artifacts/artifact-groups";
 import type { ArtifactChip } from "@/lib/artifacts/artifact-summary";
 import type { SessionSummary, SummaryAgent } from "@/lib/session/session-summary";
-import { summaryAgents } from "@/lib/session/session-summary";
+import { formatSessionDuration, summaryAgents } from "@/lib/session/session-summary";
 import type { WikiPageRef } from "@/lib/session/wiki-activity";
 import { hasWikiActivity } from "@/lib/session/wiki-activity";
 import { cn } from "@/lib/utils";
+
+/**
+ * One counter in the header strip: an icon, a value, and a title for the
+ * exact meaning — the same "abbreviated readout, exact tooltip" split
+ * `TokenUsage` uses just below it.
+ */
+function StatBadge({
+  icon: Icon,
+  title,
+  value,
+}: {
+  icon: typeof ClockIcon;
+  title: string;
+  value: string;
+}) {
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums"
+      title={title}
+    >
+      <Icon className="size-3 shrink-0" />
+      {value}
+    </span>
+  );
+}
 
 /** A labelled block with a heading, the card's one structural unit. */
 function Section({
@@ -331,6 +359,27 @@ export function SessionSummaryCard({
             cost={summary.usage.cost}
             emptyLabel="No usage yet"
             tokens={summary.usage.tokens}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {summary.stats.durationMs != null && (
+            <StatBadge
+              icon={ClockIcon}
+              title="Elapsed time between the first and last message."
+              value={formatSessionDuration(summary.stats.durationMs)}
+            />
+          )}
+          <StatBadge
+            icon={MessageSquareIcon}
+            title="User turns in the main conversation."
+            value={`${summary.stats.turnCount} turn${summary.stats.turnCount === 1 ? "" : "s"}`}
+          />
+          <StatBadge
+            icon={WrenchIcon}
+            title="Tool calls in the main conversation."
+            value={`${summary.stats.toolCallCount} tool${
+              summary.stats.toolCallCount === 1 ? "" : "s"
+            }`}
           />
         </div>
       </header>

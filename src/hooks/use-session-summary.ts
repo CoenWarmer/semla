@@ -31,6 +31,7 @@ import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
 import { dirtyFilesFromReview } from "@/lib/artifacts/artifact-dirty";
 import {
   buildSessionSummary,
+  computeSessionStats,
   type SessionSummary,
 } from "@/lib/session/session-summary";
 import {
@@ -78,6 +79,13 @@ export function useSessionSummary({
   const workflowRuns = runsQuery.data;
   const status = statusQuery.data;
 
+  // Memoized for the same reason `wiki` is: derived from the same two
+  // transcript arrays, which can hold thousands of entries in a long session.
+  const stats = useMemo(
+    () => computeSessionStats({ messages: messages ?? [], toolCalls: toolCalls ?? [] }),
+    [messages, toolCalls],
+  );
+
   // Memoized for the same reason `wiki` is: this rebuilds a set per project
   // and the card renders beside a streaming conversation.
   const dirty = useMemo(
@@ -94,11 +102,12 @@ export function useSessionSummary({
         model,
         projects: (status?.projects ?? []).map((project) => project.path),
         snapshot,
+        stats,
         title,
         usage,
         wiki,
         workflowRuns,
       }),
-    [dirty, goal, model, snapshot, status, title, usage, wiki, workflowRuns],
+    [dirty, goal, model, snapshot, stats, status, title, usage, wiki, workflowRuns],
   );
 }

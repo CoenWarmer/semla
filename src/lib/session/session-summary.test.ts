@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSessionSummary,
+  computeSessionStats,
   mainAgentRow,
+  NO_SESSION_STATS,
   summarizeWorkflow,
   summarizeWorkflows,
   summaryAgents,
+  formatSessionDuration,
 } from "@/lib/session/session-summary";
 import { NO_WIKI_ACTIVITY } from "@/lib/session/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
@@ -168,6 +171,7 @@ describe("buildSessionSummary", () => {
     goal: "Ship the card",
     model: "opus",
     projects: ["semla"],
+    stats: NO_SESSION_STATS,
     title: "Session summary",
     usage: { cost: 2, tokens: 500 },
     wiki: NO_WIKI_ACTIVITY,
@@ -205,6 +209,7 @@ describe("summaryAgents", () => {
       goal: null,
       model: "opus",
       projects: [],
+      stats: NO_SESSION_STATS,
       title: null,
       usage: { cost: 3, tokens: 1000 },
       wiki: NO_WIKI_ACTIVITY,
@@ -234,6 +239,7 @@ describe("summaryAgents", () => {
       goal: null,
       model: "opus",
       projects: [],
+      stats: NO_SESSION_STATS,
       title: null,
       usage: { cost: 1, tokens: 10 },
       wiki: NO_WIKI_ACTIVITY,
@@ -241,5 +247,32 @@ describe("summaryAgents", () => {
     expect(summaryAgents(summary)).toEqual([
       { cost: 1, label: "Session", model: "opus", status: "done", tokens: 10 },
     ]);
+  });
+});
+
+describe("computeSessionStats", () => {
+  it("counts user turns and tool calls, and times first-to-last message", () => {
+    const stats = computeSessionStats({
+      messages: [
+        { createdAt: "2026-09-18T10:00:00.000Z", role: "user" },
+        { createdAt: "2026-09-18T10:00:05.000Z", role: "assistant" },
+        { createdAt: "2026-09-18T10:02:05.000Z", role: "user" },
+      ],
+      toolCalls: [{ createdAt: "2026-09-18T10:00:02.000Z" }],
+    });
+    expect(stats).toEqual({ durationMs: 125_000, toolCallCount: 1, turnCount: 2 });
+  });
+
+  it("reports no duration with fewer than two messages", () => {
+    const stats = computeSessionStats({ messages: [], toolCalls: [] });
+    expect(stats.durationMs).toBeNull();
+  });
+});
+
+describe("formatSessionDuration", () => {
+  it("picks the coarsest two units that still say something", () => {
+    expect(formatSessionDuration(45_000)).toBe("45s");
+    expect(formatSessionDuration(5 * 60_000 + 12_000)).toBe("5m 12s");
+    expect(formatSessionDuration(2 * 3_600_000 + 5 * 60_000)).toBe("2h 5m");
   });
 });

@@ -72,6 +72,72 @@ export interface SessionSummary {
    * artifact-dirty.ts and `keepIfStillUncommitted`.
    */
   dirty?: DirtyFiles;
+  /** How long the session has run, how many turns, and how many tools. */
+  stats: SessionStats;
+}
+
+/**
+ * Time, turns and tool calls — the three counters the card shows alongside
+ * cost.
+ *
+ * Derived from the main-conversation transcript the page already holds, the
+ * same source `wiki-activity.ts` reads from — and the same limitation: a
+ * workflow subagent's own turns and tool calls never reach the host
+ * transcript, so a session that delegated heavily through a workflow will
+ * undercount here. The workflow's own agent list is shown separately in the
+ * card and is not folded into these numbers.
+ */
+export interface SessionStats {
+  /** Elapsed time between the first and last transcript message. Null with fewer than two messages. */
+  durationMs: number | null;
+  /** User messages in the main conversation — one per turn. */
+  turnCount: number;
+  /** Tool calls in the main conversation. */
+  toolCallCount: number;
+}
+
+export const NO_SESSION_STATS: SessionStats = {
+  durationMs: null,
+  toolCallCount: 0,
+  turnCount: 0,
+};
+
+/**
+ * `messages` in transcript order (oldest first) — the same order
+ * `useSessionMessages` returns, which is what `durationMs` relies on to take
+ * the first and last entries rather than sorting them itself.
+ */
+export function computeSessionStats({
+  messages,
+  toolCalls,
+}: {
+  messages: readonly { createdAt: string; role: "assistant" | "user" }[];
+  toolCalls: readonly { createdAt: string }[];
+}): SessionStats {
+  const turnCount = messages.filter((message) => message.role === "user").length;
+
+  let durationMs: number | null = null;
+  if (messages.length >= 2) {
+    const first = Date.parse(messages[0]!.createdAt);
+    const last = Date.parse(messages[messages.length - 1]!.createdAt);
+    if (Number.isFinite(first) && Number.isFinite(last) && last >= first) {
+      durationMs = last - first;
+    }
+  }
+
+  return { durationMs, toolCallCount: toolCalls.length, turnCount };
+}
+
+/** "2h 5m", "5m 12s", "12s" — the coarsest two units that still say something. */
+export function formatSessionDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 /**
@@ -176,6 +242,7 @@ export function buildSessionSummary({
   model,
   projects,
   snapshot,
+  stats,
   title,
   usage,
   wiki,
@@ -187,6 +254,7 @@ export function buildSessionSummary({
   model: string | null;
   projects: readonly string[];
   snapshot?: WorkflowSnapshot;
+  stats: SessionStats;
   title: string | null;
   usage: SessionUsage;
   wiki: WikiActivity;
@@ -200,6 +268,7 @@ export function buildSessionSummary({
     goal,
     model,
     projects: [...projects],
+    stats,
     title,
     usage,
     wiki,
