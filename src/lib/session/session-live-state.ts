@@ -32,6 +32,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { SessionToolCall } from "@/hooks/use-session-messages";
+import type { AgentConsoleEntry } from "@/lib/session/agent-console";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
@@ -48,6 +49,17 @@ export const sessionLiveToolCallsKey = (sessionId: string) =>
  */
 export const sessionLiveAccessesKey = (sessionId: string) =>
   ["session-live-accesses", sessionId] as const;
+
+/**
+ * The agent's bash calls and their output, as the turn produces them.
+ *
+ * A key of its own rather than a field derived from `sessionLiveToolCallsKey`:
+ * the console keeps far more output per call than a timeline row does, and the
+ * bottom bar's console panel is a layout-level sibling of the session page, so
+ * it can only reach live turn state through the cache. See agent-console.ts.
+ */
+export const sessionAgentConsoleKey = (sessionId: string) =>
+  ["session-agent-console", sessionId] as const;
 
 export const sessionAgentSelectionKey = (sessionId: string) =>
   ["session-agent-selection", sessionId] as const;
@@ -68,6 +80,14 @@ export const useSessionLiveAccesses = (sessionId: string) =>
     enabled: false,
     queryKey: sessionLiveAccessesKey(sessionId),
     queryFn: (): FileAccess[] => [],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+export const useSessionAgentConsole = (sessionId: string) =>
+  useQuery({
+    enabled: false,
+    queryKey: sessionAgentConsoleKey(sessionId),
+    queryFn: (): AgentConsoleEntry[] => [],
     staleTime: Number.POSITIVE_INFINITY,
   });
 

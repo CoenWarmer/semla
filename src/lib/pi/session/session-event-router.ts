@@ -540,6 +540,18 @@ export const createTurnEventRouter = ({
       onToolEnd(event, currentRoundId);
     }
 
+    if (event.type === "tool_execution_update" && event.toolName === "bash") {
+      const output = textFromToolResultContent(
+        (event.partialResult as { content?: unknown } | undefined)?.content,
+      );
+      // The tool emits one empty frame before the command starts, and the
+      // client has nothing to do with it — an entry with no output is already
+      // what `tool-start` produced.
+      if (output) {
+        emit({ output, toolCallId: event.toolCallId, type: "bash-output" });
+      }
+    }
+
     if (event.type === "tool_execution_update" && event.toolName === "workflow") {
       const enriched = persistSnapshot(
         event.partialResult,

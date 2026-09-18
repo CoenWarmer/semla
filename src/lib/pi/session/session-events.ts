@@ -63,6 +63,20 @@ export type PiSessionEvent =
       toolName: string;
       type: "tool-end";
     }
+  /**
+   * The agent's own bash output, while the command is still running.
+   *
+   * pi's bash tool reports its output through `tool_execution_update` as it
+   * arrives, throttled server-side; this republishes those frames so the
+   * console panel can show a build or a test run in progress rather than only
+   * its result. `output` is **cumulative** — each frame is the whole output so
+   * far, not a delta — which is the tool's own shape and why the client
+   * replaces rather than appends (see agent-console.ts).
+   *
+   * Only bash. Every other tool's update is either absent or not text a
+   * console could show, and `workflow`'s is handled as a snapshot above.
+   */
+  | { output: string; toolCallId: string; type: "bash-output" }
   | { map: CodeMap; type: "code-map" }
   /**
    * Files the tool that just finished read or wrote, for the review panel's

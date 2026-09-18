@@ -43,9 +43,15 @@ import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 // feature-spec-bridge.ts and session-events.ts.
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
+  sessionAgentConsoleKey,
   sessionLiveAccessesKey,
   sessionLiveToolCallsKey,
 } from "@/lib/session/session-live-state";
+import {
+  applyAgentConsoleEvent,
+  type AgentConsoleEntry,
+  type AgentConsoleEvent,
+} from "@/lib/session/agent-console";
 
 export type PromptModel = {
   modelId: string;
@@ -90,6 +96,7 @@ type PiStreamEvent =
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
+  | { output: string; toolCallId: string; type: "bash-output" }
   | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { type: "feature-spec-request" }
@@ -124,6 +131,7 @@ type StreamHandlers = {
   onDelta: (event: Extract<PiStreamEvent, { type: "assistant-delta" }>) => void;
   onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
   onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
+  onBashOutput: (event: Extract<PiStreamEvent, { type: "bash-output" }>) => void;
   onAskUser: (payload: AskUserPayload) => void;
   onFeatureSpecRequest: () => void;
   onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
@@ -209,6 +217,8 @@ const readPiStream = async (
         handlers.onWikiTool(piEvent.toolName);
       } else if (piEvent.type === "tool-end") {
         handlers.onToolEnd(piEvent);
+      } else if (piEvent.type === "bash-output") {
+        handlers.onBashOutput(piEvent);
       } else if (piEvent.type === "ask-user-question") {
         handlers.onAskUser(piEvent.payload);
       } else if (piEvent.type === "feature-spec-request") {
@@ -433,6 +443,29 @@ export const usePromptMutation = (
     setServerIsRunning(isRunning);
   }, []);
 
+  /**
+   * Fold a console event into the cache the console panel reads.
+   *
+   * Cache only, with no companion `useState` — unlike the live tool calls,
+   * which this hook's own consumers render. The console panel lives in the
+   * bottom bar, outside this hook's subtree, so the cache is the only way it
+   * can see the state at all and a second copy here would have no reader.
+   *
+   * Stable, because the handlers memo below closes over it with empty deps.
+   */
+  const pushConsoleEvent = useCallback(
+    (event: AgentConsoleEvent) => {
+      queryClient.setQueryData(sessionAgentConsoleKey(sessionId), (prev) =>
+        applyAgentConsoleEvent(
+          (prev as AgentConsoleEntry[] | undefined) ?? [],
+          event,
+        ),
+      );
+    },
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   // Stable handlers object — state setters are guaranteed stable by React,
   // so this memo never needs to re-run. A factory function (the previous shape)
   // created new closure objects on every call, which confused the React Compiler.
@@ -446,6 +479,17 @@ export const usePromptMutation = (
         queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
         );
+        // The command is on the start event's params and nowhere else, so the
+        // console entry has to be opened here rather than on first output.
+        const command = event.params?.["command"];
+        if (event.toolName === "bash" && command) {
+          pushConsoleEvent({
+            at: event.at,
+            command,
+            toolCallId: event.toolCallId,
+            type: "bash-start",
+          });
+        }
       },
       onToolEnd: (event) => {
         setActiveTool(undefined);
@@ -453,8 +497,26 @@ export const usePromptMutation = (
         queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
           applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
         );
+        if (event.toolName === "bash") {
+          pushConsoleEvent({
+            at: event.at,
+            isError: event.isError,
+            ...(event.errorText ?? event.resultText
+              ? { output: event.errorText ?? event.resultText ?? "" }
+              : {}),
+            toolCallId: event.toolCallId,
+            type: "bash-end",
+          });
+        }
         if (event.toolName === "ask_user") setPendingQuestion(null);
         if (event.toolName === "capture_feature_spec") setPendingFeatureSpec(false);
+      },
+      onBashOutput: (event) => {
+        pushConsoleEvent({
+          output: event.output,
+          toolCallId: event.toolCallId,
+          type: "bash-output",
+        });
       },
       onAskUser: (payload) => setPendingQuestion(payload),
       onFeatureSpecRequest: () => setPendingFeatureSpec(true),

@@ -552,6 +552,61 @@ describe("wiki recall", () => {
   });
 });
 
+/**
+ * The bash tool reports a running command's output through the same
+ * `tool_execution_update` channel the workflow uses for snapshots, and it was
+ * previously filtered out here. See the "bash-output" event in
+ * session-events.ts.
+ */
+describe("agent bash output", () => {
+  it("republishes a running command's output", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      event({
+        partialResult: { content: [{ text: "line one\n", type: "text" }] },
+        toolCallId: "call-1",
+        toolName: "bash",
+        type: "tool_execution_update",
+      }),
+    );
+
+    expect(emitted).toEqual([
+      { output: "line one\n", toolCallId: "call-1", type: "bash-output" },
+    ]);
+  });
+
+  it("drops the empty frame the tool emits before the command starts", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      event({
+        partialResult: { content: [] },
+        toolCallId: "call-1",
+        toolName: "bash",
+        type: "tool_execution_update",
+      }),
+    );
+
+    expect(emitted).toEqual([]);
+  });
+
+  it("ignores progress from a tool that is not bash", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      event({
+        partialResult: { content: [{ text: "noise", type: "text" }] },
+        toolCallId: "call-1",
+        toolName: "read",
+        type: "tool_execution_update",
+      }),
+    );
+
+    expect(emitted.some((e) => e.type === "bash-output")).toBe(false);
+  });
+});
+
 describe("workflow snapshots", () => {
   const snapshotResult = { details: { agents: [{ id: 1, status: "running" }] } };
 
