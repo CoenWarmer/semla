@@ -26,6 +26,16 @@ export type SessionMessagesPayload = {
   /** Cache-read cost rate in $/M tokens for the session's model. */
   cacheReadRatePerMToken: number | null;
   messages: SessionTranscriptEntry[];
+  /**
+   * The model this session's turns run on, as `provider/modelId`.
+   *
+   * Resolved here rather than by a second caller because this function
+   * already does the work to size the context window — the same stamp,
+   * the same Postgres fallback, the same default. Null only when all three
+   * are unavailable, which is a session nobody has prompted and whose
+   * default could not be resolved.
+   */
+  model: string | null;
   /** Size of the system prompt a turn would actually be sent with. */
   systemPromptChars: number;
   toolCalls: SessionToolCall[];
@@ -56,6 +66,7 @@ export async function buildSessionMessages(
   // session the bar was asked to draw.
   let contextWindow: number | null = null;
   let cacheReadRatePerMToken: number | null = null;
+  let model: string | null = null;
   try {
     // Disk first: the model is stamped into the session's meta when its pi
     // session is ensured, so the common case costs no query. Postgres answers
@@ -75,6 +86,9 @@ export async function buildSessionMessages(
 
     const provider = stamped?.provider ?? fromDatabase?.model_provider ?? defaultModel?.provider;
     const modelId = stamped?.modelId ?? fromDatabase?.model_id ?? defaultModel?.modelId;
+    // Assigned before the awaits below: the model is known at this point,
+    // and a failure to price it must not also cost the card its label.
+    model = modelId ? (provider ? `${provider}/${modelId}` : modelId) : null;
     [contextWindow, cacheReadRatePerMToken] = await Promise.all([
       modelContextWindow(provider, modelId),
       modelCacheReadRate(provider, modelId),
@@ -87,6 +101,7 @@ export async function buildSessionMessages(
     contextWindow,
     cacheReadRatePerMToken,
     messages,
+    model,
     systemPromptChars: systemPrompt.length,
     toolCalls,
   };

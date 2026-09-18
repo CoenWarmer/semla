@@ -43,6 +43,12 @@ export type SessionMessagesResult = {
   cacheReadRatePerMToken?: number | null;
   messages: SessionMessage[];
   /**
+   * The session's model as `provider/modelId`. Mirrors
+   * SessionMessagesPayload.model — optional here because a cache entry
+   * seeded before this shipped has none.
+   */
+  model?: string | null;
+  /**
    * Size of the system prompt this session's turns are sent with. Travels with
    * the transcript so the context-window bar can be computed here rather than
    * asking a second route to re-read the same transcript.
