@@ -634,7 +634,7 @@ export function ReviewPanel({
           `overflow-hidden` above and the scrubber hidden behind the console. */}
       <div
         className={cn(
-          "flex min-h-0 grow flex-col",
+          "flex min-h-0 grow flex-col rounded",
           following && "semla-following",
         )}
       >
@@ -762,7 +762,7 @@ export function ReviewPanel({
                 </ResizablePanelGroup>
               </aside>
             </ResizablePanel>
-            <ResizablePanel className="overflow-y-auto py-2" id="editor">
+            <ResizablePanel className="overflow-y-auto" id="editor">
               <main className="min-w-0 flex-1 h-full">
                 {selection ? (
                   <ReviewEditorPane

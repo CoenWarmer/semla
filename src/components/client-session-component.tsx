@@ -935,7 +935,7 @@ export function ClientSessionComponent({
             orientation={reviewLayout}
           >
             <ResizablePanel
-              className="flex min-h-0 flex-col overflow-hidden rounded-lg border"
+              className="flex min-h-0 flex-col overflow-hidden border"
               defaultSize={45}
               id="review"
               minSize={20}
