@@ -634,7 +634,7 @@ export function ReviewPanel({
           `overflow-hidden` above and the scrubber hidden behind the console. */}
       <div
         className={cn(
-          "flex min-h-0 grow flex-col rounded",
+          "flex min-h-0 grow flex-col rounded rounded-b-[2.05rem]",
           following && "semla-following",
         )}
       >
