@@ -25,6 +25,8 @@ import assert from "node:assert/strict";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { test } from "vitest";
 
+import { sessionStatusKey } from "@/lib/session/session-status";
+
 import {
   invalidateAfterWrite,
   reviewQueryKey,
@@ -73,5 +75,46 @@ test("invalidateAfterWrite resolves only after the review query has refetched", 
       "invalidated has refetched — otherwise a caller that reacts to " +
       "mutation success (like the commit bar's visibility check) can " +
       "still see the pre-write staged count",
+  );
+});
+
+test("invalidateAfterWrite also refetches the session-status query the summary card reads", async () => {
+  // Regression: committing from the review panel correctly dropped the
+  // committed files from the summary card's "uncommitted diff" row (that
+  // comes from the review query above), but never showed the new commit —
+  // the commit row comes from `SingleSessionStatus.artifacts`, under
+  // `sessionStatusKey`, which `invalidateAfterWrite` did not invalidate.
+  const sessionId = "session-2";
+  const queryClient = new QueryClient();
+
+  let commits = 0;
+  queryClient.setQueryDefaults(sessionStatusKey(sessionId), {
+    queryFn: () => Promise.resolve({ commits }),
+    staleTime: 0,
+  });
+  await queryClient.fetchQuery({ queryKey: sessionStatusKey(sessionId) });
+
+  const observer = new QueryObserver(queryClient, {
+    queryKey: sessionStatusKey(sessionId),
+  });
+  const unsubscribe = observer.subscribe(() => {});
+
+  // The commit route just ran: the session now has one more commit than the
+  // status query was last told about.
+  commits = 1;
+
+  await invalidateAfterWrite(queryClient, sessionId);
+
+  const refreshed = queryClient.getQueryData(sessionStatusKey(sessionId)) as {
+    commits: number;
+  };
+  unsubscribe();
+
+  assert.equal(
+    refreshed.commits,
+    1,
+    "invalidateAfterWrite must also invalidate sessionStatusKey, or the " +
+      "summary card keeps showing the pre-commit artifact snapshot until " +
+      "its own poll interval catches up",
   );
 });

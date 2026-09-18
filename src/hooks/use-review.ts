@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { sessionStatusKey } from "@/lib/session/session-status";
 import type { FileDiff } from "@/lib/review/review-types";
 import type { ChangedFile, SessionReview } from "@/lib/review/review-types";
 
@@ -201,6 +202,15 @@ async function post<T>(url: string, body: unknown): Promise<T> {
  * One list rather than three call sites that drift: staging changes which
  * hunks are on which side, committing changes both that and the branch state
  * the header badges show.
+ *
+ * `sessionStatusKey` is in this list because it is the *other* place HEAD
+ * moving matters: the session summary card's artifact groups (see
+ * artifact-groups.ts) come from `SingleSessionStatus.artifacts`, which this
+ * hook does not otherwise touch. Without this, staging correctly drops a
+ * file from the card's "uncommitted diff" row via `useReview`'s own refetch,
+ * but the new commit never appears — nothing told the status query a commit
+ * had happened, so it kept serving the pre-commit artifact snapshot until
+ * its own poll interval caught up.
  */
 export function invalidateAfterWrite(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -217,6 +227,7 @@ export function invalidateAfterWrite(
       queryKey: ["review", sessionId, "hunks"],
     }),
     queryClient.invalidateQueries({ queryKey: ["git-status"] }),
+    queryClient.invalidateQueries({ queryKey: sessionStatusKey(sessionId) }),
   ]).then(() => undefined);
 }
 
