@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeRequest,
+  baseRequestFor,
   BLANK_REQUEST,
   nextReveal,
   requestForTarget,
@@ -80,6 +81,93 @@ describe("activeRequest", () => {
     // since arrived and is the more recent instruction.
     expect(activeRequest(own({ overNonce: 0 }), target({ nonce: 3 })).selection)
       .toEqual({ path: "src/a.ts", project: "semla" });
+  });
+});
+
+describe("baseRequestFor", () => {
+  /** What `followRequest` looks like: overNonce -1, so nothing supersedes it. */
+  const follow = (): PanelRequest => ({
+    ...BLANK_REQUEST,
+    overNonce: -1,
+    selection: { path: "src/agent-touched.ts", project: "semla" },
+  });
+
+  it("follows the agent when nothing external asked for a file", () => {
+    const request = baseRequestFor({
+      chosen: BLANK_REQUEST,
+      follow: follow(),
+      target: null,
+    });
+    expect(request.selection).toEqual({ path: "src/agent-touched.ts", project: "semla" });
+  });
+
+  it("lets a fresh target beat follow, so a click is not discarded", () => {
+    // The regression: `followRequest ?? chosenRequest` opened the panel on the
+    // agent's last-touched file and silently threw the click away, which read
+    // as "the panel opens but not on what I clicked".
+    const clicked = target({ nonce: 7, path: "src/clicked.ts" });
+    const request = baseRequestFor({
+      chosen: requestForTarget(clicked)!,
+      follow: follow(),
+      target: clicked,
+    });
+    expect(request.selection).toEqual({ path: "src/clicked.ts", project: "semla" });
+  });
+
+  it("keeps yielding to the operator's own move made against that target", () => {
+    // `activeRequest` returns the panel's own request while it carries the
+    // target's nonce; follow must not reclaim the editor underneath it.
+    const clicked = target({ nonce: 7 });
+    const moved = own({ overNonce: 7, selection: { path: "src/moved-to.ts", project: "semla" } });
+    const request = baseRequestFor({
+      chosen: activeRequest(moved, clicked),
+      follow: follow(),
+      target: clicked,
+    });
+    expect(request.selection).toEqual({ path: "src/moved-to.ts", project: "semla" });
+  });
+
+  it("still honours the target when the panel's own request predates it", () => {
+    // A request made BEFORE the current target is stale, so `activeRequest`
+    // discards it and `chosen` becomes the target's own request — which still
+    // answers to the target's nonce, so the target keeps winning. Named for
+    // what it asserts: this is NOT a case where follow resumes.
+    const clicked = target({ nonce: 7 });
+    const stale = own({ overNonce: 2 });
+    const chosen = activeRequest(stale, clicked);
+    const request = baseRequestFor({ chosen, follow: follow(), target: clicked });
+    expect(chosen.overNonce).toBe(7);
+    expect(request.selection).toEqual({ path: "src/a.ts", project: "semla" });
+  });
+
+  it("holds follow off for as long as the clicked target is live", () => {
+    // The documented cost of this rule, asserted rather than left implicit:
+    // while a target is set, a NEW agent write does not pull the editor away.
+    // `ClientSessionComponent` clears the target on close, which is what
+    // restores following. See baseRequestFor's docblock.
+    const clicked = target({ nonce: 7, path: "src/clicked.ts" });
+    const request = baseRequestFor({
+      chosen: requestForTarget(clicked)!,
+      follow: follow(),
+      target: clicked,
+    });
+    expect(request.selection).toEqual({ path: "src/clicked.ts", project: "semla" });
+  });
+
+  it("returns the chosen request untouched when follow is off", () => {
+    const chosen = own();
+    expect(baseRequestFor({ chosen, follow: null, target: null })).toBe(chosen);
+  });
+
+  it("ignores a target the chosen request no longer answers to", () => {
+    // Defensive: if chosen's nonce and the target's have diverged, the target
+    // is not what is being shown, so it must not hold follow off.
+    const request = baseRequestFor({
+      chosen: own({ overNonce: 3 }),
+      follow: follow(),
+      target: target({ nonce: 9 }),
+    });
+    expect(request.selection).toEqual({ path: "src/agent-touched.ts", project: "semla" });
   });
 });
 

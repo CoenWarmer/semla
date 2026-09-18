@@ -57,6 +57,7 @@ import { selectionForWorkspacePath } from "./review-definition-target";
 import { ReviewFileTree } from "./review-file-tree";
 import {
   activeRequest,
+  baseRequestFor,
   nextReveal,
   type PanelRequest,
   type PanelTarget,
@@ -404,9 +405,17 @@ export function ReviewPanel({
     [followRequest, revise, updateFollowMode],
   );
 
-  // Following outranks everything: it is a mode the operator switched on, and
-  // while it is on the panel's job is to be wherever the agent is.
-  const baseRequest = followRequest ?? chosenRequest;
+  // Following outranks the panel's own history — it is a mode the operator
+  // switched on, and while it is on the panel's job is to be wherever the
+  // agent is — but it does NOT outrank a fresh external target, which used to
+  // open the panel and then lose the clicked file to the agent's latest write.
+  // See `baseRequestFor` for why this is not `followRequest ?? …` and why it
+  // yields for one target rather than unpinning.
+  const baseRequest = baseRequestFor({
+    chosen: chosenRequest,
+    follow: followRequest,
+    target,
+  });
   const baseSelection = baseRequest.selection ?? defaultSelection(review.data);
 
   /**

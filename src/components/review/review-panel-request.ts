@@ -150,3 +150,47 @@ export function activeRequest(
 export function nextReveal(base: PanelRequest, line: number): Reveal {
   return { line, nonce: (base.reveal?.nonce ?? 0) + 1 };
 }
+
+/**
+ * Which request wins when the agent is being followed and something else also
+ * asked for a file.
+ *
+ * Follow outranks the panel's *own* history — that is what following means,
+ * and `followRequest.overNonce` is -1 precisely so no stored request can ever
+ * claim to supersede it. But it must not outrank a **fresh external target**.
+ * An operator clicking an artifact is stating where they want to be, which is
+ * the same statement `openStep` answers by unpinning; letting follow win there
+ * opens the panel on whatever the agent touched last and silently discards the
+ * click.
+ *
+ * "Fresh" is the whole subtlety, and why this takes `chosen` rather than the
+ * target alone. `chosen` is `activeRequest(own, target)`: when the operator
+ * has since moved within the panel, their own request is the one carrying the
+ * target's nonce and `chosen` is *that*, not the target's. So the test is
+ * whether the winning request still addresses the current target's nonce —
+ * true for a click that has just landed and for a move made against it, false
+ * for a stale request from before it. A target already superseded by the
+ * panel's own navigation therefore stops holding follow off, and following
+ * resumes on the next agent write rather than being disabled for good.
+ *
+ * Why not unpin instead: unpinning is a mode change that outlives the click
+ * and turns the Follow button off, which is the right answer for an arrow
+ * press (a deliberate step through history) and the wrong one for opening a
+ * file — the operator asked to see one file, not to stop watching the agent.
+ * Yielding for exactly one target keeps follow on, so the next write resumes
+ * it.
+ */
+export function baseRequestFor({
+  chosen,
+  follow,
+  target,
+}: {
+  chosen: PanelRequest;
+  follow: PanelRequest | null;
+  target: PanelTarget | null | undefined;
+}): PanelRequest {
+  if (!follow) return chosen;
+  // An external target that the chosen request still answers to beats follow.
+  if (target && chosen.overNonce === target.nonce) return chosen;
+  return follow;
+}
