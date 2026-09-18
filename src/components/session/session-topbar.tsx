@@ -10,6 +10,7 @@ import type {
 import type { CodeMap } from "@/lib/code-map/types";
 import { sessionComposition } from "@/lib/context-composition";
 import {
+  ClipboardListIcon,
   GitCompareIcon,
   LayoutPanelLeftIcon,
   LayoutPanelTopIcon,
@@ -27,6 +28,10 @@ import { SessionContextWindowBar } from "./session-context-window-bar";
 interface SessionTopbarProps {
   /** Toggle the review panel. Absent when the session cannot be reviewed. */
   onReviewClick?: () => void;
+  /** Toggle the session summary card beside the conversation. */
+  onSummaryClick?: () => void;
+  /** The summary card is showing, so its button reads as active. */
+  summaryOpen?: boolean;
   /** Changed files waiting to be reviewed, for the button's badge. */
   reviewCount?: number;
   /** The review overlay is open, so the button reads as active. */
@@ -90,6 +95,8 @@ export function SessionTopbar({
   messages,
   sessionRunning,
   onReviewClick,
+  onSummaryClick,
+  summaryOpen = false,
   onCompactClick,
   reviewCount = 0,
   reviewOpen = false,
@@ -164,6 +171,20 @@ export function SessionTopbar({
                   {reviewCount}
                 </span>
               )}
+            </Button>
+          )}
+
+          {/* Summary — always offered, same reasoning as Review above: a
+              panel the operator closed must stay reachable. */}
+          {onSummaryClick && (
+            <Button
+              onClick={onSummaryClick}
+              size="sm"
+              title="What this session is for, cost, and what it produced"
+              variant={summaryOpen ? "secondary" : "ghost"}
+            >
+              <ClipboardListIcon />
+              Summary
             </Button>
           )}
 

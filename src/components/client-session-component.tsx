@@ -53,6 +53,7 @@ import { isSessionMissing } from "@/lib/prompt-failure";
 import type { PromptEditorModel } from "./conversation/prompt-editor";
 import { latestInputTokens } from "@/lib/context-composition";
 import { SessionTopbar } from "./session/session-topbar";
+import { SessionSummaryPanel } from "./session/session-summary-panel";
 import {
   usePendingPrompt,
   type PendingPrompt,
@@ -418,6 +419,25 @@ export function ClientSessionComponent({
     | Record<string, number>
     | undefined;
   const saveReviewSplit = usePanelLayoutSaver(reviewSplitKey);
+  /**
+   * The split between the conversation and the summary card.
+   *
+   * One key, with no orientation suffix: this split has a single axis (side
+   * by side), so unlike `review-split-*` there is no second preference that
+   * a drag could leak into.
+   */
+  const summarySplitLayout = panelLayouts?.["session-summary-split"] as
+    | Record<string, number>
+    | undefined;
+  const saveSummarySplit = usePanelLayoutSaver("session-summary-split");
+  /**
+   * Whether the summary card is showing.
+   *
+   * Session-local rather than persisted, matching `reviewLayout` above: the
+   * card is a thing you glance at and dismiss, and a closed panel that stays
+   * closed across reloads is harder to rediscover than one that comes back.
+   */
+  const [summaryOpen, setSummaryOpen] = useState(false);
   // The badge is worth a request even with the panel shut: it is how the
   // operator learns there is something to review without being interrupted.
   const reviewQuery = useReview(sessionId);
@@ -753,7 +773,7 @@ export function ClientSessionComponent({
   // Shared between the plain and review-split layouts below: the review
   // panel's resizable group is one of two places this can render, not two
   // different conversations.
-  const conversationColumn = (
+  const conversationPane = (
     <SessionConversation
       activeTool={activeTool}
       conversation={conversation}
@@ -785,12 +805,81 @@ export function ClientSessionComponent({
     />
   );
 
+  /**
+   * The conversation and the session summary card, side by side.
+   *
+   * A group of its own nested inside the review split rather than a third
+   * panel of that split: the summary belongs to the conversation, so it must
+   * travel with it when the review panel flips orientation. Made a third
+   * sibling instead, a vertical review layout would stack the card under the
+   * transcript and a horizontal one would squeeze three columns into the
+   * width of two.
+   *
+   * Orientation is fixed `horizontal` — side by side, which is what the
+   * operator asked for and the same sense `reviewLayout` uses. The saved key
+   * therefore needs no orientation suffix, unlike `review-split-*`, because
+   * there is only ever one axis to remember.
+   *
+   * The remount key is the same trick, and the same necessity, as the review
+   * group below: react-resizable-panels reads `defaultLayout` once in its
+   * mount effect and never re-reads it, so a group mounted before
+   * usePanelLayouts() resolves would keep the fallback layout for the life of
+   * the page and the operator's drag would appear not to persist.
+   */
+  const conversationColumn = summaryOpen ? (
+    <ResizablePanelGroup
+      className="min-h-0 flex-1"
+      defaultLayout={summarySplitLayout}
+      key={`summary-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
+      onLayoutChanged={(layout, meta) => {
+        if (meta.isUserInteraction) saveSummarySplit(layout);
+      }}
+      orientation="horizontal"
+    >
+      <ResizablePanel
+        className="flex min-h-0 flex-col overflow-hidden"
+        defaultSize={65}
+        id="conversation"
+        minSize={25}
+        // react-resizable-panels sets `overflow: auto` inline on a panel,
+        // which beats a class. SessionConversation manages its own scroll
+        // region, so without this the transcript gets a second scrollbar.
+        style={{ overflow: "hidden" }}
+      >
+        {conversationPane}
+      </ResizablePanel>
+      <ResizableHandle withHandle />
+      <ResizablePanel
+        className="flex min-h-0 flex-col overflow-hidden"
+        defaultSize={35}
+        id="summary"
+        minSize={15}
+        // The card scrolls itself (it is a column of sections that can exceed
+        // the viewport), so the same override applies for the same reason.
+        style={{ overflow: "hidden" }}
+      >
+        <SessionSummaryPanel
+          goal={goal}
+          model={messagesQuery.data?.model ?? null}
+          onClose={() => setSummaryOpen(false)}
+          sessionId={sessionId}
+          snapshot={workflowSnapshot}
+          title={shownTitle}
+        />
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  ) : (
+    conversationPane
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
         onReviewClick={() =>
           reviewOpen ? closeReview() : setReviewManuallyOpened(true)
         }
+        onSummaryClick={() => setSummaryOpen((open) => !open)}
+        summaryOpen={summaryOpen}
         reviewCount={reviewChangedCount}
         reviewOpen={reviewOpen}
         reviewLayout={reviewLayout}
