@@ -31,10 +31,13 @@ import {
 } from "./review-file-display";
 import type { FileSelection, StageFileHunks } from "./review-changed-files";
 import { ReviewHunkList } from "./review-hunk-list";
+import { sameFile, type HunkSlot } from "./review-hunk-cursor";
+import type { HunkCursorPosition } from "./review-hunk-keyboard";
 
 /** One staged file: its path, and its staged hunks, always open. */
 function StagedFileRow({
   busy,
+  currentHunk = null,
   file,
   onReveal,
   onSelect,
@@ -43,6 +46,8 @@ function StagedFileRow({
   sessionId,
 }: {
   busy: boolean;
+  /** The hunk the keyboard cursor is on, when it is in this file. */
+  currentHunk?: HunkSlot | null;
   file: ChangedFile;
   onReveal: (line: number) => void;
   onSelect: (selection: FileSelection) => void;
@@ -80,6 +85,7 @@ function StagedFileRow({
         ) : hunks.data ? (
           <ReviewHunkList
             busy={busy}
+            currentHunk={currentHunk}
             onReveal={onReveal}
             onStage={(stageHunks, direction) =>
               onStage(selection, stageHunks, direction)
@@ -105,6 +111,7 @@ export function ReviewStagedFiles({
   onReveal,
   onSelect,
   onStage,
+  position = null,
   project,
   sessionId,
 }: {
@@ -113,6 +120,12 @@ export function ReviewStagedFiles({
   onReveal: (line: number) => void;
   onSelect: (selection: FileSelection) => void;
   onStage: StageFileHunks;
+  /**
+   * Where the keyboard cursor is, across every project. Narrowed per row
+   * rather than pre-narrowed by the caller, since this list only knows its
+   * own rows.
+   */
+  position?: HunkCursorPosition | null;
   project: string;
   sessionId: string;
 }) {
@@ -130,6 +143,12 @@ export function ReviewStagedFiles({
         {staged.map((file) => (
           <StagedFileRow
             busy={busy}
+            currentHunk={
+              position?.slot &&
+              sameFile(position.file, { path: file.path, project })
+                ? position.slot
+                : null
+            }
             file={file}
             key={`${project}/${file.path}`}
             onReveal={onReveal}

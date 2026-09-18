@@ -694,6 +694,10 @@ export function ReviewPanel({
                           busy={busy}
                           expanded={expanded}
                           onClearCommit={() => setSelectedCommitSha(null)}
+                          // Keyboard navigation, unlike a click, never
+                          // closes a row: see `onNavigate` in
+                          // ReviewChangedFiles for why the two differ.
+                          onNavigate={selectFile}
                           onReveal={revealLine}
                           onSelect={(next) => {
                             // Toggle: clicking the already-expanded file's row

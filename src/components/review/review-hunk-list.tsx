@@ -49,6 +49,7 @@ export const hunkLocation = (hunk: Hunk): string => {
 
 function HunkRow({
   busy,
+  current = false,
   direction,
   hunk,
   onApply,
@@ -56,6 +57,8 @@ function HunkRow({
   readOnly = false,
 }: {
   busy: boolean;
+  /** The hunk the keyboard cursor is on — see review-hunk-keyboard.ts. */
+  current?: boolean;
   direction: "stage" | "unstage";
   hunk: Hunk;
   onApply: () => void;
@@ -67,7 +70,14 @@ function HunkRow({
   return (
     <div className="flex items-center gap-1 pr-1">
       <button
-        className="min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-accent/50"
+        // A ring rather than a background fill: the selected *file*'s row
+        // already uses `bg-accent`, and the two marks have to stay tellable
+        // apart when the cursor is inside the selected file — which is the
+        // usual case rather than an edge one.
+        className={cn(
+          "min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-accent/50",
+          current && "ring-1 ring-inset ring-primary bg-accent/30",
+        )}
         onClick={onReveal}
         title={`Go to ${hunkLocation(hunk)}`}
         type="button"
@@ -109,6 +119,7 @@ function HunkRow({
 
 function Group({
   busy,
+  currentIndex = null,
   diff,
   direction,
   onlyShowStaged = false,
@@ -118,6 +129,8 @@ function Group({
   title,
 }: {
   busy: boolean;
+  /** `Hunk.index` within this group that the keyboard cursor is on. */
+  currentIndex?: number | null;
   diff: FileDiff | null;
   direction: "stage" | "unstage";
   onlyShowStaged?: boolean;
@@ -166,6 +179,7 @@ function Group({
           <HunkRow
             key={hunk.index}
             busy={busy}
+            current={hunk.index === currentIndex}
             direction={direction}
             hunk={hunk}
             onApply={() => onApply([hunk.index])}
@@ -180,6 +194,7 @@ function Group({
 
 export function ReviewHunkList({
   busy,
+  currentHunk = null,
   onlyShowStaged = false,
   onReveal,
   onStage,
@@ -189,6 +204,13 @@ export function ReviewHunkList({
   untracked,
 }: {
   busy: boolean;
+  /**
+   * The hunk the keyboard cursor is on, or null when it is in another file.
+   *
+   * Group-relative, because the two groups are numbered independently — the
+   * same reason `onStage` takes a direction. See review-hunk-cursor.ts.
+   */
+  currentHunk?: { group: "staged" | "unstaged"; index: number } | null;
   onlyShowStaged?: boolean;
   onReveal: (line: number) => void;
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
@@ -226,6 +248,9 @@ export function ReviewHunkList({
     <div className="flex flex-col gap-3 py-2">
       <Group
         busy={busy}
+        currentIndex={
+          currentHunk?.group === "staged" ? currentHunk.index : null
+        }
         diff={staged}
         direction="unstage"
         onlyShowStaged
@@ -236,6 +261,9 @@ export function ReviewHunkList({
       />
       <Group
         busy={busy}
+        currentIndex={
+          currentHunk?.group === "unstaged" ? currentHunk.index : null
+        }
         diff={unstaged}
         direction="stage"
         onlyShowStaged={onlyShowStaged}

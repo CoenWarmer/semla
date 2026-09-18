@@ -16,6 +16,7 @@
  * second, separate list.
  */
 
+import { useCallback, useMemo } from "react";
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,6 +38,12 @@ import {
 } from "./review-file-display";
 import { ReviewHunkList } from "./review-hunk-list";
 import { ReviewStagedFiles } from "./review-staged-files";
+import type { CursorFile, HunkSlot } from "./review-hunk-cursor";
+import { sameFile } from "./review-hunk-cursor";
+import {
+  useReviewHunkKeyboard,
+  type HunkCursorPosition,
+} from "./review-hunk-keyboard";
 
 export interface FileSelection {
   project: string;
@@ -50,10 +57,23 @@ export type StageFileHunks = (
   direction: "stage" | "unstage",
 ) => void;
 
+/**
+ * The keyboard cursor's hunk within one file, or null when it is elsewhere.
+ *
+ * Derived here rather than passed down pre-narrowed so that every row asks the
+ * same question of the same single position object.
+ */
+const currentHunkIn = (
+  position: HunkCursorPosition | null,
+  file: CursorFile,
+): HunkSlot | null =>
+  position?.slot && sameFile(position.file, file) ? position.slot : null;
+
 /** The hunks of one expanded file, fetched only while it is open. */
 function ExpandedHunks({
   busy,
   commitSha,
+  currentHunk = null,
   onReveal,
   onStage,
   selection,
@@ -62,6 +82,8 @@ function ExpandedHunks({
   busy: boolean;
   /** Read this commit's diff instead of the working tree's. */
   commitSha: string | null;
+  /** The hunk the keyboard cursor is on, when it is in this file. */
+  currentHunk?: HunkSlot | null;
   onReveal: (line: number) => void;
   onStage: StageFileHunks;
   selection: FileSelection;
@@ -126,6 +148,7 @@ function ExpandedHunks({
   return (
     <ReviewHunkList
       busy={busy}
+      currentHunk={currentHunk}
       onReveal={onReveal}
       onStage={(hunks, direction) => onStage(selection, hunks, direction)}
       staged={hunks.data.staged}
@@ -138,6 +161,7 @@ function ExpandedHunks({
 export function FileRow({
   busy,
   commitSha = null,
+  currentHunk = null,
   expanded,
   file,
   onReveal,
@@ -150,6 +174,8 @@ export function FileRow({
   busy: boolean;
   /** Show this commit's diff rather than the working tree's. */
   commitSha?: string | null;
+  /** The hunk the keyboard cursor is on, when it is in this file. */
+  currentHunk?: HunkSlot | null;
   expanded: boolean;
   file: ChangedFile;
   onReveal: (line: number) => void;
@@ -206,6 +232,7 @@ export function FileRow({
           <ExpandedHunks
             busy={busy}
             commitSha={commitSha}
+            currentHunk={currentHunk}
             onReveal={onReveal}
             onStage={onStage}
             selection={{ path: file.path, project }}
@@ -267,6 +294,7 @@ export function ReviewChangedFiles({
   busy,
   expanded,
   onClearCommit,
+  onNavigate,
   onReveal,
   onSelect,
   onStage,
@@ -280,6 +308,15 @@ export function ReviewChangedFiles({
   expanded: FileSelection | null;
   /** Drop the commit selection, back to the working tree. */
   onClearCommit: () => void;
+  /**
+   * Open a file and fold it open, never closing it again.
+   *
+   * Separate from `onSelect` because that one is a *toggle* — right for a
+   * click on the row that is already open, and wrong for a keypress, where
+   * `d` running off the end of a file must open the next one rather than
+   * close the one it came from.
+   */
+  onNavigate: (selection: FileSelection) => void;
   onReveal: (line: number) => void;
   /**
    * Clicking a row both opens it in the editor and folds its hunks open —
@@ -298,12 +335,66 @@ export function ReviewChangedFiles({
   selected: FileSelection | null;
   sessionId: string;
 }) {
-  const scopes = projects
-    .map((project) => ({
-      project,
-      scope: commitScope(project, selectedCommitSha),
-    }))
-    .filter(({ scope }) => scope.files.length > 0);
+  const scopes = useMemo(
+    () =>
+      projects
+        .map((project) => ({
+          project,
+          scope: commitScope(project, selectedCommitSha),
+        }))
+        .filter(({ scope }) => scope.files.length > 0),
+    [projects, selectedCommitSha],
+  );
+
+  /**
+   * Every file the keyboard walks, in the order this component draws them:
+   * each project's staged bucket first, then its "to review" rows.
+   *
+   * Deduplicated by identity, because a file that is partly staged and partly
+   * not is drawn in *both* lists — and two cursor entries for one file would
+   * make `s` appear to do nothing when it stepped onto the second copy.
+   *
+   * A commit's scope contributes nothing: its rows have no index to stage
+   * into, which is also what turns the keys off below.
+   */
+  const cursorFiles = useMemo(() => {
+    const walked: CursorFile[] = [];
+    for (const { project, scope } of scopes) {
+      if (scope.commit) continue;
+      const rows = [
+        ...scope.files.filter((file) => file.staged),
+        ...scope.files.filter((file) => file.unstaged || !file.staged),
+      ];
+      for (const file of rows) {
+        const entry = { path: file.path, project: project.path };
+        if (!walked.some((existing) => sameFile(existing, entry))) {
+          walked.push(entry);
+        }
+      }
+    }
+    return walked;
+  }, [scopes]);
+
+  const { onFilePicked, position } = useReviewHunkKeyboard({
+    enabled: selectedCommitSha === null,
+    expanded,
+    files: cursorFiles,
+    onNavigate,
+    onReveal,
+    onStage,
+    selected,
+    sessionId,
+  });
+
+  // Clicking a row is also a statement about where the keyboard walk should
+  // continue from, so the two do not drift apart.
+  const pickFile = useCallback(
+    (selection: FileSelection) => {
+      onFilePicked(selection);
+      onSelect(selection);
+    },
+    [onFilePicked, onSelect],
+  );
 
   if (scopes.length === 0) {
     return (
@@ -335,8 +426,9 @@ export function ReviewChangedFiles({
                 busy={busy}
                 files={scope.files}
                 onReveal={onReveal}
-                onSelect={onSelect}
+                onSelect={pickFile}
                 onStage={onStage}
+                position={position}
                 project={project.path}
                 sessionId={sessionId}
               />
@@ -358,6 +450,10 @@ export function ReviewChangedFiles({
                 <FileRow
                   busy={busy}
                   commitSha={scope.commit?.sha ?? null}
+                  currentHunk={currentHunkIn(position, {
+                    path: file.path,
+                    project: project.path,
+                  })}
                   expanded={
                     expanded?.project === project.path &&
                     expanded.path === file.path
@@ -367,7 +463,7 @@ export function ReviewChangedFiles({
                   onReveal={onReveal}
                   onStage={onStage}
                   onToggle={() =>
-                    onSelect({ path: file.path, project: project.path })
+                    pickFile({ path: file.path, project: project.path })
                   }
                   project={project.path}
                   selected={
