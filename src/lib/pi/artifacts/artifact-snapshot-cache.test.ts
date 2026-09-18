@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  claimCommits,
+  clearAllClaims,
   clearSession,
   getSnapshot,
   putSnapshot,
@@ -49,5 +51,29 @@ describe("artifact-snapshot-cache", () => {
 
   it("returns undefined for a project never seeded", () => {
     expect(getSnapshot("s7", "unknown")).toBeUndefined();
+  });
+});
+
+describe("claimCommits", () => {
+  it("awards a sha to the first caller and refuses every caller after", () => {
+    clearAllClaims();
+    // Session A commits through the review panel and claims first.
+    expect(claimCommits("semla", ["sha1"])).toEqual(["sha1"]);
+    // Session B's own capture later notices the same moved HEAD — the exact
+    // race the review-panel-commit-attribution bug was. It must not win the
+    // sha a second time.
+    expect(claimCommits("semla", ["sha1"])).toEqual([]);
+  });
+
+  it("claims are scoped per project, not shared across projects", () => {
+    clearAllClaims();
+    expect(claimCommits("semla", ["sha1"])).toEqual(["sha1"]);
+    expect(claimCommits("other-project", ["sha1"])).toEqual(["sha1"]);
+  });
+
+  it("claims only the shas not already claimed, from a mixed batch", () => {
+    clearAllClaims();
+    claimCommits("semla", ["sha1"]);
+    expect(claimCommits("semla", ["sha1", "sha2"])).toEqual(["sha2"]);
   });
 });

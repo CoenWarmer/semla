@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { captureArtifacts, type CaptureDeps, type CaptureInput } from "@/lib/pi/artifacts/artifact-capture";
-import { clearSession, seedSnapshots } from "@/lib/pi/artifacts/artifact-snapshot-cache";
+import {
+  clearAllClaims,
+  clearSession,
+  seedSnapshots,
+} from "@/lib/pi/artifacts/artifact-snapshot-cache";
 import type { ProjectSnapshot } from "@/lib/pi/artifacts/artifact-snapshot";
 import type { ChangedFile, FileDiff, TurnCommit } from "@/lib/review/review-types";
 import type { DiffArtifact } from "@/lib/artifacts/artifact-types";
@@ -89,6 +93,14 @@ function commit(overrides: Partial<TurnCommit> = {}): TurnCommit {
 }
 
 describe("captureArtifacts", () => {
+  // The commit claim ledger is project-scoped, not session-scoped (see
+  // claimCommits' docblock), so a sha reused across tests — every test here
+  // shares the "semla" project and commit() defaults to "sha1" — must not
+  // leak a claim from one test into the next.
+  beforeEach(() => {
+    clearAllClaims();
+  });
+
   it("returns [] on a cache miss, and caches the snapshot for next time", async () => {
     const sessionId = freshSession();
     const readSnapshot = vi.fn().mockResolvedValue(snapshot());
@@ -217,6 +229,43 @@ describe("captureArtifacts", () => {
     expect(result.artifacts[0].turnId).toBe("20260101T000000000Z-aaaaaaaa");
     expect(readCommits).toHaveBeenCalledWith("/workspace/semla", "h1");
     clearSession(sessionId);
+  });
+
+  it("does not attribute the same commit sha to a second session that notices it later", async () => {
+    // Reproduces the review-panel bug: an operator commits from session A
+    // (or its own capture claims the sha first), and a second session B —
+    // working on the same project, sharing one repository and one HEAD —
+    // later runs its own capture and sees the same before/after head move.
+    // `readTurnCommits` cannot tell the two apart; only the claim can.
+    const sessionA = freshSession();
+    const sessionB = freshSession();
+    seedSnapshots(sessionA, [snapshot()]);
+    seedSnapshots(sessionB, [snapshot()]);
+
+    const after = snapshot({ head: "h2", state: "state-2" });
+    const sharedCommit = commit({ sha: "shared-sha" });
+
+    const resultA = await captureArtifacts(baseInput(sessionA), {
+      readCommits: vi.fn().mockResolvedValue([sharedCommit]),
+      readDiff: vi.fn(),
+      readSnapshot: vi.fn().mockResolvedValue(after),
+    });
+
+    const resultB = await captureArtifacts(baseInput(sessionB), {
+      readCommits: vi.fn().mockResolvedValue([sharedCommit]),
+      readDiff: vi.fn(),
+      readSnapshot: vi.fn().mockResolvedValue(after),
+    });
+
+    expect(resultA.artifacts).toHaveLength(1);
+    expect(resultA.artifacts[0].kind).toBe("commit");
+    // Session B's capture still ran (it costs a git read either way, since
+    // HEAD moved from ITS OWN point of view too), but the sha was already
+    // claimed, so it produces no commit artifact of its own.
+    expect(resultB.artifacts).toHaveLength(0);
+
+    clearSession(sessionA);
+    clearSession(sessionB);
   });
 
   it("produces both a commit and a diff artifact when both happened", async () => {

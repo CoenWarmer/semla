@@ -30,6 +30,7 @@ import { resolveDiffRole } from "@/lib/artifacts/diff-role";
 import { artifactKey } from "@/lib/pi/artifacts/artifact-key";
 import { diffSnapshots } from "@/lib/pi/artifacts/artifact-attribution";
 import {
+  claimCommits,
   getSnapshot,
   putSnapshot,
 } from "@/lib/pi/artifacts/artifact-snapshot-cache";
@@ -328,7 +329,20 @@ export async function captureArtifacts(
 
       if (before.head !== after.head) {
         const commits = await deps.readCommits(project.root, before.head);
-        artifacts.push(...captureCommitArtifacts(input, project, commits, createdAt));
+        // First claim wins, across every session — see claimCommits' docblock.
+        // A commit already attributed (by this session's own earlier capture,
+        // or by another session that read git status first) produces no
+        // second CommitArtifact here.
+        const won = new Set(
+          claimCommits(
+            project.projectPath,
+            commits.map((commit) => commit.sha),
+          ),
+        );
+        const newlyClaimed = commits.filter((commit) => won.has(commit.sha));
+        artifacts.push(
+          ...captureCommitArtifacts(input, project, newlyClaimed, createdAt),
+        );
       }
 
       const diffResult = await captureDiffArtifact(
