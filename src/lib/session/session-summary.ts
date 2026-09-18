@@ -11,12 +11,16 @@
  *    the only correct rule and why the two halves cannot double count.
  *  - artifacts: `ArtifactSummary` as-is, from the status route.
  *  - wiki: `deriveWikiActivity` over the transcript the page already holds.
+ *  - dirty: `dirtyFilesFromReview` over the review payload the page already
+ *    has cached, so the card's "uncommitted diff" row is a claim about the
+ *    tree now and not about the append-only artifact log.
  *
  * Client-safe and pure, same reason artifact-summary.ts is: the session page
  * is a client component with the transcript, the workflow runs and the status
  * poll all already in hand, so the summary costs a render rather than a route.
  */
 
+import type { DirtyFiles } from "@/lib/artifacts/artifact-dirty";
 import type { ArtifactSummary } from "@/lib/artifacts/artifact-summary";
 import type { SessionUsage } from "@/lib/session/session-usage";
 import type { WikiActivity } from "@/lib/session/wiki-activity";
@@ -62,6 +66,12 @@ export interface SessionSummary {
   workflows: SummaryWorkflow[];
   artifacts: ArtifactSummary | null;
   wiki: WikiActivity;
+  /**
+   * What git still has uncommitted, per project. Undefined when the review
+   * payload has not arrived — which means *unknown*, not clean; see
+   * artifact-dirty.ts and `keepIfStillUncommitted`.
+   */
+  dirty?: DirtyFiles;
 }
 
 /**
@@ -161,6 +171,7 @@ export function summarizeWorkflows({
 /** The card's whole input, from what the session page already holds. */
 export function buildSessionSummary({
   artifacts,
+  dirty,
   goal,
   model,
   projects,
@@ -171,6 +182,7 @@ export function buildSessionSummary({
   workflowRuns,
 }: {
   artifacts: ArtifactSummary | null;
+  dirty?: DirtyFiles;
   goal: string | null;
   model: string | null;
   projects: readonly string[];
@@ -184,6 +196,7 @@ export function buildSessionSummary({
 
   return {
     artifacts,
+    ...(dirty ? { dirty } : {}),
     goal,
     model,
     projects: [...projects],

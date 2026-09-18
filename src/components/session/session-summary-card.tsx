@@ -253,6 +253,10 @@ function ArtifactRow({
  * are partitioned out of diffs rather than listed in both — see
  * artifact-groups.ts for why each of those matters here and not in the
  * sidebar's count strip.
+ *
+ * The diff row is additionally filtered against `summary.dirty`, because the
+ * artifact log never learns that a file it recorded was later committed and
+ * this row calls itself "uncommitted". The commit row keeps the work visible.
  */
 function ArtifactCounts({
   onOpenArtifact,
@@ -261,7 +265,7 @@ function ArtifactCounts({
   onOpenArtifact: (chip: ArtifactChip) => void;
   summary: SessionSummary;
 }) {
-  const groups = artifactGroups(summary.artifacts);
+  const groups = artifactGroups(summary.artifacts, summary.dirty);
 
   if (groups.length === 0) {
     return <span className="text-xs text-muted-foreground">Nothing produced yet.</span>;

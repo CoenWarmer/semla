@@ -5,6 +5,7 @@ import {
   chipRowLabel,
   groupHeading,
   groupKindOf,
+  keepIfStillUncommitted,
 } from "@/lib/artifacts/artifact-groups";
 import type { ArtifactChip, ArtifactSummary } from "@/lib/artifacts/artifact-summary";
 
@@ -199,5 +200,111 @@ describe("chipRowLabel", () => {
     expect(chipRowLabel(chip({ key: "a", kind: "diff", label: "3 files", target: null }))).toBe(
       "3 files",
     );
+  });
+});
+
+/**
+ * The bug these cover: the artifact log is append-only, so a session that
+ * committed everything it wrote kept rendering "17 uncommitted diffs" for the
+ * life of the page. The row is a claim about the working tree; these assert it
+ * is filtered against one.
+ */
+describe("keepIfStillUncommitted", () => {
+  const dirtyOf = (entries: Record<string, string[]>) =>
+    new Map(Object.entries(entries).map(([project, paths]) => [project, new Set(paths)]));
+
+  it("drops a diff whose files are all committed", () => {
+    expect(
+      keepIfStillUncommitted(
+        chip({ key: "d", kind: "diff", paths: ["src/foo.ts"] }),
+        dirtyOf({ semla: ["src/other.ts"] }),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a diff when ANY of its files is still dirty", () => {
+    // Half-committed is not committed: one `edit` can touch several files.
+    expect(
+      keepIfStillUncommitted(
+        chip({ key: "d", kind: "diff", paths: ["src/a.ts", "src/b.ts"] }),
+        dirtyOf({ semla: ["src/b.ts"] }),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats an unknown dirty set as unknown, not as clean", () => {
+    // The review query has not settled. Filtering here would blink every
+    // diff row out of existence on mount and back a moment later.
+    expect(
+      keepIfStillUncommitted(chip({ key: "d", kind: "diff", paths: ["src/foo.ts"] }), undefined),
+    ).toBe(true);
+  });
+
+  it("leaves a chip alone when its project is not in the dirty set", () => {
+    expect(
+      keepIfStillUncommitted(
+        chip({ key: "d", kind: "diff", paths: ["src/foo.ts"], projectPath: "other" }),
+        dirtyOf({ semla: [] }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a diff whose file list was truncated at capture", () => {
+    // pathsOmitted means the paths that would have kept it are absent, so it
+    // can never be proved clean.
+    expect(
+      keepIfStillUncommitted(
+        chip({ key: "d", kind: "diff", paths: ["src/foo.ts"], pathsOmitted: true }),
+        dirtyOf({ semla: [] }),
+      ),
+    ).toBe(true);
+  });
+
+  it("falls back to the target path for a chip with no paths", () => {
+    // An older artifacts.jsonl, read by a newer summary.
+    expect(
+      keepIfStillUncommitted(chip({ key: "d", kind: "diff" }), dirtyOf({ semla: ["src/foo.ts"] })),
+    ).toBe(true);
+    expect(keepIfStillUncommitted(chip({ key: "d", kind: "diff" }), dirtyOf({ semla: [] }))).toBe(
+      false,
+    );
+  });
+
+  it("never filters a plan, a commit, a PR or a spec", () => {
+    const clean = dirtyOf({ semla: [] });
+    expect(
+      keepIfStillUncommitted(
+        chip({ key: "p", kind: "diff", paths: ["docs/plans/x.md"], role: { name: "plan", source: "declared" } }),
+        clean,
+      ),
+    ).toBe(true);
+    expect(keepIfStillUncommitted(chip({ key: "c", kind: "commit" }), clean)).toBe(true);
+    expect(keepIfStillUncommitted(chip({ key: "r", kind: "pr" }), clean)).toBe(true);
+    expect(keepIfStillUncommitted(chip({ key: "s", kind: "spec" }), clean)).toBe(true);
+  });
+});
+
+describe("artifactGroups with a dirty set", () => {
+  it("omits the diff row entirely once the tree is clean, keeping commits", () => {
+    const groups = artifactGroups(
+      summaryOf([
+        chip({ key: "diff-1", kind: "diff", paths: ["src/foo.ts"] }),
+        chip({ key: "commit-1", kind: "commit" }),
+      ]),
+      new Map([["semla", new Set<string>()]]),
+    );
+    expect(groups.map((group) => group.kind)).toEqual(["commit"]);
+  });
+
+  it("counts only the diffs still uncommitted", () => {
+    const groups = artifactGroups(
+      summaryOf([
+        chip({ key: "diff-1", kind: "diff", paths: ["src/a.ts"] }),
+        chip({ key: "diff-2", kind: "diff", paths: ["src/b.ts"] }),
+        chip({ key: "diff-3", kind: "diff", paths: ["src/c.ts"] }),
+      ]),
+      new Map([["semla", new Set(["src/b.ts"])]]),
+    );
+    expect(groupHeading(groups[0])).toBe("1 uncommitted diff");
   });
 });

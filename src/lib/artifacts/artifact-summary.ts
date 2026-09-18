@@ -58,6 +58,25 @@ export interface ArtifactChip {
    */
   role?: DiffRole | null;
   /**
+   * Present only for kind "diff": every file the artifact recorded, not just
+   * the one `target` opens.
+   *
+   * `target` carries `files[0]` because a click has to land somewhere, but a
+   * single `edit` can touch several files and "is any of this still
+   * uncommitted?" is a question about all of them (see artifact-dirty.ts). A
+   * multi-file diff tested on its first path alone would vanish from the
+   * summary's uncommitted row while the rest of it was still dirty.
+   */
+  paths?: string[];
+  /**
+   * Present only for kind "diff": capture stopped short of listing every
+   * file, so `paths` is incomplete.
+   *
+   * Load-bearing rather than informational — a chip whose file list is
+   * partial can never be *proved* clean, so the dirty filter keeps it.
+   */
+  pathsOmitted?: boolean;
+  /**
    * True when this artifact carries no `turnId` and therefore can never be
    * joined to the requirement that caused it. Legacy-only: every artifact
    * captured under a prompt turn has had an id since turn-id.ts landed, so
@@ -173,6 +192,10 @@ export function chipFor(artifact: SessionArtifact): ArtifactChip | null {
             : artifact.files.length === 1
               ? "1 file"
               : `${artifact.files.length} files`,
+        paths: artifact.files.flatMap((file) =>
+          file.oldPath ? [file.path, file.oldPath] : [file.path],
+        ),
+        pathsOmitted: artifact.filesOmitted > 0,
         projectPath: artifact.projectPath,
         role: artifact.role,
         target: {

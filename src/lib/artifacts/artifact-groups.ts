@@ -24,8 +24,13 @@
  * the same file as a row under "Plans" and again under "Uncommitted diffs".
  * `artifact-summary.ts` warns that the two must never be added together; for a
  * list, partitioning is how that warning is obeyed.
+ *
+ * The "uncommitted diff" row is also the one row here that is a claim about
+ * the working tree rather than about the log, so it is filtered against git
+ * — see `keepIfStillUncommitted` and artifact-dirty.ts.
  */
 
+import type { DirtyFiles } from "@/lib/artifacts/artifact-dirty";
 import type { ArtifactChip, ArtifactSummary } from "@/lib/artifacts/artifact-summary";
 
 /**
@@ -55,6 +60,46 @@ const GROUP_ORDER: { kind: ArtifactGroupKind; label: string }[] = [
   { kind: "pr", label: "PR" },
 ];
 
+/**
+ * Should this chip still appear, given what git says is uncommitted?
+ *
+ * Only the diff row is filtered, and only when a dirty set is known:
+ *
+ *  - **Every other kind is a fact about the past.** A commit, a PR and a
+ *    spec happened; a plan is a document the session wrote, and it stays
+ *    listed whether or not it has since been committed. Only the diff row
+ *    calls itself "uncommitted", so only it can be wrong about the tree.
+ *  - **`undefined` means unknown, not clean.** The review query has not
+ *    settled, so nothing is filtered — otherwise the card's diff rows would
+ *    blink out on mount and back a moment later.
+ *  - **An unknown project is left alone.** A chip whose `projectPath` is not
+ *    in the dirty set belongs to a project this review did not report on
+ *    (unlinked since, or read failed), and dropping it would silently hide
+ *    work on the strength of a missing answer.
+ *  - **A partial file list can never be proved clean.** `pathsOmitted` says
+ *    capture stopped short of ARTIFACT_FILE_CAP, so the paths that would
+ *    have kept it are not there to check.
+ *
+ * A chip is kept when *any* of its files is still dirty: one `edit` can touch
+ * several, and half-committed is not committed.
+ */
+export function keepIfStillUncommitted(
+  chip: ArtifactChip,
+  dirty: DirtyFiles | undefined,
+): boolean {
+  if (!dirty) return true;
+  if (groupKindOf(chip) !== "diff") return true;
+  if (chip.pathsOmitted) return true;
+
+  const paths = dirty.get(chip.projectPath ?? "");
+  if (!paths) return true;
+
+  // Falls back to the target path for a chip built before `paths` existed —
+  // a summary read from an older artifacts.jsonl, or a hand-built test chip.
+  const candidates = chip.paths ?? (chip.target ? [chip.target.path] : []);
+  return candidates.some((path) => paths.has(path));
+}
+
 /** Which row a chip belongs in. */
 export function groupKindOf(chip: ArtifactChip): ArtifactGroupKind {
   if (chip.kind === "diff" && chip.role?.name === "plan") return "plan";
@@ -83,6 +128,11 @@ function byRecency(a: ArtifactChip, b: ArtifactChip): number {
  */
 export function artifactGroups(
   summary: ArtifactSummary | null | undefined,
+  /**
+   * What git reports as uncommitted, per project. Omitted means unknown, and
+   * filters nothing; see `keepIfStillUncommitted`.
+   */
+  dirty?: DirtyFiles,
 ): ArtifactGroup[] {
   if (!summary) return [];
 
@@ -90,6 +140,7 @@ export function artifactGroups(
   // Uncapped, and deduped by construction: chipsByKey is keyed on the
   // artifact key, so the same artifact cannot land in a group twice.
   for (const chip of Object.values(summary.chipsByKey)) {
+    if (!keepIfStillUncommitted(chip, dirty)) continue;
     const kind = groupKindOf(chip);
     const existing = byKind.get(kind);
     if (existing) existing.push(chip);
