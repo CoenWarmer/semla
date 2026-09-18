@@ -15,7 +15,7 @@
  */
 
 import { XIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { useElementTarget } from "@/components/element-target-provider";
 import { SessionSummaryCard } from "@/components/session/session-summary-card";
@@ -23,6 +23,7 @@ import { artifactTargetFor } from "@/components/sidebar/session-artifact-click";
 import { Button } from "@/components/ui/button";
 import { useSessionSummary } from "@/hooks/use-session-summary";
 import type { ArtifactChip } from "@/lib/artifacts/artifact-summary";
+import type { WikiPageRef } from "@/lib/session/wiki-activity";
 import type { WorkflowSnapshot } from "@/types/workflow";
 
 export function SessionSummaryPanel({
@@ -44,6 +45,18 @@ export function SessionSummaryPanel({
   const elementTarget = useElementTarget();
 
   /**
+   * Why the last wiki-page click didn't open anything.
+   *
+   * Unlike an artifact chip's target, a wiki page's location has to be asked
+   * of the server — see wiki-page-source/route.ts — and the answer can
+   * legitimately be "nowhere": the vault does not generally live inside a
+   * session's attached projects. This is that answer, surfaced rather than
+   * swallowed, the same way `openWorkspacePath` in review-panel.tsx reports a
+   * Go to Definition that lands outside every attached project.
+   */
+  const [wikiPageNotice, setWikiPageNotice] = useState<string | null>(null);
+
+  /**
    * Open a clicked artifact in the review panel.
    *
    * Requesting a target is all this has to do: `ClientSessionComponent`
@@ -61,6 +74,48 @@ export function SessionSummaryPanel({
     [elementTarget],
   );
 
+  /**
+   * Open a clicked wiki page in the review panel.
+   *
+   * A page id (`folder/slug`) is not a workspace path, so the project and
+   * path the panel needs are resolved server-side rather than guessed at
+   * here — see wiki-page-source/route.ts. A 404 there means the page's file
+   * is not inside any project this session has attached, which is reported
+   * rather than silently doing nothing.
+   */
+  const handleOpenWikiPage = useCallback(
+    (page: WikiPageRef) => {
+      setWikiPageNotice(null);
+
+      void fetch(
+        `/api/sessions/${sessionId}/wiki-page-source?id=${encodeURIComponent(page.id)}`,
+      )
+        .then(async (res) => {
+          const body = (await res.json().catch(() => null)) as
+            | { project: string; path: string }
+            | { error: string }
+            | null;
+
+          if (!res.ok || !body || "error" in body) {
+            setWikiPageNotice(
+              body && "error" in body
+                ? body.error
+                : `Unable to open ${page.label}.`,
+            );
+            return;
+          }
+
+          elementTarget.request({
+            path: body.path,
+            precision: "exact",
+            project: body.project,
+          });
+        })
+        .catch(() => setWikiPageNotice(`Unable to open ${page.label}.`));
+    },
+    [elementTarget, sessionId],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       <div className="flex shrink-0 items-center justify-between pl-1">
@@ -75,8 +130,15 @@ export function SessionSummaryPanel({
           <XIcon className="size-3.5" />
         </Button>
       </div>
+      {wikiPageNotice && (
+        <p className="shrink-0 px-1 text-xs text-destructive">{wikiPageNotice}</p>
+      )}
       <div className="min-h-0 flex-1">
-        <SessionSummaryCard onOpenArtifact={handleOpenArtifact} summary={summary} />
+        <SessionSummaryCard
+          onOpenArtifact={handleOpenArtifact}
+          onOpenWikiPage={handleOpenWikiPage}
+          summary={summary}
+        />
       </div>
     </div>
   );

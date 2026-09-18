@@ -45,13 +45,6 @@ import {
   type ArtifactGroupKind,
 } from "@/lib/artifacts/artifact-groups";
 import type { ArtifactChip } from "@/lib/artifacts/artifact-summary";
-import {
-  Popover,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import type { SessionSummary, SummaryAgent } from "@/lib/session/session-summary";
 import { summaryAgents } from "@/lib/session/session-summary";
 import type { WikiPageRef } from "@/lib/session/wiki-activity";
@@ -126,46 +119,51 @@ function AgentRow({ agent }: { agent: SummaryAgent }) {
   );
 }
 
-/** Wiki pages behind a count, listed in a popover. */
+/**
+ * Wiki pages behind a count, listed directly underneath their heading, each
+ * one a button that opens it in the Review panel.
+ *
+ * `onOpenPage` may come up empty for a given page — the vault does not
+ * generally live inside a session's attached projects, see
+ * `wiki-page-location.ts` — so every row stays clickable rather than being
+ * disabled up front, and the caller reports why nothing happened.
+ */
 function WikiRow({
   label,
+  onOpenPage,
   pages,
   title,
 }: {
   label: string;
+  onOpenPage: (page: WikiPageRef) => void;
   pages: readonly WikiPageRef[];
   title: string;
 }) {
   if (pages.length === 0) return null;
 
   return (
-    <Popover>
-      <PopoverTrigger
-        className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-accent"
-        title={title}
-      >
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs" title={title}>
         <span className="text-muted-foreground">{label}</span>
         <span className="ml-auto tabular-nums">{pages.length}</span>
-      </PopoverTrigger>
-      <PopoverContent className="w-80">
-        <PopoverHeader>
-          <PopoverTitle>{label}</PopoverTitle>
-          <span className="text-xs text-muted-foreground">{title}</span>
-        </PopoverHeader>
-        <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
-          {pages.map((page) => (
-            <span className="flex items-center gap-1.5 text-xs" key={page.id}>
-              <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                {page.folder}
-              </span>
-              <span className="truncate" title={page.id}>
-                {page.label}
-              </span>
+      </div>
+      <div className="flex flex-col gap-0.5 pl-4">
+        {pages.map((page) => (
+          <button
+            className="flex items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-accent"
+            key={page.id}
+            onClick={() => onOpenPage(page)}
+            title={page.id}
+            type="button"
+          >
+            <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+              {page.folder}
             </span>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+            <span className="truncate">{page.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -295,10 +293,13 @@ function ArtifactCounts({
 
 export function SessionSummaryCard({
   onOpenArtifact,
+  onOpenWikiPage,
   summary,
 }: {
   /** Opens an artifact in the review panel. See `artifactTargetFor`. */
   onOpenArtifact: (chip: ArtifactChip) => void;
+  /** Opens a wiki page in the review panel. See `wiki-page-location.ts`. */
+  onOpenWikiPage: (page: WikiPageRef) => void;
   summary: SessionSummary;
 }) {
   const agents = summaryAgents(summary);
@@ -361,19 +362,22 @@ export function SessionSummaryCard({
 
         <Section icon={BookOpenIcon} title="Wiki">
           {hasWikiActivity(wiki) ? (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-2">
               <WikiRow
                 label="Surfaced into context"
+                onOpenPage={onOpenWikiPage}
                 pages={wiki.recalled}
                 title="Auto-recall put these in front of the model — offered, not necessarily used."
               />
               <WikiRow
                 label="Opened"
+                onOpenPage={onOpenWikiPage}
                 pages={wiki.read}
                 title="Pages the agent chose to read."
               />
               <WikiRow
                 label="Written"
+                onOpenPage={onOpenWikiPage}
                 pages={wiki.written}
                 title="Pages and observations this session created."
               />
