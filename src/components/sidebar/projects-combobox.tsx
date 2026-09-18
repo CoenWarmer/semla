@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactElement } from "react";
 
 import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
+import {
+  readLastSelectedProject,
+  writeLastSelectedProject,
+} from "@/lib/last-selected-project";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -24,6 +28,10 @@ import { ChatDotsIcon } from "@phosphor-icons/react";
 export function ProjectsCombobox({ small }: { small?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Read once per mount rather than on every render: the value only ever
+  // changes as a result of this component's own handleSelect, at which point
+  // the popover has already closed.
+  const [lastSelected] = useState(readLastSelectedProject);
 
   // Only fetched once the popover opens: the list is rendered nowhere else, and
   // this component sits in the sidebar on every page, so fetching on mount put
@@ -48,7 +56,26 @@ export function ProjectsCombobox({ small }: { small?: boolean }) {
    */
   function handleSelect(project: WorkspaceProject) {
     setOpen(false);
+    writeLastSelectedProject(project.name);
     router.push(`/sessions/new?project=${encodeURIComponent(project.name)}`);
+  }
+
+  /**
+   * Selecting straight from the "Recent" row, which only ever carries a name
+   * (that is all localStorage holds). The fetched list is the source of truth
+   * for what else the project record needs, so the recent row still routes
+   * through the full project object once the list has loaded; before that it
+   * falls back to navigating on the name alone, since that is all the
+   * destination route needs.
+   */
+  function handleSelectRecent(name: string) {
+    const match = projects?.find((project) => project.name === name);
+    if (match) {
+      handleSelect(match);
+      return;
+    }
+    setOpen(false);
+    router.push(`/sessions/new?project=${encodeURIComponent(name)}`);
   }
 
   const trigger = small
@@ -74,6 +101,17 @@ export function ProjectsCombobox({ small }: { small?: boolean }) {
           <CommandInput placeholder="Search projects…" />
           <CommandList>
             <CommandEmpty>No projects found.</CommandEmpty>
+            {lastSelected && (
+              <CommandGroup heading="Recent">
+                <CommandItem
+                  key={`recent-${lastSelected}`}
+                  value={`recent ${lastSelected}`}
+                  onSelect={() => handleSelectRecent(lastSelected)}
+                >
+                  {lastSelected}
+                </CommandItem>
+              </CommandGroup>
+            )}
             <CommandGroup>
               {(projects ?? []).map((project) => (
                 <CommandItem
