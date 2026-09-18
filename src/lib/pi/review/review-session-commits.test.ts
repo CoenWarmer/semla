@@ -9,6 +9,7 @@ import type { CommitArtifact, DiffArtifact } from "@/lib/artifacts/artifact-type
 import {
   filterSessionCommits,
   sessionCommitShas,
+  sessionCommitShasOrdered,
 } from "@/lib/pi/review/review-session-commits";
 
 let dir: string;
@@ -94,6 +95,33 @@ describe("sessionCommitShas", () => {
     // Empty means "committed nothing here", which must hide every dot;
     // null would mean "no evidence" and show all of them.
     expect(sessionCommitShas("session-1", "semla", dir)).toEqual(new Set());
+  });
+});
+
+describe("sessionCommitShasOrdered", () => {
+  it("is null when the session has no commit artifacts at all", () => {
+    appendArtifacts("session-1", [diffArtifact()], dir);
+    expect(sessionCommitShasOrdered("session-1", "semla", dir)).toBeNull();
+  });
+
+  it("returns the shas newest first, regardless of append order", () => {
+    // The artifact log is append-only oldest-first, and the nav's dots and
+    // the summary card's chips both expect newest-first, matching every
+    // other commit list in this feature (readTurnCommits, parseTurnCommits).
+    appendArtifacts(
+      "session-1",
+      [commitArtifact("aaa"), commitArtifact("bbb")],
+      dir,
+    );
+    expect(sessionCommitShasOrdered("session-1", "semla", dir)).toEqual([
+      "bbb",
+      "aaa",
+    ]);
+  });
+
+  it("is an empty array — not null — when the commits belong to another project", () => {
+    appendArtifacts("session-1", [commitArtifact("aaa", "other")], dir);
+    expect(sessionCommitShasOrdered("session-1", "semla", dir)).toEqual([]);
   });
 });
 

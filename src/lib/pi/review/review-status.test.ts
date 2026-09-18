@@ -20,6 +20,7 @@ const {
   parsePorcelain,
   parseTurnCommits,
   readChangedFiles,
+  readCommitsBySha,
   readTurnCommits,
   statusFromCodes,
 } = await import("./review-status.ts");
@@ -274,5 +275,48 @@ describe("readTurnCommits", () => {
 
     expect(await readTurnCommits("/repo", "abc123")).toEqual([]);
     expect(gitMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("readCommitsBySha", () => {
+  it("reads nothing, and never shells out, for an empty list", async () => {
+    expect(await readCommitsBySha("/repo", [])).toEqual([]);
+    expect(gitMock).not.toHaveBeenCalled();
+  });
+
+  it("reads the named commits directly, with --no-walk and --ignore-missing", async () => {
+    // Unlike readTurnCommits, this never checks ancestry: the commits it is
+    // asked for are named individually, not as a range that could describe
+    // the wrong set if history moved.
+    gitMock.mockResolvedValue("");
+
+    await readCommitsBySha("/repo", ["sha-1", "sha-2"]);
+
+    expect(gitResultMock).not.toHaveBeenCalled();
+    const args = gitMock.mock.calls[0][1] as string[];
+    expect(args).toContain("--no-walk");
+    expect(args).toContain("--ignore-missing");
+    expect(args.slice(-2)).toEqual(["sha-1", "sha-2"]);
+  });
+
+  it("parses whatever git returns for the named commits", async () => {
+    gitMock.mockResolvedValue(
+      "\x1eaaa\x1faa\x1fsubject\x1fauthor\x1f2026-01-01T00:00:00Z\nM\ta.ts",
+    );
+
+    const commits = await readCommitsBySha("/repo", ["aaa"]);
+
+    expect(commits).toEqual([
+      {
+        at: "2026-01-01T00:00:00Z",
+        author: "author",
+        fileChanges: [{ oldPath: null, path: "a.ts", status: "modified" }],
+        fileCount: 1,
+        files: ["a.ts"],
+        sha: "aaa",
+        shortSha: "aa",
+        subject: "subject",
+      },
+    ]);
   });
 });

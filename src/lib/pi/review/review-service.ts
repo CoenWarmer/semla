@@ -18,13 +18,10 @@ import { resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
 import { seedSnapshots } from "@/lib/pi/artifacts/artifact-snapshot-cache";
 import {
   readChangedFiles,
+  readCommitsBySha,
   readHeadSha,
-  readTurnCommits,
 } from "@/lib/pi/review/review-status";
-import {
-  filterSessionCommits,
-  sessionCommitShas,
-} from "@/lib/pi/review/review-session-commits";
+import { sessionCommitShasOrdered } from "@/lib/pi/review/review-session-commits";
 import {
   fingerprint,
   readTurnMark,
@@ -87,36 +84,37 @@ export function resolveReviewFile(
 }
 
 /**
- * One of *this session's own* turn commits, by sha, or null.
+ * One of *this session's own* commits, by sha, or null.
  *
  * The narrowing matters. `readCommitFileDiff` refuses anything that is not a
  * 40-hex object name, which stops a revision expression, but any commit in the
- * repository's history is still a valid sha — and the panel's contract is that
- * a commit dot shows a commit this turn made. Resolving through the turn range
- * keeps the route answering that question and no wider one, and it is the same
- * range `ReviewCommitNav` drew its dots from, so a sha the client can name is
- * by construction a sha this accepts.
+ * repository's history is still a valid sha — and the panel's contract is
+ * that a commit dot (or a summary-card chip) shows a commit *this session*
+ * made. That used to be resolved through the current turn's `start..HEAD`
+ * range, which is wrong for a sha from an earlier turn: `recordTurnStart`
+ * moves the mark's start to HEAD every time a new prompt begins, so a
+ * commit from turn 1 falls out of turn 2's range even though the session
+ * genuinely made it — the range is a fact about *when this turn began*, not
+ * about what the session has committed. Resolving straight from the
+ * session's own commit log (`sessionCommitShasOrdered`) via
+ * `readCommitsBySha` answers the question the panel actually asks: is this a
+ * commit this session made, not is it inside the window the current turn
+ * happens to be looking through.
  *
- * Null covers four cases that are all "no" to the caller: no turn mark, so no
- * range; a sha outside the range; a sha inside the range that this session did
- * not commit (see review-session-commits.ts — the range is a fact about the
- * repository, and the operator's own commits land in it too); and a repository
- * whose start sha is no longer an ancestor of HEAD, which `readTurnCommits`
- * already refuses.
+ * Null covers three cases that are all "no" to the caller: no commit
+ * evidence for this project at all; a sha this session never committed here
+ * (see review-session-commits.ts); and a sha the repository no longer has
+ * (rebased away, gc'd), which `readCommitsBySha`'s `--ignore-missing` drops.
  */
 export async function resolveSessionCommit(
   sessionId: string,
   target: ReviewTarget,
   sha: string,
 ): Promise<TurnCommit | null> {
-  const mark = readTurnMark(sessionId);
-  const startSha = mark?.projects[target.link.path]?.head ?? null;
-  if (!startSha) return null;
+  const shas = sessionCommitShasOrdered(sessionId, target.link.path);
+  if (!shas || !shas.includes(sha)) return null;
 
-  const commits = filterSessionCommits(
-    await readTurnCommits(target.root, startSha),
-    sessionCommitShas(sessionId, target.link.path),
-  );
+  const commits = await readCommitsBySha(target.root, [sha]);
   return commits.find((commit) => commit.sha === sha) ?? null;
 }
 
@@ -126,10 +124,16 @@ async function readProjectReview(
   sessionId: string,
 ): Promise<ProjectReview> {
   const root = projectAbsolutePath(link);
-  const [{ files, omitted }, headSha, rangeCommits] = await Promise.all([
+  const sessionShas = sessionCommitShasOrdered(sessionId, link.path);
+
+  const [{ files, omitted }, headSha, turnCommits] = await Promise.all([
     readChangedFiles(root),
     readHeadSha(root),
-    readTurnCommits(root, startSha),
+    // Every commit this session is on record as having made in this
+    // project, across every turn — not `start..HEAD`. See
+    // `resolveSessionCommit`'s doc for why the turn-scoped range undercounts
+    // a session that spans more than one turn.
+    readCommitsBySha(root, sessionShas ?? []),
   ]);
 
   return {
@@ -140,14 +144,7 @@ async function readProjectReview(
     otherActiveSessions: otherActiveSessionCount(link.path, sessionId),
     path: link.path,
     startSha,
-    // The range narrowed to what this session is on record as having
-    // committed. Without this the nav drew a dot for the operator's own
-    // terminal commits and for a sibling session's, because `startSha..HEAD`
-    // cannot tell them apart. See review-session-commits.ts.
-    turnCommits: filterSessionCommits(
-      rangeCommits,
-      sessionCommitShas(sessionId, link.path),
-    ),
+    turnCommits,
   };
 }
 
@@ -181,11 +178,19 @@ export async function readSessionReview(
   // Changed *this turn*, which is not the same as dirty. Either the dirty set
   // moved since the prompt began, or the agent committed — and with no mark at
   // all nothing can be attributed to the turn, so nothing opens by itself.
+  //
+  // Compared against the mark's own `head`, not `project.turnCommits.length`:
+  // `turnCommits` is now the session's *lifetime* commit list (see
+  // `resolveSessionCommit`'s doc), so a session that committed in an earlier
+  // turn would otherwise read as "changed this turn" forever after. HEAD
+  // moving away from the mark's start already implies a commit happened
+  // since, so `now !== start.state` alone (which folds in `headSha`) is the
+  // whole test.
   const changedThisTurn = projects.some((project) => {
     const start = mark?.projects[project.path];
     if (!start) return false;
     const now = fingerprint(project.headSha, project.changedFiles);
-    return now !== start.state || project.turnCommits.length > 0;
+    return now !== start.state;
   });
 
   return {

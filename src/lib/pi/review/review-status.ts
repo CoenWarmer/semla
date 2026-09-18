@@ -254,3 +254,49 @@ export async function readTurnCommits(
 
   return output === null ? [] : parseTurnCommits(output);
 }
+
+/**
+ * Specific commits, by sha, in the order given — not a range.
+ *
+ * `readTurnCommits` answers "what happened in `start..HEAD`", which is a
+ * window that moves every time a new turn begins (`recordTurnStart` resets
+ * the mark's start to the current HEAD). The session's own commit log (see
+ * `sessionCommitShas`) does not move: it is every sha this session has ever
+ * captured, in any of its turns. A second turn's mark leaves the first
+ * turn's commit outside the range `readTurnCommits` would read, even though
+ * the session genuinely made it — that gap is what let the summary card
+ * link to a commit the review panel then claimed "changed nothing" for,
+ * when the truth was that the commit was simply out of the window being
+ * asked about.
+ *
+ * `--no-walk` reads exactly the named commits and nothing reachable from
+ * them, so an old commit from a since-superseded branch is still readable
+ * on its own terms; `--ignore-missing` drops a sha the repository no longer
+ * has (rebased away, gc'd) instead of failing the whole read over one bad
+ * object — the same "the rest is still worth showing" rule `parseTurnCommits`
+ * already applies to a record with no sha.
+ */
+export async function readCommitsBySha(
+  projectPath: string,
+  shas: readonly string[],
+): Promise<TurnCommit[]> {
+  if (shas.length === 0) return [];
+
+  const output = await git(
+    projectPath,
+    [
+      "-c",
+      "core.quotePath=false",
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      `--format=${RECORD}%H${UNIT}%h${UNIT}%s${UNIT}%an${UNIT}%aI`,
+      "--name-status",
+      "-M",
+      ...shas,
+    ],
+    { timeout: STATUS_TIMEOUT_MS },
+  );
+
+  return output === null ? [] : parseTurnCommits(output);
+}

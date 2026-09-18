@@ -44,18 +44,39 @@ export function sessionCommitShas(
   projectPath: string,
   dir: string = SEMLA_ARTIFACT_DIR,
 ): Set<string> | null {
+  const shas = sessionCommitShasOrdered(sessionId, projectPath, dir);
+  return shas ? new Set(shas) : null;
+}
+
+/**
+ * The same shas as `sessionCommitShas`, but as an array in the order this
+ * session made them, newest first — what `ReviewCommitNav`'s dots and the
+ * summary card's commit chips both need, and a `Set` cannot answer since it
+ * carries no order of its own.
+ *
+ * Newest first because the artifact log is append-only in the order commits
+ * happened (oldest first), and every other commit list in this feature
+ * (`readTurnCommits`, `parseTurnCommits`) already reads newest-first —
+ * `ReviewCommitNav` itself reverses it back for display, so this matches
+ * what that reversal expects.
+ */
+export function sessionCommitShasOrdered(
+  sessionId: string,
+  projectPath: string,
+  dir: string = SEMLA_ARTIFACT_DIR,
+): string[] | null {
   const artifacts = readSessionArtifacts(sessionId, dir);
 
   let sawProject = false;
-  const shas = new Set<string>();
+  const shas: string[] = [];
 
   for (const artifact of artifacts) {
     if (artifact.kind !== "commit") continue;
     sawProject = true;
-    if (artifact.projectPath === projectPath) shas.add(artifact.sha);
+    if (artifact.projectPath === projectPath) shas.push(artifact.sha);
   }
 
-  return sawProject ? shas : null;
+  return sawProject ? shas.reverse() : null;
 }
 
 /**
