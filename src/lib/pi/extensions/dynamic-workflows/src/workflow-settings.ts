@@ -56,8 +56,12 @@ export interface WorkflowSettings {
    */
   /**
    * Enable/disable the jev-gate extension's per-turn narrowing of the tool and
-   * skill set. Default true (omitting the field also enables it); set false to
-   * hand the agent every tool and skill the session registered.
+   * skill set. Default false — reversed by the operator on 2026-09-19 after
+   * a live run against this repository's own session showed the gate
+   * narrowing the operator's own tools mid-conversation, before the
+   * threshold and floor (see gate-decision.ts's ALWAYS_ON_TOOLS) had a
+   * track record. Omitting the field leaves it off; set true explicitly to
+   * turn it on.
    */
   jevGateEnabled?: boolean;
   /**

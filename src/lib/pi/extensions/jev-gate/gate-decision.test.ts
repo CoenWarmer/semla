@@ -26,10 +26,18 @@ import {
 } from "./gate-decision";
 import type { JevDecisionResult } from "@/lib/pi/runtime/jev-client";
 
+// Includes every ALWAYS_ON_TOOLS member, so a session that has registered a
+// normal tool set is what these fixtures represent, and the floor tests below
+// exercise the floor being *added*, not the intersection-with-availability
+// fallback that a real gap in the fixture would otherwise trigger silently.
 const TOOLS = [
   { name: "read", description: "Read a file" },
   { name: "bash", description: "Run a command" },
+  { name: "edit", description: "Edit a file with exact text replacement" },
   { name: "write", description: "Write a file" },
+  { name: "code_search", description: "Search the project's code index by meaning" },
+  { name: "wiki_recall", description: "Search the wiki for pages relevant to a query" },
+  { name: "wiki_search", description: "Search the wiki registry for pages" },
   { name: "workflow", description: "Delegate to subagents" },
   { name: "ask_user", description: "Ask the user" },
   { name: "workflow_control", description: "Manage workflow runs" },

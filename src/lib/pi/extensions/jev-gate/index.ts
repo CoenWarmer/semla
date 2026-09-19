@@ -129,8 +129,12 @@ export default function jevGateExtension(pi: ExtensionAPI): void {
   const readSettings = (ctx: ExtensionContext) => {
     const settings = loadWorkflowSettings({ cwd: ctx.cwd });
     return {
-      // Default on, per the operator's decision; `false` must be explicit.
-      enabled: settings.jevGateEnabled !== false,
+      // Default OFF, reversing the earlier decision. Live use on this very
+      // repository's own session narrowed the operator's own tools mid-
+      // conversation — correct behaviour, but disruptive to be on by default
+      // before the threshold and floor have a track record. `true` must now
+      // be explicit, the same way read-router.ts requires `false` to be.
+      enabled: settings.jevGateEnabled === true,
       threshold: settings.jevGateThreshold ?? DEFAULT_JEV_THRESHOLD,
       timeoutMs: settings.jevGateTimeoutMs ?? DEFAULT_TIMEOUT_MS,
     };

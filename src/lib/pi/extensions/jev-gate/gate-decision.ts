@@ -54,13 +54,32 @@ export const DEFAULT_JEV_THRESHOLD = 0.3;
 /**
  * Tools Jev can never remove.
  *
- * A gate that can leave the agent unable to read a file or ask a question has
- * failed at being a gate. `read` and `ask_user` are the two moves that are
- * always legitimate: look before acting, and ask when the answer is not
- * available. Deliberately shorter than {@link MINIMAL_SAFE_TOOLS} — this is
- * the floor under a *working* decision, not the fallback for a broken one.
+ * Widened by the operator on 2026-09-19, after a live run against this
+ * repository's real 34-tool registry showed `bash` scoring 0.08-0.29 on
+ * ordinary coding turns — reliably below the 0.30 threshold, in a repo whose
+ * AGENTS.md requires `tsc`, lint and test to validate every change. Jev is
+ * not wrong that a described edit alone needs no shell; it has no way to know
+ * the house rule that every change must be validated after it is made. Rather
+ * than have every session negotiate that with the model, the tools a coding
+ * agent structurally cannot do without are exempted from the question:
+ * `read`/`edit`/`write` to act, `code_search` to find what to act on,
+ * `wiki_recall`/`wiki_search` to read what the wiki already knows before
+ * guessing, and `ask_user` for when none of that resolves the ambiguity.
+ *
+ * This is now wider than {@link MINIMAL_SAFE_TOOLS}'s `bash`+`workflow_control`
+ * pairing, which is deliberate: the floor under a *working* decision has
+ * become the thing that makes the gate's narrowing safe to default on, not a
+ * minimal fallback for a broken one.
  */
-export const ALWAYS_ON_TOOLS: readonly string[] = ["read", "ask_user"];
+export const ALWAYS_ON_TOOLS: readonly string[] = [
+  "read",
+  "edit",
+  "write",
+  "code_search",
+  "wiki_recall",
+  "wiki_search",
+  "ask_user",
+];
 
 /**
  * The fail-closed set, used when there is no usable decision.
