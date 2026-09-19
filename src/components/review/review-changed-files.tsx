@@ -18,6 +18,15 @@
 
 import { useCallback, useMemo } from "react";
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+
+import {
+  DragHandle,
+  dragTransformStyle,
+  ReviewDndProvider,
+  ReviewDropZoneArea,
+  useFileDrag,
+} from "./review-dnd";
 
 import { cn } from "@/lib/utils";
 import { commitScope } from "@/lib/review/review-commit-scope";
@@ -50,10 +59,46 @@ export interface FileSelection {
   path: string;
 }
 
+/**
+ * A file row's identity across the two buckets, for animating a row moving
+ * from "To review" into "Staged" (or back) instead of popping between them.
+ *
+ * Shared between `FileRow` here and `StagedFileRow` in review-staged-files.ts
+ * so the same file resolves to the same Motion `layoutId` in whichever bucket
+ * it is currently drawn in — but only when it is drawn in exactly one of
+ * them. A partially staged file is drawn in *both* at once (`FileRow` because
+ * `file.unstaged` is true, `StagedFileRow` because `file.staged` is true),
+ * and Motion's `layoutId` assumes at most one mounted instance: give two
+ * simultaneously mounted elements the same id and it picks one as the "lead"
+ * and forces the other to track its layout, which is what emptied the Staged
+ * row until every hunk was staged and `FileRow` finally unmounted. Callers
+ * pass `null` for that case, which `layoutId` on `motion.div` treats as "no
+ * shared identity" — a plain enter/exit fade rather than a cross-bucket move,
+ * correct because there is no single other row for this one to be that move
+ * *from*.
+ */
+export const fileRowLayoutId = (
+  selection: FileSelection,
+  file: ChangedFile,
+): string | undefined =>
+  file.staged && file.unstaged
+    ? undefined
+    : `${selection.project}/${selection.path}`;
+
 /** Stage or unstage hunks of a specific file, identified rather than assumed. */
 export type StageFileHunks = (
   file: FileSelection,
   hunks: number[],
+  direction: "stage" | "unstage",
+) => void;
+
+/**
+ * Stage or unstage a specific file as a whole — what dragging its row into
+ * the other bucket does. See `onStageWholeFile` in review-panel.tsx for why
+ * this is not `StageFileHunks` called with an empty hunk list.
+ */
+export type StageWholeFile = (
+  file: FileSelection,
   direction: "stage" | "unstage",
 ) => void;
 

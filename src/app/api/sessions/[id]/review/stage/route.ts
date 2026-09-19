@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Stage or unstage chosen hunks of one file.
+ * Stage or unstage chosen hunks of one file, or the whole file at once.
  *
  * The direction decides which diff the hunk indexes refer to, and getting that
  * wrong would act on the wrong lines: staging selects from the worktree
@@ -23,6 +23,15 @@ export const dynamic = "force-dynamic";
  * They are different diffs with independently numbered hunks, so the index
  * arriving from the client is only meaningful together with the direction it
  * came with.
+ *
+ * `whole: true` skips hunk selection entirely and calls `stageWholeFile` /
+ * `unstageWholeFile` — the drag-to-stage gesture in the changed-files list
+ * asks for this, since a row dropped into a bucket has not necessarily had
+ * its diff fetched yet, and there is nothing hunk-shaped about "stage this
+ * file" as a request. Those two functions are `git add` and `git restore
+ * --staged`, which are correct for a tracked file exactly as they already
+ * were for an untracked one — the untracked branch below is what first
+ * needed them, not what they are limited to.
  *
  * The repository comes from the session's own project links and the path is
  * contained inside it. Neither is the caller's to choose — see
@@ -37,6 +46,7 @@ export async function POST(
 
   const relPath = typeof body?.path === "string" ? body.path : null;
   const direction = body?.direction === "unstage" ? "unstage" : "stage";
+  const whole = body?.whole === true;
   const hunks: number[] = Array.isArray(body?.hunks)
     ? body.hunks.filter((value: unknown) => Number.isInteger(value))
     : [];
@@ -67,8 +77,9 @@ export async function POST(
   }
 
   // An untracked file has no index entry, so there are no hunks to pick
-  // between: staging it means adding it, whole.
-  if (entry.status === "untracked") {
+  // between: staging it means adding it, whole. A tracked file reaches the
+  // same two calls when the client asked for the whole file explicitly.
+  if (entry.status === "untracked" || whole) {
     const result =
       direction === "stage"
         ? await stageWholeFile(target.root, relPath)
