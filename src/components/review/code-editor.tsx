@@ -113,6 +113,13 @@ export interface CodeEditorProps {
   /** The whole change since HEAD, which is what gets coloured. */
   hunks: readonly Hunk[];
   /**
+   * The hunk the keyboard cursor is on, when it is in this file — highlighted
+   * more strongly than the rest of `hunks` so it is obvious which one a
+   * `w`/`s`/space press is about to act on. Null when the cursor is
+   * elsewhere, or this file's diffs have not resolved it yet.
+   */
+  currentHunk?: Hunk | null;
+  /**
    * What is and is not staged, so a widget above a hunk can offer the right
    * action. Absent (or both null) when there is nothing to stage — an
    * unchanged file opened from the tree, or one with no hunk-level staging
@@ -169,6 +176,7 @@ export interface CodeEditorProps {
 
 export default function CodeEditor({
   access = null,
+  currentHunk = null,
   definition = null,
   hunks,
   lsp = null,
@@ -189,6 +197,17 @@ export default function CodeEditor({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef =
+    useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  /**
+   * The keyboard cursor's hunk, in a collection of its own.
+   *
+   * Separate from `decorationsRef` for the same reason `accessRef` is: a
+   * `set()` replaces everything in the collection it is called on, and the
+   * cursor moves on every keypress — sharing a collection with the diff
+   * colours would mean recomputing and resetting those on every `w`/`s` too,
+   * rather than only when the hunks themselves change.
+   */
+  const currentHunkRef =
     useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   /**
    * The agent's read/write marks, in a collection of their own.
@@ -299,6 +318,7 @@ export default function CodeEditor({
 
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
+    currentHunkRef.current = editor.createDecorationsCollection([]);
     accessRef.current = editor.createDecorationsCollection([]);
     accessLabelsRef.current = new AccessLabelWidgets(editor);
     hunkGlyphsRef.current = new HunkBracketWidgets(
@@ -561,6 +581,60 @@ export default function CodeEditor({
       })),
     );
   }, [hunks, path]);
+
+  /**
+   * The keyboard cursor's hunk, tinted more strongly than the rest of the
+   * diff so it is obvious which one `w`/`s`/space is about to act on.
+   *
+   * A whole-line decoration over the hunk's own changed-line span —
+   * `hunkChangedLineRange`, the same span the stage/unstage bracket widget
+   * brackets — rather than the hunk's full `-U3` context: the emphasis is
+   * about *which change*, and highlighting three lines of unchanged context
+   * on either side would blur that back into "this general area", which the
+   * ordinary diff wash already says.
+   *
+   * Its own collection (`currentHunkRef`) and its own effect, keyed on
+   * `currentHunk` rather than folded into the decorations effect above: the
+   * cursor moves far more often than the hunks themselves change, and giving
+   * it a separate `set()` means a keypress recomputes only this, not the
+   * whole diff's decorations.
+   */
+  useEffect(() => {
+    const editor = editorRef.current;
+    const collection = currentHunkRef.current;
+    const model = editor?.getModel();
+    if (!editor || !collection || !model) return;
+
+    if (!currentHunk) {
+      collection.set([]);
+      return;
+    }
+
+    const lineCount = model.getLineCount();
+    const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
+    const range = hunkChangedLineRange(currentHunk);
+    const startLine = clamp(range.start);
+    const endLine = clamp(range.end);
+
+    collection.set([
+      {
+        options: {
+          className: "semla-review-current-hunk",
+          isWholeLine: true,
+          overviewRuler: {
+            color: "var(--primary)",
+            position: monaco.editor.OverviewRulerLane.Full,
+          },
+        },
+        range: new monaco.Range(
+          startLine,
+          1,
+          endLine,
+          model.getLineMaxColumn(endLine),
+        ),
+      },
+    ]);
+  }, [currentHunk]);
 
   /**
    * Mark the lines the agent read or wrote, and fade the lines it did not.

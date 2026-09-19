@@ -11,12 +11,14 @@
  */
 
 import { MinusIcon, PlusIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 import { hunkAnchorLine, hunkAnchorText } from "./review-decorations";
+import { hunkRangeKey } from "./review-hunk-match";
 
 /** A one-line summary of what a hunk does, without opening it. */
 export function hunkSummary(hunk: Hunk): { added: number; removed: number } {
@@ -52,6 +54,7 @@ function HunkRow({
   current = false,
   direction,
   hunk,
+  layoutId,
   onApply,
   onReveal,
   readOnly = false,
@@ -61,6 +64,14 @@ function HunkRow({
   current?: boolean;
   direction: "stage" | "unstage";
   hunk: Hunk;
+  /**
+   * This hunk's identity across the staged/unstaged boundary, scoped to its
+   * file. See `hunkRangeKey` for why a range rather than `Hunk.index`, and
+   * `Group` for the file-path scoping — layoutId is global across every
+   * `ReviewHunkList` mounted at once, so two files' hunks with identical
+   * ranges must not collide.
+   */
+  layoutId: string;
   onApply: () => void;
   onReveal: () => void;
   readOnly?: boolean;
@@ -68,7 +79,13 @@ function HunkRow({
   const { added, removed } = hunkSummary(hunk);
 
   return (
-    <div className="flex items-center gap-1 pr-1">
+    <motion.div
+      className="flex items-center gap-1 pr-1"
+      exit={{ opacity: 0 }}
+      layout="position"
+      layoutId={layoutId}
+      transition={{ duration: 0.22, ease: "easeInOut" }}
+    >
       <button
         // A ring rather than a background fill: the selected *file*'s row
         // already uses `bg-accent`, and the two marks have to stay tellable
@@ -113,7 +130,7 @@ function HunkRow({
           )}
         </Button>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -151,7 +168,7 @@ function Group({
 
   return (
     <div className="flex flex-col gap-0.5">
-      {onlyShowStaged || heading === null ? null : (
+      {/*conlyShowStaged || heading === null ? null : (
         <div className="flex items-center gap-2 px-2 pb-0.5">
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             {heading}
@@ -166,7 +183,7 @@ function Group({
             {direction === "stage" ? "Stage all" : "Unstage all"}
           </Button>
         </div>
-      )}
+      )*/}
 
       {hunkless ? (
         <p className="px-2 pb-1 text-[11px] text-muted-foreground">
@@ -175,18 +192,21 @@ function Group({
             : "No lines changed."}
         </p>
       ) : (
-        hunks.map((hunk) => (
-          <HunkRow
-            key={hunk.index}
-            busy={busy}
-            current={hunk.index === currentIndex}
-            direction={direction}
-            hunk={hunk}
-            onApply={() => onApply([hunk.index])}
-            onReveal={() => onReveal(hunkAnchorLine(hunk))}
-            readOnly={readOnly}
-          />
-        ))
+        <AnimatePresence mode="popLayout">
+          {hunks.map((hunk) => (
+            <HunkRow
+              key={hunk.index}
+              busy={busy}
+              current={hunk.index === currentIndex}
+              direction={direction}
+              hunk={hunk}
+              layoutId={`${diff.path}:${hunkRangeKey(hunk)}`}
+              onApply={() => onApply([hunk.index])}
+              onReveal={() => onReveal(hunkAnchorLine(hunk))}
+              readOnly={readOnly}
+            />
+          ))}
+        </AnimatePresence>
       )}
     </div>
   );

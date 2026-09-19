@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "@/lib/pi/review/review-diff";
-import type { FileDiff } from "@/lib/review/review-types";
+import type {
+  ChangedFile,
+  FileDiff,
+  ProjectReview,
+} from "@/lib/review/review-types";
 
 import {
   applyDirection,
   cursorForFile,
+  cursorFilesFor,
   hunkSlots,
   initialCursor,
   moveFile,
@@ -277,6 +282,88 @@ describe("positionAfterApply", () => {
         slots,
       }),
     ).toEqual(cursor);
+  });
+});
+
+const changedFile = (path: string, opts: Partial<ChangedFile> = {}): ChangedFile => ({
+  indexCode: " ",
+  oldPath: null,
+  path,
+  staged: false,
+  status: "modified",
+  unstaged: true,
+  worktreeCode: "M",
+  ...opts,
+});
+
+const projectOf = (
+  path: string,
+  changedFiles: ChangedFile[],
+): ProjectReview => ({
+  changedFiles,
+  headSha: "head",
+  name: path,
+  omitted: 0,
+  otherActiveSessions: 0,
+  path,
+  startSha: "start",
+  turnCommits: [],
+});
+
+describe("cursorFilesFor", () => {
+  it("lists staged rows before unstaged ones, within each project", () => {
+    const project = projectOf("repo", [
+      changedFile("unstaged.ts"),
+      changedFile("staged.ts", { staged: true, unstaged: false }),
+    ]);
+
+    expect(cursorFilesFor([project], null)).toEqual([
+      { path: "staged.ts", project: "repo" },
+      { path: "unstaged.ts", project: "repo" },
+    ]);
+  });
+
+  it("lists one entry for a file that is partly staged and partly not", () => {
+    // A file with `staged: true, unstaged: true` matches both filters in the
+    // walk below; two entries for it would make a keyboard `s` press appear
+    // to do nothing once it stepped onto the second, identical copy.
+    const project = projectOf("repo", [
+      changedFile("both.ts", { staged: true, unstaged: true }),
+    ]);
+
+    expect(cursorFilesFor([project], null)).toEqual([
+      { path: "both.ts", project: "repo" },
+    ]);
+  });
+
+  it("walks every project in order", () => {
+    const first = projectOf("a", [changedFile("x.ts")]);
+    const second = projectOf("b", [changedFile("y.ts")]);
+
+    expect(cursorFilesFor([first, second], null)).toEqual([
+      { path: "x.ts", project: "a" },
+      { path: "y.ts", project: "b" },
+    ]);
+  });
+
+  it("contributes nothing for a commit's scope, which has no index to stage into", () => {
+    const project: ProjectReview = {
+      ...projectOf("repo", []),
+      turnCommits: [
+        {
+          at: "2024-01-01T00:00:00Z",
+          author: "test",
+          fileChanges: [{ oldPath: null, path: "committed.ts", status: "modified" }],
+          fileCount: 1,
+          files: ["committed.ts"],
+          sha: "abc123",
+          shortSha: "abc123",
+          subject: "a commit",
+        },
+      ],
+    };
+
+    expect(cursorFilesFor([project], "abc123")).toEqual([]);
   });
 });
 

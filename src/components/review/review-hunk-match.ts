@@ -34,6 +34,26 @@ const sameRange = (a: Hunk, b: Hunk): boolean =>
   a.newLines === b.newLines;
 
 /**
+ * A hunk's identity across the staged/unstaged boundary, for animating a row
+ * moving from one group to the other.
+ *
+ * `Hunk.index` cannot serve this — it renumbers on every stage (see
+ * hunk-cursor-stable-addressing) and is scoped to one diff read, so the
+ * same index in the unstaged diff and the staged diff names two unrelated
+ * hunks. The range these four fields describe is what actually survives a
+ * hunk's move from one diff to the other: staging hunk X turns it into a
+ * hunk of the *other* diff with the same old/new line span, which is exactly
+ * the identity `matchHunkAction` above already relies on to find a `full`
+ * hunk's counterpart. This just names that same signature so a caller can use
+ * it as a React `layoutId`.
+ *
+ * Not a global identity — only meaningful for hunks known to belong to the
+ * same file, so callers scope it (e.g. by path) before handing it to Motion.
+ */
+export const hunkRangeKey = (hunk: Hunk): string =>
+  `${hunk.oldStart}:${hunk.oldLines}:${hunk.newStart}:${hunk.newLines}`;
+
+/**
  * The action for one hunk the editor is displaying, or null when this exact
  * range cannot be staged or unstaged as a unit.
  */
@@ -52,4 +72,21 @@ export function matchHunkAction(
   if (stagedMatch) return { direction: "unstage", index: stagedMatch.index };
 
   return null;
+}
+
+/**
+ * `matchHunkAction`'s inverse: which hunk of `full` — the diff the editor
+ * actually colours — a staged or unstaged hunk corresponds to.
+ *
+ * Needed for the keyboard cursor's editor highlight: the cursor addresses a
+ * hunk group-relative, into `staged` or `unstaged` (see review-hunk-cursor.ts),
+ * but the lines Monaco has open belong to `full`'s numbering. Same range
+ * equality either direction, since a hunk's move between diffs preserves its
+ * span — the reasoning `hunkRangeKey` above already relies on.
+ */
+export function matchFullHunk(
+  hunk: Hunk,
+  full: readonly Hunk[] | null | undefined,
+): Hunk | null {
+  return full?.find((candidate) => sameRange(hunk, candidate)) ?? null;
 }

@@ -39,6 +39,8 @@ import { isReadOnlyPath } from "./review-definition-target";
 import { ReviewCodeMap } from "./review-code-map";
 
 import type { FileSelection } from "./review-changed-files";
+import type { HunkSlot } from "./review-hunk-cursor";
+import { matchFullHunk } from "./review-hunk-match";
 import { ReviewEditor } from "./review-editor";
 import type { AccessHighlight } from "./review-panel-request";
 
@@ -54,6 +56,7 @@ function Notice({ children }: { children: React.ReactNode }) {
 export function ReviewEditorPane({
   access,
   busy,
+  currentHunk = null,
   draft,
   onDraftChange,
   onExplain,
@@ -73,6 +76,13 @@ export function ReviewEditorPane({
    */
   access: AccessHighlight | null;
   busy: boolean;
+  /**
+   * The keyboard cursor's hunk, when it is in this file — addressed the same
+   * way `onStage` is, group-relative into `staged`/`unstaged`, because that
+   * is the numbering the cursor holds (review-hunk-cursor.ts). Resolved below
+   * against `full`, which is the diff Monaco actually colours.
+   */
+  currentHunk?: HunkSlot | null;
   /** The operator's unsaved content for this file, or null if untouched. */
   draft: string | null;
   /**
@@ -263,6 +273,24 @@ export function ReviewEditorPane({
   );
 
   /**
+   * The keyboard cursor's hunk, translated into `full`'s numbering.
+   *
+   * `currentHunk` addresses `staged`/`unstaged` — the diffs staging acts on —
+   * while the editor colours from `full`, the diff against HEAD (see
+   * `matchHunkAction`'s docblock for why those three are not one diff).
+   * `null` while the cursor is in another file, or before this file's own
+   * hunks have loaded; either way there is nothing yet to point at.
+   */
+  const currentFullHunk = useMemo(() => {
+    if (!currentHunk || !hunks.data) return null;
+    const diff =
+      currentHunk.group === "staged" ? hunks.data.staged : hunks.data.unstaged;
+    const hunk = diff?.hunks.find((candidate) => candidate.index === currentHunk.index);
+    if (!hunk) return null;
+    return matchFullHunk(hunk, hunks.data.full?.hunks);
+  }, [currentHunk, hunks.data]);
+
+  /**
    * Explain: resolve the function, then ask the agent about it.
    *
    * Resolution has to happen first because the browser has no language
@@ -421,6 +449,7 @@ export function ReviewEditorPane({
 
         <ReviewEditor
           access={access}
+          currentHunk={currentFullHunk}
           definition={definition}
           lsp={lsp}
           hunks={hunks.data?.full?.hunks ?? []}

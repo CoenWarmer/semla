@@ -30,7 +30,8 @@
  * reason: every rule here is unit-testable without Monaco or a query client.
  */
 
-import type { FileDiff } from "@/lib/review/review-types";
+import type { FileDiff, ProjectReview } from "@/lib/review/review-types";
+import { commitScope } from "@/lib/review/review-commit-scope";
 
 /** Which of the two diffs a hunk came from. See `ReviewHunkList` for why the
  * two are never merged into one numbering. */
@@ -74,6 +75,46 @@ export const sameFile = (a: CursorFile, b: CursorFile): boolean =>
 
 const fileIndex = (files: readonly CursorFile[], file: CursorFile): number =>
   files.findIndex((candidate) => sameFile(candidate, file));
+
+/**
+ * Every file the keyboard cursor walks, across every project the panel is
+ * showing, in the order the sidebar draws them: each project's staged rows
+ * first, then its "to review" rows.
+ *
+ * The single source both `ReviewChangedFiles` (which walks these files for
+ * `w`/`s`/space) and `ReviewPanel` (which needs the same cursor, lifted here,
+ * to know which hunk is "current" for the editor's own highlight) build their
+ * cursor from — previously computed inline in `ReviewChangedFiles` alone.
+ *
+ * Deduplicated by identity, because a file that is partly staged and partly
+ * not is drawn in *both* buckets — and two cursor entries for one file would
+ * make `s` appear to do nothing when it stepped onto the second copy.
+ *
+ * A commit's scope contributes nothing: its rows have no index to stage into,
+ * which is also what turns the cursor off entirely (see `enabled` on
+ * `useReviewHunkKeyboard`) whenever a commit is selected.
+ */
+export function cursorFilesFor(
+  projects: readonly ProjectReview[],
+  selectedCommitSha: string | null,
+): CursorFile[] {
+  const walked: CursorFile[] = [];
+  for (const project of projects) {
+    const scope = commitScope(project, selectedCommitSha);
+    if (scope.commit) continue;
+    const rows = [
+      ...scope.files.filter((file) => file.staged),
+      ...scope.files.filter((file) => file.unstaged || !file.staged),
+    ];
+    for (const file of rows) {
+      const entry = { path: file.path, project: project.path };
+      if (!walked.some((existing) => sameFile(existing, entry))) {
+        walked.push(entry);
+      }
+    }
+  }
+  return walked;
+}
 
 /**
  * Every hunk of one file, in the order the sidebar draws them: staged first,

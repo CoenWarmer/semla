@@ -236,6 +236,15 @@ export interface StageRequest {
   path: string;
   hunks: number[];
   direction: "stage" | "unstage";
+  /**
+   * Stage or unstage the whole file, ignoring `hunks` entirely.
+   *
+   * Used by drag-to-stage: a row dropped into a bucket has not necessarily
+   * had its diff fetched, and "stage this file" has no hunk indexes to send.
+   * See the route's docblock for why this is the same `git add` /
+   * `git restore --staged` an untracked file already went through.
+   */
+  whole?: boolean;
 }
 
 /**

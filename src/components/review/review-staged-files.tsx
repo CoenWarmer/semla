@@ -18,6 +18,8 @@
  * full changed-files list below.
  */
 
+import { AnimatePresence, motion } from "motion/react";
+
 import { useReviewHunks } from "@/hooks/use-review";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,8 @@ import {
   TONE_CLASS,
 } from "./review-file-display";
 import type { FileSelection, StageFileHunks } from "./review-changed-files";
+import { fileRowLayoutId } from "./review-changed-files";
+import { DragHandle, dragTransformStyle, useFileDrag } from "./review-dnd";
 import { ReviewHunkList } from "./review-hunk-list";
 import { sameFile, type HunkSlot } from "./review-hunk-cursor";
 import type { HunkCursorPosition } from "./review-hunk-keyboard";
@@ -59,23 +63,46 @@ function StagedFileRow({
   const { dir, name } = splitPath(file.path);
   const tone = TONE_CLASS[STATUS_TONE[file.status]];
   const hunks = useReviewHunks(sessionId, project, file.path);
+  const {
+    attributes: dragAttributes,
+    isDragging,
+    listeners: dragListeners,
+    setNodeRef: setDragNodeRef,
+    transform: dragTransform,
+  } = useFileDrag(selection, "staged", file.path);
 
   return (
-    <div className="border rounded mb-2">
-      <button
-        className="flex w-full items-baseline gap-2 truncate px-2 py-1 text-left text-xs transition-colors hover:bg-accent/50"
-        onClick={() => onSelect({ path: file.path, project })}
-        title={file.path}
-        type="button"
-      >
-        <span className={cn("w-3 shrink-0 font-mono", tone)}>
-          {STATUS_LABEL[file.status]}
-        </span>
-        <span className="min-w-0 flex-1 truncate">
-          {dir ? <span className="text-muted-foreground">{dir}</span> : null}
-          <span>{name}</span>
-        </span>
-      </button>
+    <motion.div
+      className={cn("border rounded mb-2", isDragging && "opacity-40")}
+      exit={{ opacity: 0 }}
+      layout="position"
+      layoutId={fileRowLayoutId(selection, file)}
+      ref={setDragNodeRef}
+      style={dragTransformStyle(dragTransform)}
+      transition={{ duration: 0.22, ease: "easeInOut" }}
+    >
+      <div className="flex items-baseline gap-1">
+        <DragHandle
+          attributes={dragAttributes}
+          isDragging={isDragging}
+          listeners={dragListeners}
+        />
+
+        <button
+          className="flex min-w-0 flex-1 items-baseline gap-2 truncate px-2 py-1 text-left text-xs transition-colors hover:bg-accent/50"
+          onClick={() => onSelect({ path: file.path, project })}
+          title={file.path}
+          type="button"
+        >
+          <span className={cn("w-3 shrink-0 font-mono", tone)}>
+            {STATUS_LABEL[file.status]}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+            {dir ? <span className="text-muted-foreground">{dir}</span> : null}
+            <span>{name}</span>
+          </span>
+        </button>
+      </div>
 
       <div className="pl-1 border-t">
         {hunks.isPending ? (
@@ -101,7 +128,7 @@ function StagedFileRow({
           </p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -140,24 +167,26 @@ export function ReviewStagedFiles({
       </p>
 
       <div className="flex flex-col">
-        {staged.map((file) => (
-          <StagedFileRow
-            busy={busy}
-            currentHunk={
-              position?.slot &&
-              sameFile(position.file, { path: file.path, project })
-                ? position.slot
-                : null
-            }
-            file={file}
-            key={`${project}/${file.path}`}
-            onReveal={onReveal}
-            onSelect={onSelect}
-            onStage={onStage}
-            project={project}
-            sessionId={sessionId}
-          />
-        ))}
+        <AnimatePresence mode="popLayout">
+          {staged.map((file) => (
+            <StagedFileRow
+              busy={busy}
+              currentHunk={
+                position?.slot &&
+                sameFile(position.file, { path: file.path, project })
+                  ? position.slot
+                  : null
+              }
+              file={file}
+              key={`${project}/${file.path}`}
+              onReveal={onReveal}
+              onSelect={onSelect}
+              onStage={onStage}
+              project={project}
+              sessionId={sessionId}
+            />
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );

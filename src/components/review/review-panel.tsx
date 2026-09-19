@@ -36,7 +36,7 @@ import {
 } from "@/hooks/use-user-settings";
 import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import { isEmptyReview } from "@/lib/review/review-types";
-import type { SessionReview } from "@/lib/review/review-types";
+import type { ProjectReview, SessionReview } from "@/lib/review/review-types";
 import {
   useSessionLiveAccesses,
   useSessionLiveToolCalls,
@@ -55,6 +55,8 @@ import { ReviewCommitNav } from "./review-commit-nav";
 import { ReviewEditorPane } from "./review-editor-pane";
 import { selectionForWorkspacePath } from "./review-definition-target";
 import { ReviewFileTree } from "./review-file-tree";
+import { cursorFilesFor, sameFile } from "./review-hunk-cursor";
+import { useReviewHunkKeyboard } from "./review-hunk-keyboard";
 import {
   activeRequest,
   baseRequestFor,
@@ -72,6 +74,14 @@ import {
 /** A draft is keyed by repository and path: two projects can hold one name. */
 const draftKey = (selection: FileSelection) =>
   `${selection.project}/${selection.path}`;
+
+/**
+ * A stable identity for "no projects yet", so a `useMemo` keyed on `projects`
+ * does not recompute every render while `review.data` is still loading —
+ * `review.data?.projects ?? []` would otherwise hand back a fresh array each
+ * time, which is indistinguishable from a real change to any hook watching it.
+ */
+const NO_PROJECTS: readonly ProjectReview[] = [];
 
 /**
  * The first thing worth showing: the anchor project's first changed file.
@@ -446,7 +456,7 @@ export function ReviewPanel({
     ],
     [fileAccess.data?.calls, liveAccesses, liveToolCalls],
   );
-  const projects = review.data?.projects ?? [];
+  const projects = review.data?.projects ?? NO_PROJECTS;
   const activeProject =
     projects.find((project) => project.path === selection?.project) ??
     projects[0];
@@ -499,6 +509,69 @@ export function ReviewPanel({
     },
     [onStageFile, selection],
   );
+
+  /**
+   * Stage or unstage a whole file, for the drag-to-stage gesture.
+   *
+   * Separate from `onStageFile` rather than that function called with an
+   * empty `hunks` array: an empty selection means "apply this" only for a
+   * hunkless file (see `buildPatch`), so it silently does nothing for the
+   * ordinary case of a file with hunks — which is exactly the file a drag is
+   * most likely to be dropped on. `whole: true` skips hunk selection in the
+   * route entirely instead.
+   */
+  const onStageWholeFile = useCallback(
+    (file: FileSelection, direction: "stage" | "unstage") => {
+      stage.mutate(
+        {
+          direction,
+          hunks: [],
+          path: file.path,
+          project: file.project,
+          whole: true,
+        },
+        { onSuccess: (data) => setResult(data.ok ? null : data) },
+      );
+    },
+    [stage],
+  );
+
+  /**
+   * Every file the keyboard cursor walks, across every project — the same
+   * list `ReviewChangedFiles` used to compute for itself before the cursor
+   * moved up here. See `cursorFilesFor` for the walk order and why a
+   * partially staged file contributes only one entry.
+   */
+  const cursorFiles = useMemo(
+    () => cursorFilesFor(projects, selectedCommitSha),
+    [projects, selectedCommitSha],
+  );
+
+  /**
+   * The keyboard cursor itself, lifted out of `ReviewChangedFiles` so the
+   * editor pane can read `position` too — it is what decides which hunk
+   * Monaco highlights as "current", the same hunk the sidebar rings.
+   */
+  const { onFilePicked, position } = useReviewHunkKeyboard({
+    enabled: selectedCommitSha === null,
+    expanded,
+    files: cursorFiles,
+    onNavigate: selectFile,
+    onReveal: revealLine,
+    onStage: onStageFile,
+    selected: selection,
+    sessionId,
+  });
+
+  /**
+   * The cursor's hunk, only while it is in the file the editor has open —
+   * `position.file` can be a different file the sidebar is highlighting
+   * (mid-`d`/`w` cross-file move) that this open editor is not showing.
+   */
+  const currentHunkSlot =
+    position?.slot && selection && sameFile(position.file, selection)
+      ? position.slot
+      : null;
 
   const onSave = useCallback(
     (content: string, sha: string | undefined) => {
@@ -694,10 +767,11 @@ export function ReviewPanel({
                           busy={busy}
                           expanded={expanded}
                           onClearCommit={() => setSelectedCommitSha(null)}
-                          // Keyboard navigation, unlike a click, never
-                          // closes a row: see `onNavigate` in
-                          // ReviewChangedFiles for why the two differ.
-                          onNavigate={selectFile}
+                          // The panel owns the cursor now (see
+                          // `useReviewHunkKeyboard` above) — a click only
+                          // reports where it landed, so a later keypress
+                          // continues from there.
+                          onFilePicked={onFilePicked}
                           onReveal={revealLine}
                           onSelect={(next) => {
                             // Toggle: clicking the already-expanded file's row
@@ -715,6 +789,8 @@ export function ReviewPanel({
                             }));
                           }}
                           onStage={onStageFile}
+                          onStageWhole={onStageWholeFile}
+                          position={position}
                           projects={projects}
                           selected={selection}
                           selectedCommitSha={selectedCommitSha}
@@ -781,6 +857,7 @@ export function ReviewPanel({
                         : null
                     }
                     busy={busy}
+                    currentHunk={currentHunkSlot}
                     draft={drafts[draftKey(selection)] ?? null}
                     onExplain={onExplain}
                     onDraftChange={(content, dirty) =>

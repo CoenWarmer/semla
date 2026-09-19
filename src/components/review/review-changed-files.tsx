@@ -49,10 +49,7 @@ import { ReviewHunkList } from "./review-hunk-list";
 import { ReviewStagedFiles } from "./review-staged-files";
 import type { CursorFile, HunkSlot } from "./review-hunk-cursor";
 import { sameFile } from "./review-hunk-cursor";
-import {
-  useReviewHunkKeyboard,
-  type HunkCursorPosition,
-} from "./review-hunk-keyboard";
+import type { HunkCursorPosition } from "./review-hunk-keyboard";
 
 export interface FileSelection {
   project: string;
@@ -233,44 +230,75 @@ export function FileRow({
   const { dir } = splitPath(file.path);
   const tone = TONE_CLASS[STATUS_TONE[file.status]];
 
+  // A commit's rows have no index to drag into — see the `readOnly` handling
+  // in `ExpandedHunks` for the same distinction on the hunk list underneath.
+  const draggable = commitSha === null;
+  const {
+    attributes: dragAttributes,
+    isDragging,
+    listeners: dragListeners,
+    setNodeRef: setDragNodeRef,
+    transform: dragTransform,
+  } = useFileDrag({ path: file.path, project }, "unstaged", file.path);
+
   return (
-    <div>
-      <button
+    <motion.div
+      exit={{ opacity: 0 }}
+      layout="position"
+      layoutId={fileRowLayoutId({ path: file.path, project }, file)}
+      ref={draggable ? setDragNodeRef : undefined}
+      style={draggable ? dragTransformStyle(dragTransform) : undefined}
+      transition={{ duration: 0.22, ease: "easeInOut" }}
+    >
+      <div
         className={cn(
-          "flex w-full items-baseline gap-2 rounded px-2 py-1 text-left text-xs transition-colors",
+          "flex w-full items-baseline gap-1 rounded px-2 py-1 text-left text-xs transition-colors",
           selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+          isDragging && "opacity-40",
         )}
-        onClick={onToggle}
-        title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
-        type="button"
       >
-        {expanded ? (
-          <ChevronDownIcon className="size-3 shrink-0 self-center text-muted-foreground" />
-        ) : (
-          <ChevronRightIcon className="size-3 shrink-0 self-center text-muted-foreground" />
-        )}
-
-        <span className={cn("w-3 shrink-0 font-mono", tone)}>
-          {STATUS_LABEL[file.status]}
-        </span>
-
-        <span className="min-w-0 flex-1 truncate">
-          {dir && !file.oldPath ? (
-            <span className="text-muted-foreground">{dir}</span>
-          ) : null}
-          <span>{renameLabel(file.oldPath, file.path)}</span>
-        </span>
-
-        {/* What a commit would include right now, without opening the file. */}
-        {file.staged ? (
-          <span
-            className="shrink-0 text-[10px] text-muted-foreground"
-            title="Staged"
-          >
-            staged
-          </span>
+        {draggable ? (
+          <DragHandle
+            attributes={dragAttributes}
+            isDragging={isDragging}
+            listeners={dragListeners}
+          />
         ) : null}
-      </button>
+
+        <button
+          className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+          onClick={onToggle}
+          title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+          type="button"
+        >
+          {expanded ? (
+            <ChevronDownIcon className="size-3 shrink-0 self-center text-muted-foreground" />
+          ) : (
+            <ChevronRightIcon className="size-3 shrink-0 self-center text-muted-foreground" />
+          )}
+
+          <span className={cn("w-3 shrink-0 font-mono", tone)}>
+            {STATUS_LABEL[file.status]}
+          </span>
+
+          <span className="min-w-0 flex-1 truncate">
+            {dir && !file.oldPath ? (
+              <span className="text-muted-foreground">{dir}</span>
+            ) : null}
+            <span>{renameLabel(file.oldPath, file.path)}</span>
+          </span>
+
+          {/* What a commit would include right now, without opening the file. */}
+          {file.staged ? (
+            <span
+              className="shrink-0 text-[10px] text-muted-foreground"
+              title="Staged"
+            >
+              staged
+            </span>
+          ) : null}
+        </button>
+      </div>
 
       {expanded ? (
         <div className="pl-1 border rounded mb-3">
@@ -285,7 +313,7 @@ export function FileRow({
           />
         </div>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 
@@ -339,10 +367,12 @@ export function ReviewChangedFiles({
   busy,
   expanded,
   onClearCommit,
-  onNavigate,
-  onReveal,
+  onFilePicked,
   onSelect,
+  onReveal,
   onStage,
+  onStageWhole,
+  position,
   projects,
   selectedCommitSha,
   selected,
@@ -354,14 +384,14 @@ export function ReviewChangedFiles({
   /** Drop the commit selection, back to the working tree. */
   onClearCommit: () => void;
   /**
-   * Open a file and fold it open, never closing it again.
+   * Tell the keyboard cursor where a click landed, so a later keypress
+   * continues from there rather than from wherever the cursor was left.
    *
-   * Separate from `onSelect` because that one is a *toggle* — right for a
-   * click on the row that is already open, and wrong for a keypress, where
-   * `d` running off the end of a file must open the next one rather than
-   * close the one it came from.
+   * Lifted to `ReviewPanel` (see `useReviewHunkKeyboard` there) so the same
+   * cursor also drives which hunk the editor highlights as "current" — this
+   * component only reports clicks into it now, it does not own it.
    */
-  onNavigate: (selection: FileSelection) => void;
+  onFilePicked: (file: CursorFile) => void;
   onReveal: (line: number) => void;
   /**
    * Clicking a row both opens it in the editor and folds its hunks open —
@@ -370,6 +400,10 @@ export function ReviewChangedFiles({
    */
   onSelect: (selection: FileSelection) => void;
   onStage: StageFileHunks;
+  /** Drag a row into the other bucket — stage or unstage it whole. */
+  onStageWhole: StageWholeFile;
+  /** Where the keyboard cursor is, computed by the panel that owns it now. */
+  position: HunkCursorPosition | null;
   projects: readonly ProjectReview[];
   /**
    * The commit the nav has selected, or null for the working tree. Applies to
@@ -391,46 +425,6 @@ export function ReviewChangedFiles({
     [projects, selectedCommitSha],
   );
 
-  /**
-   * Every file the keyboard walks, in the order this component draws them:
-   * each project's staged bucket first, then its "to review" rows.
-   *
-   * Deduplicated by identity, because a file that is partly staged and partly
-   * not is drawn in *both* lists — and two cursor entries for one file would
-   * make `s` appear to do nothing when it stepped onto the second copy.
-   *
-   * A commit's scope contributes nothing: its rows have no index to stage
-   * into, which is also what turns the keys off below.
-   */
-  const cursorFiles = useMemo(() => {
-    const walked: CursorFile[] = [];
-    for (const { project, scope } of scopes) {
-      if (scope.commit) continue;
-      const rows = [
-        ...scope.files.filter((file) => file.staged),
-        ...scope.files.filter((file) => file.unstaged || !file.staged),
-      ];
-      for (const file of rows) {
-        const entry = { path: file.path, project: project.path };
-        if (!walked.some((existing) => sameFile(existing, entry))) {
-          walked.push(entry);
-        }
-      }
-    }
-    return walked;
-  }, [scopes]);
-
-  const { onFilePicked, position } = useReviewHunkKeyboard({
-    enabled: selectedCommitSha === null,
-    expanded,
-    files: cursorFiles,
-    onNavigate,
-    onReveal,
-    onStage,
-    selected,
-    sessionId,
-  });
-
   // Clicking a row is also a statement about where the keyboard walk should
   // continue from, so the two do not drift apart.
   const pickFile = useCallback(
@@ -439,6 +433,15 @@ export function ReviewChangedFiles({
       onSelect(selection);
     },
     [onFilePicked, onSelect],
+  );
+
+  // Every file this list can drag between buckets, staged whole regardless
+  // of direction — a commit's rows are excluded the same way they are from
+  // `cursorFiles` above, since they have no index to move into.
+  const onDrop = useCallback(
+    (selection: FileSelection, direction: "stage" | "unstage") =>
+      onStageWhole(selection, direction),
+    [onStageWhole],
   );
 
   if (scopes.length === 0) {
@@ -452,83 +455,94 @@ export function ReviewChangedFiles({
   }
 
   return (
-    <div className="flex flex-col gap-2 px-2">
-      {scopes.map(({ project, scope }) => (
-        <div key={project.path}>
-          <ScopeLabel
-            commit={scope.commit}
-            onClear={onClearCommit}
-            projectName={project.name}
-          />
+    <ReviewDndProvider onDrop={onDrop}>
+      <div className="flex flex-col gap-2 px-2">
+        {scopes.map(({ project, scope }) => (
+          <div key={project.path}>
+            <ScopeLabel
+              commit={scope.commit}
+              onClear={onClearCommit}
+              projectName={project.name}
+            />
 
-          {/* The staged bucket and the "to review" heading are both about the
-              index, which a commit does not have. Showing them under a commit
-              selection would mix the two things this feature exists to
-              separate. */}
-          {scope.commit ? null : (
-            <>
-              <ReviewStagedFiles
-                busy={busy}
-                files={scope.files}
-                onReveal={onReveal}
-                onSelect={pickFile}
-                onStage={onStage}
-                position={position}
-                project={project.path}
-                sessionId={sessionId}
-              />
-              <span className="text-[10px] uppercase font-medium text-muted-foreground">
-                To review
-              </span>
-            </>
-          )}
+            {/* The staged bucket and the "to review" heading are both about the
+                index, which a commit does not have. Showing them under a commit
+                selection would mix the two things this feature exists to
+                separate. Undraggable too, for the same reason: there is
+                nothing for a commit's rows to move into. */}
+            {scope.commit ? null : (
+              <>
+                <ReviewDropZoneArea bucket="staged" project={project.path}>
+                  <ReviewStagedFiles
+                    busy={busy}
+                    files={scope.files}
+                    onReveal={onReveal}
+                    onSelect={pickFile}
+                    onStage={onStage}
+                    position={position}
+                    project={project.path}
+                    sessionId={sessionId}
+                  />
+                </ReviewDropZoneArea>
+                <span className="text-[10px] uppercase font-medium text-muted-foreground">
+                  To review
+                </span>
+              </>
+            )}
 
-          <div className="flex flex-col">
-            {/* A file entirely staged has nothing left to review here — it
-                already has its own row in ReviewStagedFiles above, and a
-                second row here with no unstaged hunks to show would just be
-                an empty accordion. A commit's rows are never staged, so this
-                filter passes all of them. */}
-            {scope.files
-              .filter((file) => file.unstaged || !file.staged)
-              .map((file) => (
-                <FileRow
-                  busy={busy}
-                  commitSha={scope.commit?.sha ?? null}
-                  currentHunk={currentHunkIn(position, {
-                    path: file.path,
-                    project: project.path,
-                  })}
-                  expanded={
-                    expanded?.project === project.path &&
-                    expanded.path === file.path
-                  }
-                  file={file}
-                  key={`${project.path}/${file.path}`}
-                  onReveal={onReveal}
-                  onStage={onStage}
-                  onToggle={() =>
-                    pickFile({ path: file.path, project: project.path })
-                  }
-                  project={project.path}
-                  selected={
-                    selected?.project === project.path &&
-                    selected.path === file.path
-                  }
-                  sessionId={sessionId}
-                />
-              ))}
+            <ReviewDropZoneArea
+              bucket="unstaged"
+              className="flex flex-col"
+              project={project.path}
+            >
+              {/* A file entirely staged has nothing left to review here — it
+                  already has its own row in ReviewStagedFiles above, and a
+                  second row here with no unstaged hunks to show would just be
+                  an empty accordion. A commit's rows are never staged, so this
+                  filter passes all of them. */}
+              <AnimatePresence mode="popLayout">
+                {scope.files
+                  .filter((file) => file.unstaged || !file.staged)
+                  .map((file) => (
+                    <FileRow
+                      busy={busy}
+                      commitSha={scope.commit?.sha ?? null}
+                      currentHunk={currentHunkIn(position, {
+                        path: file.path,
+                        project: project.path,
+                      })}
+                      expanded={
+                        expanded?.project === project.path &&
+                        expanded.path === file.path
+                      }
+                      file={file}
+                      key={`${project.path}/${file.path}`}
+                      onReveal={onReveal}
+                      onStage={onStage}
+                      onToggle={() =>
+                        pickFile({ path: file.path, project: project.path })
+                      }
+                      project={project.path}
+                      selected={
+                        selected?.project === project.path &&
+                        selected.path === file.path
+                      }
+                      sessionId={sessionId}
+                    />
+                  ))}
+              </AnimatePresence>
+            </ReviewDropZoneArea>
+
+            {/* The cap applies to the working-tree read, not to a commit's own
+                file list, so it is only true of the unscoped list. */}
+            {!scope.commit && project.omitted > 0 ? (
+              <p className="px-2 pt-1 text-[10px] text-muted-foreground">
+                {project.omitted} more not listed
+              </p>
+            ) : null}
           </div>
-
-          {/* The cap applies to the working-tree read, not to a commit's own
-              file list, so it is only true of the unscoped list. */}
-          {!scope.commit && project.omitted > 0 ? (
-            <p className="px-2 pt-1 text-[10px] text-muted-foreground">
-              {project.omitted} more not listed
-            </p>
-          ) : null}
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </ReviewDndProvider>
   );
 }

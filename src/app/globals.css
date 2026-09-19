@@ -266,6 +266,22 @@ div.react-sigma {
 }
 
 /*
+ * The hunk the keyboard cursor is on, tinted more strongly than the rest of
+ * the diff so it is obvious which one `w`/`s`/space is about to act on.
+ *
+ * A wash of `--primary` rather than a second, brighter green: the point is
+ * to say "this one, not the others" independent of a hunk's own added/removed
+ * colour, and reusing the diff palette at higher strength would read as "this
+ * change is bigger" instead of "this is the selected one". `isWholeLine`
+ * paints under the added/removed decorations already on the line rather than
+ * replacing them — both are visible at once, which is the point: the diff
+ * colour says what changed, this says which change is current.
+ */
+.semla-review-current-hunk {
+  background-color: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+/*
  * A removal has no line left to tint, so it is a wedge in the glyph margin
  * pointing at the gap where the lines used to be. The count is on hover.
  */
