@@ -16,8 +16,13 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
+import {
+  customEntryTextByMessageId,
+  firstCustomEntryByMessageId,
+} from "@/lib/pi/session/custom-entry-attribution";
 import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
 import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
+import { JEV_GATE_CUSTOM_TYPE } from "@/lib/pi/extensions/jev-gate/gate-record";
 import { WIKI_RECALL_CUSTOM_TYPE } from "@/lib/pi/wiki/wiki-recall-message";
 
 /** The row shape getTranscript consumes, from either source. */
@@ -44,6 +49,13 @@ export interface TranscriptRow {
    * turn it started had any. See {@link wikiRecallByParentId}.
    */
   wikiRecall?: string;
+  /**
+   * Jev gate decisions recorded during this message's turn, in order, as raw
+   * JSON. A list because the gate re-evaluates mid-turn, so a long turn
+   * legitimately has several and keeping one would misreport what the agent
+   * could see when it acted.
+   */
+  jevGate?: string[];
 }
 
 export interface SessionFileEntry {
@@ -64,63 +76,22 @@ export interface SessionFileEntry {
  * the model sees it as the next turn of context, and the assistant's own
  * reply is parented to *this* entry rather than to the user message.
  *
- * "Parented to", not "parented directly to": on a session's first turn, pi's
- * own session-start hook has already inserted its own `wiki-session-notice`
- * custom_message between the user message and this one —
- * `user → wiki-session-notice → wiki-recall-context → assistant`. A recall
- * entry's immediate `parentId` is then the notice, not the user message, so
- * matching only the direct parent finds nothing on exactly the turn every
- * "new session" test exercises — recall showed on the live stream (which is
- * driven by message order, not the parent chain) and vanished the moment the
- * turn ended and the persisted transcript, built from this chain, replaced
- * it. Walking up through intervening non-message ancestors to the nearest
- * real message is what the assistant reply's own parenting already implies
- * the tree means: everything between one message and the next belongs to the
- * turn that message started.
+ * The walk that attributes it to the right message lives in
+ * `custom-entry-attribution.ts`, because the Jev gate's own record needs the
+ * identical treatment and this file and `transcript.ts` had a copy each
+ * already. The subtlety it encodes — that an intervening `wiki-session-notice`
+ * makes the recall entry's direct parent the wrong answer on a session's first
+ * turn — is documented there.
  *
  * `custom_message` entries are otherwise dropped by the `type === "message"`
- * filters below — every other `customType` pi-llm-wiki or another extension
- * might send is intentionally excluded here; only the recall context is a
- * fact about what informed a response that traceability requires surfacing.
+ * filters below: every other `customType` an extension might send is
+ * intentionally excluded, and only a record of what informed a response is
+ * surfaced.
  */
 function wikiRecallByParentId(
   entries: readonly SessionFileEntry[],
 ): Map<string, string> {
-  const byId = new Map<string, SessionFileEntry>();
-  for (const entry of entries) {
-    if (entry.id) byId.set(entry.id, entry);
-  }
-
-  // The nearest ancestor that is itself a real message — skipping any
-  // custom_message (or other non-message entry) in between, and refusing to
-  // loop forever on a malformed parent cycle.
-  const nearestMessageAncestor = (start: SessionFileEntry): string | undefined => {
-    const seen = new Set<string>();
-    let current: SessionFileEntry | undefined = start;
-    while (current) {
-      if (current.type === "message") return current.id;
-      const id = current.id;
-      if (id) {
-        if (seen.has(id)) return undefined;
-        seen.add(id);
-      }
-      current = current.parentId ? byId.get(current.parentId) : undefined;
-    }
-    return undefined;
-  };
-
-  const byParent = new Map<string, string>();
-  for (const entry of entries) {
-    if (entry.type !== "custom_message") continue;
-    if (entry.customType !== WIKI_RECALL_CUSTOM_TYPE) continue;
-    if (!entry.parentId) continue;
-    const parentEntry = byId.get(entry.parentId);
-    const messageId = parentEntry && nearestMessageAncestor(parentEntry);
-    if (!messageId) continue;
-    const text = typeof entry.content === "string" ? entry.content : "";
-    if (text.trim()) byParent.set(messageId, text);
-  }
-  return byParent;
+  return firstCustomEntryByMessageId(entries, WIKI_RECALL_CUSTOM_TYPE);
 }
 
 export function sessionFilePath(semlaSessionId: string, dir = PI_SESSION_DIR): string {
@@ -209,6 +180,7 @@ export function readSessionEntries(
   const resolvedLeaf = resolveLeafOverride(entries, leafId);
   const superseded = supersededSiblings(entries, resolvedLeaf);
   const wikiRecall = wikiRecallByParentId(entries);
+  const jevGate = customEntryTextByMessageId(entries, JEV_GATE_CUSTOM_TYPE);
 
   return activePath(entries, resolvedLeaf)
     .filter((entry) => entry.type === "message")
@@ -220,6 +192,7 @@ export function readSessionEntries(
         (sibling) => sibling.type === "message",
       );
       const recall = entry.id ? wikiRecall.get(entry.id) : undefined;
+      const gate = entry.id ? jevGate.get(entry.id) : undefined;
 
       return {
         created_at: entry.timestamp ?? "",
@@ -227,6 +200,7 @@ export function readSessionEntries(
         payload: { entry },
         ...(earlier.length > 0 ? { superseded: earlier } : {}),
         ...(recall ? { wikiRecall: recall } : {}),
+        ...(gate?.length ? { jevGate: gate } : {}),
       };
     });
 }

@@ -4,6 +4,15 @@ import type { Database } from "@/types/database.types";
 import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session/session-file";
 import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
 import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
+import {
+  customEntryTextByMessageId,
+  firstCustomEntryByMessageId,
+} from "@/lib/pi/session/custom-entry-attribution";
+import {
+  JEV_GATE_CUSTOM_TYPE,
+  parseJevGateRecord,
+  type JevGateRecord,
+} from "@/lib/pi/extensions/jev-gate/gate-record";
 import { WIKI_RECALL_CUSTOM_TYPE } from "@/lib/pi/wiki/wiki-recall-message";
 
 type PiUsage = {
@@ -44,6 +53,12 @@ export type SessionTranscriptEntry = {
    * and transcript.ts for how it is attributed.
    */
   wikiRecall?: string;
+  /**
+   * Jev gate decisions recorded during this message's turn, parsed. Present
+   * only on a `user` message and only when the gate ran — a session with the
+   * gate disabled, or on a host with no OpenRouter key, has none.
+   */
+  jevGate?: JevGateRecord[];
 };
 
 /**
@@ -282,49 +297,32 @@ export const liveMessageRows = (
   const resolvedLeaf = resolveLeafOverride(walkable, leafId);
   const superseded = supersededSiblings(walkable, resolvedLeaf);
 
-  // Mirrors session-file.ts's wikiRecallByParentId, including the same fix:
-  // on a session's first turn, pi's own wiki-session-notice custom_message
-  // sits between the user message and this one
-  // (user → wiki-session-notice → wiki-recall-context → assistant), so the
-  // recall entry's direct parentId is the notice, not the user message. Walk
-  // up through non-message ancestors to the nearest real message, the same
-  // way the assistant reply's own parenting treats everything between one
-  // message and the next as belonging to the turn that message started.
-  const byId = new Map<string, (typeof walkable)[number]>();
-  for (const entry of walkable) {
-    if (entry.id) byId.set(entry.id, entry);
-  }
-  const nearestMessageAncestor = (
-    start: (typeof walkable)[number],
-  ): string | undefined => {
-    const seen = new Set<string>();
-    let current: (typeof walkable)[number] | undefined = start;
-    while (current) {
-      if (current.row.payload.entry.type === "message") return current.id as string;
-      const id = current.id;
-      if (id) {
-        if (seen.has(id)) return undefined;
-        seen.add(id);
-      }
-      current = current.parentId ? byId.get(current.parentId) : undefined;
-    }
-    return undefined;
-  };
-
-  const wikiRecallByParentId = new Map<string, string>();
-  for (const entry of walkable) {
+  // Attribution is shared with session-file.ts via
+  // custom-entry-attribution.ts — same tree, same subtlety about an
+  // intervening custom_message, and now a third caller (the Jev gate record)
+  // that would otherwise have been a third copy of the walk. The rows here
+  // carry the entry one level down, so they are projected to the shape the
+  // helper takes.
+  const attributable = walkable.map((entry) => {
     const raw = entry.row.payload.entry as {
       customType?: string;
       content?: unknown;
       parentId?: string | null;
+      type?: string;
     };
-    if (raw.customType !== WIKI_RECALL_CUSTOM_TYPE || !raw.parentId) continue;
-    const parentEntry = byId.get(raw.parentId);
-    const messageId = parentEntry && nearestMessageAncestor(parentEntry);
-    if (!messageId) continue;
-    const text = typeof raw.content === "string" ? raw.content : "";
-    if (text.trim()) wikiRecallByParentId.set(messageId, text);
-  }
+    return {
+      content: raw.content,
+      customType: raw.customType,
+      id: entry.id as string | undefined,
+      parentId: raw.parentId,
+      type: raw.type,
+    };
+  });
+  const wikiRecallByParentId = firstCustomEntryByMessageId(
+    attributable,
+    WIKI_RECALL_CUSTOM_TYPE,
+  );
+  const jevGateByParentId = customEntryTextByMessageId(attributable, JEV_GATE_CUSTOM_TYPE);
 
   return activePath(walkable, resolvedLeaf)
     .filter((entry) => entry.row.payload.entry.type === "message")
@@ -333,11 +331,13 @@ export const liveMessageRows = (
         .map((sibling) => sibling.row.payload.entry)
         .filter((sibling) => sibling.type === "message");
       const recall = entry.id ? wikiRecallByParentId.get(entry.id) : undefined;
+      const gate = entry.id ? jevGateByParentId.get(entry.id) : undefined;
 
       return {
         ...entry.row,
         ...(earlier.length > 0 ? { superseded: earlier } : {}),
         ...(recall ? { wikiRecall: recall } : {}),
+        ...(gate?.length ? { jevGate: gate } : {}),
       };
     });
 };
@@ -421,6 +421,12 @@ export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => 
     const versions = (entry.superseded ?? [])
       .map((sibling) => getMessageText(sibling.message as PiMessage))
       .filter((text) => text.trim().length > 0);
+    // A record this process did not necessarily write — an older Semla, a
+    // hand-edited session file — so an unparseable one is dropped rather than
+    // failing the whole transcript.
+    const gateRecords = (entry.jevGate ?? [])
+      .map((raw) => parseJevGateRecord(raw))
+      .filter((record): record is JevGateRecord => record !== null);
     return [
       {
         createdAt,
@@ -436,6 +442,7 @@ export const buildTranscript = (entries: TranscriptRow[]): SessionTranscript => 
           ? { inputTokens }
           : {}),
         ...(entry.wikiRecall ? { wikiRecall: entry.wikiRecall } : {}),
+        ...(gateRecords.length > 0 ? { jevGate: gateRecords } : {}),
       },
     ];
   });
