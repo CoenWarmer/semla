@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
+import type { JevGateRecord } from "@/lib/pi/extensions/jev-gate/gate-record";
+
 export type SessionMessage = {
   createdAt: string;
   id: string;
@@ -21,6 +23,12 @@ export type SessionMessage = {
    * recall actually fired with a result, so most messages have none.
    */
   wikiRecall?: string;
+  /**
+   * What the Jev gate decided for this (always `user`) message's turn, oldest
+   * first. Mirrors SessionTranscriptEntry.jevGate on the server — absent when
+   * the gate is disabled or unconfigured, so most sessions have none.
+   */
+  jevGate?: JevGateRecord[];
 };
 
 /** A tool the assistant invoked, rendered as a marker on the timeline. */

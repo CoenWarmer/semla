@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/popover";
 import type { SessionMessage } from "@/hooks/use-session-messages";
 import { CopyMessageButton } from "@/components/conversation/message-copy";
+import { JevGateBadge } from "@/components/conversation/jev-gate-badge";
 import { ForkMessageButton } from "@/components/conversation/message-fork";
 import { cn } from "@/lib/utils";
 
@@ -185,6 +186,9 @@ export function EditableUserMessage({
           is the gutter between it and the conversation. Copy first, so edit
           stays nearest the bubble it edits.
         */}
+        {!editing && message.jevGate?.length ? (
+          <JevGateBadge records={message.jevGate} />
+        ) : null}
         {!editing && message.wikiRecall && (
           <WikiRecallBadge content={message.wikiRecall} />
         )}
