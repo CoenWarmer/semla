@@ -45,6 +45,7 @@ import specPersistenceExtension from "@/lib/pi/extensions/architecture-awareness
 import codeMapExtension from "@/lib/pi/extensions/code-map";
 import codeSearchExtension from "@/lib/pi/extensions/code-search";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
+import jevGateExtension from "@/lib/pi/extensions/jev-gate";
 import orientStatusExtension from "@/lib/pi/extensions/orient-status";
 import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
@@ -60,6 +61,7 @@ export type ExtensionId =
   | "code-intelligence"
   | "install-guard"
   | "read-router"
+  | "jev-gate"
   | "wiki"
   | "wiki-ingest-bridge"
   | "mcp"
@@ -286,6 +288,23 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/read-router.ts.",
+  },
+  {
+    id: "jev-gate",
+    source: { factory: jevGateExtension, kind: "factory" },
+    // Loads last among the tool-affecting extensions on purpose: it narrows
+    // the active set by calling setActiveTools, and what it may narrow is
+    // whatever the other extensions have registered by then. Ordered by
+    // `requires` rather than by position so the sort enforces it, and
+    // `placement-tools` is included because its edit/write are candidates the
+    // gate must be able to see.
+    requires: ["workflow", "wiki", "mcp", "placement-tools"],
+    // Contributes no tools; it only ever removes them.
+    providesTools: [],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/jev-gate/index.ts.",
   },
   {
     id: "wiki",

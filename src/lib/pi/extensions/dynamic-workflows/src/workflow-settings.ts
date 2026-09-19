@@ -54,6 +54,24 @@ export interface WorkflowSettings {
    * Enable/disable the read-router extension's tool-result compression.
    * Default true (omitting the field also enables it).
    */
+  /**
+   * Enable/disable the jev-gate extension's per-turn narrowing of the tool and
+   * skill set. Default true (omitting the field also enables it); set false to
+   * hand the agent every tool and skill the session registered.
+   */
+  jevGateEnabled?: boolean;
+  /**
+   * Probability at or above which Jev's per-candidate answer keeps a tool or
+   * skill. Default 0.3, calibrated against live probes — see the docblock in
+   * `jev-gate/gate-decision.ts` for the four prompts it was chosen from.
+   */
+  jevGateThreshold?: number;
+  /** Deadline for one decisions call, in ms. Default 2000. */
+  jevGateTimeoutMs?: number;
+  /**
+   * Enable/disable the read-router extension's tool-result compression.
+   * Default true (omitting the field also enables it).
+   */
   readRouterEnabled?: boolean;
   /**
    * Model used for summarisation. Must be a "provider/modelId" string.
@@ -233,6 +251,21 @@ function normalizeSettings(value: unknown): WorkflowSettings {
     );
     if (names.length) settings.excludeSubagentTools = names;
   }
+  if (typeof raw.jevGateEnabled === "boolean") {
+    settings.jevGateEnabled = raw.jevGateEnabled;
+  }
+  if (
+    typeof raw.jevGateThreshold === "number" &&
+    Number.isFinite(raw.jevGateThreshold) &&
+    raw.jevGateThreshold >= 0 &&
+    raw.jevGateThreshold <= 1
+  ) {
+    // Out of range is dropped rather than clamped: a threshold of 5 is a
+    // mistake, and clamping it to 1 would silently gate away every tool.
+    settings.jevGateThreshold = raw.jevGateThreshold;
+  }
+  const jevGateTimeoutMs = normalizeInteger(raw.jevGateTimeoutMs, 1, 60_000);
+  if (jevGateTimeoutMs !== undefined) settings.jevGateTimeoutMs = jevGateTimeoutMs;
   if (typeof raw.readRouterEnabled === "boolean") {
     settings.readRouterEnabled = raw.readRouterEnabled;
   }
