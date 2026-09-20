@@ -131,12 +131,31 @@ moved, which is why there is now one.
 
 ## All Semla settings and debug artifacts live in the Semla directory, never a host's `~/.pi` directory
 
-**The rule.** All settings and debug artifacts concerning Semla's own operation —
-including those written by or for a Semla-loaded extension — must live under
-Semla's own directory (`~/.semla/...`). None of this state may be stored in a
-host's `~/.pi` directory. `~/.pi` is the `pi` CLI's own configuration home,
-shared with any other tool on the machine that happens to invoke `pi`; Semla
-does not own it and must not write to it as though it does.
+**The rule.** All settings and debug artifacts concerning Semla's own operation
+— including those written by or for a Semla-loaded extension — must live in a
+Semla-owned location. None of this state may be stored in a host's `~/.pi`
+directory. `~/.pi` is the `pi` CLI's own configuration home, shared with any
+other tool on the machine that happens to invoke `pi`; Semla does not own it
+and must not write to it as though it does.
+
+**Which Semla-owned location, and this is the part that is easy to get wrong.**
+The default is **in-repo**, in the gitignored `.semla-*` directories beside the
+artifacts an operator already looks in: `.semla-state/` for state
+(`SEMLA_STATE_DIR`), `.semla-debug/` for conversation artifacts,
+`.semla-sessions/`, `.semla-artifacts/`, `.semla-wiki/`. A home directory is the
+exception, not the default, and it earns itself for exactly one reason:
+`~/.semla/agent` holds `auth.json`, and real credentials in a gitignored in-repo
+directory are still one `git add -f` from a commit. If what you are storing is
+not a credential, it goes in the tree.
+
+This was learned twice. `orient-status/paths.ts` records the first time — it
+followed `indexHomeDir()` to `~/.semla/orient` and put per-project state in a
+home directory "for no reason this module needs", then moved to
+`.semla-state/`. The workflow home below is the second: the rule above used to
+read as flatly `~/.semla/...`, and a fix that took it literally moved 66 MB of
+run journals from `~/.pi/workflows` to `~/.semla/workflows` — out of the `pi`
+CLI's directory, which was the point, but into a home directory the precedent
+had already rejected. The wording is the cause, so the wording changed.
 
 **Why this rule exists.** `src/lib/pi/runtime/agent-dir.ts` isolates the agent
 runtime's credentials and model catalog to `~/.semla/agent` for exactly this
@@ -155,25 +174,45 @@ session on the same machine.
 settings, saved workflows, run journals, locks, and the tier config — under
 `~/.pi/workflows`, including the Jev-gate toggle exposed in the PromptEditor.
 It was never migrated when `agent-dir.ts` was written and nothing documented it
-as deliberate. It is now `~/.semla/workflows`: `WORKFLOW_HOME_RELATIVE_DIR` in
-`dynamic-workflows/src/config.ts`, still reached only through
+as deliberate. It is now `<semla>/.semla-state/workflows`:
+`WORKFLOW_STATE_SUBDIR` joined onto `semlaStateDir()` in
+`dynamic-workflows/src/workflow-paths.ts`, still reached only through
 `workflowHomeDir()` so `PI_WORKFLOW_HOME` keeps overriding it. The committed
-per-repo tier file moved with it, to `.semla/workflows/model-tiers.json`, under
-the new `WORKFLOW_PROJECT_RELATIVE_DIR` — a committed `.pi/...` file claims a
-name Semla does not own in every checkout it runs against.
+per-repo tier file did **not** go with it — it is
+`.semla/workflows/model-tiers.json`, under `WORKFLOW_PROJECT_RELATIVE_DIR`,
+because `.semla-state/` is gitignored and that file is meant to be committed
+and reviewed. It did have to leave `.pi/`, which claims a name Semla does not
+own in every checkout it runs against.
 
-Three things about that move are load-bearing.
+Four things about that move are load-bearing.
+
+`semlaStateDir()` **duplicates** `SEMLA_STATE_DIR` from
+`stores/user-settings-store.ts` rather than importing it. Nothing in the
+dynamic-workflows tree uses the `"@/"` alias, because the tree is also loaded
+outside Next — `scripts/backfill-stuck-workflow-agents.mjs` imports
+`workflow-paths.ts` under plain node, where the alias does not resolve. Reading
+the same env var with the same fallback is what keeps the two agreeing, and a
+test pins it.
+
+Its `process.cwd()` is the **server's** root, never a session's. Nothing in the
+app calls `process.chdir` and sessions are handed a cwd instead (see
+`session-cwd.ts`). This matters because the project key *is* derived from a
+session cwd: if the root were too, every repository Semla touched would grow its
+own workflow state directory, which is the scattering the shared home was
+introduced to end.
 
 An operator's existing home is **relocated once**, by
 `migrateLegacyWorkflowHome()` in `workflow-paths.ts`, not read as a fallback. A
-fallback would keep the host's `pi` directory live forever, which is the state
-the move exists to end. It **never merges**: if `~/.semla/workflows` already
-exists it wins and the legacy directory is left alone, because two `projects/`
-trees keyed the same way would resurrect runs the retention cap in
-`run-persistence.ts` had already collected, with no ordering to resolve a clash.
-And it is not attempted when `PI_WORKFLOW_HOME` is set — an override is a
-deliberate destination (a temp dir, in the test suite), not somewhere real
-history should be moved into.
+fallback would keep a home-directory copy live forever, which is the state the
+move exists to end. There are two legacy locations, since this moved twice —
+`~/.semla/workflows` then `~/.pi/workflows`, newest first, first one that exists
+wins — so an operator who ran the intermediate build carries forward the copy
+they were actually using. It **never merges**: if the target already exists it
+wins and the legacy directory is left alone, because two `projects/` trees keyed
+the same way would resurrect runs the retention cap in `run-persistence.ts` had
+already collected, with no ordering to resolve a clash. And it is not attempted
+when `PI_WORKFLOW_HOME` is set — an override is a deliberate destination (a temp
+dir, in the test suite), not somewhere real history should be moved into.
 
 The project tier path does have a read fallback, in
 `getProjectModelTierConfigPath()`, because that file is committed and a
@@ -189,9 +228,10 @@ convention the extension only *reads*.
 **Going forward.** Do not add any new file under a host's `~/.pi/` to hold
 Semla-specific state, and do not treat an existing `~/.pi/...` path as safe to
 keep writing to just because it already works. New settings, caches, or debug
-output must resolve under `~/.semla/...`, or an override that itself points at
-a `~/.semla` path (e.g. `PI_WORKFLOW_HOME` set to a `~/.semla` location) — never
-left defaulting into `~/.pi`.
+output default to the gitignored in-repo `.semla-*` directories — usually a
+subdirectory of `.semla-state/` via `SEMLA_STATE_DIR` — or to an override that
+points at one. Reach for `~/.semla` only for credentials, and say in the code
+why the tree was not good enough.
 
 ## Extensions are imported, not pointed at
 

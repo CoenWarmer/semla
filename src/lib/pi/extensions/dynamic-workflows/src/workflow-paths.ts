@@ -11,10 +11,10 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
-  LEGACY_WORKFLOW_HOME_RELATIVE_DIR,
-  WORKFLOW_HOME_RELATIVE_DIR,
+  LEGACY_WORKFLOW_HOME_RELATIVE_DIRS,
   WORKFLOW_RUNS_DIR,
   WORKFLOW_SAVED_DIR,
+  WORKFLOW_STATE_SUBDIR,
 } from "./config.ts";
 
 export const WORKFLOW_PROJECTS_SUBDIR = "projects";
@@ -27,6 +27,27 @@ export interface WorkflowProjectPaths {
   settingsPath: string;
   legacyRunsDir: string;
   legacySavedDir: string;
+}
+
+/**
+ * Semla's own state directory, re-derived rather than imported.
+ *
+ * `SEMLA_STATE_DIR` in `stores/user-settings-store.ts` is the definition, and
+ * this repeats its two lines. It cannot be imported: nothing in this extension
+ * tree uses the `"@/"` alias, because the tree is also loaded outside Next —
+ * `scripts/backfill-stuck-workflow-agents.mjs` imports this very module under
+ * plain node, where the alias does not resolve. Reading the same env var with
+ * the same fallback is what keeps the two agreeing; a test pins it.
+ *
+ * `process.cwd()` here is the Semla *server's* root, not a session's. Nothing
+ * in the app calls `process.chdir`, and sessions get their cwd passed to them
+ * (see `session-cwd.ts`) rather than by changing the process's. That matters:
+ * if this resolved against a session cwd, every repository Semla touched would
+ * grow its own workflow state directory — which is the scattering the shared
+ * home was introduced to end.
+ */
+export function semlaStateDir(): string {
+  return process.env.SEMLA_STATE_DIR?.trim() || join(process.cwd(), ".semla-state");
 }
 
 /**
@@ -45,44 +66,49 @@ export interface WorkflowProjectPaths {
  * Read on each call rather than captured at import so a test can point it
  * somewhere disposable in a `beforeEach` without controlling module load order.
  *
- * The default sits under `~/.semla`, not `~/.pi`; a home written before that
- * change is relocated by `migrateLegacyWorkflowHome()`, which this calls at
- * most once per process.
+ * This is `<semla>/.semla-state/workflows`, not a home directory; a home
+ * written by either earlier layout is relocated by
+ * `migrateLegacyWorkflowHome()`, which this calls at most once per process.
  */
 export function workflowHomeDir(): string {
   const override = process.env.PI_WORKFLOW_HOME;
   if (override) return override;
-  const home = join(homedir(), WORKFLOW_HOME_RELATIVE_DIR);
+  const home = join(semlaStateDir(), WORKFLOW_STATE_SUBDIR);
   migrateLegacyWorkflowHome(home);
   return home;
 }
 
-/** Pre-move location of the user-level workflow home. */
-export function legacyWorkflowHomeDir(): string {
-  return join(homedir(), LEGACY_WORKFLOW_HOME_RELATIVE_DIR);
+/** Pre-move locations of the user-level workflow home, newest first. */
+export function legacyWorkflowHomeDirs(): string[] {
+  return LEGACY_WORKFLOW_HOME_RELATIVE_DIRS.map((dir) => join(homedir(), dir));
 }
 
 let migrationAttempted = false;
 
 export interface WorkflowHomeMigration {
-  /** Whether the legacy directory was relocated by this call. */
+  /** Whether a legacy directory was relocated by this call. */
   migrated: boolean;
-  from: string;
+  /** The legacy directory taken, or undefined when none was eligible. */
+  from?: string;
   to: string;
   /** Why nothing moved, when `migrated` is false. */
   reason?: "already-attempted" | "target-exists" | "no-legacy-dir" | "rename-failed";
 }
 
 /**
- * Move a pre-existing `~/.pi/workflows` to the `~/.semla` home, once.
+ * Move a pre-existing home-directory workflow home in-repo, once.
  *
- * A one-time rename rather than a read fallback, because a fallback leaves the
- * host's `pi` directory permanently live: every read would keep finding it,
- * and the state this repository owns would stay mixed in with whatever another
- * `pi` install on the machine writes there. The whole point of the move is
- * that Semla's state is distinguishable from a stranger's.
+ * There are two to consider, because this moved twice: `~/.pi/workflows`
+ * originally, then `~/.semla/workflows` briefly. `legacyWorkflowHomeDirs()`
+ * orders them newest-first and the first that exists wins, so an operator who
+ * ran the intermediate build carries forward the copy they were actually
+ * using rather than the older one it had already superseded.
  *
- * Never merges. If the new home already exists it is authoritative and the
+ * A one-time rename rather than a read fallback, because a fallback leaves a
+ * home-directory copy permanently live: every read keeps finding it, and the
+ * state stays split across two roots with no rule for which is current.
+ *
+ * Never merges. If the target already exists it is authoritative and the
  * legacy directory is left untouched — merging two `projects/` trees keyed the
  * same way would resurrect runs the retention cap in run-persistence.ts had
  * already collected, and there is no ordering between them to resolve a clash.
@@ -96,22 +122,25 @@ export interface WorkflowHomeMigration {
  * operator's real history should be moved into.
  */
 export function migrateLegacyWorkflowHome(
-  target: string = join(homedir(), WORKFLOW_HOME_RELATIVE_DIR),
-  legacy: string = legacyWorkflowHomeDir(),
+  target: string = join(semlaStateDir(), WORKFLOW_STATE_SUBDIR),
+  legacyDirs: readonly string[] = legacyWorkflowHomeDirs(),
 ): WorkflowHomeMigration {
-  const result = { from: legacy, to: target };
-  if (migrationAttempted) return { ...result, migrated: false, reason: "already-attempted" };
+  if (migrationAttempted) {
+    return { migrated: false, to: target, reason: "already-attempted" };
+  }
   migrationAttempted = true;
 
-  if (existsSync(target)) return { ...result, migrated: false, reason: "target-exists" };
-  if (!existsSync(legacy)) return { ...result, migrated: false, reason: "no-legacy-dir" };
+  if (existsSync(target)) return { migrated: false, to: target, reason: "target-exists" };
+
+  const legacy = legacyDirs.find((dir) => existsSync(dir));
+  if (!legacy) return { migrated: false, to: target, reason: "no-legacy-dir" };
 
   try {
     mkdirSync(dirname(target), { recursive: true });
     renameSync(legacy, target);
-    return { ...result, migrated: true };
+    return { migrated: true, from: legacy, to: target };
   } catch {
-    return { ...result, migrated: false, reason: "rename-failed" };
+    return { migrated: false, from: legacy, to: target, reason: "rename-failed" };
   }
 }
 

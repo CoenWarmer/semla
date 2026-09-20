@@ -31,7 +31,8 @@ import { describe, expect, it } from "vitest";
  * cwd-relative convention it *reads*. Those are fine. What must not come back
  * is a settings file pi acts on, a dependency tree `npm audit` cannot see, or
  * Semla's own state — which is what `.pi/workflows` was until the workflow
- * home and the committed tier config both moved under `.semla/`, per the rule
+ * home moved in-repo under `.semla-state/` and the committed tier config to
+ * `.semla/workflows/model-tiers.json`, per the rule
  * in AGENTS.md that `~/.pi` belongs to the `pi` CLI and not to Semla.
  */
 const FORBIDDEN = [
@@ -56,8 +57,8 @@ const FORBIDDEN = [
     ".pi/workflows",
     "Workflow state is Semla's own, and `~/.pi` is the pi CLI's directory, " +
       "shared with every other tool on the machine that invokes pi. The " +
-      "committed tier config lives at .semla/workflows/model-tiers.json now; " +
-      "see WORKFLOW_PROJECT_RELATIVE_DIR in dynamic-workflows/src/config.ts.",
+      "run state lives in .semla-state/workflows and the committed tier config " +
+      "at .semla/workflows/model-tiers.json; see dynamic-workflows/src/config.ts.",
   ],
 ] as const;
 

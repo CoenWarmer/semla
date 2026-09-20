@@ -39,7 +39,7 @@ from inside a script fails as an unknown saved workflow; use the top-level
 Every phase of every built-in declares the model tier its agents run on, so
 the cost of a pattern is readable before it runs. The tiers resolve through
 the operator's `model-tiers.json` (repo-local `.semla/workflows/model-tiers.json`
-first, then `~/.semla/workflows/model-tiers.json`); `/workflows-models` edits them.
+first, then `.semla-state/workflows/model-tiers.json`); `/workflows-models` edits them.
 
 | `name` | phase tiers |
 | --- | --- |

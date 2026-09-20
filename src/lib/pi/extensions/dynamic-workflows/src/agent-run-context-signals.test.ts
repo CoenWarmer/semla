@@ -64,7 +64,7 @@ const createAgentSession = vi.fn(
   }),
 );
 
-// Hermetic against whatever the host actually has at ~/.semla/workflows/model-tiers.json
+// Hermetic against whatever the host actually has at the state-directory model-tiers.json
 // (loadModelTierConfig reads real disk) — every test here leaves model/tier unset,
 // so the untagged-agent branch is what would otherwise silently pick up the host's
 // tiers config and route through a resolved model spec this double never expects.

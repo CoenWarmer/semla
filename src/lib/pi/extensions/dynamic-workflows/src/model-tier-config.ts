@@ -57,7 +57,7 @@ export interface RankableModel {
 // ---------------------------------------------------------------------------
 
 /**
- * Path to the user-level model tiers config (~/.semla/workflows/model-tiers.json).
+ * Path to the user-level model tiers config (.semla-state/workflows/model-tiers.json).
  *
  * Derived from `workflowHomeDir()` rather than `homedir()` so that the
  * PI_WORKFLOW_HOME override reaches it. It did not, and the consequence was

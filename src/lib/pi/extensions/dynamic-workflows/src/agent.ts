@@ -190,7 +190,7 @@ export class WorkflowAgent {
   }
 
   /**
-   * Read+parse ~/.semla/workflows/model-tiers.json at most once for this
+   * Read+parse .semla-state/workflows/model-tiers.json at most once for this
    * instance's lifetime, instead of on every run() call. `resolveAgentModelSpec`
    * previously received `loadModelTierConfig` directly (sync existsSync +
    * readFileSync + JSON.parse from disk), which it calls unconditionally for

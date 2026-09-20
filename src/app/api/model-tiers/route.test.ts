@@ -59,7 +59,7 @@ describe("GET /api/model-tiers", () => {
   });
 
   /**
-   * The endpoint must read the repository file only, never ~/.semla/workflows.
+   * The endpoint must read the repository file only, never the state-directory home.
    *
    * loadModelTierConfig({ cwd }) deliberately falls back to the home file, and
    * that is correct when *resolving* a subagent's model. It is wrong here: this

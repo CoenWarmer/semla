@@ -19,7 +19,7 @@ import type { ManagedRun, WorkflowManager } from "./workflow-manager.ts";
 import type { WorkflowSettings } from "./workflow-settings.ts";
 
 /** Default cap on the JSON-dump fallback in a delivered result summary. Overridable
- *  via the `deliveredResultMaxChars` setting in ~/.semla/workflows/settings.json. */
+ *  via the `deliveredResultMaxChars` setting in .semla-state/workflows/settings.json. */
 const DEFAULT_DELIVERED_MAX_CHARS = 400;
 
 /** Human-readable byte size for the dropped-tail hint: 512 B, 3.2 KB, 1.4 MB. */
