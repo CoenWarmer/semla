@@ -8,7 +8,7 @@
  *
  * PI_WORKFLOW_HOME is redirected because workflow state is keyed by cwd but
  * rooted at the home directory. A test running against a `mkdtemp` cwd got an
- * isolated key and then wrote it into the operator's real ~/.pi/workflows,
+ * isolated key and then wrote it into the operator's real workflow home,
  * where it outlived the temp directory it described and nothing collected it.
  * By the time this was noticed that directory held 1,931 project directories,
  * 127 MB, all but one describing a path that no longer existed.

@@ -75,7 +75,7 @@ export default async function SettingsPage() {
           <CardTitle>Workflow model tiers</CardTitle>
           <CardDescription>
             Route workflow subagents to small/medium/big models. Stored in a
-            committed repo file (.pi/workflows/model-tiers.json).
+            committed repo file (.semla/workflows/model-tiers.json).
           </CardDescription>
         </CardHeader>
         <CardContent>

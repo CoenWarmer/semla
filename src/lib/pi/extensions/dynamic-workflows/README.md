@@ -220,7 +220,7 @@ The [full documentation](https://quintinshaw.github.io/pi-dynamic-workflows/) co
 <details>
 <summary><strong>Model tiers and run controls</strong></summary>
 
-Model tiers live at `~/.pi/workflows/model-tiers.json` and accept Pi CLI-style thinking suffixes:
+Model tiers live at `~/.semla/workflows/model-tiers.json` and accept Pi CLI-style thinking suffixes:
 
 ```json
 {
@@ -234,7 +234,7 @@ Model tiers live at `~/.pi/workflows/model-tiers.json` and accept Pi CLI-style t
 
 Semla edits these over `/api/model-tiers`. Without a config, the extension ranks authenticated models by capability hints and assigns distinct models when possible.
 
-Omitted `tokenBudget` and `agentTimeoutMs` values use configured `defaultTokenBudget` and `defaultAgentTimeoutMs` settings; without them, runs are unlimited and have no hard per-agent timeout. Add per-run or per-agent values when you need explicit gates. `concurrency` is clamped to 16; `agentRetries` retries only recoverable failures. Defaults live in `~/.pi/workflows/settings.json`; `defaultTokenBudget` is a soft pre-call gate, and a project-level override of `null` cancels a global budget.
+Omitted `tokenBudget` and `agentTimeoutMs` values use configured `defaultTokenBudget` and `defaultAgentTimeoutMs` settings; without them, runs are unlimited and have no hard per-agent timeout. Add per-run or per-agent values when you need explicit gates. `concurrency` is clamped to 16; `agentRetries` retries only recoverable failures. Defaults live in `~/.semla/workflows/settings.json`; `defaultTokenBudget` is a soft pre-call gate, and a project-level override of `null` cancels a global budget.
 
 A schema-less agent call that comes back as whitespace-only text is a recoverable `AGENT_EMPTY_OUTPUT` failure and retries like any other. Some models occasionally hit this on an otherwise-fine first attempt; if a fleet is built on one of them, set `agentRetries: 1-2` rather than treating an isolated empty output as a failed run.
 
@@ -245,11 +245,11 @@ Pausing and resuming a run keeps the limits it started with — `maxAgents`, `ag
 <details>
 <summary><strong>Storage, resume, and persisted sessions</strong></summary>
 
-Extension state lives outside the repository under `~/.pi/workflows`:
+Extension state lives outside the repository under `~/.semla/workflows`:
 
-- global settings and tiers: `~/.pi/workflows/settings.json` and `model-tiers.json`
-- project runs, journals, locks, and saved overrides: `~/.pi/workflows/projects/<project>/`
-- older project-local `.pi/workflows/runs` and `.pi/workflows/saved` remain readable as fallbacks
+- global settings and tiers: `~/.semla/workflows/settings.json` and `model-tiers.json`
+- project runs, journals, locks, and saved overrides: `~/.semla/workflows/projects/<project>/`
+- a pre-existing `~/.pi/workflows` is relocated here once, on first resolve; older project-local `.pi/workflows/runs` and `.pi/workflows/saved` remain readable as fallbacks
 
 Subagents are in-memory by default. Set `persistAgentSessions: true` to retain full transcripts in Pi's standard session directory. This creates one file per agent and may store sensitive material that an agent read, so enable it deliberately.
 
@@ -264,7 +264,7 @@ Finished runs (completed, failed, or aborted) are retained in full on disk, capp
 <details>
 <summary><strong>Keyword trigger</strong></summary>
 
-Set a literal, case-insensitive custom trigger in `~/.pi/workflows/settings.json`:
+Set a literal, case-insensitive custom trigger in `~/.semla/workflows/settings.json`:
 
 ```json
 {

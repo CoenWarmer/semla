@@ -19,7 +19,7 @@ export async function GET() {
   try {
     await requireUser();
     // Read the repository file by its exact path rather than through
-    // loadModelTierConfig({ cwd }), which falls back to ~/.pi/workflows when
+    // loadModelTierConfig({ cwd }), which falls back to ~/.semla/workflows when
     // the project has no file. That fallback is right for *resolving* a
     // subagent's model — it is what a WorkflowAgent does — but wrong here:
     // this endpoint backs an editor labelled as the committed repo config, so

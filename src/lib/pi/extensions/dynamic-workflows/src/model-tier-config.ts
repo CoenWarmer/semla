@@ -16,7 +16,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { listAvailableModels } from "./agent.ts";
-import { MODEL_TIERS_FILE, MODEL_TIERS_FILENAME } from "./config.ts";
+import {
+  LEGACY_MODEL_TIERS_FILE,
+  MODEL_TIERS_FILE,
+  MODEL_TIERS_FILENAME,
+} from "./config.ts";
 import { workflowHomeDir } from "./workflow-paths.ts";
 
 // ---------------------------------------------------------------------------
@@ -53,7 +57,7 @@ export interface RankableModel {
 // ---------------------------------------------------------------------------
 
 /**
- * Path to the user-level model tiers config (~/.pi/workflows/model-tiers.json).
+ * Path to the user-level model tiers config (~/.semla/workflows/model-tiers.json).
  *
  * Derived from `workflowHomeDir()` rather than `homedir()` so that the
  * PI_WORKFLOW_HOME override reaches it. It did not, and the consequence was
@@ -84,16 +88,27 @@ export function getModelTierConfigPath(): string {
  *
  * A repo-local file makes the choice reviewable and contained: it travels with
  * the checkout, and a clone of this repository routes subagents the same way
- * without the operator configuring anything. `.pi/` is the right home for it
- * because that is where the workflow extension already keeps project state
- * (`.pi/agents/`, `.pi/worktrees/`).
+ * without the operator configuring anything. It lives under `.semla/` rather
+ * than the `.pi/` it was first written to: `.pi/` is the `pi` CLI's own
+ * directory, and a committed file there claims a name Semla does not own in
+ * every checkout of every repository this extension runs against.
+ *
+ * A checkout older than that move still has the `.pi/` file, so this returns
+ * it when the new path is absent and the old one is present. That fallback is
+ * bounded on purpose: it reads, never writes — `saveModelTierConfig` is given
+ * a path by its caller, and both callers now resolve through here, so a save
+ * against an old checkout rewrites the file in place rather than silently
+ * creating a second one the loader would then have to rank.
  *
  * Note the one thing it must NOT hold: credentials. Unlike `~/.semla/agent`,
  * which is outside the tree precisely because `auth.json` is in it, a tier
  * config is only model names — safe to commit, and worth committing.
  */
 export function getProjectModelTierConfigPath(cwd: string): string {
-  return join(cwd, MODEL_TIERS_FILE);
+  const current = join(cwd, MODEL_TIERS_FILE);
+  if (existsSync(current)) return current;
+  const legacy = join(cwd, LEGACY_MODEL_TIERS_FILE);
+  return existsSync(legacy) ? legacy : current;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +294,7 @@ function isValidTiersMap(value: unknown): value is Record<string, string> {
  * Load the model tier config from disk. Returns null if the file does not
  * exist or is unparseable (callers fall back to a default).
  *
- * With a `cwd`, a repo-local `.pi/workflows/model-tiers.json` is preferred
+ * With a `cwd`, a repo-local `.semla/workflows/model-tiers.json` is preferred
  * over the home file. Whole-file precedence rather than a per-tier merge,
  * because tiers are a set that has to stay ordered: merging a project `small`
  * into a home config whose `medium` is cheaper would silently invert them, and

@@ -108,7 +108,7 @@ export interface WorkflowSettingsOptions {
   scope?: "global" | "project";
 }
 
-/** Path to the user-level workflow settings JSON file (~/.pi/workflows/settings.json). */
+/** Path to the user-level workflow settings JSON file (~/.semla/workflows/settings.json). */
 export function getWorkflowSettingsPath(): string {
   return join(workflowHomeDir(), "settings.json");
 }

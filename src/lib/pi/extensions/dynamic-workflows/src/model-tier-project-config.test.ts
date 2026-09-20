@@ -24,10 +24,10 @@ import {
 } from "./model-tier-config.ts";
 import { workflowHomeDir, workflowProjectsDir } from "./workflow-paths.ts";
 
-/** A project directory holding `.pi/workflows/model-tiers.json`. */
+/** A project directory holding `.semla/workflows/model-tiers.json`. */
 function projectWith(tiers: Record<string, string> | string): string {
   const root = mkdtempSync(join(tmpdir(), "semla-tiers-"));
-  const dir = join(root, ".pi", "workflows");
+  const dir = join(root, ".semla", "workflows");
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "model-tiers.json"),
@@ -60,10 +60,39 @@ afterEach(() => {
 });
 
 describe("project-local model tiers", () => {
-  it("puts the file under .pi/workflows, next to the other project state", () => {
+  it("puts the file under .semla/workflows, out of the pi CLI's directory", () => {
     expect(getProjectModelTierConfigPath("/repo")).toBe(
-      "/repo/.pi/workflows/model-tiers.json",
+      "/repo/.semla/workflows/model-tiers.json",
     );
+  });
+
+  it("falls back to the pre-move .pi path for an older checkout", () => {
+    // The file is committed, so a checkout can predate the move. Reading the
+    // old one keeps that clone working; nothing writes there.
+    const root = mkdtempSync(join(tmpdir(), "semla-tiers-legacy-"));
+    mkdirSync(join(root, ".pi", "workflows"), { recursive: true });
+    writeFileSync(
+      join(root, ".pi", "workflows", "model-tiers.json"),
+      JSON.stringify({ tiers: { small: "openrouter/old" } }),
+      "utf-8",
+    );
+
+    expect(getProjectModelTierConfigPath(root)).toBe(
+      join(root, ".pi", "workflows", "model-tiers.json"),
+    );
+    expect(loadModelTierConfig({ cwd: root })?.tiers.small).toBe("openrouter/old");
+  });
+
+  it("prefers the .semla path when a checkout has both", () => {
+    const root = projectWith({ small: "openrouter/new" });
+    mkdirSync(join(root, ".pi", "workflows"), { recursive: true });
+    writeFileSync(
+      join(root, ".pi", "workflows", "model-tiers.json"),
+      JSON.stringify({ tiers: { small: "openrouter/old" } }),
+      "utf-8",
+    );
+
+    expect(loadModelTierConfig({ cwd: root })?.tiers.small).toBe("openrouter/new");
   });
 
   it("is a different location from the user-level file", () => {
@@ -133,7 +162,7 @@ describe("project-local model tiers", () => {
     // The original signature. Tests and the /workflows-models command both
     // pass a bare path, and an options-only signature would break them.
     const cwd = projectWith({ small: "openrouter/project" });
-    const explicit = join(cwd, ".pi", "workflows", "model-tiers.json");
+    const explicit = join(cwd, ".semla", "workflows", "model-tiers.json");
 
     expect(loadModelTierConfig(explicit)?.tiers.small).toBe("openrouter/project");
   });
@@ -141,7 +170,7 @@ describe("project-local model tiers", () => {
   it("does not read a project file when given an explicit path", () => {
     const cwd = projectWith({ small: "openrouter/project" });
     const elsewhere = projectWith({ small: "openrouter/elsewhere" });
-    const explicit = join(elsewhere, ".pi", "workflows", "model-tiers.json");
+    const explicit = join(elsewhere, ".semla", "workflows", "model-tiers.json");
 
     expect(loadModelTierConfig({ configPath: explicit, cwd })?.tiers.small).toBe(
       "openrouter/elsewhere",

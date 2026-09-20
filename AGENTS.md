@@ -129,6 +129,70 @@ vulnerable copy back silently.
 `runtime-config.ts`. There were six spelled out across three files when this
 moved, which is why there is now one.
 
+## All Semla settings and debug artifacts live in the Semla directory, never a host's `~/.pi` directory
+
+**The rule.** All settings and debug artifacts concerning Semla's own operation —
+including those written by or for a Semla-loaded extension — must live under
+Semla's own directory (`~/.semla/...`). None of this state may be stored in a
+host's `~/.pi` directory. `~/.pi` is the `pi` CLI's own configuration home,
+shared with any other tool on the machine that happens to invoke `pi`; Semla
+does not own it and must not write to it as though it does.
+
+**Why this rule exists.** `src/lib/pi/runtime/agent-dir.ts` isolates the agent
+runtime's credentials and model catalog to `~/.semla/agent` for exactly this
+reason: `getAgentDir()` in pi-coding-agent resolves to `~/.pi/agent` by
+default, and every `ModelRuntime` resolves it independently, so without
+isolation a change to the host's `auth.json` silently changes Semla's
+behaviour with no change to Semla itself. Storing the directory *inside* the
+repo was also rejected: `auth.json` holds real credentials, and an in-repo
+directory would put them one `git add -A` away from being committed. The same
+reasoning holds for every other kind of settings or debug output, not only
+credentials — any of it left in a shared, host-owned directory is state Semla
+does not control and cannot distinguish from state left by an unrelated `pi`
+session on the same machine.
+
+**The one exception is closed.** `dynamic-workflows` kept all of its state —
+settings, saved workflows, run journals, locks, and the tier config — under
+`~/.pi/workflows`, including the Jev-gate toggle exposed in the PromptEditor.
+It was never migrated when `agent-dir.ts` was written and nothing documented it
+as deliberate. It is now `~/.semla/workflows`: `WORKFLOW_HOME_RELATIVE_DIR` in
+`dynamic-workflows/src/config.ts`, still reached only through
+`workflowHomeDir()` so `PI_WORKFLOW_HOME` keeps overriding it. The committed
+per-repo tier file moved with it, to `.semla/workflows/model-tiers.json`, under
+the new `WORKFLOW_PROJECT_RELATIVE_DIR` — a committed `.pi/...` file claims a
+name Semla does not own in every checkout it runs against.
+
+Three things about that move are load-bearing.
+
+An operator's existing home is **relocated once**, by
+`migrateLegacyWorkflowHome()` in `workflow-paths.ts`, not read as a fallback. A
+fallback would keep the host's `pi` directory live forever, which is the state
+the move exists to end. It **never merges**: if `~/.semla/workflows` already
+exists it wins and the legacy directory is left alone, because two `projects/`
+trees keyed the same way would resurrect runs the retention cap in
+`run-persistence.ts` had already collected, with no ordering to resolve a clash.
+And it is not attempted when `PI_WORKFLOW_HOME` is set — an override is a
+deliberate destination (a temp dir, in the test suite), not somewhere real
+history should be moved into.
+
+The project tier path does have a read fallback, in
+`getProjectModelTierConfigPath()`, because that file is committed and a
+checkout can be older than this change. It reads and never writes, so a save
+against an old checkout rewrites in place rather than creating a second file the
+loader would have to rank.
+
+`pi-dir-removed.test.ts` now forbids `.pi/workflows` alongside `.pi/npm`,
+`.pi/packages` and `.pi/settings.json`. `.pi/worktrees/` and `.pi/agents/`
+remain fine: the first is a worktree location, the second a cwd-relative
+convention the extension only *reads*.
+
+**Going forward.** Do not add any new file under a host's `~/.pi/` to hold
+Semla-specific state, and do not treat an existing `~/.pi/...` path as safe to
+keep writing to just because it already works. New settings, caches, or debug
+output must resolve under `~/.semla/...`, or an override that itself points at
+a `~/.semla` path (e.g. `PI_WORKFLOW_HOME` set to a `~/.semla` location) — never
+left defaulting into `~/.pi`.
+
 ## Extensions are imported, not pointed at
 
 **Decision.** An extension this repository writes is handed to Pi as an imported

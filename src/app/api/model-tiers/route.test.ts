@@ -5,7 +5,7 @@
  * - GET returns the repo-local config when it exists, or an explicit "absent" signal
  * - PUT rejects unknown tier names (only small/medium/big are meaningful)
  * - PUT removes cleared tiers from the map rather than storing them as ""
- * - PUT writes to the PROJECT path (cwd/.pi/workflows/model-tiers.json), not the home file
+ * - PUT writes to the PROJECT path (cwd/.semla/workflows/model-tiers.json), not the home file
  * - An all-cleared PUT is rejected with a clear message rather than writing a degenerate map
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 function writeConfig(tiers: Record<string, string>) {
-  const dir = join(tempDir, ".pi", "workflows");
+  const dir = join(tempDir, ".semla", "workflows");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "model-tiers.json"), JSON.stringify({ tiers }), "utf-8");
 }
@@ -59,7 +59,7 @@ describe("GET /api/model-tiers", () => {
   });
 
   /**
-   * The endpoint must read the repository file only, never ~/.pi/workflows.
+   * The endpoint must read the repository file only, never ~/.semla/workflows.
    *
    * loadModelTierConfig({ cwd }) deliberately falls back to the home file, and
    * that is correct when *resolving* a subagent's model. It is wrong here: this
@@ -104,7 +104,7 @@ describe("GET /api/model-tiers", () => {
   });
 
   it("ignores a corrupt config file", async () => {
-    const dir = join(tempDir, ".pi", "workflows");
+    const dir = join(tempDir, ".semla", "workflows");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "model-tiers.json"), "{ not json", "utf-8");
 
@@ -142,7 +142,7 @@ describe("PUT /api/model-tiers", () => {
 
     await PUT(request);
 
-    const projectPath = join(tempDir, ".pi", "workflows", "model-tiers.json");
+    const projectPath = join(tempDir, ".semla", "workflows", "model-tiers.json");
     expect(existsSync(projectPath)).toBe(true);
 
     const written = JSON.parse(readFileSync(projectPath, "utf-8"));
@@ -196,7 +196,7 @@ describe("PUT /api/model-tiers", () => {
 
     await PUT(request);
 
-    const projectPath = join(tempDir, ".pi", "workflows", "model-tiers.json");
+    const projectPath = join(tempDir, ".semla", "workflows", "model-tiers.json");
     const written = JSON.parse(readFileSync(projectPath, "utf-8"));
 
     // "medium" should be absent, not stored as "".

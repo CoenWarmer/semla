@@ -320,7 +320,7 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
   maxAgents?: number;
   /**
    * Tier config used to validate phase/call tiers. Omitted => read from disk
-   * (project `.pi/workflows/model-tiers.json`, then the home file); `null` =>
+   * (project `.semla/workflows/model-tiers.json`, then the home file); `null` =>
    * treat as absent, so the built-in small/medium/big names apply. Injectable
    * so a run's accepted tier names do not depend on the operator's machine.
    */

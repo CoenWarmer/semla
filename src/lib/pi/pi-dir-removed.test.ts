@@ -27,13 +27,12 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The directory name itself is not forbidden: `.pi/worktrees/` is where
- * dynamic-workflows puts an isolated worktree, `.pi/agents/` is a
- * cwd-relative convention it *reads*, and `~/.pi/workflows/model-tiers.json`
- * maps workflow tier names to model specs — written by the dynamic-workflows
- * extension or Semla's model-tiers API, with a repo-local
- * `.pi/workflows/model-tiers.json` overriding it when present. Those are fine.
- * What must not come back is a settings file pi acts on, or a dependency tree
- * `npm audit` cannot see.
+ * dynamic-workflows puts an isolated worktree, and `.pi/agents/` is a
+ * cwd-relative convention it *reads*. Those are fine. What must not come back
+ * is a settings file pi acts on, a dependency tree `npm audit` cannot see, or
+ * Semla's own state — which is what `.pi/workflows` was until the workflow
+ * home and the committed tier config both moved under `.semla/`, per the rule
+ * in AGENTS.md that `~/.pi` belongs to the `pi` CLI and not to Semla.
  */
 const FORBIDDEN = [
   [
@@ -52,6 +51,13 @@ const FORBIDDEN = [
     ".pi/packages",
     "A pi package here loads only through .pi/settings.json, which is the " +
       "mechanism above. Extensions belong in EXTENSION_MANIFEST.",
+  ],
+  [
+    ".pi/workflows",
+    "Workflow state is Semla's own, and `~/.pi` is the pi CLI's directory, " +
+      "shared with every other tool on the machine that invokes pi. The " +
+      "committed tier config lives at .semla/workflows/model-tiers.json now; " +
+      "see WORKFLOW_PROJECT_RELATIVE_DIR in dynamic-workflows/src/config.ts.",
   ],
 ] as const;
 
