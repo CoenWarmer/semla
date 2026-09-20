@@ -243,6 +243,8 @@ export function PromptEditor({
   const { data: mcpStatus } = useMcpStatus();
   const readRouter = useReadRouterSetting();
   const updateReadRouter = useUpdateReadRouterSetting();
+  const jevGate = useJevGateSetting();
+  const updateJevGate = useUpdateJevGateSetting();
 
   const { error: updateUserSettingsError, mutate: updateUserSettings } =
     useUpdateUserSettings();
@@ -256,6 +258,7 @@ export function PromptEditor({
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
   const readRouterEnabled = readRouter.data?.enabled ?? true;
+  const jevGateEnabled = jevGate.data?.enabled ?? false;
 
   const toolPickerRef = useRef<HTMLDivElement>(null);
 
