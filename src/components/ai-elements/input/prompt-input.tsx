@@ -1135,7 +1135,7 @@ export type PromptInputButtonProps = ComponentProps<typeof InputGroupButton> & {
 export const PromptInputButton = ({
   variant = "ghost",
   className,
-  size,
+  size = 'sm',
   tooltip,
   ...props
 }: PromptInputButtonProps) => {

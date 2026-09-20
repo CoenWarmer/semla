@@ -25,6 +25,8 @@ import { MessageSquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useElementWidth } from "@/hooks/use-element-width";
+
 import type { PromptEditorModel } from "./prompt-editor";
 import { AskUserDialog } from "./ask-user-dialog";
 import { AskUserRecord } from "./ask-user-record";
@@ -116,8 +118,19 @@ export function SessionConversation({
 }) {
   const router = useRouter();
 
+  /**
+   * The column's own width, not the viewport's — this renders twice, once
+   * full-width and once as one side of the review panel's resizable split,
+   * so a viewport media query would stay wide while this half narrowed
+   * underneath it. Below the threshold the prompt editor's toolbar drops
+   * its button labels down to icons, which is the only thing that keeps
+   * the row from wrapping or overflowing.
+   */
+  const [widthRef, width] = useElementWidth<HTMLDivElement>();
+  const compactToolbar = width != null && width < 660;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0">
+    <div className="flex min-h-0 flex-1 flex-col gap-0" ref={widthRef}>
       <Conversation className="min-h-0 w-full">
         <ConversationContent className="w-full">
           {!hasMessages ? (
@@ -295,6 +308,7 @@ export function SessionConversation({
       )}
       <div className="shrink-0 px-4">
         <PromptEditor
+          compactToolbar={compactToolbar}
           defaultTools={defaultTools}
           costPerTurn={costPerTurn}
           onCompactClick={onCompactClick}

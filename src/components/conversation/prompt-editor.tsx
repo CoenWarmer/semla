@@ -34,6 +34,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  useJevGateSetting,
+  useUpdateJevGateSetting,
+} from "@/hooks/use-jev-gate-setting";
 import { useMcpStatus } from "@/hooks/use-mcp-status";
 import { useModels, type PiModel } from "@/hooks/use-models";
 import {
@@ -48,6 +52,7 @@ import {
 
 import {
   CheckIcon,
+  FilterIcon,
   FoldVerticalIcon,
   RouteIcon,
   ServerIcon,
@@ -172,6 +177,15 @@ interface PromptEditorProps {
    * handed, beside its own buttons.
    */
   goalEditor?: ReactNode;
+  /**
+   * Hide the toolbar buttons' text labels and fall back to icon-only
+   * buttons with a tooltip, because the column this editor is rendered in
+   * has gotten too narrow for the full row — driven by a `ResizeObserver`
+   * on the conversation column, not a viewport media query, since that
+   * column can be one side of a resizable split and narrow independently
+   * of the window.
+   */
+  compactToolbar?: boolean;
   /** Estimated cost of one additional turn given the current context size, in USD. */
   costPerTurn?: number | null;
   /** Trigger manual context compaction. Absent when unavailable (e.g. no live session). */
@@ -204,6 +218,7 @@ interface PromptEditorProps {
 }
 
 export function PromptEditor({
+  compactToolbar = false,
   defaultTools,
   goalEditor,
   costPerTurn,
@@ -416,7 +431,7 @@ export function PromptEditor({
         )}
         <div
           className={cn(
-            "flex items-center gap-1 transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",
+            "flex items-center transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",
             // Held visible while either menu is open: they hang off these
             // buttons, so fading the buttons out from under an open menu
             // would take the menu with them.
@@ -425,14 +440,31 @@ export function PromptEditor({
         >
           {onCompactClick && !isRunning && (
             <PromptInputButton
+              aria-label={
+                compactToolbar
+                  ? "Summarise conversation history to free up context window space"
+                  : undefined
+              }
               onClick={onCompactClick}
-              title="Summarise conversation history to free up context window space"
+              title={compactToolbar ? undefined : "Summarise conversation history to free up context window space"}
+              tooltip={
+                compactToolbar
+                  ? "Summarise conversation history to free up context window space"
+                  : undefined
+              }
             >
-              <FoldVerticalIcon size={16} />
-              <span>Compact</span>
+              <FoldVerticalIcon size={12} />
+              {!compactToolbar && <span className="text-xs">Compact</span>}
             </PromptInputButton>
           )}
           <PromptInputButton
+            aria-label={
+              compactToolbar
+                ? readRouterEnabled
+                  ? "Disable read-router tool-result compression"
+                  : "Enable read-router tool-result compression"
+                : undefined
+            }
             aria-pressed={readRouterEnabled}
             className={cn(
               readRouterEnabled && "bg-muted text-foreground",
@@ -444,24 +476,95 @@ export function PromptEditor({
             }
             onClick={() => updateReadRouter.mutate(!readRouterEnabled)}
             title={
-              readRouter.isError
-                ? readRouter.error.message
-                : readRouterEnabled
-                  ? "Disable read-router tool-result compression"
-                  : "Enable read-router tool-result compression"
+              compactToolbar
+                ? undefined
+                : readRouter.isError
+                  ? readRouter.error.message
+                  : readRouterEnabled
+                    ? "Disable read-router tool-result compression"
+                    : "Enable read-router tool-result compression"
+            }
+            tooltip={
+              compactToolbar
+                ? readRouter.isError
+                  ? readRouter.error.message
+                  : readRouterEnabled
+                    ? "Disable read-router tool-result compression"
+                    : "Enable read-router tool-result compression"
+                : undefined
             }
           >
             <RouteIcon size={16} />
-            <span>Read router {readRouterEnabled ? "on" : "off"}</span>
+            {!compactToolbar && (
+              <span className="text-xs">
+                Read router {readRouterEnabled ? "on" : "off"}
+              </span>
+            )}
+          </PromptInputButton>
+          <PromptInputButton
+            aria-label={
+              compactToolbar
+                ? jevGateEnabled
+                  ? "Disable Jev gate tool/skill filtering"
+                  : "Enable Jev gate tool/skill filtering"
+                : undefined
+            }
+            aria-pressed={jevGateEnabled}
+            className={cn(jevGateEnabled && "bg-muted text-foreground")}
+            disabled={
+              jevGate.isPending ||
+              jevGate.isError ||
+              updateJevGate.isPending
+            }
+            onClick={() => updateJevGate.mutate(!jevGateEnabled)}
+            title={
+              compactToolbar
+                ? undefined
+                : jevGate.isError
+                  ? jevGate.error.message
+                  : jevGateEnabled
+                    ? "Disable Jev gate tool/skill filtering"
+                    : "Enable Jev gate tool/skill filtering"
+            }
+            tooltip={
+              compactToolbar
+                ? jevGate.isError
+                  ? jevGate.error.message
+                  : jevGateEnabled
+                    ? "Disable Jev gate tool/skill filtering"
+                    : "Enable Jev gate tool/skill filtering"
+                : undefined
+            }
+          >
+            <FilterIcon size={16} />
+            {!compactToolbar && (
+              <span className="text-xs">
+                Jev gate {jevGateEnabled ? "on" : "off"}
+              </span>
+            )}
           </PromptInputButton>
           <div className="relative" ref={toolPickerRef}>
             <PromptInputButton
               aria-expanded={toolPickerOpen}
               aria-haspopup="listbox"
+              aria-label={
+                compactToolbar
+                  ? `${tools.length + extensionTools.length} tools`
+                  : undefined
+              }
               onClick={() => setToolPickerOpen((open) => !open)}
+              tooltip={
+                compactToolbar
+                  ? `${tools.length + extensionTools.length} tools`
+                  : undefined
+              }
             >
               <WrenchIcon size={16} />
-              <span>{tools.length + extensionTools.length} tools</span>
+              {!compactToolbar && (
+                <span className="text-xs">
+                  {tools.length + extensionTools.length} tools
+                </span>
+              )}
             </PromptInputButton>
             {toolPickerOpen && (
               <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
@@ -532,12 +635,20 @@ export function PromptEditor({
             */}
               <TooltipTrigger
                 render={
-                  <PromptInputButton>
+                  <PromptInputButton
+                    aria-label={
+                      compactToolbar
+                        ? `${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"}`
+                        : undefined
+                    }
+                  >
                     <ServerIcon size={16} />
-                    <span>
-                      {mcpServerCount} MCP server
-                      {mcpServerCount === 1 ? "" : "s"}
-                    </span>
+                    {!compactToolbar && (
+                      <span className="text-xs">
+                        {mcpServerCount} MCP server
+                        {mcpServerCount === 1 ? "" : "s"}
+                      </span>
+                    )}
                   </PromptInputButton>
                 }
               />
@@ -561,13 +672,30 @@ export function PromptEditor({
             onOpenChange={setModelSelectorOpen}
             open={modelSelectorOpen}
           >
-            <ModelSelectorTrigger render={<PromptInputButton />}>
+            <ModelSelectorTrigger
+              render={
+                <PromptInputButton
+                  aria-label={
+                    compactToolbar
+                      ? selectedModelData?.name ?? "Select model"
+                      : undefined
+                  }
+                  tooltip={
+                    compactToolbar
+                      ? selectedModelData?.name ?? "Select model"
+                      : undefined
+                  }
+                />
+              }
+            >
               {selectedModelData && (
                 <ModelSelectorLogo provider={selectedModelData.provider} />
               )}
-              <ModelSelectorName>
-                {selectedModelData?.name ?? "Select model"}
-              </ModelSelectorName>
+              {!compactToolbar && (
+                <ModelSelectorName className="text-xs">
+                  {selectedModelData?.name ?? "Select model"}
+                </ModelSelectorName>
+              )}
             </ModelSelectorTrigger>
             <ModelSelectorContent>
               <ModelSelectorInput placeholder="Search models..." />
