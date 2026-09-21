@@ -414,3 +414,17 @@ There are conversation artifacts stored in .semla-debug. You can use those to in
 ### Commit checkpoints after each turn
 
 - Commit after a working checkpoint, when the requested change is complete and relevant checks have passed or been reported.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via the `gh` CLI (repo: `CoenWarmer/semla`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
