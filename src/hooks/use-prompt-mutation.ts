@@ -21,12 +21,7 @@ import {
   projectChangeInvalidations,
   sessionProjectsKey,
 } from "@/hooks/use-session-projects";
-import { applyLiveToolEvent, type LiveToolEvent } from "@/lib/session/live-tool-calls";
-import {
-  applyRoundDelta,
-  applyRoundStart,
-  type LiveRound,
-} from "@/lib/session/live-rounds";
+import { applyLiveToolEvent } from "@/lib/session/live-tool-calls";
 import {
   fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
@@ -35,12 +30,6 @@ import {
   type SessionStatus,
   type SingleSessionStatus,
 } from "@/lib/session/session-status";
-import { startsWikiActivity } from "@/lib/wiki/wiki-activity";
-import type { WorkflowSnapshot } from "@/types/workflow";
-import type { CodeMap } from "@/lib/code-map/types";
-import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
-// No payload type import: feature-spec-request carries none. See
-// feature-spec-bridge.ts and session-events.ts.
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import {
   sessionAgentConsoleKey,
@@ -50,8 +39,14 @@ import {
 import {
   applyAgentConsoleEvent,
   type AgentConsoleEntry,
-  type AgentConsoleEvent,
 } from "@/lib/session/agent-console";
+import {
+  applyStreamEvent,
+  initialStreamState,
+  resetForNewTurn,
+  type PiStreamEvent,
+  type TurnStreamEffect,
+} from "@/lib/session/turn-stream-reducer";
 
 export type PromptModel = {
   modelId: string;
@@ -85,26 +80,6 @@ type PromptInput = {
   tools: string[];
 };
 
-type PiStreamEvent =
-  | { text: string; type: "user-message" }
-  | { content: string; type: "wiki-recall" }
-  | { roundId: string; type: "round-start" }
-  | { delta: string; roundId: string; type: "assistant-delta" }
-  | { message: string; type: "error" }
-  | LiveToolEvent
-  | { runId: string; startedAt: string; type: "workflow-started" }
-  | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
-  | { spans: readonly RecordedSpan[]; type: "spans" }
-  | { map: CodeMap; type: "code-map" }
-  | { output: string; toolCallId: string; type: "bash-output" }
-  | { accesses: readonly FileAccess[]; type: "file-access" }
-  | { payload: AskUserPayload; type: "ask-user-question" }
-  | { type: "feature-spec-request" }
-  | { title: string; type: "title-updated" }
-  /** See session-events.ts — the wire shape this mirrors. */
-  | { type: "session-status"; isRunning: boolean }
-  | { type: "complete" };
-
 // Flip to true to trace the prompt lifecycle in the browser console: every
 // stage of the mutation, the MutationCache transitions behind it, and the
 // mount/unmount of each hook instance. Kept because this app has hit several
@@ -118,33 +93,6 @@ const trace = (stage: string, data?: Record<string, unknown>) => {
   console.log(`[prompt-trace ${at}] ${stage}`, data ?? "");
 };
 
-type StreamHandlers = {
-  onUserMessage?: (text: string) => void;
-  /**
-   * The wiki extension's per-turn auto-recall content, when this turn's
-   * prompt matched any pages. Optional for the same reason `onUserMessage`
-   * is: the mid-turn reconnect path does not need it, since a reload always
-   * re-reads the persisted transcript's own wikiRecall field instead.
-   */
-  onWikiRecall?: (content: string) => void;
-  onRoundStart: (event: Extract<PiStreamEvent, { type: "round-start" }>) => void;
-  onDelta: (event: Extract<PiStreamEvent, { type: "assistant-delta" }>) => void;
-  onToolStart: (event: Extract<PiStreamEvent, { type: "tool-start" }>) => void;
-  onToolEnd: (event: Extract<PiStreamEvent, { type: "tool-end" }>) => void;
-  onBashOutput: (event: Extract<PiStreamEvent, { type: "bash-output" }>) => void;
-  onAskUser: (payload: AskUserPayload) => void;
-  onFeatureSpecRequest: () => void;
-  onWorkflowSnapshot: (snapshot: WorkflowSnapshot) => void;
-  onSpans: (spans: readonly RecordedSpan[]) => void;
-  onCodeMap: (map: CodeMap) => void;
-  onFileAccess: (accesses: readonly FileAccess[]) => void;
-  onWorkflowStarted: (event: Extract<PiStreamEvent, { type: "workflow-started" }>) => void;
-  onTitleUpdated: (title: string) => void;
-  onError: (message: string) => void;
-  onWikiTool: (toolName: string) => void;
-  onSessionStatus: (isRunning: boolean) => void;
-};
-
 /**
  * What `onSettled` calls to hand the client back onto the live stream when
  * the turn that just ended was not actually the end of the server's work.
@@ -153,14 +101,18 @@ type StreamHandlers = {
  * instant this turn's model loop goes idle, even when the server is about to
  * carry on without us — a background workflow starting its next phase, or
  * spawning its next agent (see #13). `serverIsRunning` is the last
- * `session-status` push that same stream delivered before closing — read from
- * `serverIsRunningRef` rather than the state of the same name, for the reason
- * that ref's own comment gives — so a `true` here means the server is still
- * going with no listener left on this tab. `reconnectToStream` is the same
- * path a page loaded mid-turn already
- * uses to attach to that live stream — it self-guards against a second
- * concurrent subscription, so calling it is safe even if one happens to
- * already be open.
+ * `session-status` push that same stream delivered before closing —
+ * read off `stateRef.current` rather than the `state` this hook renders, for
+ * the same reason the old `serverIsRunningRef` existed: a `session-status`
+ * push can commit *during* `mutationFn`'s stream read, and a closure captured
+ * when the mutation's callbacks were bound would otherwise see the pre-push
+ * reading. `stateRef` is not a bespoke ref grown for this one field — every
+ * dispatched stream event writes it synchronously before `setState` queues
+ * the render — so this reads correctly for the same structural reason, not
+ * because of a bookkeeping ref maintained solely for this call.
+ * `reconnectToStream` is the same path a page loaded mid-turn already uses to
+ * attach to that live stream — it self-guards against a second concurrent
+ * subscription, so calling it is safe even if one happens to already be open.
  *
  * Exported as a standalone function (rather than inlined in `onSettled`) so
  * the wiring can be pinned by a test without a DOM: the hook itself needs
@@ -173,9 +125,19 @@ export const reconnectIfStillRunning = (
   if (serverIsRunning) reconnectToStream();
 };
 
+/**
+ * Decode the turn's SSE body into `PiStreamEvent`s, handing each to `onEvent`
+ * as it arrives.
+ *
+ * Deliberately dumb: parsing is all this does. What each event *means* —
+ * which state changes, which query-cache writes, which console entries — is
+ * `turn-stream-reducer.ts`'s job, dispatched by the caller. This function
+ * used to also fan a `PiStreamEvent` out across a 14-method `StreamHandlers`
+ * object; that fan-out is what the reducer now owns.
+ */
 const readPiStream = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  handlers: StreamHandlers,
+  onEvent: (event: PiStreamEvent) => void,
 ): Promise<Error | undefined> => {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -204,45 +166,8 @@ const readPiStream = async (
         continue;
       }
 
-      if (piEvent.type === "user-message") {
-        handlers.onUserMessage?.(piEvent.text);
-      } else if (piEvent.type === "wiki-recall") {
-        handlers.onWikiRecall?.(piEvent.content);
-      } else if (piEvent.type === "round-start") {
-        handlers.onRoundStart(piEvent);
-      } else if (piEvent.type === "assistant-delta") {
-        handlers.onDelta(piEvent);
-      } else if (piEvent.type === "tool-start") {
-        handlers.onToolStart(piEvent);
-        handlers.onWikiTool(piEvent.toolName);
-      } else if (piEvent.type === "tool-end") {
-        handlers.onToolEnd(piEvent);
-      } else if (piEvent.type === "bash-output") {
-        handlers.onBashOutput(piEvent);
-      } else if (piEvent.type === "ask-user-question") {
-        handlers.onAskUser(piEvent.payload);
-      } else if (piEvent.type === "feature-spec-request") {
-        handlers.onFeatureSpecRequest();
-      } else if (piEvent.type === "spans") {
-        handlers.onSpans(piEvent.spans);
-      } else if (piEvent.type === "workflow-snapshot") {
-        handlers.onWorkflowSnapshot(piEvent.snapshot);
-      } else if (piEvent.type === "code-map") {
-        handlers.onCodeMap(piEvent.map);
-      } else if (piEvent.type === "file-access") {
-        handlers.onFileAccess(piEvent.accesses);
-      } else if (piEvent.type === "workflow-started") {
-        handlers.onWorkflowStarted(piEvent);
-      } else if (piEvent.type === "title-updated") {
-        handlers.onTitleUpdated(piEvent.title);
-      } else if (piEvent.type === "session-status") {
-        handlers.onSessionStatus(piEvent.isRunning);
-      } else if (piEvent.type === "complete") {
-        // nothing — loop will end on done
-      } else if (piEvent.type === "error") {
-        piError = new Error(piEvent.message);
-        handlers.onError(piEvent.message);
-      }
+      if (piEvent.type === "error") piError = new Error(piEvent.message);
+      onEvent(piEvent);
     }
 
     if (done) break;
@@ -307,40 +232,23 @@ export const usePromptMutation = (
   // Identifies this hook instance, so a trace line can be attributed to the
   // component that is actually rendering the spinner.
   const [inst] = useState(() => Math.random().toString(36).slice(2, 7));
-  // The turn's assistant round trips so far, each kept as its own bucket of
-  // text rather than concatenated into one string — see live-rounds.ts for
-  // why a single string cannot represent a turn that said something, called
-  // a tool, then said more. Cleared at the same points streamingText used to
-  // be.
-  const [liveRounds, setLiveRounds] = useState<LiveRound[]>([]);
-  const [activeTool, setActiveTool] = useState<string>();
-  // Tool calls seen on the stream, so the timeline can show them as they happen
-  // rather than only after the turn's entries are persisted. Kept until the
-  // next prompt: the merge with the persisted rows is keyed by tool call id, so
-  // a live row is replaced rather than duplicated once the refetch lands.
-  const [liveToolCalls, setLiveToolCalls] = useState<SessionToolCall[]>([]);
-  const [streamError, setStreamError] = useState<string>();
-  const [workflowSnapshot, setWorkflowSnapshot] = useState<WorkflowSnapshot>();
-  // Latest map this session drew. Kept per session rather than per turn: the
-  // user asks about one thing, then talks about it for several turns.
-  const [codeMap, setCodeMap] = useState<CodeMap>();
-  const [pendingQuestion, setPendingQuestion] = useState<AskUserPayload | null>(null);
-  const [pendingFeatureSpec, setPendingFeatureSpec] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-  // Latches true the first time wiki_init or wiki_capture_source is seen; never
-  // resets to false for the lifetime of the hook (i.e. the session page).
-  const [wikiActive, setWikiActive] = useState(false);
+
   /**
-   * Spans for this session's trace, keyed by id.
+   * Everything the turn's stream renders, folded through
+   * `applyStreamEvent` rather than through one `useState` per field — see
+   * turn-stream-reducer.ts for the shape and why.
    *
-   * A span arrives twice — once open, once closed — so the later write wins.
-   * Held across turns rather than reset per prompt: one trace covers the
-   * session, and a background workflow's spans keep arriving after the turn
-   * that started it has ended.
+   * `stateRef` mirrors `state` synchronously: every dispatched event writes
+   * it before `setState` ever queues a render, so a callback that needs the
+   * *current* reading rather than whatever this render closed over
+   * (`onSettled`, below) reads the ref. This is the same structural fix the
+   * old `serverIsRunningRef` was a one-field special case of.
    */
-  const [spansById, setSpansById] = useState<ReadonlyMap<string, RecordedSpan>>(
-    () => new Map(),
+  const stateRef = useRef(
+    initialStreamState({ serverIsRunning: initialIsRunning ?? false }),
   );
+  const [state, setState] = useState(stateRef.current);
+
   /**
    * What this session has recorded, from disk and from the live stream.
    *
@@ -357,30 +265,18 @@ export const usePromptMutation = (
   });
 
   const spans = useMemo(
-    () => mergeSpans(persistedSpans ?? [], spansById),
-    [persistedSpans, spansById],
+    () => mergeSpans(persistedSpans ?? [], state.spansById),
+    [persistedSpans, state.spansById],
   );
-  const wikiActiveRef = useRef(false);
-  /**
-   * The title the server derived from the first prompt.
-   *
-   * The server sends this once per session, on its first turn. It used to set a
-   * ref that triggered `router.refresh()` after the turn — a full root-layout
-   * re-render, measured at 3,974ms and 78KB of RSC payload carrying every
-   * session in the sidebar and its token usage, to propagate one string.
-   *
-   * The string is in the event, so the page can simply render it. The sidebar
-   * needs nothing either: a session the server render did not have is added
-   * from the status poll, with the title the poll reports — which is the
-   * new-session case, and the only case this event fires in.
-   */
-  const [serverTitle, setServerTitle] = useState<string | null>(null);
 
   /** See streamed-answer-handoff.ts for why the order here matters. */
   const handOffToTranscript = useCallback(
     () =>
       handOffStreamedAnswer({
-        clearStreamed: () => setLiveRounds([]),
+        clearStreamed: () => {
+          stateRef.current = { ...stateRef.current, liveRounds: [] };
+          setState(stateRef.current);
+        },
         loadTranscript: () =>
           queryClient.invalidateQueries({
             queryKey: messagesKey,
@@ -389,59 +285,6 @@ export const usePromptMutation = (
     [queryClient, messagesKey],
   );
   const reconnectAbortRef = useRef<AbortController | null>(null);
-  /**
-   * The server's own view of whether a turn is in flight for this session,
-   * now pushed over the stream rather than polled.
-   *
-   * This used to be a `useQuery` on a 5s `refetchInterval` against
-   * `/status`, with a `streamKnownDead` latch (session-reconnect.ts) papering
-   * over the gap between a turn actually ending and that poll noticing —
-   * without the latch, every reattach's 404 refired the recovery effect for
-   * as long as the stale cache kept answering "running", which was the eight
-   * reattach-in-1.15s spin that mechanism's own doc comment describes.
-   *
-   * A push event closes that gap directly: `session-status` now arrives the
-   * instant `setSessionRunning` changes on the server (session-service.ts,
-   * background-continuation.ts), on the same stream this hook is already
-   * subscribed to for everything else. There is nothing left to be stale
-   * about, so `shouldReconnect`/`clearsDeadStreamLatch` and the effect that
-   * called them are gone rather than kept as dead code — see
-   * session-reconnect.ts's own history for why a latch modelling a gap that no
-   * longer exists would only mislead the next reader.
-   *
-   * Seeded from `initialIsRunning` (the server-rendered page's own read),
-   * which is also what still decides whether to reconnect on mount — a page
-   * loaded mid-turn has no stream open yet to have told it anything.
-   */
-  const [serverIsRunning, setServerIsRunning] = useState(
-    () => initialIsRunning ?? false,
-  );
-
-  /**
-   * The same reading, readable synchronously.
-   *
-   * `onSettled` is the one consumer that cannot use the state. It closes over
-   * whatever `serverIsRunning` was when the mutation's callbacks were captured,
-   * and the `session-status` push that matters most arrives *during* the turn
-   * it settles — a background workflow announcing it will carry on past this
-   * turn. That push lands on the same stream `mutationFn` is reading, so the
-   * render it queues has not committed by the time the reader hits end-of-body
-   * and `onSettled` runs. The closure reads the pre-turn `false`, no reconnect
-   * is made, and the tab sits there with the server still working and no
-   * listener on it — which is the whole failure `reconnectIfStillRunning`
-   * exists to prevent.
-   *
-   * A ref is written before the state, so the decision sees the last push
-   * regardless of where React is in its work. Every writer goes through
-   * `markServerRunning` to keep the two from parting company; the state is
-   * still what renders, since a ref does not.
-   */
-  const serverIsRunningRef = useRef(initialIsRunning ?? false);
-
-  const markServerRunning = useCallback((isRunning: boolean) => {
-    serverIsRunningRef.current = isRunning;
-    setServerIsRunning(isRunning);
-  }, []);
 
   /**
    * Fold a console event into the cache the console panel reads.
@@ -450,11 +293,9 @@ export const usePromptMutation = (
    * which this hook's own consumers render. The console panel lives in the
    * bottom bar, outside this hook's subtree, so the cache is the only way it
    * can see the state at all and a second copy here would have no reader.
-   *
-   * Stable, because the handlers memo below closes over it with empty deps.
    */
   const pushConsoleEvent = useCallback(
-    (event: AgentConsoleEvent) => {
+    (event: Parameters<typeof applyAgentConsoleEvent>[1]) => {
       queryClient.setQueryData(sessionAgentConsoleKey(sessionId), (prev) =>
         applyAgentConsoleEvent(
           (prev as AgentConsoleEntry[] | undefined) ?? [],
@@ -462,157 +303,200 @@ export const usePromptMutation = (
         ),
       );
     },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [queryClient, sessionId],
   );
 
-  // Stable handlers object — state setters are guaranteed stable by React,
-  // so this memo never needs to re-run. A factory function (the previous shape)
-  // created new closure objects on every call, which confused the React Compiler.
-  const handlers = useMemo(
-    (): StreamHandlers => ({
-      onRoundStart: (event) => setLiveRounds((r) => applyRoundStart(r, event)),
-      onDelta: (event) => setLiveRounds((r) => applyRoundDelta(r, event)),
-      onToolStart: (event) => {
-        setActiveTool(event.toolName);
-        setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-        queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
-          applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
-        );
-        // The command is on the start event's params and nowhere else, so the
-        // console entry has to be opened here rather than on first output.
-        const command = event.params?.["command"];
-        if (event.toolName === "bash" && command) {
-          pushConsoleEvent({
-            at: event.at,
-            command,
-            toolCallId: event.toolCallId,
-            type: "bash-start",
-          });
+  /**
+   * Run every effect `applyStreamEvent` asked for.
+   *
+   * The only place in this hook that touches `queryClient` on the turn
+   * stream's behalf — the reducer describes what to do as data, this
+   * executes it. `isReconnect` gates the one effect whose meaning actually
+   * differs by which stream it arrived on: a `user-message` echo means
+   * "show it optimistically" only when reconnecting to a turn already in
+   * progress — for a turn this tab itself started, `onMutate` already wrote
+   * that optimistic message directly, and appending it again here would
+   * duplicate it.
+   */
+  const runStreamEffects = useCallback(
+    (effects: readonly TurnStreamEffect[], options?: { isReconnect?: boolean }) => {
+      for (const effect of effects) {
+        switch (effect.type) {
+          case "append-optimistic-user-message": {
+            if (!options?.isReconnect) break;
+            queryClient.setQueryData<SessionMessagesResult>(
+              messagesKey,
+              (prev) => ({
+                contextWindow: prev?.contextWindow ?? null,
+                systemPromptChars: prev?.systemPromptChars,
+                toolCalls: prev?.toolCalls ?? [],
+                messages: [
+                  ...(prev?.messages ?? []),
+                  {
+                    createdAt: new Date().toISOString(),
+                    id: `optimistic-reconnect-${crypto.randomUUID()}`,
+                    role: "user" as const,
+                    text: effect.text,
+                  },
+                ],
+              }),
+            );
+            break;
+          }
+
+          // Attaches to the last message in the cache rather than to the
+          // optimistic bubble's own id: onMutate's optimistic write already
+          // landed by the time this event arrives (user-message precedes it
+          // on the wire, and onMutate ran synchronously before the fetch
+          // that opens the stream), but its id is not known here without
+          // threading it through — the last message is that bubble by
+          // construction, since nothing else appends to this list between
+          // onMutate and the turn's own assistant reply.
+          case "apply-wiki-recall":
+            queryClient.setQueryData<SessionMessagesResult>(
+              messagesKey,
+              (prev) => {
+                if (!prev || prev.messages.length === 0) return prev;
+                const lastIndex = prev.messages.length - 1;
+                const last = prev.messages[lastIndex];
+                if (!last || last.role !== "user") return prev;
+                const messages = [...prev.messages];
+                messages[lastIndex] = { ...last, wikiRecall: effect.content };
+                return {
+                  contextWindow: prev.contextWindow,
+                  messages,
+                  systemPromptChars: prev.systemPromptChars,
+                  toolCalls: prev.toolCalls,
+                };
+              },
+            );
+            break;
+
+          case "cache-live-tool-call":
+            queryClient.setQueryData(
+              sessionLiveToolCallsKey(sessionId),
+              (prev) =>
+                applyLiveToolEvent(
+                  (prev as SessionToolCall[] | undefined) ?? [],
+                  effect.event,
+                ),
+            );
+            break;
+
+          // The command is on the start event's params and nowhere else, so
+          // the console entry has to be opened here rather than on first
+          // output.
+          case "console-bash-start":
+            pushConsoleEvent({
+              at: effect.at,
+              command: effect.command,
+              toolCallId: effect.toolCallId,
+              type: "bash-start",
+            });
+            break;
+
+          case "console-bash-end":
+            pushConsoleEvent({
+              at: effect.at,
+              isError: effect.isError,
+              toolCallId: effect.toolCallId,
+              type: "bash-end",
+              ...(effect.output ? { output: effect.output } : {}),
+            });
+            break;
+
+          case "console-bash-output":
+            pushConsoleEvent({
+              output: effect.output,
+              toolCallId: effect.toolCallId,
+              type: "bash-output",
+            });
+            break;
+
+          // Push live spans into the query cache so components that read
+          // sessionSpansKey directly (session-agents-panel) see them too —
+          // without this they only ever see the persisted-on-disk copy.
+          case "cache-spans":
+            queryClient.setQueryData(
+              sessionSpansKey(sessionId),
+              (prev: RecordedSpan[] | undefined) =>
+                mergeSpans(
+                  prev ?? [],
+                  new Map(effect.spans.map((s) => [s.spanId, s])),
+                ),
+            );
+            break;
+
+          case "cache-file-access":
+            queryClient.setQueryData(
+              sessionLiveAccessesKey(sessionId),
+              (previous: FileAccess[] | undefined) => [
+                ...(previous ?? []),
+                ...effect.accesses,
+              ],
+            );
+            break;
+
+          // Keep the cache the header badges and the sidebar read in step
+          // with the same push, so a component that only reads
+          // sessionStatusKey (session-agents-panel.tsx, header-actions.tsx)
+          // does not need its own poll to learn it — those still fetch it
+          // once on mount, but no longer need to ask again on a timer for
+          // this field.
+          case "cache-session-status":
+            queryClient.setQueryData<SingleSessionStatus>(
+              sessionStatusKey(sessionId),
+              (prev) => (prev ? { ...prev, isRunning: effect.isRunning } : prev),
+            );
+            setListRunning(effect.isRunning);
+            break;
+
+          // So the sidebar shows the new title now rather than on its next
+          // poll.
+          case "invalidate-title":
+            void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
+            break;
         }
-      },
-      onToolEnd: (event) => {
-        setActiveTool(undefined);
-        setLiveToolCalls((c) => applyLiveToolEvent(c, event));
-        queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), (prev) =>
-          applyLiveToolEvent((prev as SessionToolCall[] | undefined) ?? [], event),
-        );
-        if (event.toolName === "bash") {
-          pushConsoleEvent({
-            at: event.at,
-            isError: event.isError,
-            ...(event.errorText ?? event.resultText
-              ? { output: event.errorText ?? event.resultText ?? "" }
-              : {}),
-            toolCallId: event.toolCallId,
-            type: "bash-end",
-          });
-        }
-        if (event.toolName === "ask_user") setPendingQuestion(null);
-        if (event.toolName === "capture_feature_spec") setPendingFeatureSpec(false);
-      },
-      onBashOutput: (event) => {
-        pushConsoleEvent({
-          output: event.output,
-          toolCallId: event.toolCallId,
-          type: "bash-output",
-        });
-      },
-      onAskUser: (payload) => setPendingQuestion(payload),
-      onFeatureSpecRequest: () => setPendingFeatureSpec(true),
-      onWorkflowSnapshot: (snapshot) => setWorkflowSnapshot(snapshot),
-      onSpans: (incoming) => {
-        setSpansById((previous) => {
-          const next = new Map(previous);
-          for (const span of incoming) next.set(span.spanId, span);
-          return next;
-        });
-        // Push live spans into the query cache so components that read
-        // sessionSpansKey directly (session-agents-panel) see them too —
-        // without this they only ever see the persisted-on-disk copy.
-        queryClient.setQueryData(
-          sessionSpansKey(sessionId),
-          (prev: RecordedSpan[] | undefined) =>
-            mergeSpans(prev ?? [], new Map(incoming.map((s) => [s.spanId, s]))),
-        );
-      },
-      onCodeMap: (map) => setCodeMap(map),
-      onFileAccess: (accesses) => {
-        queryClient.setQueryData(
-          sessionLiveAccessesKey(sessionId),
-          (previous: FileAccess[] | undefined) => [
-            ...(previous ?? []),
-            ...accesses,
-          ],
-        );
-      },
-      onWorkflowStarted: (event) => {
-        const snapshot: WorkflowSnapshot = {
-          agentCount: 0,
-          agents: [],
-          doneCount: 0,
-          errorCount: 0,
-          name: "Background workflow",
-          phases: [],
-          runId: event.runId,
-          runningCount: 0,
-          startedAt: event.startedAt,
-        };
-        setWorkflowSnapshot(snapshot);
-      },
-      onTitleUpdated: (title) => {
-        setServerTitle(title);
-        // So the sidebar shows it now rather than on its next poll.
-        void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-      },
-      // Attaches to the last message in the cache rather than to the
-      // optimistic bubble's own id: onMutate's optimistic write already
-      // landed by the time this event arrives (user-message precedes it on
-      // the wire, and onMutate ran synchronously before the fetch that opens
-      // the stream), but its id is not known here without threading it
-      // through — the last message is that bubble by construction, since
-      // nothing else appends to this list between onMutate and the turn's own
-      // assistant reply.
-      onWikiRecall: (content) => {
-        queryClient.setQueryData<SessionMessagesResult>(messagesKey, (prev) => {
-          if (!prev || prev.messages.length === 0) return prev;
-          const lastIndex = prev.messages.length - 1;
-          const last = prev.messages[lastIndex];
-          if (!last || last.role !== "user") return prev;
-          const messages = [...prev.messages];
-          messages[lastIndex] = { ...last, wikiRecall: content };
-          return {
-            contextWindow: prev.contextWindow,
-            messages,
-            systemPromptChars: prev.systemPromptChars,
-            toolCalls: prev.toolCalls,
-          };
-        });
-      },
-      onError: (message) => setStreamError(message),
-      onWikiTool: (toolName) => {
-        if (!wikiActiveRef.current && startsWikiActivity(toolName)) {
-          wikiActiveRef.current = true;
-          setWikiActive(true);
-        }
-      },
-      onSessionStatus: (isRunning) => {
-        markServerRunning(isRunning);
-        // Keep the cache the header badges and the sidebar read in step with
-        // the same push, so a component that only reads sessionStatusKey
-        // (session-agents-panel.tsx, header-actions.tsx) does not need its own
-        // poll to learn it — those still fetch it once on mount, but no longer
-        // need to ask again on a timer for this field.
-        queryClient.setQueryData<SingleSessionStatus>(
-          sessionStatusKey(sessionId),
-          (prev) => (prev ? { ...prev, isRunning } : prev),
-        );
-        setListRunning(isRunning);
-      },
-    }),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [],
+      }
+    },
+    [messagesKey, pushConsoleEvent, queryClient, sessionId, setListRunning],
   );
+
+  /**
+   * Fold one turn-stream event into state, and run whatever effects that
+   * produced.
+   *
+   * Reads and writes `stateRef.current` rather than `state`: events arrive
+   * from an async read loop (`readPiStream`), several to a tick, and each
+   * has to see the last one's result rather than whatever `state` this
+   * render closed over.
+   */
+  const dispatchStream = useCallback(
+    (event: PiStreamEvent, options?: { isReconnect?: boolean }) => {
+      const { effects, state: next } = applyStreamEvent(
+        stateRef.current,
+        event,
+      );
+      stateRef.current = next;
+      setState(next);
+      runStreamEffects(effects, options);
+    },
+    [runStreamEffects],
+  );
+
+  /**
+   * The reset every new turn needs, plus the one cache write
+   * `resetForNewTurn` (a pure function with no `queryClient` of its own)
+   * cannot make itself: the live tool-call cache other components read
+   * through `sessionLiveToolCallsKey`.
+   */
+  const resetStreamState = useCallback(() => {
+    stateRef.current = resetForNewTurn(stateRef.current);
+    setState(stateRef.current);
+    queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
+  }, [queryClient, sessionId]);
+
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   /**
    * Attach to a turn that is already running on the server.
@@ -630,11 +514,7 @@ export const usePromptMutation = (
     reconnectAbortRef.current = controller;
 
     const reconnect = async () => {
-      setLiveRounds([]);
-      setActiveTool(undefined);
-      setLiveToolCalls([]);
-      queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
-      setWorkflowSnapshot(undefined);
+      resetStreamState();
       setIsReconnecting(true);
 
       try {
@@ -650,16 +530,7 @@ export const usePromptMutation = (
           // fresh event (a real `session-status` push, or a new mount's
           // `initialIsRunning`) says so, so setting it false here does not
           // provoke another reattach on its own.
-          markServerRunning(false);
-
-          // Correct the cached reading too, so the rest of the UI stops showing
-          // a turn that has demonstrably ended rather than waiting for the next
-          // fetch. The route clears the stored flag; this is the local view of it.
-          queryClient.setQueryData<SingleSessionStatus>(
-            sessionStatusKey(sessionId),
-            (prev) => (prev ? { ...prev, isRunning: false } : prev),
-          );
-          setListRunning(false);
+          dispatchStream({ isRunning: false, type: "session-status" });
 
           // No invalidateQueries here: this branch's `return` still runs the
           // `finally` below, whose handOffToTranscript() already invalidates
@@ -668,43 +539,28 @@ export const usePromptMutation = (
           return;
         }
 
-        await readPiStream(response.body.getReader(), {
-          ...handlers,
-          onUserMessage: (text) => {
-            queryClient.setQueryData<SessionMessagesResult>(
-              messagesKey,
-              (prev) => ({
-                contextWindow: prev?.contextWindow ?? null,
-                systemPromptChars: prev?.systemPromptChars,
-                toolCalls: prev?.toolCalls ?? [],
-                messages: [
-                  ...(prev?.messages ?? []),
-                  {
-                    createdAt: new Date().toISOString(),
-                    id: `optimistic-reconnect-${crypto.randomUUID()}`,
-                    role: "user" as const,
-                    text,
-                  },
-                ],
-              }),
-            );
-          },
-        });
+        await readPiStream(response.body.getReader(), (event) =>
+          dispatchStream(event, { isReconnect: true }),
+        );
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         // Non-fatal — settle and refetch below.
       } finally {
         setIsReconnecting(false);
-        setActiveTool(undefined);
-        setPendingQuestion(null);
-        setPendingFeatureSpec(false);
+        stateRef.current = {
+          ...stateRef.current,
+          activeTool: undefined,
+          pendingFeatureSpec: false,
+          pendingQuestion: null,
+        };
+        setState(stateRef.current);
         await handOffToTranscript();
       }
     };
 
     void reconnect();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, messagesKey]);
+  }, [sessionId, dispatchStream, resetStreamState, handOffToTranscript]);
 
   useEffect(() => {
     if (!initialIsRunning) return;
@@ -740,7 +596,6 @@ export const usePromptMutation = (
    */
   const sessionExists = sessionStatus?.exists;
 
-
   const mutation = useMutation<
     void,
     Error,
@@ -769,7 +624,9 @@ export const usePromptMutation = (
         throw new Error(await promptFailureMessage(response));
       }
 
-      const piError = await readPiStream(response.body.getReader(), handlers);
+      const piError = await readPiStream(response.body.getReader(), (event) =>
+        dispatchStream(event),
+      );
 
       if (piError) {
         trace("mutationFn:throwing", { id, message: piError.message });
@@ -789,11 +646,14 @@ export const usePromptMutation = (
           })
         );
       }
-      setStreamError(
-        mutationError instanceof Error
-          ? mutationError.message
-          : "Pi could not process this prompt."
-      );
+      stateRef.current = {
+        ...stateRef.current,
+        streamError:
+          mutationError instanceof Error
+            ? mutationError.message
+            : "Pi could not process this prompt.",
+      };
+      setState(stateRef.current);
     },
     onMutate: async ({ leafId, text }) => {
       // Cancel any in-progress reconnect so it doesn't race with the new prompt.
@@ -808,14 +668,7 @@ export const usePromptMutation = (
           : "onMutate:start",
         { inFlight: inFlightRef.current },
       );
-      setStreamError(undefined);
-      setLiveRounds([]);
-      setActiveTool(undefined);
-      setLiveToolCalls([]);
-      queryClient.setQueryData(sessionLiveToolCallsKey(sessionId), [] as SessionToolCall[]);
-      setWorkflowSnapshot(undefined);
-      setPendingQuestion(null);
-      setPendingFeatureSpec(false);
+      resetStreamState();
       await queryClient.cancelQueries({
         queryKey: messagesKey,
       });
@@ -867,9 +720,13 @@ export const usePromptMutation = (
     },
     onSettled: async () => {
       trace("onSettled:start");
-      setActiveTool(undefined);
-      setPendingQuestion(null);
-      setPendingFeatureSpec(false);
+      stateRef.current = {
+        ...stateRef.current,
+        activeTool: undefined,
+        pendingFeatureSpec: false,
+        pendingQuestion: null,
+      };
+      setState(stateRef.current);
       trace("onSettled:invalidate-begin");
       await handOffToTranscript();
       trace("onSettled:invalidate-done");
@@ -919,9 +776,10 @@ export const usePromptMutation = (
       // See reconnectIfStillRunning's own doc comment for why this is needed
       // at all: the POST stream this mutation just read from is a one-shot,
       // and does not survive a background workflow continuing past this turn.
-      // Off the ref, not the state: see `serverIsRunningRef` for why the state
-      // this closure captured is the wrong reading precisely when it matters.
-      reconnectIfStillRunning(serverIsRunningRef.current, reconnectToStream);
+      // Off the ref, not the state: see the field doc on `stateRef` for why
+      // the state this closure captured is the wrong reading precisely when
+      // it matters.
+      reconnectIfStillRunning(stateRef.current.serverIsRunning, reconnectToStream);
 
       inFlightRef.current = Math.max(0, inFlightRef.current - 1);
       trace("onSettled:end", { inFlight: inFlightRef.current });
@@ -952,8 +810,8 @@ export const usePromptMutation = (
   // isPending=false, the mutation settled and React simply is not rendering it.
   // If this never logs after onSettled:start, the stall is inside onSettled.
   const liveTextLength = useMemo(
-    () => liveRounds.reduce((sum, round) => sum + round.text.length, 0),
-    [liveRounds],
+    () => state.liveRounds.reduce((sum, round) => sum + round.text.length, 0),
+    [state.liveRounds],
   );
 
   useEffect(() => {
@@ -966,10 +824,10 @@ export const usePromptMutation = (
   }, [inst, mutation.status, mutation.isPending, liveTextLength]);
 
   return {
-    activeTool,
-    codeMap,
+    activeTool: state.activeTool,
+    codeMap: state.codeMap,
     isReconnecting,
-    serverIsRunning,
+    serverIsRunning: state.serverIsRunning,
     /**
      * This turn's assistant round trips so far, in order — not one flattened
      * string. See live-rounds.ts for why: a turn that says something, calls a
@@ -977,13 +835,13 @@ export const usePromptMutation = (
      * kept apart to interleave live text with live tool calls the way
      * groupConversation already interleaves the persisted rows they become.
      */
-    liveRounds,
-    liveToolCalls,
+    liveRounds: state.liveRounds,
+    liveToolCalls: state.liveToolCalls,
     mutation,
-    pendingFeatureSpec,
-    pendingQuestion,
+    pendingFeatureSpec: state.pendingFeatureSpec,
+    pendingQuestion: state.pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */
-    serverTitle,
+    serverTitle: state.serverTitle,
     /** Whether the server has a record for this session. See `sessionExists`. */
     sessionExists,
     /**
@@ -992,8 +850,8 @@ export const usePromptMutation = (
      * position.
      */
     spans,
-    streamError,
-    wikiActive,
-    workflowSnapshot,
+    streamError: state.streamError,
+    wikiActive: state.wikiActive,
+    workflowSnapshot: state.workflowSnapshot,
   };
 };
