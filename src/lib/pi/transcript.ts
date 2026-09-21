@@ -4,12 +4,9 @@ import type { Database } from "@/types/database.types";
 import { readSessionEntries, type TranscriptRow } from "@/lib/pi/session/session-file";
 import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
 import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
+import { firstCustomEntryByMessageId } from "@/lib/pi/session/custom-entry-attribution";
+import { jevGateTextByUserMessageId } from "@/lib/pi/session/jev-gate-attribution";
 import {
-  customEntryTextByMessageId,
-  firstCustomEntryByMessageId,
-} from "@/lib/pi/session/custom-entry-attribution";
-import {
-  JEV_GATE_CUSTOM_TYPE,
   parseJevGateRecord,
   type JevGateRecord,
 } from "@/lib/pi/extensions/jev-gate/gate-record";
@@ -297,24 +294,28 @@ export const liveMessageRows = (
   const resolvedLeaf = resolveLeafOverride(walkable, leafId);
   const superseded = supersededSiblings(walkable, resolvedLeaf);
 
-  // Attribution is shared with session-file.ts via
-  // custom-entry-attribution.ts — same tree, same subtlety about an
-  // intervening custom_message, and now a third caller (the Jev gate record)
-  // that would otherwise have been a third copy of the walk. The rows here
-  // carry the entry one level down, so they are projected to the shape the
-  // helper takes.
+  // Attribution is shared with session-file.ts — same tree, same subtlety
+  // about an intervening custom_message — via custom-entry-attribution.ts for
+  // the wiki's recall and jev-gate-attribution.ts for the gate. The rows here
+  // carry the entry one level down, so they are projected to the shape both
+  // helpers take, `role` included.
   const attributable = walkable.map((entry) => {
     const raw = entry.row.payload.entry as {
       customType?: string;
       content?: unknown;
+      message?: unknown;
       parentId?: string | null;
       type?: string;
     };
+    // `role` is projected for the user-scoped gate walk. Read defensively:
+    // these rows come from Postgres and may predate any given payload shape.
+    const role = (raw.message as { role?: unknown } | undefined)?.role;
     return {
       content: raw.content,
       customType: raw.customType,
       id: entry.id as string | undefined,
       parentId: raw.parentId,
+      role: typeof role === "string" ? role : undefined,
       type: raw.type,
     };
   });
@@ -322,7 +323,10 @@ export const liveMessageRows = (
     attributable,
     WIKI_RECALL_CUSTOM_TYPE,
   );
-  const jevGateByParentId = customEntryTextByMessageId(attributable, JEV_GATE_CUSTOM_TYPE);
+  // Gate-aware, unlike the wiki's recall above: the gate re-evaluates mid-turn
+  // and also records at `before_agent_start`, before the new prompt exists in
+  // the tree. See jev-gate-attribution.ts.
+  const jevGateByParentId = jevGateTextByUserMessageId(attributable);
 
   return activePath(walkable, resolvedLeaf)
     .filter((entry) => entry.row.payload.entry.type === "message")

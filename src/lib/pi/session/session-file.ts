@@ -17,12 +17,12 @@ import { join } from "node:path";
 
 import { PI_SESSION_DIR } from "@/lib/pi/runtime/runtime-config";
 import {
-  customEntryTextByMessageId,
   firstCustomEntryByMessageId,
+  type RoleAttributableEntry,
 } from "@/lib/pi/session/custom-entry-attribution";
+import { jevGateTextByUserMessageId } from "@/lib/pi/session/jev-gate-attribution";
 import { activePath, supersededSiblings } from "@/lib/pi/session/session-path";
 import { resolveLeafOverride } from "@/lib/pi/session/session-leaf";
-import { JEV_GATE_CUSTOM_TYPE } from "@/lib/pi/extensions/jev-gate/gate-record";
 import { WIKI_RECALL_CUSTOM_TYPE } from "@/lib/pi/wiki/wiki-recall-message";
 
 /** The row shape getTranscript consumes, from either source. */
@@ -68,6 +68,32 @@ export interface SessionFileEntry {
   customType?: string;
   /** Present on a `custom_message` entry. */
   content?: unknown;
+}
+
+/**
+ * A session entry's message role, or undefined where it has none.
+ *
+ * `message` is `unknown` on this interface and stays that way — the file is
+ * read from disk and may have been written by an older Semla or edited by
+ * hand, so the shape is narrowed at the point of use rather than asserted for
+ * the whole transcript.
+ */
+function entryRole(entry: SessionFileEntry): string | undefined {
+  const role = (entry.message as { role?: unknown } | undefined)?.role;
+  return typeof role === "string" ? role : undefined;
+}
+
+/**
+ * The same entries with their roles projected, for the user-scoped walk.
+ *
+ * A separate pass rather than a field on `SessionFileEntry`: that interface
+ * mirrors a line of the file exactly, and a `role` on it would claim the file
+ * stores one at the top level, which it does not.
+ */
+function withRoles(
+  entries: readonly SessionFileEntry[],
+): Array<SessionFileEntry & RoleAttributableEntry> {
+  return entries.map((entry) => ({ ...entry, role: entryRole(entry) }));
 }
 
 /**
@@ -180,7 +206,11 @@ export function readSessionEntries(
   const resolvedLeaf = resolveLeafOverride(entries, leafId);
   const superseded = supersededSiblings(entries, resolvedLeaf);
   const wikiRecall = wikiRecallByParentId(entries);
-  const jevGate = customEntryTextByMessageId(entries, JEV_GATE_CUSTOM_TYPE);
+  // Gate-aware rather than the shared user-scoped walk: a mid-turn
+  // re-evaluation hangs off the `toolResult` that triggered it, and a
+  // turn-start decision hangs off the *previous* turn's tail. See
+  // jev-gate-attribution.ts.
+  const jevGate = jevGateTextByUserMessageId(withRoles(entries));
 
   return activePath(entries, resolvedLeaf)
     .filter((entry) => entry.type === "message")
