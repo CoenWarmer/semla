@@ -25,7 +25,7 @@ import { TokenUsage } from "../token-usage";
  * time and in practice holds a handful; hiding one behind a "+N" would defeat
  * the point of showing them at all.
  */
-function SessionProjectBadges({ sessionId }: { sessionId: string }) {
+export function SessionProjectBadges({ sessionId }: { sessionId: string }) {
   const { data } = useQuery({
     queryKey: sessionStatusKey(sessionId),
     queryFn: () => fetchSingleSessionStatus(sessionId),
@@ -68,7 +68,7 @@ function SessionProjectBadges({ sessionId }: { sessionId: string }) {
   );
 }
 
-function GlobalCostBadge() {
+export function GlobalCostBadge() {
   const { data } = useGlobalCost();
   if (!data) return null;
   // Cost only: the header is tight, and the tooltip carries the token count.

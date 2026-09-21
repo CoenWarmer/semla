@@ -24,6 +24,9 @@ import { InspectorPanel } from "../session-panels/inspector-panel";
 
 import { TokenUsage } from "../token-usage";
 import { SessionContextWindowBar } from "./session-context-window-bar";
+import { GlobalCostBadge, SessionProjectBadges } from "./header-actions";
+import { SidebarTrigger } from "../ui/sidebar";
+import { ProjectsCombobox } from "../sidebar/projects-combobox";
 
 interface SessionTopbarProps {
   /** Toggle the review panel. Absent when the session cannot be reviewed. */
@@ -135,23 +138,26 @@ export function SessionTopbar({
   return (
     <>
       {/* Title bar */}
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/40 px-6">
-        {/* Left: session title */}
-        <h1 className="max-w-300 truncate text-sm font-medium text-foreground">
-          {title ?? "Untitled session"}
-        </h1>
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/40 px-2">
+        <SidebarTrigger />
+        <ProjectsCombobox small />
+        {sessionId && <SessionProjectBadges sessionId={sessionId} />}
+        {/* Left: goal */}
+        {onGoalSave && (
+          <div className="max-w-lg items-center justify-items-center">
+            <GoalEditor
+              goal={goal ?? null}
+              onSave={onGoalSave}
+              variant="inline"
+            />
+          </div>
+        )}
 
-        {/* Center: goal */}
+        {/* Center: session title */}
         <div className="flex min-w-0 flex-1 justify-center">
-          {onGoalSave && (
-            <div className="w-full max-w-lg items-center justify-items-center">
-              <GoalEditor
-                goal={goal ?? null}
-                onSave={onGoalSave}
-                variant="inline"
-              />
-            </div>
-          )}
+          <h1 className="max-w-300 truncate text-sm font-medium text-foreground">
+            {title ?? "Untitled session"}
+          </h1>
         </div>
 
         {/* Right: controls */}
@@ -239,6 +245,7 @@ export function SessionTopbar({
 
           <div className="flex items-center gap-3 text-xs text-foreground">
             <TokenUsage cost={totalCost} tokens={totalTokens} />
+            <GlobalCostBadge />
           </div>
         </div>
       </div>
