@@ -65,6 +65,7 @@ import {
   retainLiveSession,
 } from "@/lib/pi/session/live-sessions";
 import { takeTurnSlot } from "@/lib/pi/session/session-turn-lock";
+import { TurnResources } from "@/lib/pi/session/turn-resources";
 import {
   PI_AGENT_DIR,
   PI_SESSION_DIR,
@@ -341,6 +342,16 @@ export const runPiPrompt = async ({
   detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
   publishSessionRunning(semlaSessionId, true);
 
+  // Accumulates this turn's tightly-scoped registrations (the event
+  // subscription, both rendezvous notifiers, the live-session handle, the
+  // wiki repo attribution, and the span sink) in acquisition order, so
+  // `finally` below can release them in exact reverse with one call instead
+  // of six hand-paired ones. Does not own BRIDGE_RUN_STARTED, CURRENT_TURN,
+  // the turn slot, or the stream/running-flag pair — all four release later,
+  // gated by the span flush and the `decision` branch, including the
+  // background-continuation handoff, further down.
+  const turnResources = new TurnResources();
+
   const emit: EmitSessionEvent = (event) => {
     publishToSessionStream(semlaSessionId, event);
     onEvent(event);
@@ -501,6 +512,9 @@ export const runPiPrompt = async ({
   const currentTurn: CurrentTurn | null = turnId
     ? { startedAt: new Date().toISOString(), turnId }
     : null;
+  // Released later, after this turn's span flush — not through turnResources,
+  // which releases the tightly-scoped cluster at the top of `finally`, before
+  // that flush. See the release call further down for why.
   if (currentTurn) writeSessionSlot(CURRENT_TURN, piRuntimeSessionId, currentTurn);
 
   // The projects this turn has already linked. Declared before turnRepoSlugs,
@@ -522,6 +536,7 @@ export const runPiPrompt = async ({
     [...projects, ...attachedThisTurn].filter(Boolean);
 
   setSessionRepos(piRuntimeSessionId, turnRepoSlugs());
+  turnResources.push(() => clearSessionRepo(piRuntimeSessionId));
 
   /**
    * Span sink for this turn, published before bindExtensions so the workflow
@@ -583,14 +598,17 @@ export const runPiPrompt = async ({
   });
   host.turnStarted({ text });
   retainSpanSink(piRuntimeSessionId, spanSink, host);
+  turnResources.push(() => releaseSpanSink(piRuntimeSessionId));
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const unregisterNotifier = registerNotifier(semlaSessionId, (payload) => {
     emit({ payload, type: "ask-user-question" });
   });
+  turnResources.push(unregisterNotifier);
   const unregisterFeatureSpecNotifier = registerFeatureSpecNotifier(
     semlaSessionId,
     () => emit({ type: "feature-spec-request" }),
   );
+  turnResources.push(unregisterFeatureSpecNotifier);
 
   // Validate before Pi ever sees the paths: a missing entry file or an
   // inconsistent manifest fails here with a fix attached, rather than becoming
@@ -642,6 +660,7 @@ export const runPiPrompt = async ({
 
   // Registered before the turn starts so a stop request has something to reach.
   retainLiveSession(semlaSessionId, session);
+  turnResources.push(() => releaseLiveSession(semlaSessionId, session));
   // From here, a turn that supersedes this one can abort it directly rather
   // than only waiting out whatever extension loading was still doing.
   turnSlot.updateAbort(() => session.abort());
@@ -783,11 +802,14 @@ export const runPiPrompt = async ({
   };
   // Keyed by session: unkeyed, a second session starting a turn replaced this
   // notifier, and its runs were announced to whichever router registered last.
+  // Released later, after this turn's span flush, alongside CURRENT_TURN —
+  // not through turnResources. See the release call further down for why.
   writeSessionSlot(BRIDGE_RUN_STARTED, piRuntimeSessionId, bridgeRunNotifier);
 
   // Subscribed after the stuck-run recovery above, so the messages it injects
   // cannot be mistaken for this turn's delivery.
   const unsubscribe = session.subscribe(router.onSessionEvent);
+  turnResources.push(unsubscribe);
   /**
    * Why the turn ended, for the run span's outcome. `pi.harness.turn` declares
    * no end attributes, which is why there is a run span above it at all.
@@ -852,14 +874,16 @@ export const runPiPrompt = async ({
     emit({ type: "error", message: msg });
     throw new Error(msg);
   } finally {
-    unsubscribe();
-    unregisterNotifier();
-    unregisterFeatureSpecNotifier();
-    releaseLiveSession(semlaSessionId, session);
-    clearSessionRepo(piRuntimeSessionId);
-    // The recorder the manager holds closes over the sink, so a background run
+    // Releases the event subscription, both rendezvous notifiers, the
+    // live-session handle, the wiki repo attribution and the span sink — in
+    // exact reverse of the order they were acquired above. The recorder the
+    // telemetry manager holds closes over the sink itself, so a background run
     // keeps recording after this; only the lookup goes away.
-    releaseSpanSink(piRuntimeSessionId);
+    //
+    // BRIDGE_RUN_STARTED and CURRENT_TURN are not in this cluster: both
+    // release further down, after the awaited span flush, and moving them
+    // here would clear them a turn's worth of async work earlier than today.
+    turnResources.release();
 
     /**
      * Decided here rather than below, because the turn span's fate depends on
