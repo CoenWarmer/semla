@@ -9,11 +9,9 @@ import { HeaderActions } from "@/components/session/header-actions";
 import { BottomBar } from "@/components/bottom-bar";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";
-import { ChatDotsIcon } from "@phosphor-icons/react";
-import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
+import "./globals.css";
 
 const jetbrainsMonoHeading = JetBrains_Mono({
   subsets: ["latin"],
@@ -60,7 +58,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 {/* Above both the frame and the page: the bar lives in one and
                     its panels are rendered by the other. */}
                 <BottomPanelProvider>
-                  <SidebarProvider className="flex-1 min-h-0" defaultOpen={false}>
+                  <SidebarProvider
+                    className="flex-1 min-h-0"
+                    defaultOpen={false}
+                  >
                     <AppSidebar />
                     <main className="flex min-w-0 w-full flex-col">
                       {/* Named group: controls that only appear on hover key off

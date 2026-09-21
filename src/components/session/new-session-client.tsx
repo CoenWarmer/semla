@@ -86,6 +86,7 @@ export function NewSessionClient({
           <PromptEditor
             defaultTools={defaultTools}
             onSubmit={handleSubmit}
+            compactToolbar
             goalEditor={
               <GoalEditor
                 /* Inline, as on a session page. The editor renders this in its

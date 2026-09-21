@@ -120,7 +120,9 @@ function HunkRow({
           disabled={busy}
           onClick={onApply}
           size="icon"
-          title={direction === "stage" ? "Stage this hunk" : "Unstage this hunk"}
+          title={
+            direction === "stage" ? "Stage this hunk" : "Unstage this hunk"
+          }
           variant="ghost"
         >
           {direction === "stage" ? (
@@ -139,11 +141,9 @@ function Group({
   currentIndex = null,
   diff,
   direction,
-  onlyShowStaged = false,
   onApply,
   onReveal,
   readOnly = false,
-  title,
 }: {
   busy: boolean;
   /** `Hunk.index` within this group that the keyboard cursor is on. */
@@ -162,7 +162,6 @@ function Group({
   // edits — is still stageable, and an empty group would make it look as
   // though there were nothing there.
   const hunkless = diff !== null && hunks.length === 0 && !diff.binary;
-  const heading = readOnly ? null : title;
 
   if (!diff || (hunks.length === 0 && !hunkless)) return null;
 

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState, type ReactElement } from "react";
+import { useState } from "react";
 
 import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
 import {
@@ -80,7 +80,7 @@ export function ProjectsCombobox({ small }: { small?: boolean }) {
 
   const trigger = small
     ? {
-        element: <Button variant="ghost" size="icon-sm"/>,
+        element: <Button variant="ghost" size="icon-sm" />,
         label: <ChatDotsIcon />,
       }
     : {

@@ -112,7 +112,9 @@ export function SessionConversation({
    * stack them. Never the synthetic session-agent snapshot — see
    * `workflowRunSnapshots` in client-session-component.tsx.
    */
-  workflowRunSnapshots?: readonly (WorkflowSnapshot | null | undefined)[] | null;
+  workflowRunSnapshots?:
+    | readonly (WorkflowSnapshot | null | undefined)[]
+    | null;
   /** The live in-flight run, when there is one. */
   workflowSnapshot: WorkflowSnapshot | null | undefined;
 }) {
