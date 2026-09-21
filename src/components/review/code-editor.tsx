@@ -290,6 +290,12 @@ export default function CodeEditor({
     const host = hostRef.current;
     if (!host) return;
 
+    // Captured now rather than read fresh in the cleanup below: neither ref
+    // ever gets a new Map after mount, but the linter can't tell that from
+    // a bare `.current` access, and a local variable is what it wants.
+    const models = modelsRef.current;
+    const lspOpened = lspOpenedRef.current;
+
     const api = configureMonaco();
 
     const editor = api.editor.create(host, {
@@ -470,20 +476,17 @@ export default function CodeEditor({
       // screen when the panel closed — `modelsRef` holds one Monaco model per
       // path visited, and the language server should not be left thinking
       // any of them are still open.
-      for (const {
-        path: openPath,
-        project: openProject,
-      } of lspOpenedRef.current.values()) {
+      for (const { path: openPath, project: openProject } of lspOpened.values()) {
         lspRef.current?.notifyClose(openPath, openProject);
       }
-      lspOpenedRef.current.clear();
+      lspOpened.clear();
       lspRegistration?.dispose();
       lspHandleRef.current = null;
       accessLabelsRef.current?.dispose();
       hunkGlyphsRef.current?.dispose();
       editor.dispose();
-      modelsRef.current.forEach((model) => model.dispose());
-      modelsRef.current.clear();
+      models.forEach((model) => model.dispose());
+      models.clear();
       editorRef.current = null;
       decorationsRef.current = null;
       accessRef.current = null;

@@ -54,7 +54,11 @@ export function WikiBrowser() {
 
   const config = wikiData?.config ?? null;
   const registry = wikiData?.registry ?? null;
-  const links = wikiData?.links ?? [];
+  // Memoized so this keeps its identity across renders where wikiData.links
+  // hasn't changed (react-query's structural sharing keeps that reference
+  // stable) — otherwise the `?? []` fallback mints a fresh array every
+  // render, and WikiGraph's own layout memo below downstream never hits.
+  const links = useMemo(() => wikiData?.links ?? [], [wikiData?.links]);
   const initialized = wikiData?.initialized ?? true; // optimistic until first fetch
 
   const handleConsolidate = useCallback(async () => {

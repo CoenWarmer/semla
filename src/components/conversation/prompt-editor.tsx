@@ -578,6 +578,15 @@ export function PromptEditor({
                   placeholder="Search tools..."
                   value={toolQuery}
                 />
+                {/*
+                  A real `<select>`/`<datalist>` cannot render this: each row
+                  needs a checkmark slot beside its label reflecting
+                  independent toggle state, not a single chosen value, and
+                  the list above it is filtered by a search field rather than
+                  the browser's own type-ahead. `listbox`/`option` are the
+                  ARIA pattern built for exactly this custom widget.
+                */}
+                {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
                 <div className="max-h-56 overflow-y-auto" role="listbox">
                   {matchingToggleableTools.map((tool) => {
                     const selected = tools.includes(tool);
@@ -588,6 +597,10 @@ export function PromptEditor({
                         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
                         key={tool}
                         onClick={() => toggleTool(tool)}
+                        // Real `<option>` cannot hold this markup (a
+                        // checkmark plus label) or the click handling below
+                        // — see the `listbox` comment above it.
+                        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
                         role="option"
                         type="button"
                       >

@@ -175,12 +175,25 @@ export const FileTreeFolder = ({
               isSelected && "bg-muted"
             )}
           >
-            <CollapsibleTrigger render={<button className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0" type="button" />}><ChevronRightIcon
-                                        className={cn(
-                                          "size-4 shrink-0 text-muted-foreground transition-transform",
-                                          isExpanded && "rotate-90"
-                                        )}
-                                      /></CollapsibleTrigger>
+            <CollapsibleTrigger
+              render={
+                // `render` merges the chevron icon below into this element
+                // at runtime, invisibly to static analysis, so it needs its
+                // own label rather than relying on that icon to supply one.
+                <button
+                  aria-label={`${isExpanded ? "Collapse" : "Expand"} ${name}`}
+                  className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0"
+                  type="button"
+                />
+              }
+            >
+              <ChevronRightIcon
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  isExpanded && "rotate-90"
+                )}
+              />
+            </CollapsibleTrigger>
             <button
               className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left"
               onClick={handleSelect}

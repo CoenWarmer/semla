@@ -318,7 +318,7 @@ export function SessionConversation({
                  attachment and tool buttons, where the bordered block
                  variant was a full-width box among small controls. */
               variant="inline"
-              autoFocus={!goal?.trim()}
+              focusOnMount={!goal?.trim()}
               goal={goal}
               onSave={onGoalSave}
             />

@@ -30,6 +30,8 @@ const DRAWER_WIDTH_DEFAULT = 520
 const DRAWER_WIDTH_MIN = 320
 const DRAWER_WIDTH_MAX = 1000
 const DRAWER_WIDTH_KEY = "agent-transcript-drawer-width"
+/** Per arrow-key press on the resize handle; Shift multiplies it. */
+const DRAWER_WIDTH_KEY_STEP = 16
 
 /**
  * The route's response, described by the type the route actually returns.
@@ -156,6 +158,24 @@ export function AgentTranscriptDrawer({
     window.addEventListener("mouseup", onMouseUp)
   }, [saveWidth])
 
+  // Keyboard equivalent of the drag above, for the same handle — a resize
+  // affordance with a mouse listener but no keyboard path is unusable
+  // without one. Left/Right rather than Up/Down: the handle is vertical and
+  // moving it left (this being the left edge) widens the drawer, matching
+  // `startWidth - (ev.clientX - startX)` above.
+  const handleResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+    e.preventDefault()
+    const step = (e.shiftKey ? 3 : 1) * DRAWER_WIDTH_KEY_STEP
+    const delta = e.key === "ArrowLeft" ? step : -step
+    const next = Math.max(
+      DRAWER_WIDTH_MIN,
+      Math.min(DRAWER_WIDTH_MAX, drawerWidthRef.current + delta),
+    )
+    setWidthOverride(next)
+    saveWidth(next)
+  }, [saveWidth])
+
   const query = useQuery<AgentData>({
     enabled: open && agentId !== null && runId !== null,
     queryFn: async () => {
@@ -178,10 +198,25 @@ export function AgentTranscriptDrawer({
         className="flex flex-col overflow-hidden max-w-[90vw]"
         style={{ "--drawer-content-width": `${drawerWidth}px` } as React.CSSProperties}
       >
-        {/* Left-edge resize handle */}
+        {/* Left-edge resize handle — the ARIA "separator (window splitter)"
+            pattern, so it is a real widget rather than a div a screen reader
+            has no reason to stop on. */}
         <div
-          onMouseDown={handleResizeMouseDown}
+          aria-label="Resize agent transcript drawer"
+          aria-orientation="vertical"
+          aria-valuemax={DRAWER_WIDTH_MAX}
+          aria-valuemin={DRAWER_WIDTH_MIN}
+          aria-valuenow={drawerWidth}
           className="absolute inset-y-0 left-0 w-1 cursor-col-resize group/resize z-20"
+          onKeyDown={handleResizeKeyDown}
+          onMouseDown={handleResizeMouseDown}
+          // The ARIA "separator (window splitter)" pattern, not a static
+          // divider — `<hr>` cannot take a `tabIndex`, a keydown handler, or
+          // `aria-valuenow`, all of which this actually-draggable handle
+          // needs. The suggested tag fits the decorative case, not this one.
+          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+          role="separator"
+          tabIndex={0}
         >
           <div className="absolute inset-y-0 left-0 w-px bg-border opacity-0 group-hover/resize:opacity-100 group-active/resize:opacity-100 transition-opacity" />
         </div>

@@ -29,6 +29,11 @@ function ButtonGroup({
 }: React.ComponentProps<"div"> & VariantProps<typeof buttonGroupVariants>) {
   return (
     <div
+      // A toolbar of buttons has no better semantic tag than the ARIA
+      // "group" role: `<fieldset>` implies a form control and a `<legend>`,
+      // and cascades `disabled` to every descendant, which this group of
+      // otherwise-independent buttons must not inherit.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="group"
       data-slot="button-group"
       data-orientation={orientation}

@@ -97,13 +97,15 @@ export function SessionItem({
   const handleDelete = () => onDelete(id);
 
   return (
-    <Item variant="outline" className="group relative">
+    // ItemGroup (ui/item.tsx) renders as a real <ul>, so this row has to be a
+    // real <li> — the group/item-group parent is otherwise the only user of
+    // Item, so this is the one place that needs the override.
+    <Item variant="outline" className="group relative" render={<li />}>
       <ItemContent className="gap-1 min-w-0">
         <ItemTitle className="min-w-0">
           {renaming ? (
             <input
               ref={inputRef}
-              autoFocus
               className="w-full bg-transparent text-sm outline-none"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}

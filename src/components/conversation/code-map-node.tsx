@@ -26,29 +26,31 @@ export type CodeMapNodeData = LaidOutNode & {
 export function CodeMapNode({ data }: NodeProps) {
   const node = data as unknown as CodeMapNodeData;
   const label = node.container ? `${node.container}.${node.name}` : node.name;
+  const clickable = Boolean(node.onOpen) && !node.external;
 
-  return (
-    <div
-      className={cn(
-        "flex h-full w-full flex-col justify-center rounded-md border px-3 py-1.5 text-left transition-colors",
-        node.external
-          ? "border-dashed border-border/60 bg-muted/30 text-muted-foreground"
-          : "border-border bg-card hover:bg-muted",
-        node.isRoot && "border-primary ring-1 ring-primary/40",
-        node.onOpen && !node.external && "cursor-pointer",
-      )}
-      onClick={() => {
-        if (!node.external) node.onOpen?.(node.file, node.line);
-      }}
-      title={node.external ? "Declared outside this project" : `${node.file}:${node.line}`}
-    >
+  const className = cn(
+    "flex h-full w-full flex-col justify-center rounded-md border px-3 py-1.5 text-left transition-colors",
+    node.external
+      ? "border-dashed border-border/60 bg-muted/30 text-muted-foreground"
+      : "border-border bg-card hover:bg-muted",
+    node.isRoot && "border-primary ring-1 ring-primary/40",
+    clickable && "cursor-pointer",
+  );
+  const title = node.external
+    ? "Declared outside this project"
+    : `${node.file}:${node.line}`;
+
+  const content = (
+    <>
       <Handle
         className="!bg-muted-foreground/40"
         position={Position.Top}
         type="target"
       />
 
-      <span className="truncate font-medium text-xs leading-tight">{label}</span>
+      <span className="truncate font-medium text-xs leading-tight">
+        {label}
+      </span>
       <span className="truncate text-[10px] text-muted-foreground tabular-nums leading-tight">
         {node.external ? "external" : `${node.file}:${node.line}`}
       </span>
@@ -58,6 +60,29 @@ export function CodeMapNode({ data }: NodeProps) {
         position={Position.Bottom}
         type="source"
       />
-    </div>
+    </>
+  );
+
+  // Two different real elements rather than one div wearing an ARIA role:
+  // a clickable node is a real <button>, which gets keyboard activation for
+  // free, and a non-clickable one is a real <figure> — a diagram unit with
+  // nothing to click. Neither needs a `role` attribute to say what it is.
+  if (clickable) {
+    return (
+      <button
+        className={className}
+        onClick={() => node.onOpen?.(node.file, node.line)}
+        title={title}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <figure className={className} title={title}>
+      {content}
+    </figure>
   );
 }

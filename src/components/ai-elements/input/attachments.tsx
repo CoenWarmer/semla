@@ -17,6 +17,7 @@ import {
   VideoIcon,
   XIcon,
 } from "lucide-react";
+import Image from "next/image";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo } from "react";
 
@@ -91,7 +92,11 @@ const renderAttachmentImage = (
   isGrid: boolean
 ) =>
   isGrid ? (
-    <img
+    // next/image, not a plain <img>: `url` is a `blob:` object URL for a
+    // pending local attachment (see PromptInput's `URL.createObjectURL`),
+    // and Next detects that scheme and renders it unoptimized automatically
+    // — the same reason the non-grid branch below already uses it.
+    <Image
       alt={filename || "Image"}
       className="size-full object-cover"
       height={96}
@@ -99,7 +104,7 @@ const renderAttachmentImage = (
       width={96}
     />
   ) : (
-    <img
+    <Image
       alt={filename || "Image"}
       className="size-full rounded object-cover"
       height={20}

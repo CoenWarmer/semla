@@ -18,7 +18,7 @@
  */
 
 import { BrainIcon, CheckIcon, PencilIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -100,6 +100,14 @@ export function EditableUserMessage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
   const [showVersions, setShowVersions] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focused imperatively rather than via the native `autoFocus` attribute,
+  // so the field the operator is about to retype into gets focus without
+  // handing the browser an unconditional autofocus.
+  useEffect(() => {
+    if (editing) textareaRef.current?.focus();
+  }, [editing]);
 
   const start = () => {
     setDraft(message.text);
@@ -162,7 +170,7 @@ export function EditableUserMessage({
         {draft.endsWith("\n") ? `${draft} ` : draft}
       </div>
       <textarea
-        autoFocus
+        ref={textareaRef}
         className="w-full resize-none overflow-hidden bg-transparent text-sm outline-none [grid-area:1/1]"
         cols={1}
         onChange={(event) => setDraft(event.target.value)}

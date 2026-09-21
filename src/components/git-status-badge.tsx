@@ -212,6 +212,11 @@ export function GitStatusBadge({
           // the prompt toolbar's <form> once, where an implicit submit would
           // have fired the prompt, and nothing stops it being placed there again.
           <button
+            // `render` merges PopoverTrigger's children into this element at
+            // runtime, invisibly to static analysis — so it needs its own
+            // label rather than relying on `face` (rendered as children
+            // below) to supply one. Same reasoning as `title` right below.
+            aria-label={label?.title ?? projectName ?? "Git status"}
             className={cn(faceClassName, "hover:text-foreground")}
             // A project card is itself a button that opens a session. Without
             // this, using the indicator would also navigate away from it.
@@ -280,12 +285,11 @@ export function GitStatusBadge({
         )}
 
         {outcome && !run.isPending && (
-          <p
+          <output
             className={`mt-2 text-[11px] ${outcome.ok ? "text-muted-foreground" : "text-destructive"}`}
-            role="status"
           >
             {outcome.message}
-          </p>
+          </output>
         )}
       </PopoverContent>
     </Popover>

@@ -1,7 +1,7 @@
 "use client";
 
 import { TargetIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface GoalEditorProps {
   goal: string | null;
@@ -16,28 +16,36 @@ interface GoalEditorProps {
    * this opens over a goal that is already set, and the next thing typed was
    * meant for the prompt box, moving focus away saves that text as the goal.
    * Callers pass it when the field is empty and there is nothing to lose.
+   *
+   * Named to avoid the native `autoFocus` attribute: the field is focused
+   * imperatively below (via a ref, in an effect keyed on `editing`) rather
+   * than by handing the browser an unconditional autofocus, so the "why"
+   * above stays enforceable instead of firing on every mount.
    */
-  autoFocus?: boolean;
+  focusOnMount?: boolean;
 }
 
 export function GoalEditor({
-  autoFocus = false,
+  focusOnMount = false,
   goal,
   onSave,
   variant = "block",
 }: GoalEditorProps) {
-  const [editing, setEditing] = useState(autoFocus);
+  const [editing, setEditing] = useState(focusOnMount);
   const [draft, setDraft] = useState(goal ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!editing) return;
+    const field = variant === "inline" ? inputRef.current : textareaRef.current;
+    field?.focus();
+    field?.select();
+  }, [editing, variant]);
+
   const startEdit = () => {
     setDraft(goal ?? "");
     setEditing(true);
-    setTimeout(() => {
-      textareaRef.current?.select();
-      inputRef.current?.select();
-    }, 0);
   };
 
   const commit = async () => {
@@ -65,7 +73,6 @@ export function GoalEditor({
         {editing ? (
           <input
             ref={inputRef}
-            autoFocus
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             placeholder="Define your goal…"
             value={draft}
@@ -98,7 +105,6 @@ export function GoalEditor({
       {editing ? (
         <textarea
           ref={textareaRef}
-          autoFocus
           className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           placeholder="What are you trying to achieve in this session?"
           rows={3}
