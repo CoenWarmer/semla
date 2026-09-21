@@ -47,6 +47,7 @@ import {
 } from "@/hooks/use-read-router-setting";
 import { useSkills, type PiSkill } from "@/hooks/use-skills";
 import { useTools } from "@/hooks/use-tools";
+import { slashSkillCommand } from "@/lib/pi/skills/slash-skill-query";
 import {
   useUpdateUserSettings,
   useUserSettings,
@@ -181,11 +182,11 @@ function useInsertSkillMention() {
   return useCallback(
     (skillName: string) => {
       const current = controller.textInput.value;
-      const mention = `/skill:${skillName}`;
+      const mention = slashSkillCommand(skillName);
       const next =
         current.length === 0 || current.endsWith(" ")
-          ? `${current}${mention} `
-          : `${current} ${mention} `;
+          ? `${current}${mention}`
+          : `${current} ${mention}`;
       controller.textInput.setInput(next);
     },
     [controller],
@@ -210,7 +211,6 @@ const SLASH_TOKEN_PATTERN = /^\/(\S*)$/;
  */
 function useSlashSkillSuggestions(skills: PiSkill[]) {
   const controller = usePromptInputController();
-  const insertSkillMention = useInsertSkillMention();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const match = SLASH_TOKEN_PATTERN.exec(controller.textInput.value);
@@ -243,13 +243,21 @@ function useSlashSkillSuggestions(skills: PiSkill[]) {
 
   const pick = useCallback(
     (skillName: string) => {
-      // Replaces the whole input rather than appending, unlike the toolbar
-      // button's insertion: the `/partial` the user typed is what is being
-      // completed, not left in place alongside the result.
-      controller.textInput.clear();
-      insertSkillMention(skillName);
+      // Replaces the whole input outright, unlike the toolbar button's
+      // `insertSkillMention` (which appends onto whatever text is already
+      // there): the `/partial` being completed here IS the whole input, so
+      // there is nothing to preserve alongside the result.
+      //
+      // This used to call `controller.textInput.clear()` followed by
+      // `insertSkillMention(skillName)`, which read `controller.textInput
+      // .value` to build the replacement — but `clear()` only queues a state
+      // update; the very next line still read the pre-clear value from this
+      // same render, so the mention was appended onto the stale `/partial`
+      // instead of replacing it (`/foo /skill:foo`). Setting the input
+      // directly avoids reading any stale value at all.
+      controller.textInput.setInput(slashSkillCommand(skillName));
     },
-    [controller, insertSkillMention],
+    [controller],
   );
 
   const handleKeyDown = useCallback(
