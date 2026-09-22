@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { grepProject } from "@/lib/pi/review/review-grep";
-import { resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, withReviewTarget } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +17,10 @@ export const dynamic = "force-dynamic";
  * underneath, which is the same reason `/files/search` splits project from
  * workspace.
  *
- * The repository is resolved from the session's own project links; the query
- * is the only thing here that comes from the caller, and `grepProject` passes
- * it after `-e` so it cannot be read as an option.
+ * The repository is resolved from the session's own project links via
+ * `withReviewTarget`; the query is the only thing here that comes from the
+ * caller, and `grepProject` passes it after `-e` so it cannot be read as an
+ * option.
  */
 export async function GET(
   request: Request,
@@ -29,13 +30,12 @@ export async function GET(
   const url = new URL(request.url);
   const query = url.searchParams.get("q") ?? "";
 
-  const target = await resolveReviewTarget(id, url.searchParams.get("project"));
-  if (!target) {
-    return NextResponse.json(
-      { error: "Not a project this session is linked to." },
-      { status: 400 },
-    );
-  }
-
-  return NextResponse.json(await grepProject(target.root, query));
+  return withReviewTarget(
+    {
+      onFailure: errorFailure({ project: "Not a project this session is linked to." }),
+      project: url.searchParams.get("project"),
+      sessionId: id,
+    },
+    async (target) => NextResponse.json(await grepProject(target.root, query)),
+  );
 }

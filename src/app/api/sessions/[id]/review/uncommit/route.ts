@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, messageFailure, withReviewTarget } from "@/lib/pi/review/review-service";
 import { performReset, planReset } from "@/lib/pi/review/review-reset";
 import { readTurnMark } from "@/lib/pi/review/review-turn-mark";
 
@@ -28,18 +28,19 @@ export async function GET(
   const { id } = await params;
   const project = new URL(request.url).searchParams.get("project");
 
-  const target = await resolveReviewTarget(id, project);
-  if (!target) {
-    return NextResponse.json(
-      { error: "Not a project this session is linked to." },
-      { status: 400 },
-    );
-  }
+  return withReviewTarget(
+    {
+      onFailure: errorFailure({ project: "Not a project this session is linked to." }),
+      project,
+      sessionId: id,
+    },
+    async (target) => {
+      const mark = readTurnMark(id);
+      const startSha = mark?.projects[target.link.path]?.head ?? null;
 
-  const mark = readTurnMark(id);
-  const startSha = mark?.projects[target.link.path]?.head ?? null;
-
-  return NextResponse.json(await planReset(target.root, startSha));
+      return NextResponse.json(await planReset(target.root, startSha));
+    },
+  );
 }
 
 export async function POST(
@@ -57,18 +58,19 @@ export async function POST(
     );
   }
 
-  const target = await resolveReviewTarget(id, body?.project ?? null);
-  if (!target) {
-    return NextResponse.json(
-      { message: "Not a project this session is linked to.", ok: false },
-      { status: 400 },
-    );
-  }
+  return withReviewTarget(
+    {
+      onFailure: messageFailure({ project: "Not a project this session is linked to." }),
+      project: body?.project ?? null,
+      sessionId: id,
+    },
+    async (target) => {
+      const mark = readTurnMark(id);
+      const startSha = mark?.projects[target.link.path]?.head ?? null;
 
-  const mark = readTurnMark(id);
-  const startSha = mark?.projects[target.link.path]?.head ?? null;
-
-  return NextResponse.json(
-    await performReset(target.root, startSha, expected),
+      return NextResponse.json(
+        await performReset(target.root, startSha, expected),
+      );
+    },
   );
 }

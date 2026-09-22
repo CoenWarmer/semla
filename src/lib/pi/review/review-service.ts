@@ -14,6 +14,8 @@
  * this whole feature exists to prevent, not to cause.
  */
 
+import { NextResponse } from "next/server";
+
 import { resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
 import { seedSnapshots } from "@/lib/pi/artifacts/artifact-snapshot-cache";
 import {
@@ -82,6 +84,127 @@ export function resolveReviewFile(
   if (!relPath) return null;
   return resolveInsideRoot(target.root, relPath);
 }
+
+/**
+ * Which of the two guards refused a request.
+ *
+ * Named rather than boolean because the two are not interchangeable to a
+ * caller: `"project"` means the identifier is not one this session is linked
+ * to, `"path"` means the project was fine and the path was not inside it.
+ * Routes that word those the same way can ignore the distinction; the hunks
+ * route deliberately does not ("Invalid path" against "Not a project this
+ * session is linked to."), and a shared adapter that folded them together
+ * would have quietly changed its responses.
+ */
+export type ReviewTargetFailure = "project" | "path";
+
+/** What a refusal should be turned into, by reason. */
+export type ReviewFailureResponder<T> = (reason: ReviewTargetFailure) => T;
+
+interface ReviewTargetOptions<T> {
+  /** The session the request is against — the allowlist the project is checked against. */
+  sessionId: string;
+  /** The caller's project identifier; omitted or null means the session's anchor. */
+  project?: string | null;
+  /** Built from the refusal reason, so no wording is baked into this module. */
+  onFailure: ReviewFailureResponder<T>;
+}
+
+interface ReviewFileOptions<T> extends ReviewTargetOptions<T> {
+  /**
+   * The project-relative path to contain. `null` is itself a `"path"`
+   * refusal, so a route may hand over whatever it parsed out of the request
+   * without checking first — though most check earlier, because they have a
+   * more specific thing to say about a missing path than about one that
+   * escapes.
+   */
+  path: string | null;
+}
+
+/**
+ * The guard preamble every review route was writing out by hand: resolve the
+ * repository from the session's own links, then run the handler.
+ *
+ * It exists because nine routes had all independently re-derived the same two
+ * lines, and two guards copied nine times are two guards that can drift. The
+ * one in `resolveReviewTarget` is the only thing standing between a request
+ * and an arbitrary repository, so it is worth having exactly one spelling of
+ * the sequence and letting the routes differ only in what they say when it
+ * refuses.
+ *
+ * Which is why the response is a parameter and not a constant here. The
+ * routes genuinely disagree about the body — `{ message, ok: false }` for the
+ * ones the panel treats as actions, `{ error }` for the ones it treats as
+ * reads — and unifying that would have been an API change smuggled in under a
+ * refactor. `messageFailure` and `errorFailure` below are the two shapes
+ * spelled once; anything else can pass its own function.
+ */
+export async function withReviewTarget<T>(
+  options: ReviewTargetOptions<T>,
+  handler: (target: ReviewTarget) => T | Promise<T>,
+): Promise<T> {
+  const target = await resolveReviewTarget(options.sessionId, options.project ?? null);
+  if (!target) return options.onFailure("project");
+
+  return handler(target);
+}
+
+/**
+ * The same preamble for a route that names a file: resolve the repository,
+ * contain the path inside it, then run the handler.
+ *
+ * A separate function rather than an optional field on the one above so the
+ * handler can be handed a `string` absolute path instead of `string | null`.
+ * A path-taking route has nothing sensible to do with a null there, and the
+ * check is the whole reason it called this.
+ *
+ * Order is load-bearing: the project is resolved first, because a containment
+ * check needs a root to contain against, and a caller that words the two
+ * refusals differently is reporting on the first thing that failed.
+ */
+export async function withReviewFile<T>(
+  options: ReviewFileOptions<T>,
+  handler: (target: ReviewTarget, absolutePath: string) => T | Promise<T>,
+): Promise<T> {
+  return withReviewTarget(options, (target) => {
+    const absolute = options.path ? resolveReviewFile(target, options.path) : null;
+    if (!absolute) return options.onFailure("path");
+
+    return handler(target, absolute);
+  });
+}
+
+/**
+ * Wording for the two refusals. `path` defaults to `project`, because most
+ * routes say one thing for both — a caller only spells it out when it has
+ * something more specific to say about the path, as the hunks route does.
+ */
+export interface ReviewFailureWording {
+  project: string;
+  path?: string;
+}
+
+const wordingFor = (wording: ReviewFailureWording, reason: ReviewTargetFailure) =>
+  reason === "path" ? (wording.path ?? wording.project) : wording.project;
+
+/**
+ * `{ message, ok: false }` at 400 — the shape the panel's action routes
+ * (stage, commit, uncommit POST) already return, and which its client reads
+ * `ok` off to decide whether anything happened.
+ */
+export const messageFailure =
+  (wording: ReviewFailureWording): ReviewFailureResponder<NextResponse> =>
+  (reason) =>
+    NextResponse.json({ message: wordingFor(wording, reason), ok: false }, { status: 400 });
+
+/**
+ * `{ error }` at 400 — the shape the read routes return, where there is no
+ * partial success to report and the body is only there to be shown.
+ */
+export const errorFailure =
+  (wording: ReviewFailureWording): ReviewFailureResponder<NextResponse> =>
+  (reason) =>
+    NextResponse.json({ error: wordingFor(wording, reason) }, { status: 400 });
 
 /**
  * One of *this session's own* commits, by sha, or null.

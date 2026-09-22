@@ -8,7 +8,7 @@ import {
 } from "@/lib/pi/review/review-apply";
 import { readFileDiff } from "@/lib/pi/review/review-diff";
 import { buildPatch } from "@/lib/pi/review/review-patch";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { messageFailure, withReviewFile } from "@/lib/pi/review/review-service";
 import { readChangedFiles } from "@/lib/pi/review/review-status";
 
 export const runtime = "nodejs";
@@ -35,7 +35,7 @@ export const dynamic = "force-dynamic";
  *
  * The repository comes from the session's own project links and the path is
  * contained inside it. Neither is the caller's to choose — see
- * `resolveReviewTarget`.
+ * `withReviewFile`.
  */
 export async function POST(
   request: Request,
@@ -58,65 +58,69 @@ export async function POST(
     );
   }
 
-  const target = await resolveReviewTarget(id, body?.project ?? null);
-  if (!target || !resolveReviewFile(target, relPath)) {
-    return NextResponse.json(
-      { message: "Not a file in one of this session's projects.", ok: false },
-      { status: 400 },
-    );
-  }
+  return withReviewFile(
+    {
+      onFailure: messageFailure({
+        project: "Not a file in one of this session's projects.",
+      }),
+      path: relPath,
+      project: body?.project ?? null,
+      sessionId: id,
+    },
+    async (target) => {
+      const { files } = await readChangedFiles(target.root);
+      const entry = files.find((file) => file.path === relPath);
 
-  const { files } = await readChangedFiles(target.root);
-  const entry = files.find((file) => file.path === relPath);
+      if (!entry) {
+        return NextResponse.json(
+          { message: "That file has no changes.", ok: false },
+          { status: 404 },
+        );
+      }
 
-  if (!entry) {
-    return NextResponse.json(
-      { message: "That file has no changes.", ok: false },
-      { status: 404 },
-    );
-  }
+      // An untracked file has no index entry, so there are no hunks to pick
+      // between: staging it means adding it, whole. A tracked file reaches the
+      // same two calls when the client asked for the whole file explicitly.
+      if (entry.status === "untracked" || whole) {
+        const result =
+          direction === "stage"
+            ? await stageWholeFile(target.root, relPath)
+            : await unstageWholeFile(target.root, relPath);
+        return NextResponse.json(result);
+      }
 
-  // An untracked file has no index entry, so there are no hunks to pick
-  // between: staging it means adding it, whole. A tracked file reaches the
-  // same two calls when the client asked for the whole file explicitly.
-  if (entry.status === "untracked" || whole) {
-    const result =
-      direction === "stage"
-        ? await stageWholeFile(target.root, relPath)
-        : await unstageWholeFile(target.root, relPath);
-    return NextResponse.json(result);
-  }
+      const diff = await readFileDiff(
+        target.root,
+        relPath,
+        direction === "stage" ? "index" : "staged",
+      );
 
-  const diff = await readFileDiff(
-    target.root,
-    relPath,
-    direction === "stage" ? "index" : "staged",
-  );
+      if (!diff) {
+        return NextResponse.json({
+          message:
+            direction === "stage"
+              ? "Nothing left to stage in that file."
+              : "Nothing staged in that file.",
+          ok: false,
+        });
+      }
 
-  if (!diff) {
-    return NextResponse.json({
-      message:
+      const patch = buildPatch(diff, hunks);
+      if (!patch) {
+        return NextResponse.json({
+          message: diff.binary
+            ? "git cannot say how a binary file changed, so it cannot be staged by hunk."
+            : "None of those hunks are in the current diff. Reload and try again.",
+          ok: false,
+        });
+      }
+
+      const result =
         direction === "stage"
-          ? "Nothing left to stage in that file."
-          : "Nothing staged in that file.",
-      ok: false,
-    });
-  }
+          ? await stageHunks(target.root, patch)
+          : await unstageHunks(target.root, patch);
 
-  const patch = buildPatch(diff, hunks);
-  if (!patch) {
-    return NextResponse.json({
-      message: diff.binary
-        ? "git cannot say how a binary file changed, so it cannot be staged by hunk."
-        : "None of those hunks are in the current diff. Reload and try again.",
-      ok: false,
-    });
-  }
-
-  const result =
-    direction === "stage"
-      ? await stageHunks(target.root, patch)
-      : await unstageHunks(target.root, patch);
-
-  return NextResponse.json(result);
+      return NextResponse.json(result);
+    },
+  );
 }

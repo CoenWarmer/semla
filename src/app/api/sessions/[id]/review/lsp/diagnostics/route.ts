@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { ensureLspHost, subscribeToDiagnostics } from "@/lib/pi/browser-lsp/lsp-host";
 import { workspacePathForLspUri } from "@/lib/pi/browser-lsp/lsp-request";
 import { resolveFileRoot } from "@/lib/pi/workspace/file-browser";
-import { resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, withReviewTarget, type ReviewTarget } from "@/lib/pi/review/review-service";
 import {
   encodeSseDataEvent,
   SSE_RESPONSE_HEADERS,
@@ -38,14 +38,24 @@ export async function GET(
   const { id } = await params;
   const project = new URL(request.url).searchParams.get("project");
 
-  const target = await resolveReviewTarget(id, project);
-  if (!target) {
-    return NextResponse.json(
-      { error: "Not one of this session's projects." },
-      { status: 400 },
-    );
-  }
+  // Resolves the repository against this session's own project links —
+  // `withReviewTarget` is the shared guard; the wording here matches what
+  // this route has always said when the project is not one of the session's.
+  return withReviewTarget(
+    {
+      sessionId: id,
+      project,
+      onFailure: errorFailure({ project: "Not one of this session's projects." }),
+    },
+    async (target) => makeDiagnosticsStream(id, request, target),
+  );
+}
 
+async function makeDiagnosticsStream(
+  id: string,
+  request: Request,
+  target: ReviewTarget,
+) {
   const root = realpathSync(target.root);
   const { root: workspaceRoot } = await resolveFileRoot(id);
 

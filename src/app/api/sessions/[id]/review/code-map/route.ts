@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { buildCodeMap, SymbolNotFoundError } from "@/lib/code-map/call-graph";
 import { enclosingSymbol } from "@/lib/code-map/enclosing";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, withReviewFile } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,41 +40,46 @@ export async function POST(
     );
   }
 
-  const target = await resolveReviewTarget(id, body?.project ?? null);
-  if (!target || !resolveReviewFile(target, relPath)) {
-    return NextResponse.json(
-      { error: "Not a file in one of this session's projects." },
-      { status: 400 },
-    );
-  }
+  // Resolves the repository from this session's own links and contains the
+  // path inside it, both under the one message: the panel never needed to
+  // distinguish "not this session's project" from "not inside it".
+  return withReviewFile(
+    {
+      onFailure: errorFailure({ project: "Not a file in one of this session's projects." }),
+      path: relPath,
+      project: body?.project ?? null,
+      sessionId: id,
+    },
+    (target) => {
+      try {
+        const symbol = enclosingSymbol({ cwd: target.root, file: relPath, line });
 
-  try {
-    const symbol = enclosingSymbol({ cwd: target.root, file: relPath, line });
+        if (!symbol) {
+          return NextResponse.json({
+            error: "That line is not inside a function.",
+            map: null,
+          });
+        }
 
-    if (!symbol) {
-      return NextResponse.json({
-        error: "That line is not inside a function.",
-        map: null,
-      });
-    }
+        const map = buildCodeMap({
+          cwd: target.root,
+          file: relPath,
+          symbol: symbol.symbol,
+        });
 
-    const map = buildCodeMap({
-      cwd: target.root,
-      file: relPath,
-      symbol: symbol.symbol,
-    });
+        return NextResponse.json({ map, symbol });
+      } catch (error) {
+        // SymbolNotFoundError carries the names that *are* in the file, which is
+        // the useful part when a declaration shape the walker missed is the cause.
+        const message =
+          error instanceof SymbolNotFoundError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Unable to build a code map.";
 
-    return NextResponse.json({ map, symbol });
-  } catch (error) {
-    // SymbolNotFoundError carries the names that *are* in the file, which is
-    // the useful part when a declaration shape the walker missed is the cause.
-    const message =
-      error instanceof SymbolNotFoundError
-        ? error.message
-        : error instanceof Error
-          ? error.message
-          : "Unable to build a code map.";
-
-    return NextResponse.json({ error: message, map: null }, { status: 422 });
-  }
+        return NextResponse.json({ error: message, map: null }, { status: 422 });
+      }
+    },
+  );
 }

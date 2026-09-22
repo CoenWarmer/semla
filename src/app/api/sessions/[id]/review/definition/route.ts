@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { definitionAt } from "@/lib/code-map/definition";
 import { resolveFileRoot, toRelativePath } from "@/lib/pi/workspace/file-browser";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, withReviewFile } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,48 +48,53 @@ export async function POST(
     );
   }
 
-  const target = await resolveReviewTarget(id, body?.project ?? null);
-  if (!target || !resolveReviewFile(target, relPath)) {
-    return NextResponse.json(
-      { error: "Not a file in one of this session's projects." },
-      { status: 400 },
-    );
-  }
+  // Resolves the session's repository and contains `relPath` inside it in
+  // one step; both refusals (unknown project, path outside it) read the same
+  // wording here, so there is nothing route-specific to say about either.
+  return withReviewFile(
+    {
+      onFailure: errorFailure({ project: "Not a file in one of this session's projects." }),
+      path: relPath,
+      project: body?.project,
+      sessionId: id,
+    },
+    async (target) => {
+      try {
+        const found = definitionAt({ character, cwd: target.root, file: relPath, line });
 
-  try {
-    const found = definitionAt({ character, cwd: target.root, file: relPath, line });
+        if (!found) {
+          return NextResponse.json({ definition: null });
+        }
 
-    if (!found) {
-      return NextResponse.json({ definition: null });
-    }
+        /*
+         * Re-based from the declaration's absolute path onto the session's
+         * workspace root — the root the file-content API resolves against, read
+         * from the same place it reads it rather than derived by trimming the
+         * project prefix off `target.root`.
+         *
+         * `path: null` when the declaration is outside the workspace entirely,
+         * which a dependency installed elsewhere can be. That is honest about
+         * there being no workspace-relative name for it, rather than inventing one
+         * that would be refused on the way back.
+         */
+        const { root: workspaceRoot } = await resolveFileRoot(id);
+        const path = relativeToWorkspace(workspaceRoot, found.absolute);
 
-    /*
-     * Re-based from the declaration's absolute path onto the session's
-     * workspace root — the root the file-content API resolves against, read
-     * from the same place it reads it rather than derived by trimming the
-     * project prefix off `target.root`.
-     *
-     * `path: null` when the declaration is outside the workspace entirely,
-     * which a dependency installed elsewhere can be. That is honest about
-     * there being no workspace-relative name for it, rather than inventing one
-     * that would be refused on the way back.
-     */
-    const { root: workspaceRoot } = await resolveFileRoot(id);
-    const path = relativeToWorkspace(workspaceRoot, found.absolute);
-
-    return NextResponse.json({
-      definition: { ...found, path },
-    });
-  } catch (error) {
-    // A file outside the TypeScript project, or a project with no tsconfig.
-    // Reported as a message rather than a 500, because it is a fact about the
-    // file rather than a fault in the request — the same choice the `symbol`
-    // route makes.
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to resolve." },
-      { status: 422 },
-    );
-  }
+        return NextResponse.json({
+          definition: { ...found, path },
+        });
+      } catch (error) {
+        // A file outside the TypeScript project, or a project with no tsconfig.
+        // Reported as a message rather than a 500, because it is a fact about the
+        // file rather than a fault in the request — the same choice the `symbol`
+        // route makes.
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Unable to resolve." },
+          { status: 422 },
+        );
+      }
+    },
+  );
 }
 
 /**

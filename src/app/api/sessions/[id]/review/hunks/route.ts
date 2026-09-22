@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { readCommitFileDiff, readFileDiffSet } from "@/lib/pi/review/review-diff";
 import { readChangedFiles } from "@/lib/pi/review/review-status";
 import {
-  resolveReviewFile,
-  resolveReviewTarget,
+  errorFailure,
   resolveSessionCommit,
+  withReviewFile,
   type ReviewTarget,
 } from "@/lib/pi/review/review-service";
 import { changedFileFromCommit } from "@/lib/review/review-commit-scope";
@@ -18,8 +18,11 @@ export const dynamic = "force-dynamic";
  * the staged/unstaged split for the staging controls.
  *
  * The repository is resolved from the session's own project links and the path
- * is then contained inside it — neither is the caller's to choose. See
- * `resolveReviewTarget` for why that matters even in a single-user install.
+ * is then contained inside it — neither is the caller's to choose. `withReviewFile`
+ * runs that guard, reporting "Not a project this session is linked to." if the
+ * project fails and the more specific "Invalid path" if only the containment
+ * check fails. See `resolveReviewTarget` for why that matters even in a
+ * single-user install.
  *
  * Whether the file is tracked is decided here from `git status`, not accepted
  * as a parameter. An untracked file needs a synthesized diff and a tracked one
@@ -46,38 +49,39 @@ export async function GET(
     return NextResponse.json({ error: "path required" }, { status: 400 });
   }
 
-  const target = await resolveReviewTarget(id, project);
-  if (!target) {
-    return NextResponse.json(
-      { error: "Not a project this session is linked to." },
-      { status: 400 },
-    );
-  }
+  return withReviewFile(
+    {
+      onFailure: errorFailure({
+        path: "Invalid path",
+        project: "Not a project this session is linked to.",
+      }),
+      path: relPath,
+      project,
+      sessionId: id,
+    },
+    async (target) => {
+      const sha = url.searchParams.get("sha");
+      if (sha) return commitHunks(id, target, sha, relPath);
 
-  if (!resolveReviewFile(target, relPath)) {
-    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
-  }
+      const { files } = await readChangedFiles(target.root);
+      const entry = files.find((file) => file.path === relPath);
 
-  const sha = url.searchParams.get("sha");
-  if (sha) return commitHunks(id, target, sha, relPath);
+      // A file git does not report as changed has no hunks to show. Saying so is
+      // better than synthesizing a diff that would describe the whole file as new.
+      if (!entry) {
+        return NextResponse.json(
+          { error: "That file has no changes." },
+          { status: 404 },
+        );
+      }
 
-  const { files } = await readChangedFiles(target.root);
-  const entry = files.find((file) => file.path === relPath);
+      const diffs = await readFileDiffSet(target.root, relPath, {
+        untracked: entry.status === "untracked",
+      });
 
-  // A file git does not report as changed has no hunks to show. Saying so is
-  // better than synthesizing a diff that would describe the whole file as new.
-  if (!entry) {
-    return NextResponse.json(
-      { error: "That file has no changes." },
-      { status: 404 },
-    );
-  }
-
-  const diffs = await readFileDiffSet(target.root, relPath, {
-    untracked: entry.status === "untracked",
-  });
-
-  return NextResponse.json({ ...diffs, file: entry, project: target.link.path });
+      return NextResponse.json({ ...diffs, file: entry, project: target.link.path });
+    },
+  );
 }
 
 /**

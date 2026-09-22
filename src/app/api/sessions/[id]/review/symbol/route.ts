@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { enclosingSymbol } from "@/lib/code-map/enclosing";
-import { resolveReviewFile, resolveReviewTarget } from "@/lib/pi/review/review-service";
+import { errorFailure, withReviewFile } from "@/lib/pi/review/review-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,24 +35,28 @@ export async function POST(
     );
   }
 
-  const target = await resolveReviewTarget(id, body?.project ?? null);
-  if (!target || !resolveReviewFile(target, relPath)) {
-    return NextResponse.json(
-      { error: "Not a file in one of this session's projects." },
-      { status: 400 },
-    );
-  }
-
-  try {
-    const symbol = enclosingSymbol({ cwd: target.root, file: relPath, line });
-    return NextResponse.json({ symbol });
-  } catch (error) {
-    // A file outside the TypeScript project, or a project with no tsconfig.
-    // Reported as a message the menu can show, because it is a fact about the
-    // file rather than a fault in the request.
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to resolve." },
-      { status: 422 },
-    );
-  }
+  // Resolve the repository from the session's own links and contain the path
+  // inside it via `withReviewFile`; both refusals read the same to this route.
+  return withReviewFile(
+    {
+      onFailure: errorFailure({ project: "Not a file in one of this session's projects." }),
+      path: relPath,
+      project: body?.project ?? null,
+      sessionId: id,
+    },
+    (target) => {
+      try {
+        const symbol = enclosingSymbol({ cwd: target.root, file: relPath, line });
+        return NextResponse.json({ symbol });
+      } catch (error) {
+        // A file outside the TypeScript project, or a project with no tsconfig.
+        // Reported as a message the menu can show, because it is a fact about the
+        // file rather than a fault in the request.
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Unable to resolve." },
+          { status: 422 },
+        );
+      }
+    },
+  );
 }
