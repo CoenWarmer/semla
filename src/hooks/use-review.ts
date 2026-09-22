@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sessionStatusKey } from "@/lib/session/session-status";
 import type { FileDiff } from "@/lib/review/review-types";
 import type { ChangedFile, SessionReview } from "@/lib/review/review-types";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 
 /**
  * What there is to review, and one file's hunks.
@@ -31,10 +32,82 @@ export const reviewHunksQueryKey = (
   sha: string | null = null,
 ) => ["review", sessionId, "hunks", project, path, sha] as const;
 
+/**
+ * A file's own comments, keyed the same way `reviewHunksQueryKey` is but
+ * with no `sha`: a comment anchors to a file's own lines, not to a
+ * particular commit's view of it — there is exactly one live list per file,
+ * regardless of which commit dot the panel happens to be showing.
+ */
+export const reviewCommentsQueryKey = (
+  sessionId: string,
+  project: string | null,
+  path: string | null,
+) => ["review", sessionId, "comments", project, path] as const;
+
 async function fetchReview(sessionId: string): Promise<SessionReview> {
   const res = await fetch(`/api/sessions/${sessionId}/review`);
   if (!res.ok) throw new Error(`review ${res.status}`);
   return res.json();
+}
+
+async function fetchReviewComments(
+  sessionId: string,
+  project: string,
+  path: string,
+): Promise<ReviewComment[]> {
+  const params = new URLSearchParams({ path, project });
+  const res = await fetch(`/api/sessions/${sessionId}/review/comments?${params}`);
+  if (!res.ok) throw new Error(`review comments ${res.status}`);
+  const body = (await res.json()) as { comments: ReviewComment[] };
+  return body.comments;
+}
+
+/**
+ * A file's live comments — created either by a past `open_review` call
+ * (read here, on open) or, live, by the current turn's SSE stream (merged
+ * in by the caller; see review-editor-pane.tsx). Not polled, same reasoning
+ * as `useReview`: nothing here changes on its own between fetches.
+ */
+export function useReviewComments(
+  sessionId: string,
+  project: string | null,
+  path: string | null,
+) {
+  return useQuery({
+    enabled: Boolean(project && path),
+    queryFn: () => fetchReviewComments(sessionId, project!, path!),
+    queryKey: reviewCommentsQueryKey(sessionId, project, path),
+    staleTime: 0,
+  });
+}
+
+/**
+ * Dismiss one comment. Optimistic: the panel removes it from the visible
+ * list immediately rather than waiting on a refetch, same UX choice
+ * `useDismissReview` makes for the whole-review dismissal.
+ */
+export function useDismissReviewComment(
+  sessionId: string,
+  project: string | null,
+  path: string | null,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (commentId: string) => {
+      const res = await fetch(`/api/sessions/${sessionId}/review/comments/${commentId}`, {
+        method: "PATCH",
+      });
+      if (!res.ok) throw new Error("Unable to dismiss the comment");
+      return commentId;
+    },
+    onSuccess: (commentId) => {
+      queryClient.setQueryData<ReviewComment[]>(
+        reviewCommentsQueryKey(sessionId, project, path),
+        (previous) => previous?.filter((comment) => comment.id !== commentId) ?? previous,
+      );
+    },
+  });
 }
 
 export function useReview(sessionId: string, enabled = true) {
