@@ -533,22 +533,22 @@ div.react-sigma {
 }
 
 /*
- * An agent's explanation of a range of code, drawn as a Monaco content
- * widget ABOVE the range's first line (see `review-comment-widgets.tsx`),
- * the same mechanism `.semla-access-label-host` uses and for the same
- * reason: a content widget floats over the preceding line rather than
- * pushing code down, which matters here doubly — unlike an access label,
- * a comment's own content can be long, and reflowing the file every time
- * one appears would be disorienting mid-review.
+ * An agent's explanation of a range of code, drawn inside a Monaco view
+ * zone — reserved space above the range's first line, not a floating
+ * overlay — so the card never covers the code it is explaining. See
+ * `review-comment-widgets.tsx` for why a view zone was chosen over the
+ * content-widget approach `.semla-access-label-host` uses, and for the
+ * reflow cost that trade accepts.
  *
- * Unlike the access label, this DOES take the pointer: the whole point is
- * a dismiss control and, eventually, readable prose — `pointer-events: none`
- * on the host would make both impossible. `suppressMouseDown` on the widget
- * itself (see the class docblock) is what keeps a click from moving the
- * text cursor underneath instead.
+ * This DOES take the pointer, unlike the access label: the whole point is
+ * a dismiss control and readable prose. `box-sizing: border-box` matters
+ * here specifically — Monaco sets this node's own `width: 100%` inline
+ * (`viewZones.js`), and padding without border-box would push the card
+ * past that width rather than shrinking to fit inside it.
  */
 .semla-review-comment-host {
-  max-width: min(560px, 90%);
+  box-sizing: border-box;
+  padding: 4px min(24px, 8%) 4px 0;
 }
 
 .semla-review-comment {
