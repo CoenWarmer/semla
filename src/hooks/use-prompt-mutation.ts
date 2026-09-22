@@ -7,7 +7,6 @@ import {
   type SessionMessagesResult,
   type SessionToolCall,
 } from "@/hooks/use-session-messages";
-import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import { promptFailureMessage } from "@/lib/prompt-failure";
 import { truncateAtMessage } from "@/lib/session/session-fork";
 import {
@@ -21,25 +20,14 @@ import {
   projectChangeInvalidations,
   sessionProjectsKey,
 } from "@/hooks/use-session-projects";
-import { applyLiveToolEvent } from "@/lib/session/live-tool-calls";
 import {
   fetchSingleSessionStatus,
   SESSION_STATUS_KEY,
   sessionStatusKey,
   withSessionRunning,
   type SessionStatus,
-  type SingleSessionStatus,
 } from "@/lib/session/session-status";
-import type { FileAccess } from "@/lib/pi/file-access/access-types";
-import {
-  sessionAgentConsoleKey,
-  sessionLiveAccessesKey,
-  sessionLiveToolCallsKey,
-} from "@/lib/session/session-live-state";
-import {
-  applyAgentConsoleEvent,
-  type AgentConsoleEntry,
-} from "@/lib/session/agent-console";
+import { sessionLiveAccessesKey, sessionLiveToolCallsKey } from "@/lib/session/session-live-state";
 import {
   applyStreamEvent,
   initialStreamState,
@@ -47,6 +35,7 @@ import {
   type PiStreamEvent,
   type TurnStreamEffect,
 } from "@/lib/session/turn-stream-reducer";
+import { applyTurnEffects } from "@/lib/session/turn-stream-effects";
 
 export type PromptModel = {
   modelId: string;
@@ -287,179 +276,22 @@ export const usePromptMutation = (
   const reconnectAbortRef = useRef<AbortController | null>(null);
 
   /**
-   * Fold a console event into the cache the console panel reads.
-   *
-   * Cache only, with no companion `useState` — unlike the live tool calls,
-   * which this hook's own consumers render. The console panel lives in the
-   * bottom bar, outside this hook's subtree, so the cache is the only way it
-   * can see the state at all and a second copy here would have no reader.
-   */
-  const pushConsoleEvent = useCallback(
-    (event: Parameters<typeof applyAgentConsoleEvent>[1]) => {
-      queryClient.setQueryData(sessionAgentConsoleKey(sessionId), (prev) =>
-        applyAgentConsoleEvent(
-          (prev as AgentConsoleEntry[] | undefined) ?? [],
-          event,
-        ),
-      );
-    },
-    [queryClient, sessionId],
-  );
-
-  /**
    * Run every effect `applyStreamEvent` asked for.
    *
    * The only place in this hook that touches `queryClient` on the turn
-   * stream's behalf — the reducer describes what to do as data, this
-   * executes it. `isReconnect` gates the one effect whose meaning actually
-   * differs by which stream it arrived on: a `user-message` echo means
-   * "show it optimistically" only when reconnecting to a turn already in
-   * progress — for a turn this tab itself started, `onMutate` already wrote
-   * that optimistic message directly, and appending it again here would
-   * duplicate it.
+   * stream's behalf — the reducer describes what to do as data,
+   * `applyTurnEffects` (turn-stream-effects.ts) executes it. `isReconnect`
+   * gates the one effect whose meaning actually differs by which stream it
+   * arrived on: a `user-message` echo means "show it optimistically" only
+   * when reconnecting to a turn already in progress — for a turn this tab
+   * itself started, `onMutate` already wrote that optimistic message
+   * directly, and appending it again here would duplicate it.
    */
   const runStreamEffects = useCallback(
     (effects: readonly TurnStreamEffect[], options?: { isReconnect?: boolean }) => {
-      for (const effect of effects) {
-        switch (effect.type) {
-          case "append-optimistic-user-message": {
-            if (!options?.isReconnect) break;
-            queryClient.setQueryData<SessionMessagesResult>(
-              messagesKey,
-              (prev) => ({
-                contextWindow: prev?.contextWindow ?? null,
-                systemPromptChars: prev?.systemPromptChars,
-                toolCalls: prev?.toolCalls ?? [],
-                messages: [
-                  ...(prev?.messages ?? []),
-                  {
-                    createdAt: new Date().toISOString(),
-                    id: `optimistic-reconnect-${crypto.randomUUID()}`,
-                    role: "user" as const,
-                    text: effect.text,
-                  },
-                ],
-              }),
-            );
-            break;
-          }
-
-          // Attaches to the last message in the cache rather than to the
-          // optimistic bubble's own id: onMutate's optimistic write already
-          // landed by the time this event arrives (user-message precedes it
-          // on the wire, and onMutate ran synchronously before the fetch
-          // that opens the stream), but its id is not known here without
-          // threading it through — the last message is that bubble by
-          // construction, since nothing else appends to this list between
-          // onMutate and the turn's own assistant reply.
-          case "apply-wiki-recall":
-            queryClient.setQueryData<SessionMessagesResult>(
-              messagesKey,
-              (prev) => {
-                if (!prev || prev.messages.length === 0) return prev;
-                const lastIndex = prev.messages.length - 1;
-                const last = prev.messages[lastIndex];
-                if (!last || last.role !== "user") return prev;
-                const messages = [...prev.messages];
-                messages[lastIndex] = { ...last, wikiRecall: effect.content };
-                return {
-                  contextWindow: prev.contextWindow,
-                  messages,
-                  systemPromptChars: prev.systemPromptChars,
-                  toolCalls: prev.toolCalls,
-                };
-              },
-            );
-            break;
-
-          case "cache-live-tool-call":
-            queryClient.setQueryData(
-              sessionLiveToolCallsKey(sessionId),
-              (prev) =>
-                applyLiveToolEvent(
-                  (prev as SessionToolCall[] | undefined) ?? [],
-                  effect.event,
-                ),
-            );
-            break;
-
-          // The command is on the start event's params and nowhere else, so
-          // the console entry has to be opened here rather than on first
-          // output.
-          case "console-bash-start":
-            pushConsoleEvent({
-              at: effect.at,
-              command: effect.command,
-              toolCallId: effect.toolCallId,
-              type: "bash-start",
-            });
-            break;
-
-          case "console-bash-end":
-            pushConsoleEvent({
-              at: effect.at,
-              isError: effect.isError,
-              toolCallId: effect.toolCallId,
-              type: "bash-end",
-              ...(effect.output ? { output: effect.output } : {}),
-            });
-            break;
-
-          case "console-bash-output":
-            pushConsoleEvent({
-              output: effect.output,
-              toolCallId: effect.toolCallId,
-              type: "bash-output",
-            });
-            break;
-
-          // Push live spans into the query cache so components that read
-          // sessionSpansKey directly (session-agents-panel) see them too —
-          // without this they only ever see the persisted-on-disk copy.
-          case "cache-spans":
-            queryClient.setQueryData(
-              sessionSpansKey(sessionId),
-              (prev: RecordedSpan[] | undefined) =>
-                mergeSpans(
-                  prev ?? [],
-                  new Map(effect.spans.map((s) => [s.spanId, s])),
-                ),
-            );
-            break;
-
-          case "cache-file-access":
-            queryClient.setQueryData(
-              sessionLiveAccessesKey(sessionId),
-              (previous: FileAccess[] | undefined) => [
-                ...(previous ?? []),
-                ...effect.accesses,
-              ],
-            );
-            break;
-
-          // Keep the cache the header badges and the sidebar read in step
-          // with the same push, so a component that only reads
-          // sessionStatusKey (session-agents-panel.tsx, header-actions.tsx)
-          // does not need its own poll to learn it — those still fetch it
-          // once on mount, but no longer need to ask again on a timer for
-          // this field.
-          case "cache-session-status":
-            queryClient.setQueryData<SingleSessionStatus>(
-              sessionStatusKey(sessionId),
-              (prev) => (prev ? { ...prev, isRunning: effect.isRunning } : prev),
-            );
-            setListRunning(effect.isRunning);
-            break;
-
-          // So the sidebar shows the new title now rather than on its next
-          // poll.
-          case "invalidate-title":
-            void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-            break;
-        }
-      }
+      applyTurnEffects(queryClient, sessionId, messagesKey, effects, options);
     },
-    [messagesKey, pushConsoleEvent, queryClient, sessionId, setListRunning],
+    [messagesKey, queryClient, sessionId],
   );
 
   /**
