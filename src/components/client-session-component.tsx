@@ -2,7 +2,8 @@
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
-import { useDismissReview, useReview } from "@/hooks/use-review";
+import { reviewCommentsQueryKey, useDismissReview, useReview } from "@/hooks/use-review";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 import {
   SessionMessagesResult,
   useSessionMessages,
@@ -533,6 +534,21 @@ export function ClientSessionComponent({
   useEffect(() => {
     if (openReviewRequestNonce === undefined) return;
     const target = openReviewRequest?.target;
+
+    // A comment this same call created is already durable (open-review.ts
+    // inserted it before returning), so it only needs to reach the editor
+    // pane's query cache — not a re-fetch of the route it will read from on
+    // the next mount, which is what a comment from a *previous* turn relies
+    // on instead. Prepended, matching `listReviewComments`' oldest-first
+    // order: this comment was created after everything already cached.
+    const comment = openReviewRequest?.comment;
+    if (comment && target) {
+      queryClient.setQueryData<ReviewComment[]>(
+        reviewCommentsQueryKey(sessionId, target.project, target.path),
+        (previous) => [...(previous ?? []), comment],
+      );
+    }
+
     if (target === null || target === undefined) {
       // No path to open at — just bring the panel on screen, the same way
       // the header's Review button does.

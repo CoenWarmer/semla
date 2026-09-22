@@ -25,7 +25,9 @@ import {
   notifyLspSync,
   subscribeToLspDiagnostics,
   useCodeMapAtLine,
+  useDismissReviewComment,
   useFileContent,
+  useReviewComments,
   useReviewHunks,
   useSymbolAtLine,
   workspacePath,
@@ -43,6 +45,15 @@ import type { HunkSlot } from "./review-hunk-cursor";
 import { matchFullHunk } from "./review-hunk-match";
 import { ReviewEditor } from "./review-editor";
 import type { AccessHighlight } from "./review-panel-request";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
+
+/**
+ * Stable identity for "no comments yet", matching `NO_PROJECTS` in
+ * review-panel.tsx: `comments.data ?? []` would otherwise hand the editor a
+ * fresh array every render while the query is pending, retriggering its
+ * comments effect for no real reason.
+ */
+const EMPTY_COMMENTS: readonly ReviewComment[] = [];
 
 /** A message pane, for the cases where there is no file to open. */
 function Notice({ children }: { children: React.ReactNode }) {
@@ -128,6 +139,12 @@ export function ReviewEditorPane({
   const content = useFileContent(
     sessionId,
     workspacePath(selection.project, selection.path),
+  );
+  const comments = useReviewComments(sessionId, selection.project, selection.path);
+  const dismissComment = useDismissReviewComment(
+    sessionId,
+    selection.project,
+    selection.path,
   );
 
   /** The code map the operator asked for, or null when none is open. */
@@ -449,11 +466,13 @@ export function ReviewEditorPane({
 
         <ReviewEditor
           access={access}
+          comments={comments.data ?? EMPTY_COMMENTS}
           currentHunk={currentFullHunk}
           definition={definition}
           lsp={lsp}
           hunks={hunks.data?.full?.hunks ?? []}
           onChange={(next) => onDraftChange(next, next !== onDisk)}
+          onDismissComment={(id) => dismissComment.mutate(id)}
           onExplainLine={explainAt}
           onStageHunk={onStage}
           onVisualizeLine={visualizeAt}

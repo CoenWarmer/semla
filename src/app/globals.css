@@ -529,4 +529,56 @@ div.react-sigma {
   pointer-events: auto;
   position: relative;
   z-index: 1;
+  background: var(--color-background);
+}
+
+/*
+ * An agent's explanation of a range of code, drawn as a Monaco content
+ * widget ABOVE the range's first line (see `review-comment-widgets.tsx`),
+ * the same mechanism `.semla-access-label-host` uses and for the same
+ * reason: a content widget floats over the preceding line rather than
+ * pushing code down, which matters here doubly — unlike an access label,
+ * a comment's own content can be long, and reflowing the file every time
+ * one appears would be disorienting mid-review.
+ *
+ * Unlike the access label, this DOES take the pointer: the whole point is
+ * a dismiss control and, eventually, readable prose — `pointer-events: none`
+ * on the host would make both impossible. `suppressMouseDown` on the widget
+ * itself (see the class docblock) is what keeps a click from moving the
+ * text cursor underneath instead.
+ */
+.semla-review-comment-host {
+  max-width: min(560px, 90%);
+}
+
+.semla-review-comment {
+  background-color: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px color-mix(in oklch, black 20%, transparent);
+  color: var(--popover-foreground);
+  padding: 6px 10px;
+}
+
+.semla-review-comment-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.semla-review-comment-kicker {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.semla-review-comment-dismiss {
+  color: var(--muted-foreground);
+}
+
+.semla-review-comment-dismiss:hover {
+  color: var(--foreground);
 }

@@ -49,9 +49,19 @@ import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
 import { AccessLabelWidgets } from "./review-access-label-widgets";
 import { buildAccessLabels } from "./review-access-labels";
+import { ReviewCommentWidgets } from "./review-comment-widgets";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 import { linesOutside } from "@/lib/pi/file-access/access-sequence";
 
 import type { AccessHighlight } from "./review-panel-request";
+
+/**
+ * Stable identity for "no comments", matching `NO_PROJECTS` in
+ * review-panel.tsx: a fresh `[]` default parameter is a new array every
+ * render, which would retrigger the comments effect below on every render
+ * of a parent that has not actually changed anything.
+ */
+const EMPTY_COMMENTS: readonly ReviewComment[] = [];
 
 const CLASS_FOR_KIND = {
   "added-line": "semla-review-added-line",
@@ -172,15 +182,25 @@ export interface CodeEditorProps {
    * diff to show for it.
    */
   access?: AccessHighlight | null;
+  /**
+   * The agent's explanations of ranges in this file, drawn above the range
+   * each is about. Distinct from `access` and `hunks` again: neither says
+   * *why* the agent did something, only *what* it touched or changed.
+   */
+  comments?: readonly ReviewComment[];
+  /** A comment's dismiss control was clicked. */
+  onDismissComment?: (commentId: string) => void;
 }
 
 export default function CodeEditor({
   access = null,
+  comments = EMPTY_COMMENTS,
   currentHunk = null,
   definition = null,
   hunks,
   lsp = null,
   onChange,
+  onDismissComment,
   onExplainLine,
   onSave,
   onStageHunk,
@@ -229,6 +249,19 @@ export default function CodeEditor({
    * subtree — the same constraint `review-hunk-bracket-widgets.tsx` documents.
    */
   const accessLabelsRef = useRef<AccessLabelWidgets | null>(null);
+  /**
+   * The agent's own explanations, drawn above the ranges they are about.
+   *
+   * A fourth widget owner, following `accessLabelsRef`'s own reasoning: this
+   * is a DOM subtree Monaco positions but does not own the contents of, and
+   * it changes on its own schedule (a new comment can arrive mid-turn, or
+   * be dismissed) rather than in step with the diff or the access marks.
+   */
+  const commentWidgetsRef = useRef<ReviewCommentWidgets | null>(null);
+  const onDismissCommentRef = useRef(onDismissComment);
+  useEffect(() => {
+    onDismissCommentRef.current = onDismissComment;
+  }, [onDismissComment]);
   const stagingBusyRef = useRef(stagingBusy);
   /**
    * Which path the open-on-first-hunk effect has already scrolled for.
@@ -327,6 +360,9 @@ export default function CodeEditor({
     currentHunkRef.current = editor.createDecorationsCollection([]);
     accessRef.current = editor.createDecorationsCollection([]);
     accessLabelsRef.current = new AccessLabelWidgets(editor);
+    commentWidgetsRef.current = new ReviewCommentWidgets(editor, (id) => {
+      onDismissCommentRef.current?.(id);
+    });
     hunkGlyphsRef.current = new HunkBracketWidgets(
       editor,
       (index, direction) => {
@@ -483,6 +519,7 @@ export default function CodeEditor({
       lspRegistration?.dispose();
       lspHandleRef.current = null;
       accessLabelsRef.current?.dispose();
+      commentWidgetsRef.current?.dispose();
       hunkGlyphsRef.current?.dispose();
       editor.dispose();
       models.forEach((model) => model.dispose());
@@ -492,6 +529,7 @@ export default function CodeEditor({
       accessRef.current = null;
       hunkGlyphsRef.current = null;
       accessLabelsRef.current = null;
+      commentWidgetsRef.current = null;
     };
   }, []);
 
@@ -726,6 +764,24 @@ export default function CodeEditor({
       ...dimmed,
     ]);
   }, [access, path]);
+
+  /**
+   * Draw the agent's own comments, above the ranges they explain.
+   *
+   * A separate effect from every other one here, for the reason each of
+   * them already gives for being separate from its neighbours: comments
+   * change on their own schedule (a new one arriving mid-turn, one being
+   * dismissed) rather than in step with the diff, the cursor or the access
+   * marks, and `set()` replaces everything in its owner wholesale.
+   */
+  useEffect(() => {
+    const editor = editorRef.current;
+    const widgets = commentWidgetsRef.current;
+    const model = editor?.getModel();
+    if (!editor || !widgets || !model) return;
+
+    widgets.set(comments, model.getLineCount());
+  }, [comments, path]);
 
   // A button in the gutter of every hunk this diff can stage or unstage on
   // its own — see review-hunk-bracket-widgets.ts for why this is a real
