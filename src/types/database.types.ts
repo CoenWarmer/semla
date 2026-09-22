@@ -133,6 +133,53 @@ export type Database = {
           },
         ]
       }
+      review_comments: {
+        Row: {
+          body: Json
+          created_at: string
+          dismissed_at: string | null
+          end_line: number
+          file_path: string
+          id: string
+          project_path: string
+          session_id: string
+          start_line: number
+          tool_call_id: string | null
+        }
+        Insert: {
+          body: Json
+          created_at?: string
+          dismissed_at?: string | null
+          end_line: number
+          file_path: string
+          id?: string
+          project_path: string
+          session_id: string
+          start_line: number
+          tool_call_id?: string | null
+        }
+        Update: {
+          body?: Json
+          created_at?: string
+          dismissed_at?: string | null
+          end_line?: number
+          file_path?: string
+          id?: string
+          project_path?: string
+          session_id?: string
+          start_line?: number
+          tool_call_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_comments_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_artifacts: {
         Row: {
           artifact_key: string
