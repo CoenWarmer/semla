@@ -47,7 +47,19 @@
  *
  * Rebuilt wholesale on every `set()`, same choice `review-access-label-widgets.tsx`
  * makes and for the same reason: few comments per file, no incremental
- * diffing worth the complexity yet.
+ * diffing worth the complexity yet. The one exception is a comment mid-way
+ * through its dismiss animation (`animateDismiss` below) — `set()` checks
+ * `shrinking` first and leaves that one zone alone rather than tearing it
+ * down mid-shrink, which would cut the animation off and snap the code back
+ * down. Once the animation finishes it calls the real `onDismiss`, whose
+ * result is a `comments` list that no longer includes this one, and the
+ * *next* `set()` simply omits it — the animation's job was only ever to
+ * make removal look smooth, never to be the removal itself.
+ *
+ * Respects `prefers-reduced-motion`: `animateDismiss` checks the media query
+ * on each call (not cached, since a user can change it while a session is
+ * open) and jumps straight to zero when motion is reduced, still going
+ * through the same completion path as an animated shrink.
  *
  * Model-per-file lifetime: "View zones are lost when a new model is
  * attached to the editor" (Monaco's own `changeViewZones` doc). `code-editor.tsx`
@@ -152,6 +164,21 @@ interface CommentState {
   domNode: HTMLDivElement;
 }
 
+/** How long the dismiss shrink takes, matched to the card's own fade in CSS. */
+const DISMISS_DURATION_MS = 180;
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Ease-out cubic. A shrink reads as more natural decelerating into the
+ * collapse than at a constant rate — the same easing shape
+ * `.semla-following-pulse` computes at a different frequency for a
+ * different purpose.
+ */
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+
 /**
  * A reasonable first guess at a card's height, in pixels, before its real
  * content has painted. Deliberately generous — an initial guess that is too
@@ -165,6 +192,14 @@ export class ReviewCommentWidgets {
   private readonly editor: monaco.editor.IStandaloneCodeEditor;
   private states = new Map<string, CommentState>();
   private onDismiss: (id: string) => void;
+  /**
+   * Comments currently shrinking toward removal, by id. Consulted at the
+   * top of `set()` so a rebuild triggered by something unrelated — the
+   * scrubber moving, a sibling comment arriving — does not cut an
+   * in-progress dismiss animation short. Cleared once the animation calls
+   * through to the real `onDismiss`.
+   */
+  private shrinking = new Set<string>();
 
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
@@ -172,6 +207,56 @@ export class ReviewCommentWidgets {
   ) {
     this.editor = editor;
     this.onDismiss = onDismiss;
+  }
+
+  /**
+   * Shrink one comment's zone to nothing, fading its card, then call
+   * through to the real dismiss.
+   *
+   * Reduced-motion and the animated path both end the same way — a final
+   * `heightInPx = 0` / `layoutZone` and then `this.onDismiss(id)` — so a
+   * test or a future caller never has to know which path ran.
+   */
+  private animateDismiss(id: string) {
+    const state = this.states.get(id);
+    if (!state) return;
+
+    this.shrinking.add(id);
+    state.domNode.style.opacity = "0";
+    state.domNode.style.transition = `opacity ${DISMISS_DURATION_MS}ms ease-out`;
+
+    const startHeight = state.zone.heightInPx ?? 0;
+    if (startHeight <= 0 || prefersReducedMotion()) {
+      this.shrinking.delete(id);
+      this.onDismiss(id);
+      return;
+    }
+
+    const startTime = performance.now();
+    const step = () => {
+      // The comment may have been dismissed a second time, or the widget
+      // disposed, while a frame was in flight — `states` no longer having
+      // this id either way is the signal to stop stepping.
+      if (!this.states.has(id)) return;
+
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(1, elapsed / DISMISS_DURATION_MS);
+      const height = startHeight * (1 - easeOutCubic(progress));
+
+      state.zone.heightInPx = height;
+      this.editor.changeViewZones((accessor) => {
+        accessor.layoutZone(state.zoneId);
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+        return;
+      }
+
+      this.shrinking.delete(id);
+      this.onDismiss(id);
+    };
+    requestAnimationFrame(step);
   }
 
   /**
@@ -194,6 +279,13 @@ export class ReviewCommentWidgets {
 
     this.editor.changeViewZones((accessor) => {
       for (const comment of comments) {
+        // Left exactly as the running animation last set it — `clear()`
+        // (just above, this same call) already skipped removing this
+        // zone for the same reason. A comment stays in `comments` for
+        // the whole shrink, since the real removal (`this.onDismiss`)
+        // only fires once the animation finishes.
+        if (this.shrinking.has(comment.id)) continue;
+
         const domNode = document.createElement("div");
         domNode.className = "semla-review-comment-host";
 
@@ -213,7 +305,7 @@ export class ReviewCommentWidgets {
         root.render(
           <ReviewCommentCard
             comment={resolvedComment}
-            onDismiss={() => this.onDismiss(comment.id)}
+            onDismiss={() => this.animateDismiss(comment.id)}
             onHeightChange={(measured) => {
               if (Math.abs(measured - zone.heightInPx!) < 1) return;
               zone.heightInPx = measured;
@@ -229,25 +321,41 @@ export class ReviewCommentWidgets {
     });
   }
 
+  /**
+   * Tear down every zone except one mid-shrink (`this.shrinking`), which is
+   * left completely alone — its `domNode`, its `zone` object, its entry in
+   * `this.states` — so the running `requestAnimationFrame` loop in
+   * `animateDismiss` keeps driving the exact zone Monaco already has.
+   * Removing it here and `set()` recreating a fresh one a moment later
+   * would restart the shrink from `PROVISIONAL_HEIGHT_PX`, not from wherever
+   * the animation actually was.
+   */
   private clear() {
-    if (this.states.size === 0) return;
+    const toRemove = [...this.states.entries()].filter(
+      ([id]) => !this.shrinking.has(id),
+    );
+    if (toRemove.length === 0) return;
 
-    const states = [...this.states.values()];
     this.editor.changeViewZones((accessor) => {
-      for (const state of states) {
+      for (const [, state] of toRemove) {
         accessor.removeZone(state.zoneId);
       }
     });
-    for (const state of states) {
+    for (const [id, state] of toRemove) {
       // Deferred for the reason review-hunk-bracket-widgets.tsx gives:
       // unmounting synchronously while React is rendering warns, and Monaco
       // has already let go of the node.
       setTimeout(() => state.root.unmount(), 0);
+      this.states.delete(id);
     }
-    this.states = new Map();
   }
 
   dispose() {
+    // The widget itself is going away, so nothing is served by finishing an
+    // in-progress shrink — forget it rather than let `clear()` preserve it
+    // for an animation loop that would otherwise keep calling
+    // `changeViewZones` on an editor about to be disposed.
+    this.shrinking.clear();
     this.clear();
   }
 }
