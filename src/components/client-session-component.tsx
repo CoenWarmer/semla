@@ -106,6 +106,7 @@ export function ClientSessionComponent({
     liveRounds,
     liveToolCalls,
     mutation: promptMutation,
+    openReviewRequest,
     pendingFeatureSpec,
     pendingQuestion,
     serverIsRunning,
@@ -517,6 +518,37 @@ export function ClientSessionComponent({
     reviewQuery.data?.fingerprint,
     setReviewManuallyOpened,
   ]);
+  // The `open_review` tool asks the panel to open the same way a picked
+  // element or an artifact chip does — through `elementTarget.request()` —
+  // but the request arrives over the stream rather than from a DOM click, so
+  // there is no event handler to call it from. The nonce is what makes a
+  // *repeated* request (e.g. two "just open, nothing selected" calls in a
+  // row) still take effect: without it, a second identical request would be
+  // the same object as the last one this effect already acted on.
+  //
+  // Calling `elementTarget.request` here is not itself the state this effect
+  // reacts to — it sets ElementTargetProvider's state, not this component's —
+  // so it is not the pattern `react/set-state-in-effect` exists to catch.
+  const openReviewRequestNonce = openReviewRequest?.nonce;
+  useEffect(() => {
+    if (openReviewRequestNonce === undefined) return;
+    const target = openReviewRequest?.target;
+    if (target === null || target === undefined) {
+      // No path to open at — just bring the panel on screen, the same way
+      // the header's Review button does.
+      setReviewManuallyOpened(true);
+      return;
+    }
+    elementTarget.request({
+      commitSha: target.commitSha ?? null,
+      line: target.line ?? undefined,
+      path: target.path,
+      precision: "exact",
+      project: target.project,
+    });
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [openReviewRequestNonce]);
+
   const agentSelection = useSessionAgentSelection(sessionId);
   const selectedAgent = agentSelection.data;
 

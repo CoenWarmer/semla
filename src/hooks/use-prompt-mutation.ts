@@ -670,6 +670,11 @@ export const usePromptMutation = (
     liveRounds: state.liveRounds,
     liveToolCalls: state.liveToolCalls,
     mutation,
+    /**
+     * The most recent `open_review` request this turn's agent made, if any.
+     * See TurnStreamState's own doc on this field for why it carries a nonce.
+     */
+    openReviewRequest: state.openReviewRequest,
     pendingFeatureSpec: state.pendingFeatureSpec,
     pendingQuestion: state.pendingQuestion,
     /** The title the server derived from the first prompt, once it has. */

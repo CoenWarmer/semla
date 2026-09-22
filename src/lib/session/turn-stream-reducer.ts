@@ -32,6 +32,7 @@ import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type { CodeMap } from "@/lib/code-map/types";
+import type { OpenReviewTarget } from "@/lib/pi/review/open-review-result";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import {
   applyLiveToolEvent,
@@ -52,6 +53,7 @@ export type PiStreamEvent =
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
+  | { target: OpenReviewTarget | null; type: "open-review" }
   | { output: string; toolCallId: string; type: "bash-output" }
   | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -65,6 +67,15 @@ export type TurnStreamState = {
   activeTool: string | undefined;
   codeMap: CodeMap | undefined;
   liveRounds: readonly LiveRound[];
+  /**
+   * The most recent `open_review` request this turn made, with a nonce so a
+   * second identical request (e.g. "just open the panel" twice in a row,
+   * where `target` is `null` both times) still changes this field and the
+   * effect watching it fires again. Same convention as
+   * `element-target-provider.tsx`'s `nonce`: the value alone cannot say
+   * "this happened again", so a counter travels with it.
+   */
+  openReviewRequest: { nonce: number; target: OpenReviewTarget | null } | undefined;
   liveToolCalls: readonly SessionToolCall[];
   pendingFeatureSpec: boolean;
   pendingQuestion: AskUserPayload | null;
@@ -89,6 +100,7 @@ export function initialStreamState(options?: {
     codeMap: undefined,
     liveRounds: [],
     liveToolCalls: [],
+    openReviewRequest: undefined,
     pendingFeatureSpec: false,
     pendingQuestion: null,
     serverIsRunning: options?.serverIsRunning ?? false,
@@ -302,6 +314,15 @@ export function applyStreamEvent(
 
     case "code-map":
       return unchanged({ ...state, codeMap: event.map });
+
+    case "open-review":
+      return unchanged({
+        ...state,
+        openReviewRequest: {
+          nonce: (state.openReviewRequest?.nonce ?? 0) + 1,
+          target: event.target,
+        },
+      });
 
     case "file-access":
       return unchanged(state, [

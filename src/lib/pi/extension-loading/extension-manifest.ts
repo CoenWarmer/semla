@@ -46,6 +46,7 @@ import codeMapExtension from "@/lib/pi/extensions/code-map";
 import codeSearchExtension from "@/lib/pi/extensions/code-search";
 import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
 import jevGateExtension from "@/lib/pi/extensions/jev-gate";
+import openReviewExtension from "@/lib/pi/extensions/open-review";
 import orientStatusExtension from "@/lib/pi/extensions/orient-status";
 import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
@@ -57,6 +58,7 @@ export type ExtensionId =
   | "feature-spec"
   | "code-map"
   | "code-search"
+  | "open-review"
   | "orient-status"
   | "code-intelligence"
   | "install-guard"
@@ -228,6 +230,18 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/code-search.ts.",
+  },
+  {
+    id: "open-review",
+    source: { factory: openReviewExtension, kind: "factory" },
+    // Resolves a target against the session's own project links and returns it
+    // in `details`; depends on nothing else in the session.
+    requires: [],
+    providesTools: ["open_review"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/open-review.ts.",
   },
   {
     id: "orient-status",

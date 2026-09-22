@@ -12,6 +12,7 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
+import { readOpenReviewResult } from "@/lib/pi/review/open-review-result";
 import { retainBackgroundSession } from "@/lib/pi/background/background-sessions";
 import { candidateProjects, isMutatingTool } from "@/lib/pi/artifacts/artifact-attribution";
 import { captureAndRecord } from "@/lib/pi/artifacts/artifact-record";
@@ -443,6 +444,16 @@ export const createTurnEventRouter = ({
     if (event.toolName === "code_map") {
       const map = readCodeMapResult(event.result);
       if (map) emit({ map, type: "code-map" });
+    }
+
+    // open_review is Semla's own tool too, so its resolved target survives in
+    // the result rather than having been flattened to text — same reasoning
+    // as code_map just above. `target: null` is still a usable outcome ("open
+    // with nothing selected"), which is why the reader returns an outcome
+    // object rather than a nullable target.
+    if (event.toolName === "open_review") {
+      const outcome = readOpenReviewResult(event.result);
+      if (outcome) emit({ target: outcome.target, type: "open-review" });
     }
 
     if (event.toolName === "workflow") {
