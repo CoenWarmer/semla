@@ -26,11 +26,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { toRelativePath } from "@/lib/pi/workspace/file-browser";
+import { createReviewComment } from "@/lib/pi/review/review-comment-store";
 import {
   resolveReviewFile,
   resolveReviewTarget,
 } from "@/lib/pi/review/review-service";
 import { sessionProjects } from "@/lib/pi/session/session-project";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 
 const OpenReviewSchema = Type.Object(
   {
@@ -59,12 +61,40 @@ const OpenReviewSchema = Type.Object(
           "A commit of this session's to select in the panel's commit navigator.",
       }),
     ),
+    comment: Type.Optional(
+      Type.Object(
+        {
+          kind: Type.Union([Type.Literal("text"), Type.Literal("markdown")], {
+            description:
+              "\"markdown\" is rendered; \"text\" is shown verbatim with no formatting.",
+          }),
+          text: Type.String({
+            description: "The explanation. Required regardless of kind.",
+          }),
+          endLine: Type.Optional(
+            Type.Integer({
+              description:
+                "Last line the comment is about, inclusive. Defaults to `line` for a single-line comment. Must not be less than `line`.",
+              minimum: 1,
+            }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    ),
   },
   { additionalProperties: false },
 );
 
+export type OpenReviewCommentParams = {
+  kind: "text" | "markdown";
+  text: string;
+  endLine?: number;
+};
+
 export type OpenReviewParams = {
   commitSha?: string;
+  comment?: OpenReviewCommentParams;
   line?: number;
   path?: string;
   project?: string;
@@ -80,6 +110,7 @@ export type OpenReviewTarget = {
 
 export type OpenReviewDetails = {
   target: OpenReviewTarget | null;
+  comment?: ReviewComment;
   type: "open-review";
 };
 
@@ -105,11 +136,31 @@ export default function openReviewExtension(pi: ExtensionAPI) {
       "Use this after a change worth a look, to show the operator the file and line that matters.",
       "Proactive use is expected, but sparingly — do not open the panel on every turn, only when there is something specific to see.",
       "Name the project and path precisely; both are validated against this session's linked projects and an invalid one is an error.",
+      "`comment` requires both `path` and `line` in the same call — it explains a specific range, not the file in general.",
+      "Use a comment to say what a range of code does or why you added it — not to narrate every call. Keep it short; the operator is looking at the code already.",
     ],
-    async execute(_toolCallId, params: OpenReviewParams, _signal, _onUpdate, ctx) {
+    async execute(toolCallId, params: OpenReviewParams, _signal, _onUpdate, ctx) {
       // Same as ask-user.ts / feature-spec.ts: the session id comes from the
       // runtime's own session manager, never from a parameter.
       const sessionId = ctx.sessionManager.getSessionId();
+
+      // A comment explains a specific range, not "the file" or "the review" in
+      // general — so it needs a line to anchor to, and a line needs a path.
+      // Checked before anything is resolved: an agent that forgot `line`
+      // should hear about that mistake specifically, not "opened the panel"
+      // with the comment silently dropped.
+      if (params.comment && (!params.path || params.line === undefined)) {
+        throw new Error(
+          "`comment` requires both `path` and `line` in the same call.",
+        );
+      }
+      if (
+        params.comment?.endLine !== undefined &&
+        params.line !== undefined &&
+        params.comment.endLine < params.line
+      ) {
+        throw new Error("`comment.endLine` must not be less than `line`.");
+      }
 
       // No project and no path: nothing to resolve, nothing to refuse. The
       // panel opens on whatever it shows by default.
@@ -160,16 +211,39 @@ export default function openReviewExtension(pi: ExtensionAPI) {
       // parameters, so what the browser opens is the path this module checked.
       const relPath = toRelativePath(target.root, absolute);
 
+      // Inserted before the tool returns, not detached: the tool's own
+      // success text is about to tell the agent (and, once it renders, the
+      // operator) that a comment now exists, and a comment that failed to
+      // save must not be reported as if it had — see review-comment-store.ts's
+      // docblock for why this differs from artifact capture's fire-and-forget.
+      let comment: ReviewComment | undefined;
+      if (params.comment) {
+        comment = await createReviewComment({
+          body:
+            params.comment.kind === "markdown"
+              ? { kind: "markdown", markdown: params.comment.text }
+              : { kind: "text", text: params.comment.text },
+          endLine: params.comment.endLine ?? params.line!,
+          filePath: relPath,
+          projectPath: target.link.path,
+          sessionId,
+          startLine: params.line!,
+          toolCallId,
+        });
+      }
+
       return {
         content: [
           {
             text:
               `Opened the Review panel on ${target.link.path}/${relPath}` +
-              `${params.line === undefined ? "" : ` at line ${params.line}`}.`,
+              `${params.line === undefined ? "" : ` at line ${params.line}`}` +
+              `${comment ? " with a comment attached." : "."}`,
             type: "text" as const,
           },
         ],
         details: {
+          ...(comment ? { comment } : {}),
           target: {
             ...(params.commitSha === undefined
               ? {}

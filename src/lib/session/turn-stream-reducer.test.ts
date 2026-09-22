@@ -274,6 +274,39 @@ describe("applyStreamEvent", () => {
     expect(result.state).toBe(before);
     expect(result.effects).toEqual([]);
   });
+
+  it("records an open-review request with its comment and bumps the nonce", () => {
+    let { state } = applyStreamEvent(initialStreamState(), {
+      comment: null,
+      target: { path: "a.ts", project: "semla" },
+      type: "open-review",
+    });
+    expect(state.openReviewRequest).toEqual({
+      comment: null,
+      nonce: 1,
+      target: { path: "a.ts", project: "semla" },
+    });
+
+    const comment = {
+      body: { kind: "text" as const, text: "hi" },
+      createdAt: "2026-01-01T00:00:00Z",
+      endLine: 5,
+      filePath: "a.ts",
+      id: "c1",
+      projectPath: "semla",
+      startLine: 5,
+    };
+    ({ state } = applyStreamEvent(state, {
+      comment,
+      target: { path: "a.ts", project: "semla" },
+      type: "open-review",
+    }));
+    expect(state.openReviewRequest).toEqual({
+      comment,
+      nonce: 2,
+      target: { path: "a.ts", project: "semla" },
+    });
+  });
 });
 
 describe("resetForNewTurn", () => {

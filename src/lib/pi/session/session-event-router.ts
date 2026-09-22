@@ -453,7 +453,13 @@ export const createTurnEventRouter = ({
     // object rather than a nullable target.
     if (event.toolName === "open_review") {
       const outcome = readOpenReviewResult(event.result);
-      if (outcome) emit({ target: outcome.target, type: "open-review" });
+      if (outcome) {
+        emit({
+          comment: outcome.comment,
+          target: outcome.target,
+          type: "open-review",
+        });
+      }
     }
 
     if (event.toolName === "workflow") {

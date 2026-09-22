@@ -421,6 +421,63 @@ describe("code_map", () => {
   });
 });
 
+describe("open_review", () => {
+  it("forwards the resolved target and comment together", () => {
+    const { emitted, router } = setup();
+    const comment = {
+      body: { kind: "text", text: "hi" },
+      createdAt: "2026-01-01T00:00:00Z",
+      endLine: 5,
+      filePath: "a.ts",
+      id: "c1",
+      projectPath: "semla",
+      startLine: 5,
+    };
+
+    router.onSessionEvent(
+      toolEnd({
+        result: {
+          details: {
+            comment,
+            target: { path: "a.ts", project: "semla" },
+            type: "open-review",
+          },
+        },
+        toolName: "open_review",
+      }),
+    );
+
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          comment,
+          target: { path: "a.ts", project: "semla" },
+          type: "open-review",
+        }),
+      ]),
+    );
+  });
+
+  it("emits comment: null when the call carried no comment", () => {
+    const { emitted, router } = setup();
+
+    router.onSessionEvent(
+      toolEnd({
+        result: {
+          details: { target: null, type: "open-review" },
+        },
+        toolName: "open_review",
+      }),
+    );
+
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ comment: null, target: null, type: "open-review" }),
+      ]),
+    );
+  });
+});
+
 describe("background runs", () => {
   const backgroundResult = (runId: string) => ({
     details: { background: true, runId },

@@ -10,6 +10,7 @@ import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { OpenReviewTarget } from "@/lib/pi/review/open-review-result";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 import {
   historyToTurns,
   stampLiveTimestamps,
@@ -85,7 +86,7 @@ export type PiSessionEvent =
    * with nothing selected") is a real, distinct case from this event simply
    * not being emitted at all ("no usable result").
    */
-  | { target: OpenReviewTarget | null; type: "open-review" }
+  | { target: OpenReviewTarget | null; comment: ReviewComment | null; type: "open-review" }
   /**
    * Files the tool that just finished read or wrote, for the review panel's
    * follow mode.

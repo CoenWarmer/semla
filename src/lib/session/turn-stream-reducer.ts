@@ -33,6 +33,7 @@ import type { FileAccess } from "@/lib/pi/file-access/access-types";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type { CodeMap } from "@/lib/code-map/types";
 import type { OpenReviewTarget } from "@/lib/pi/review/open-review-result";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 import type { WorkflowSnapshot } from "@/types/workflow";
 import {
   applyLiveToolEvent,
@@ -53,7 +54,7 @@ export type PiStreamEvent =
   | { snapshot: WorkflowSnapshot; type: "workflow-snapshot" }
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
-  | { target: OpenReviewTarget | null; type: "open-review" }
+  | { target: OpenReviewTarget | null; comment: ReviewComment | null; type: "open-review" }
   | { output: string; toolCallId: string; type: "bash-output" }
   | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -75,7 +76,9 @@ export type TurnStreamState = {
    * `element-target-provider.tsx`'s `nonce`: the value alone cannot say
    * "this happened again", so a counter travels with it.
    */
-  openReviewRequest: { nonce: number; target: OpenReviewTarget | null } | undefined;
+  openReviewRequest:
+    | { nonce: number; target: OpenReviewTarget | null; comment: ReviewComment | null }
+    | undefined;
   liveToolCalls: readonly SessionToolCall[];
   pendingFeatureSpec: boolean;
   pendingQuestion: AskUserPayload | null;
@@ -319,6 +322,7 @@ export function applyStreamEvent(
       return unchanged({
         ...state,
         openReviewRequest: {
+          comment: event.comment,
           nonce: (state.openReviewRequest?.nonce ?? 0) + 1,
           target: event.target,
         },
