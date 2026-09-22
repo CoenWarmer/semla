@@ -558,6 +558,7 @@ div.react-sigma {
 .semla-review-comment-host {
   box-sizing: border-box;
   padding: 0 min(24px, 8%) 0 0;
+  z-index: 1;
 }
 
 .semla-review-comment {
