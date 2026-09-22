@@ -546,9 +546,18 @@ div.react-sigma {
  * (`viewZones.js`), and padding without border-box would push the card
  * past that width rather than shrinking to fit inside it.
  */
+/*
+ * No vertical padding: the card's own height (measured via
+ * `ResizeObserver` in `review-comment-widgets.tsx`) is the whole of what
+ * the view zone reserves, and any padding added here would not be part of
+ * that measurement — the zone would then be shorter than the space the
+ * card and this host jointly occupy, and the card would spill past it by
+ * exactly the padding's amount. Horizontal padding is fine: it does not
+ * affect height.
+ */
 .semla-review-comment-host {
   box-sizing: border-box;
-  padding: 4px min(24px, 8%) 4px 0;
+  padding: 0 min(24px, 8%) 0 0;
 }
 
 .semla-review-comment {

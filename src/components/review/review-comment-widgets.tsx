@@ -26,10 +26,24 @@
  * (`hunkBracketLineCount` — a hunk's line span is arithmetic over line
  * numbers). Markdown's rendered height depends on the browser's layout of
  * arbitrary prose, so each zone is created at a provisional height, then a
- * `ResizeObserver` on its own dom node calls `accessor.layoutZone` once
- * React has actually painted — mutating `heightInPx` on the same `IViewZone`
- * object `_layoutZone` reads back from (`viewZones.js`), which is how
- * Monaco's own API expects a zone's height to change after creation.
+ * `ResizeObserver` inside `ReviewCommentCard` reports the card's own real
+ * height once React has painted it, and this class mutates `heightInPx` on
+ * the same `IViewZone` object `_layoutZone` reads back from
+ * (`viewZones.js`) and calls `accessor.layoutZone`, which is how Monaco's
+ * own API expects a zone's height to change after creation.
+ *
+ * The observer watches the *card*, not the outer `domNode` the zone owns.
+ * That distinction is load-bearing: Monaco sets `domNode`'s own
+ * `style.height` to whatever `heightInPx` currently is (`viewZones.js`'s
+ * `_addZone`/`_layoutZone`), so a `ResizeObserver` on `domNode` itself only
+ * ever reports back the height this class just told Monaco to use — a
+ * closed loop that converges on the provisional guess and never sees the
+ * card's true, unconstrained content height. `overflow: visible` on the
+ * host (globals.css) is what let the card visually spill past that wrong
+ * height in the first place, reproducing the exact overlap this widget
+ * exists to avoid, just one layer further down. The card's own div has no
+ * height set by Monaco at all, so observing it directly reports the real
+ * number.
  *
  * Rebuilt wholesale on every `set()`, same choice `review-access-label-widgets.tsx`
  * makes and for the same reason: few comments per file, no incremental
@@ -44,6 +58,7 @@
  */
 
 import { XIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
@@ -52,21 +67,59 @@ import { monaco } from "./monaco-setup";
 import { ReviewCommentBodyView } from "./review-comment-body";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
 
-/** One comment's own explanation, plus a dismiss control. */
+/**
+ * One comment's own explanation, plus a dismiss control.
+ *
+ * `onHeightChange` fires with the card's own real rendered height — via a
+ * `ResizeObserver` on this component's own root node, not on the view
+ * zone's outer `domNode` the class owns. See the module docblock for why
+ * that distinction is the whole fix: `domNode` is height-constrained by
+ * Monaco itself, and this element is not.
+ */
 function ReviewCommentCard({
   comment,
   onDismiss,
+  onHeightChange,
 }: {
   comment: ReviewComment;
   onDismiss: () => void;
+  onHeightChange: (height: number) => void;
 }) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+
+    // Fired once on `observe()` with the current size, and again on every
+    // real change — an image loading, a window resize, a markdown edit —
+    // so the zone stays honest for the card's whole lifetime, not only at
+    // first paint.
+    //
+    // Read from `node.offsetHeight` on the callback tick, not from the
+    // observer entry's own `contentRect`: `contentRect` is the *content*
+    // box, excluding this element's own border and padding
+    // (`.semla-review-comment`'s 1px border and 6px top/bottom padding),
+    // which under-reports the card's real occupied height by exactly that
+    // amount — confirmed against the live DOM, where it left an ~18px gap
+    // between the reserved zone and the card's actual bottom edge.
+    // `offsetHeight` is the border-box, which is what the zone needs to
+    // reserve.
+    const observer = new ResizeObserver(() => {
+      onHeightChange(node.offsetHeight);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const range =
     comment.startLine === comment.endLine
       ? `Line ${comment.startLine}`
       : `Lines ${comment.startLine}–${comment.endLine}`;
 
   return (
-    <div className="semla-review-comment">
+    <div className="semla-review-comment" ref={cardRef}>
       <div className="semla-review-comment-header">
         <span className="semla-review-comment-kicker">Agent · {range}</span>
         <Button
@@ -96,7 +149,6 @@ interface CommentState {
   zoneId: string;
   zone: monaco.editor.IViewZone;
   root: Root;
-  resizeObserver: ResizeObserver;
   domNode: HTMLDivElement;
 }
 
@@ -162,26 +214,17 @@ export class ReviewCommentWidgets {
           <ReviewCommentCard
             comment={resolvedComment}
             onDismiss={() => this.onDismiss(comment.id)}
+            onHeightChange={(measured) => {
+              if (Math.abs(measured - zone.heightInPx!) < 1) return;
+              zone.heightInPx = measured;
+              this.editor.changeViewZones((innerAccessor) => {
+                innerAccessor.layoutZone(zoneId);
+              });
+            }}
           />,
         );
 
-        // The card's real height is whatever the browser lays React's
-        // markdown out to, not something computable from the comment's own
-        // data — unlike the hunk bracket, which only ever needs arithmetic
-        // over line numbers. Observed rather than measured once: an image
-        // loading, a window resize, or a markdown edit can all change it
-        // after this first paint.
-        const resizeObserver = new ResizeObserver((entries) => {
-          const measured = entries[0]?.contentRect.height;
-          if (!measured || Math.abs(measured - zone.heightInPx!) < 1) return;
-          zone.heightInPx = measured;
-          this.editor.changeViewZones((innerAccessor) => {
-            innerAccessor.layoutZone(zoneId);
-          });
-        });
-        resizeObserver.observe(domNode);
-
-        this.states.set(comment.id, { domNode, resizeObserver, root, zone, zoneId });
+        this.states.set(comment.id, { domNode, root, zone, zoneId });
       }
     });
   }
@@ -192,7 +235,6 @@ export class ReviewCommentWidgets {
     const states = [...this.states.values()];
     this.editor.changeViewZones((accessor) => {
       for (const state of states) {
-        state.resizeObserver.disconnect();
         accessor.removeZone(state.zoneId);
       }
     });
