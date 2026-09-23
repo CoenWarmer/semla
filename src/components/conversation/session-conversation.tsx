@@ -41,6 +41,7 @@ import { SessionActivityLine } from "@/components/conversation/session-activity-
 import { WorkflowPhaseBar } from "@/components/conversation/workflow-phase-bar";
 import { SessionStepsStrip } from "./session-steps-strip";
 import type { ConversationItem } from "@/lib/session/session-steps";
+import type { CompositionBreakdown } from "@/lib/context-composition";
 import { isLiveRoundMessageId } from "@/lib/session/live-tool-calls";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
@@ -48,6 +49,7 @@ import type { WorkflowSnapshot } from "@/types/workflow";
 
 export function SessionConversation({
   activeTool,
+  composition,
   conversation,
   costPerTurn,
   defaultTools,
@@ -76,6 +78,8 @@ export function SessionConversation({
   workflowSnapshot,
 }: {
   activeTool: string | undefined;
+  /** What the context window holds, for the strip above the prompt bar's input box. */
+  composition: CompositionBreakdown | null;
   conversation: ConversationItem[];
   costPerTurn: number | null;
   defaultTools: string[];
@@ -311,6 +315,7 @@ export function SessionConversation({
       <div className="shrink-0 px-4">
         <PromptEditor
           compactToolbar={compactToolbar}
+          composition={composition}
           defaultTools={defaultTools}
           costPerTurn={costPerTurn}
           onCompactClick={onCompactClick}

@@ -52,7 +52,8 @@ import {
   useUpdateUserSettings,
   useUserSettings,
 } from "@/hooks/use-user-settings";
-
+import { SessionContextWindowBar } from "../session/session-context-window-bar";
+import type { CompositionBreakdown } from "@/lib/context-composition";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -488,6 +489,8 @@ interface PromptEditorProps {
   costPerTurn?: number | null;
   /** Trigger manual context compaction. Absent when unavailable (e.g. no live session). */
   onCompactClick?: () => void;
+  /** What the context window holds, for the strip rendered above the input box. */
+  composition?: CompositionBreakdown | null;
   /**
    * The session has a turn in flight. Driven by the parent rather than the
    * editor's own submit state, which knows nothing about a turn still running
@@ -517,6 +520,7 @@ interface PromptEditorProps {
 
 export function PromptEditor({
   compactToolbar = false,
+  composition,
   defaultTools,
   goalEditor,
   costPerTurn,
@@ -1087,6 +1091,12 @@ export function PromptEditor({
           </ModelSelector>
         </div>
       </PromptInputTools>
+
+        <SessionContextWindowBar
+          composition={composition}
+          onCompactClick={onCompactClick}
+          sessionRunning={isRunning}
+        />
 
         <PromptInput
           globalDrop

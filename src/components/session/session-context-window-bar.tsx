@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { CompositionBreakdown } from "@/lib/context-composition";
 
 type CompositionMode = "absolute" | "relative";
@@ -72,12 +77,18 @@ export function SessionContextWindowBar({
     cost < 0.01 ? `<$0.01` : `$${cost.toFixed(cost >= 1 ? 2 : 3)}`;
 
   return (
-    <div className="group relative shrink-0">
-      {/* Collapsed — always in-flow, defines the strip's height */}
-      <div
-        className={`flex h-1 w-full overflow-hidden border-b border-border/40 bg-muted${
-          windowKnown ? "" : " opacity-40"
-        }`}
+    <Popover>
+      <PopoverTrigger
+        closeDelay={0}
+        delay={0}
+        openOnHover
+        render={
+          <div
+            className={`flex h-1 w-full shrink-0 cursor-default overflow-hidden border-b border-border/40 bg-muted${
+              windowKnown ? "" : " opacity-40"
+            }`}
+          />
+        }
       >
         {seg.system > 0.001 && (
           <div
@@ -104,10 +115,14 @@ export function SessionContextWindowBar({
         {remainder > 0.001 && (
           <div style={{ flexBasis: 0, flexGrow: remainder }} />
         )}
-      </div>
+      </PopoverTrigger>
 
-      {/* Expanded — absolute, shown on hover, doesn't affect layout */}
-      <div className="pointer-events-none absolute left-0 right-0 top-full z-20 border-b border-border/40 bg-background px-6 pb-2.5 pt-2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+      <PopoverContent
+        align="start"
+        className="w-auto min-w-64 px-4 py-2.5"
+        side="bottom"
+        sideOffset={0}
+      >
         <div className="mb-1 flex items-center justify-between">
           <span className="text-xs font-medium text-foreground">
             Composition
@@ -181,7 +196,7 @@ export function SessionContextWindowBar({
             </span>
           )}
         </div>
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
