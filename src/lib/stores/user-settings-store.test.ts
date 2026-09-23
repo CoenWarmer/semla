@@ -96,6 +96,24 @@ describe("user settings on disk", () => {
     expect(readUserSettings(USER, dir())).toBeNull();
   });
 
+  it("merges theme color overrides without clearing the prompt", () => {
+    const d = dir();
+    writeUserSettings(USER, { systemPrompt: "be terse" }, d);
+
+    writeUserSettings(
+      USER,
+      { themeColors: { light: { primary: "#ff0000" }, dark: {} } },
+      d,
+    );
+
+    const settings = readUserSettings(USER, d)!;
+    expect(settings.themeColors).toEqual({
+      light: { primary: "#ff0000" },
+      dark: {},
+    });
+    expect(settings.systemPrompt).toBe("be terse");
+  });
+
   it("survives a corrupt record rather than throwing", () => {
     const d = dir();
     mkdirSync(d, { recursive: true });

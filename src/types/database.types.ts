@@ -300,6 +300,7 @@ export type Database = {
           default_model_id: string | null
           default_model_provider: string | null
           system_prompt: string | null
+          theme_colors: Json | null
           updated_at: string
           user_id: string
         }
@@ -307,6 +308,7 @@ export type Database = {
           default_model_id?: string | null
           default_model_provider?: string | null
           system_prompt?: string | null
+          theme_colors?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -314,6 +316,7 @@ export type Database = {
           default_model_id?: string | null
           default_model_provider?: string | null
           system_prompt?: string | null
+          theme_colors?: Json | null
           updated_at?: string
           user_id?: string
         }

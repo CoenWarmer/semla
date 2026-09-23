@@ -11,6 +11,7 @@ import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeColorProvider } from "@/components/theme-color-provider";
 import "./globals.css";
 
 const jetbrainsMonoHeading = JetBrains_Mono({
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="h-full flex flex-col">
         <QueryProvider>
+          <ThemeColorProvider />
           <PendingPromptProvider>
             <ElementTargetProvider>
               <TooltipProvider>

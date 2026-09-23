@@ -15,6 +15,7 @@ import { ExtensionHealthCard } from "@/components/settings/extension-health-card
 import { SystemPromptEditor } from "@/components/settings/system-prompt-editor";
 import { ModelTierEditor } from "@/components/settings/model-tier-editor";
 import { CodeIndexPanel } from "@/components/settings/code-index-panel";
+import { ThemeColorEditor } from "@/components/settings/theme-color-editor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,6 +81,20 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ModelTierEditor />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Theme colors</CardTitle>
+          <CardDescription>
+            Override the app&apos;s core colors, separately for light and dark
+            mode. Falls back to the built-in theme for any color left
+            unset.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeColorEditor />
         </CardContent>
       </Card>
 

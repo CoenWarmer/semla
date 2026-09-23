@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ThemeColorOverrides } from "@/lib/stores/user-settings-store";
 
 export type UserSettings = {
   default_model_id: string | null;
   default_model_provider: string | null;
   follow_mode?: boolean | null;
   system_prompt: string | null;
+  theme_colors?: ThemeColorOverrides | null;
 };
 
 /**
@@ -26,6 +28,10 @@ type UpdateUserSettingsInput = {
 
 type UpdateSystemPromptInput = {
   systemPrompt: string | null;
+};
+
+type UpdateThemeColorsInput = {
+  themeColors: ThemeColorOverrides | null;
 };
 
 export const userSettingsQueryKey = ["user-settings"] as const;
@@ -81,6 +87,57 @@ const updateSystemPrompt = async ({ systemPrompt }: UpdateSystemPromptInput): Pr
 
   const { settings } = (await response.json()) as { settings: UserSettings };
   return settings;
+};
+
+const updateThemeColors = async ({
+  themeColors,
+}: UpdateThemeColorsInput): Promise<UserSettings> => {
+  const response = await fetch("/api/user-settings", {
+    body: JSON.stringify({ themeColors }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to save theme colors.");
+  }
+
+  const { settings } = (await response.json()) as { settings: UserSettings };
+  return settings;
+};
+
+/**
+ * Save the user's theme color overrides, optimistically — the settings
+ * screen wants the swatches it just applied to stick immediately rather than
+ * flash back to the previous value while the request is in flight.
+ */
+export const useUpdateThemeColors = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    UserSettings,
+    Error,
+    UpdateThemeColorsInput,
+    { previousSettings: UserSettings | null | undefined }
+  >({
+    mutationFn: updateThemeColors,
+    onError: (_error, _variables, context) => {
+      if (context) {
+        queryClient.setQueryData(userSettingsQueryKey, context.previousSettings);
+      }
+    },
+    onMutate: async ({ themeColors }) => {
+      await queryClient.cancelQueries({ queryKey: userSettingsQueryKey });
+      const previousSettings = queryClient.getQueryData<UserSettings | null>(userSettingsQueryKey);
+      queryClient.setQueryData<UserSettings | null>(userSettingsQueryKey, (prev) =>
+        prev ? { ...prev, theme_colors: themeColors } : prev
+      );
+      return { previousSettings };
+    },
+    onSuccess: (settings) => {
+      queryClient.setQueryData(userSettingsQueryKey, settings);
+    },
+  });
 };
 
 export const useUpdateSystemPrompt = () => {

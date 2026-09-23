@@ -32,13 +32,53 @@ export interface UserSettings {
    */
   followMode: boolean | null;
   systemPrompt: string | null;
+  /**
+   * User overrides for the app's core CSS color variables, one set per mode.
+   *
+   * `null` means "use the built-in theme" — the same absence-means-default
+   * convention as the other fields. Keyed by CSS variable name (e.g.
+   * `background`, `primary`) with an oklch() string value, so a variable
+   * this does not mention falls through to the built-in theme's own value
+   * rather than needing every variable listed to avoid a blank.
+   */
+  themeColors: ThemeColorOverrides | null;
 }
+
+export type ThemeColorVariables = Partial<Record<ThemeColorVariable, string>>;
+
+export interface ThemeColorOverrides {
+  light: ThemeColorVariables;
+  dark: ThemeColorVariables;
+}
+
+/**
+ * The core theme variables exposed for user configuration. A deliberately
+ * curated subset of globals.css's full variable list — sidebar, chart-*, and
+ * semla-following are internal presentation details rather than "the app's
+ * colors" a user would expect to tune.
+ */
+export const THEME_COLOR_VARIABLES = [
+  "background",
+  "foreground",
+  "card",
+  "card-foreground",
+  "primary",
+  "primary-foreground",
+  "secondary",
+  "secondary-foreground",
+  "accent",
+  "accent-foreground",
+  "border",
+] as const;
+
+export type ThemeColorVariable = (typeof THEME_COLOR_VARIABLES)[number];
 
 const EMPTY: UserSettings = {
   defaultModelId: null,
   defaultModelProvider: null,
   followMode: null,
   systemPrompt: null,
+  themeColors: null,
 };
 
 const settingsPath = (userId: string, dir: string) =>

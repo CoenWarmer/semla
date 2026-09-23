@@ -2,8 +2,10 @@ import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   readUserSettings,
   writeUserSettings,
+  type ThemeColorOverrides,
   type UserSettings,
 } from "@/lib/stores/user-settings-store";
+import type { Json } from "@/types/database.types";
 
 /**
  * The column names the settings UI already expects.
@@ -17,7 +19,16 @@ const toRow = (settings: UserSettings) => ({
   default_model_provider: settings.defaultModelProvider,
   follow_mode: settings.followMode,
   system_prompt: settings.systemPrompt,
+  theme_colors: settings.themeColors,
 });
+
+const isThemeColorOverrides = (value: unknown): value is ThemeColorOverrides =>
+  typeof value === "object" &&
+  value !== null &&
+  "light" in value &&
+  "dark" in value &&
+  typeof (value as { light: unknown }).light === "object" &&
+  typeof (value as { dark: unknown }).dark === "object";
 
 export const runtime = "nodejs";
 
@@ -34,7 +45,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("user_settings")
-      .select("default_model_id, default_model_provider, system_prompt")
+      .select("default_model_id, default_model_provider, system_prompt, theme_colors")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -52,6 +63,9 @@ export async function GET() {
           defaultModelId: data.default_model_id,
           defaultModelProvider: data.default_model_provider,
           systemPrompt: data.system_prompt,
+          themeColors: isThemeColorOverrides(data.theme_colors)
+            ? data.theme_colors
+            : null,
         }),
       ),
     });
@@ -66,15 +80,31 @@ export async function PUT(request: Request) {
     defaultModelProvider?: unknown;
     followMode?: unknown;
     systemPrompt?: unknown;
+    themeColors?: unknown;
   } | null;
 
   const hasModel =
     body?.defaultModelId !== undefined || body?.defaultModelProvider !== undefined;
   const hasSystemPrompt = body?.systemPrompt !== undefined;
   const hasFollowMode = typeof body?.followMode === "boolean";
+  const hasThemeColors = body?.themeColors !== undefined;
 
-  if (!hasModel && !hasSystemPrompt && !hasFollowMode) {
+  if (!hasModel && !hasSystemPrompt && !hasFollowMode && !hasThemeColors) {
     return Response.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
+  const themeColors =
+    body?.themeColors === null
+      ? null
+      : isThemeColorOverrides(body?.themeColors)
+        ? body.themeColors
+        : undefined;
+
+  if (hasThemeColors && themeColors === undefined) {
+    return Response.json(
+      { error: "themeColors must be { light, dark } or null." },
+      { status: 400 },
+    );
   }
 
   const defaultModelId =
@@ -103,12 +133,13 @@ export async function PUT(request: Request) {
         : {}),
       ...(hasFollowMode ? { followMode: body?.followMode as boolean } : {}),
       ...(hasSystemPrompt ? { systemPrompt: systemPrompt ?? null } : {}),
+      ...(hasThemeColors ? { themeColors: themeColors ?? null } : {}),
     });
 
     // A follow-mode-only save has nothing to mirror, and an upsert naming no
     // column but the key would touch `updated_at` for a field Postgres does
     // not hold.
-    if (!hasModel && !hasSystemPrompt) {
+    if (!hasModel && !hasSystemPrompt && !hasThemeColors) {
       return Response.json({ settings: toRow(saved) });
     }
 
@@ -122,10 +153,13 @@ export async function PUT(request: Request) {
             ? { default_model_id: defaultModelId, default_model_provider: defaultModelProvider }
             : {}),
           ...(hasSystemPrompt ? { system_prompt: systemPrompt ?? null } : {}),
+          ...(hasThemeColors
+            ? { theme_colors: (themeColors ?? null) as Json }
+            : {}),
         },
         { onConflict: "user_id" }
       )
-      .select("default_model_id, default_model_provider, system_prompt")
+      .select("default_model_id, default_model_provider, system_prompt, theme_colors")
       .single();
 
     // The save already succeeded on disk, which is the copy that decides how
@@ -141,7 +175,11 @@ export async function PUT(request: Request) {
     // this a model save would answer with it absent and reset the client's
     // copy to the default.
     return Response.json({
-      settings: { ...data, follow_mode: saved.followMode },
+      settings: {
+        ...data,
+        follow_mode: saved.followMode,
+        theme_colors: saved.themeColors,
+      },
     });
   } catch (error) {
     return handleRouteError(error, "Unable to save settings.");
