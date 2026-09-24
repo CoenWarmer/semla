@@ -985,37 +985,54 @@ export function ClientSessionComponent({
           runId={selectedAgent?.runId ?? null}
           sessionId={sessionId}
         />
-        {reviewOpen ? (
-          <ResizablePanelGroup
-            // Remounted on layout flip: react-resizable-panels otherwise
-            // keeps the user's dragged percentages across orientations, so
-            // an 80%-wide review pane would become an 80%-tall one instead
-            // of resetting to a sane split for the new axis. The saved layout
-            // is keyed by orientation for the same reason: a horizontal split
-            // and a vertical one are unrelated preferences.
-            //
-            // Also keyed on the panel-layout fetch settling: react-resizable-
-            // panels reads `defaultLayout` once, in the effect that runs on
-            // mount, and never re-reads it once the query resolves. Without
-            // this the group mounts with `defaultLayout={undefined}` on every
-            // cold reload (usePanelLayouts() has not fetched yet) and keeps
-            // that default layout for the rest of the page's life even after
-            // the real saved split arrives — the drag never visibly "failed
-            // to persist", it just rendered before its own answer came back.
-            // Remounting once, when the fetch settles, gives it the real
-            // value the one time it reads it.
-            className="min-h-0 flex-1"
-            defaultLayout={reviewSplitLayout}
-            key={`${reviewLayout}-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
-            onLayoutChanged={(layout, meta) => {
-              if (meta.isUserInteraction) saveReviewSplit(layout);
-            }}
-            orientation={reviewLayout}
-          >
+        {/*
+          Always mounted, review side or not — unlike the ternary this
+          replaced, which switched the wrapper element itself (this group vs.
+          `conversationColumn` bare) at this same JSX slot. React matches
+          children by type/position at a slot, not by what a deeper key says,
+          so that swap tore down and rebuilt everything underneath on every
+          reviewOpen toggle, including PromptEditor's PromptInputProvider —
+          which silently discarded whatever the operator had typed but not
+          sent. Keeping this group permanently mounted, and giving the
+          conversation panel a stable `key` so the review panel's own
+          presence doesn't shift it, keeps PromptEditor mounted continuously
+          across the toggle instead.
+        */}
+        <ResizablePanelGroup
+          // Remounted on layout flip: react-resizable-panels otherwise
+          // keeps the user's dragged percentages across orientations, so
+          // an 80%-wide review pane would become an 80%-tall one instead
+          // of resetting to a sane split for the new axis. The saved layout
+          // is keyed by orientation for the same reason: a horizontal split
+          // and a vertical one are unrelated preferences.
+          //
+          // Also keyed on the panel-layout fetch settling: react-resizable-
+          // panels reads `defaultLayout` once, in the effect that runs on
+          // mount, and never re-reads it once the query resolves. Without
+          // this the group mounts with `defaultLayout={undefined}` on every
+          // cold reload (usePanelLayouts() has not fetched yet) and keeps
+          // that default layout for the rest of the page's life even after
+          // the real saved split arrives — the drag never visibly "failed
+          // to persist", it just rendered before its own answer came back.
+          // Remounting once, when the fetch settles, gives it the real
+          // value the one time it reads it.
+          //
+          // Not keyed on reviewOpen: that is exactly the remount this
+          // group must not do (see the comment above).
+          className="min-h-0 flex-1"
+          defaultLayout={reviewOpen ? reviewSplitLayout : undefined}
+          key={`${reviewLayout}-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
+          onLayoutChanged={(layout, meta) => {
+            if (meta.isUserInteraction) saveReviewSplit(layout);
+          }}
+          orientation={reviewLayout}
+        >
+          {reviewOpen && (
             <ResizablePanel
               className="flex min-h-0 flex-col overflow-hidden border"
               defaultSize={45}
               id="review"
+              key="review"
               minSize={20}
               // react-resizable-panels hardcodes `overflow: auto` inline on
               // this element (see Panel's own style object in its source) —
@@ -1038,23 +1055,22 @@ export function ClientSessionComponent({
                 target={elementTarget.target}
               />
             </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel
-              className="flex min-h-0 flex-col overflow-hidden"
-              defaultSize={55}
-              id="conversation"
-              minSize={20}
-              // Same override as the review panel above, and for the same
-              // reason: SessionConversation manages its own scroll region
-              // internally, so this outer panel must not grow a second one.
-              style={{ overflow: "hidden" }}
-            >
-              {conversationColumn}
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : (
-          conversationColumn
-        )}
+          )}
+          {reviewOpen && <ResizableHandle key="review-handle" withHandle />}
+          <ResizablePanel
+            className="flex min-h-0 flex-col overflow-hidden"
+            defaultSize={reviewOpen ? 55 : 100}
+            id="conversation"
+            key="conversation"
+            minSize={20}
+            // Same override as the review panel above, and for the same
+            // reason: SessionConversation manages its own scroll region
+            // internally, so this outer panel must not grow a second one.
+            style={{ overflow: "hidden" }}
+          >
+            {conversationColumn}
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       {wikiActive && <WikiMiniGraph />}
