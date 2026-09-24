@@ -55,6 +55,7 @@ export type PiStreamEvent =
   | { spans: readonly RecordedSpan[]; type: "spans" }
   | { map: CodeMap; type: "code-map" }
   | { target: OpenReviewTarget | null; comment: ReviewComment | null; type: "open-review" }
+  | { comments: readonly ReviewComment[]; type: "place-review-comments" }
   | { output: string; toolCallId: string; type: "bash-output" }
   | { accesses: readonly FileAccess[]; type: "file-access" }
   | { payload: AskUserPayload; type: "ask-user-question" }
@@ -158,6 +159,14 @@ export type TurnStreamEffect =
   | { output: string; toolCallId: string; type: "console-bash-output" }
   | { spans: readonly RecordedSpan[]; type: "cache-spans" }
   | { accesses: readonly FileAccess[]; type: "cache-file-access" }
+  /**
+   * `place_review_comments` created these — fold them into whichever files'
+   * comment caches (`reviewCommentsQueryKey`) are already warm, the same
+   * write `open-review`'s own single comment gets in
+   * client-session-component.tsx, just for a whole batch and with no
+   * accompanying navigation.
+   */
+  | { comments: readonly ReviewComment[]; type: "cache-review-comments" }
   /**
    * Both cache writes the old `onSessionStatus` handler made directly:
    * `sessionStatusKey(sessionId)` (the header badges, the agents panel) and
@@ -327,6 +336,11 @@ export function applyStreamEvent(
           target: event.target,
         },
       });
+
+    case "place-review-comments":
+      return unchanged(state, [
+        { comments: event.comments, type: "cache-review-comments" },
+      ]);
 
     case "file-access":
       return unchanged(state, [

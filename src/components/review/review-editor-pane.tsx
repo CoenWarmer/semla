@@ -41,11 +41,13 @@ import { isReadOnlyPath } from "./review-definition-target";
 import { ReviewCodeMap } from "./review-code-map";
 
 import type { FileSelection } from "./review-changed-files";
+import type { CommentSequence } from "./review-comment-widgets";
 import type { HunkSlot } from "./review-hunk-cursor";
 import { matchFullHunk } from "./review-hunk-match";
 import { ReviewEditor } from "./review-editor";
 import type { AccessHighlight } from "./review-panel-request";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
+import { XIcon } from "@phosphor-icons/react";
 
 /**
  * Stable identity for "no comments yet", matching `NO_PROJECTS` in
@@ -67,6 +69,7 @@ function Notice({ children }: { children: React.ReactNode }) {
 export function ReviewEditorPane({
   access,
   busy,
+  commentNavigation = null,
   currentHunk = null,
   draft,
   onDraftChange,
@@ -87,6 +90,15 @@ export function ReviewEditorPane({
    */
   access: AccessHighlight | null;
   busy: boolean;
+  /**
+   * The session's whole comment sequence, plus how to open one — what a
+   * comment card's next/previous arrows step through.
+   *
+   * Owned by the panel, not here, for the same reason `reveal` is: stepping
+   * to the next comment frequently changes which file is open, and this pane
+   * only ever renders the file it was given.
+   */
+  commentNavigation?: CommentSequence | null;
   /**
    * The keyboard cursor's hunk, when it is in this file — addressed the same
    * way `onStage` is, group-relative into `staged`/`unstaged`, because that
@@ -466,6 +478,7 @@ export function ReviewEditorPane({
 
         <ReviewEditor
           access={access}
+          commentNavigation={commentNavigation}
           comments={comments.data ?? EMPTY_COMMENTS}
           currentHunk={currentFullHunk}
           definition={definition}

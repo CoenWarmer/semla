@@ -609,3 +609,37 @@ div.react-sigma {
 .semla-review-comment-dismiss:hover {
   color: var(--foreground);
 }
+
+/*
+ * The card's own next/previous footer.
+ *
+ * A top border rather than a margin: the row is a separate register from the
+ * explanation above it (navigation, not content), and the rule says so
+ * without adding height the way a gap would — every pixel here is real
+ * reserved space in the document flow, since the card lives in a Monaco view
+ * zone (see review-comment-widgets.tsx).
+ */
+.semla-review-comment-footer {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.semla-review-comment-nav {
+  color: var(--muted-foreground);
+}
+
+.semla-review-comment-nav:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.semla-review-comment-count {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}

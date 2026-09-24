@@ -49,7 +49,10 @@ import { matchHunkAction } from "./review-hunk-match";
 import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
 import { AccessLabelWidgets } from "./review-access-label-widgets";
 import { buildAccessLabels } from "./review-access-labels";
-import { ReviewCommentWidgets } from "./review-comment-widgets";
+import {
+  ReviewCommentWidgets,
+  type CommentSequence,
+} from "./review-comment-widgets";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
 import { linesOutside } from "@/lib/pi/file-access/access-sequence";
 
@@ -188,12 +191,21 @@ export interface CodeEditorProps {
    * *why* the agent did something, only *what* it touched or changed.
    */
   comments?: readonly ReviewComment[];
+  /**
+   * The session's whole comment sequence, plus how to open one — what the
+   * cards' next/previous footer steps through. Null leaves the footer off.
+   *
+   * Separate from `comments` because it is not about this file: the next
+   * comment is frequently in another one, which only the panel can open.
+   */
+  commentNavigation?: CommentSequence | null;
   /** A comment's dismiss control was clicked. */
   onDismissComment?: (commentId: string) => void;
 }
 
 export default function CodeEditor({
   access = null,
+  commentNavigation = null,
   comments = EMPTY_COMMENTS,
   currentHunk = null,
   definition = null,
@@ -780,8 +792,8 @@ export default function CodeEditor({
     const model = editor?.getModel();
     if (!editor || !widgets || !model) return;
 
-    widgets.set(comments, model.getLineCount());
-  }, [comments, path]);
+    widgets.set(comments, model.getLineCount(), commentNavigation);
+  }, [commentNavigation, comments, path]);
 
   // A button in the gutter of every hunk this diff can stage or unstage on
   // its own — see review-hunk-bracket-widgets.ts for why this is a real

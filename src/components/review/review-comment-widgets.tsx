@@ -69,7 +69,7 @@
  * against the model just attached, not a leak.
  */
 
-import { XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -80,7 +80,33 @@ import { ReviewCommentBodyView } from "./review-comment-body";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
 
 /**
- * One comment's own explanation, plus a dismiss control.
+ * Where one comment sits in the session's whole comment sequence, for the
+ * card's own navigation footer.
+ *
+ * A position rather than two booleans, so the footer can also say "3 of 8":
+ * an arrow that is simply disabled tells the operator they have reached an
+ * end, but not how far through the walkthrough they are.
+ */
+export interface CommentNavigation {
+  /** One-based position in the session's comment sequence. */
+  position: number;
+  total: number;
+  /** Open the comment before/after this one. Absent at either end. */
+  onPrevious?: () => void;
+  onNext?: () => void;
+}
+
+/**
+ * One comment's own explanation, a dismiss control, and — when the session
+ * has more than one comment — a footer that steps to the next or previous
+ * one.
+ *
+ * The footer is the card's own, rather than a control in the panel chrome,
+ * because the thing being stepped through is the card: the operator is
+ * reading an explanation and wants the next explanation, which may well be
+ * in another file. The panel's existing `d`/`a` keys step diff *hunks*,
+ * which is a different sequence with a different purpose — see
+ * review-hunk-cursor.ts.
  *
  * `onHeightChange` fires with the card's own real rendered height — via a
  * `ResizeObserver` on this component's own root node, not on the view
@@ -90,10 +116,12 @@ import type { ReviewComment } from "@/lib/review/review-comment-types";
  */
 function ReviewCommentCard({
   comment,
+  navigation,
   onDismiss,
   onHeightChange,
 }: {
   comment: ReviewComment;
+  navigation: CommentNavigation | null;
   onDismiss: () => void;
   onHeightChange: (height: number) => void;
 }) {
@@ -153,6 +181,52 @@ function ReviewCommentCard({
         </Button>
       </div>
       <ReviewCommentBodyView body={comment.body} />
+      {navigation && navigation.total > 1 ? (
+        <div className="semla-review-comment-footer">
+          <Button
+            aria-label="Previous comment"
+            className="semla-review-comment-nav pointer-events-auto"
+            disabled={!navigation.onPrevious}
+            onClick={(event) => {
+              event.stopPropagation();
+              navigation.onPrevious?.();
+            }}
+            // Monaco listens for mousedown on the editor underneath this
+            // zone, and would move the text cursor before the click lands —
+            // the same reason the dismiss button above stops it.
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            size="icon-xs"
+            title="Previous comment"
+            type="button"
+            variant="ghost"
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <span className="semla-review-comment-count">
+            {navigation.position} of {navigation.total}
+          </span>
+          <Button
+            aria-label="Next comment"
+            className="semla-review-comment-nav pointer-events-auto"
+            disabled={!navigation.onNext}
+            onClick={(event) => {
+              event.stopPropagation();
+              navigation.onNext?.();
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            size="icon-xs"
+            title="Next comment"
+            type="button"
+            variant="ghost"
+          >
+            <ChevronRightIcon />
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -188,10 +262,26 @@ const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
  */
 const PROVISIONAL_HEIGHT_PX = 72;
 
+/**
+ * Everything the widget needs to draw a card's navigation footer: the
+ * session's whole comment sequence, and how to go to one of them.
+ *
+ * Passed in rather than fetched here — this class has no access to react-query
+ * and, more importantly, opening a comment in *another* file is the panel's
+ * job, not the editor's. See `ReviewEditorPane`'s `commentNavigation` prop.
+ */
+export interface CommentSequence {
+  /** Every live comment of the session, in creation order. */
+  ordered: readonly ReviewComment[];
+  /** Open a comment: switch file if needed, and reveal its first line. */
+  goTo: (comment: ReviewComment) => void;
+}
+
 export class ReviewCommentWidgets {
   private readonly editor: monaco.editor.IStandaloneCodeEditor;
   private states = new Map<string, CommentState>();
   private onDismiss: (id: string) => void;
+  private sequence: CommentSequence | null = null;
   /**
    * Comments currently shrinking toward removal, by id. Consulted at the
    * top of `set()` so a rebuild triggered by something unrelated — the
@@ -304,7 +394,39 @@ export class ReviewCommentWidgets {
    * immediately above the comment's own first line for every case,
    * including a comment on line 1.
    */
-  set(comments: readonly ReviewComment[], lineCount: number) {
+  /**
+   * Build one card's footer position, or null when the sequence does not
+   * contain it.
+ *
+   * A comment missing from `ordered` is not an error worth surfacing: the
+   * session-wide list is fetched separately from the per-file one, so for a
+   * frame after a comment arrives the file's list can legitimately hold one
+   * the sequence has not caught up with. Drawing that card without a footer
+   * is better than drawing a wrong position.
+   */
+  private navigationFor(comment: ReviewComment): CommentNavigation | null {
+    const sequence = this.sequence;
+    if (!sequence) return null;
+
+    const index = sequence.ordered.findIndex((entry) => entry.id === comment.id);
+    if (index < 0) return null;
+
+    const previous = sequence.ordered[index - 1];
+    const next = sequence.ordered[index + 1];
+    return {
+      position: index + 1,
+      total: sequence.ordered.length,
+      ...(previous ? { onPrevious: () => sequence.goTo(previous) } : {}),
+      ...(next ? { onNext: () => sequence.goTo(next) } : {}),
+    };
+  }
+
+  set(
+    comments: readonly ReviewComment[],
+    lineCount: number,
+    sequence: CommentSequence | null = null,
+  ) {
+    this.sequence = sequence;
     this.clear();
 
     const clamp = (line: number) => Math.min(Math.max(1, line), Math.max(1, lineCount));
@@ -342,6 +464,7 @@ export class ReviewCommentWidgets {
         root.render(
           <ReviewCommentCard
             comment={resolvedComment}
+            navigation={this.navigationFor(comment)}
             onDismiss={() => this.animateDismiss(comment.id)}
             onHeightChange={(measured) => {
               if (Math.abs(measured - zone.heightInPx!) < 1) return;

@@ -44,6 +44,18 @@ export const reviewCommentsQueryKey = (
   path: string | null,
 ) => ["review", sessionId, "comments", project, path] as const;
 
+/**
+ * Every comment of the session, in creation order — the sequence the comment
+ * cards' navigation arrows step through.
+ *
+ * A separate key from `reviewCommentsQueryKey`, not a variant of it: that one
+ * is per file and is what a file's editor pane draws, this one is
+ * session-wide and is only an *ordering*. Sharing a key would serve one
+ * answer where the other was asked for.
+ */
+export const allReviewCommentsQueryKey = (sessionId: string) =>
+  ["review", sessionId, "comments", "all"] as const;
+
 async function fetchReview(sessionId: string): Promise<SessionReview> {
   const res = await fetch(`/api/sessions/${sessionId}/review`);
   if (!res.ok) throw new Error(`review ${res.status}`);
@@ -82,6 +94,28 @@ export function useReviewComments(
 }
 
 /**
+ * Every comment of the session, oldest first, for the comment cards' own
+ * next/previous navigation.
+ *
+ * Not polled, same reasoning as `useReviewComments`: comments arrive either
+ * on this session's SSE stream (folded straight into the caches by
+ * `applyTurnEffects`) or from a past turn, which a mount already refetches.
+ */
+export function useAllReviewComments(sessionId: string, enabled = true) {
+  return useQuery({
+    enabled,
+    queryFn: async (): Promise<ReviewComment[]> => {
+      const res = await fetch(`/api/sessions/${sessionId}/review/comments/all`);
+      if (!res.ok) throw new Error(`review comments all ${res.status}`);
+      const body = (await res.json()) as { comments: ReviewComment[] };
+      return body.comments;
+    },
+    queryKey: allReviewCommentsQueryKey(sessionId),
+    staleTime: 0,
+  });
+}
+
+/**
  * Dismiss one comment. Optimistic: the panel removes it from the visible
  * list immediately rather than waiting on a refetch, same UX choice
  * `useDismissReview` makes for the whole-review dismissal.
@@ -104,6 +138,12 @@ export function useDismissReviewComment(
     onSuccess: (commentId) => {
       queryClient.setQueryData<ReviewComment[]>(
         reviewCommentsQueryKey(sessionId, project, path),
+        (previous) => previous?.filter((comment) => comment.id !== commentId) ?? previous,
+      );
+      // The navigation sequence has to lose it too, or an arrow would step
+      // to a card that is no longer drawn anywhere.
+      queryClient.setQueryData<ReviewComment[]>(
+        allReviewCommentsQueryKey(sessionId),
         (previous) => previous?.filter((comment) => comment.id !== commentId) ?? previous,
       );
     },

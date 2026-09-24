@@ -48,6 +48,7 @@ import installGuardExtension from "@/lib/pi/extensions/install-guard-extension";
 import jevGateExtension from "@/lib/pi/extensions/jev-gate";
 import openReviewExtension from "@/lib/pi/extensions/open-review";
 import orientStatusExtension from "@/lib/pi/extensions/orient-status";
+import placeReviewCommentsExtension from "@/lib/pi/extensions/place-review-comments";
 import readRouterExtension from "@/lib/pi/extensions/read-router";
 import wikiIngestBridgeExtension from "@/lib/pi/extensions/wiki-ingest-bridge";
 import workflowExtension from "@/lib/pi/extensions/workflow";
@@ -59,6 +60,7 @@ export type ExtensionId =
   | "code-map"
   | "code-search"
   | "open-review"
+  | "place-review-comments"
   | "orient-status"
   | "code-intelligence"
   | "install-guard"
@@ -242,6 +244,19 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     providesSlots: [],
     remedy:
       "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/open-review.ts.",
+  },
+  {
+    id: "place-review-comments",
+    source: { factory: placeReviewCommentsExtension, kind: "factory" },
+    // Resolves each entry's target against the session's own project links,
+    // the same way open-review.ts does; depends on nothing else in the
+    // session.
+    requires: [],
+    providesTools: ["place_review_comments"],
+    optionalTools: [],
+    providesSlots: [],
+    remedy:
+      "This extension is imported directly; a failure here is a code problem in src/lib/pi/extensions/place-review-comments.ts.",
   },
   {
     id: "orient-status",

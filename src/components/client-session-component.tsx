@@ -2,7 +2,12 @@
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
-import { reviewCommentsQueryKey, useDismissReview, useReview } from "@/hooks/use-review";
+import {
+  allReviewCommentsQueryKey,
+  reviewCommentsQueryKey,
+  useDismissReview,
+  useReview,
+} from "@/hooks/use-review";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
 import {
   SessionMessagesResult,
@@ -236,6 +241,28 @@ export function ClientSessionComponent({
   const toolCalls = useMemo(
     () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
     [persistedToolCalls, liveToolCalls],
+  );
+  // What the context window holds, for the strip above the prompt bar.
+  // Computed here rather than fetched: it is arithmetic over the transcript
+  // this component already has, so asking a route for it would mean the
+  // server re-reading and re-parsing the whole session for numbers the
+  // browser was holding all along.
+  const composition = useMemo(
+    () =>
+      sessionComposition({
+        cacheReadRatePerMToken: messagesQuery.data?.cacheReadRatePerMToken,
+        contextWindow: messagesQuery.data?.contextWindow ?? null,
+        messages,
+        systemPromptChars: messagesQuery.data?.systemPromptChars ?? 0,
+        toolCalls,
+      }),
+    [
+      messages,
+      messagesQuery.data?.cacheReadRatePerMToken,
+      messagesQuery.data?.contextWindow,
+      messagesQuery.data?.systemPromptChars,
+      toolCalls,
+    ],
   );
   // One pseudo-message per assistant round trip this turn has made so far,
   // appended after the persisted ones. A live tool call's messageId points at

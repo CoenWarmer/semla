@@ -144,6 +144,44 @@ export async function listReviewComments(
 }
 
 /**
+ * Every live comment of the whole session, across every file and project,
+ * oldest first.
+ *
+ * A second reader beside `listReviewComments` rather than a parameter on it,
+ * because the two answer different questions and are cached differently: the
+ * per-file list is what a file's own editor pane draws, and this one is the
+ * *order* the comment cards' navigation arrows step through. Oldest first is
+ * load-bearing here in a way it is not for one file — it is the sequence the
+ * agent created the comments in, which for a walkthrough is the sequence the
+ * explanation was meant to be read in.
+ */
+export async function listAllReviewComments(
+  sessionId: string,
+): Promise<ReviewComment[]> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("review_comments")
+    .select("id, project_path, file_path, start_line, end_line, body, created_at")
+    .eq("session_id", sessionId)
+    .is("dismissed_at", null)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Unable to read review comments: ${describeDbError(error.message)}`);
+  }
+
+  const comments: ReviewComment[] = [];
+  for (const row of data ?? []) {
+    const comment = fromRow(row);
+    // Same tolerance `listReviewComments` applies: a row whose body no longer
+    // validates costs that one comment, not the whole sequence.
+    if (comment) comments.push(comment);
+  }
+  return comments;
+}
+
+/**
  * Hide one comment from the panel without deleting the record.
  *
  * Scoped by `sessionId` as well as `id` — the id is a random uuid so a

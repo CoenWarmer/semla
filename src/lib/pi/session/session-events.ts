@@ -88,6 +88,13 @@ export type PiSessionEvent =
    */
   | { target: OpenReviewTarget | null; comment: ReviewComment | null; type: "open-review" }
   /**
+   * The `place_review_comments` tool has just created zero or more comments
+   * in one call. Unlike `open-review`'s event, there is no target to open —
+   * this is purely "these comments now exist", so the panel only needs to
+   * fold them into whichever files' comment caches are already warm.
+   */
+  | { comments: readonly ReviewComment[]; type: "place-review-comments" }
+  /**
    * Files the tool that just finished read or wrote, for the review panel's
    * follow mode.
    *

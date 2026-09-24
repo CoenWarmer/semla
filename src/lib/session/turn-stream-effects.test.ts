@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { SessionMessagesResult } from "@/hooks/use-session-messages";
 import { applyTurnEffects } from "@/lib/session/turn-stream-effects";
 import type { TurnStreamEffect } from "@/lib/session/turn-stream-reducer";
+import { allReviewCommentsQueryKey, reviewCommentsQueryKey } from "@/hooks/use-review";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
 import {
   sessionAgentConsoleKey,
   sessionLiveAccessesKey,
@@ -200,6 +202,84 @@ describe("applyTurnEffects", () => {
       sessionLiveAccessesKey(sessionId),
     ) as Array<{ path: string }>;
     expect(accesses.map((a) => a.path)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("groups place_review_comments' batch by file and appends per-file", () => {
+    const client = new QueryClient();
+    const comment = (id: string, projectPath: string, filePath: string): ReviewComment => ({
+      body: { kind: "text", text: id },
+      createdAt: "2026-01-01T00:00:00Z",
+      endLine: 1,
+      filePath,
+      id,
+      projectPath,
+      startLine: 1,
+    });
+
+    client.setQueryData<ReviewComment[]>(
+      reviewCommentsQueryKey(sessionId, "semla", "a.ts"),
+      [comment("existing", "semla", "a.ts")],
+    );
+
+    dispatch(client, [
+      {
+        comments: [
+          comment("c1", "semla", "a.ts"),
+          comment("c2", "semla", "b.ts"),
+          comment("c3", "other", "a.ts"),
+        ],
+        type: "cache-review-comments",
+      },
+    ]);
+
+    expect(
+      client
+        .getQueryData<ReviewComment[]>(reviewCommentsQueryKey(sessionId, "semla", "a.ts"))
+        ?.map((c) => c.id),
+    ).toEqual(["existing", "c1"]);
+    expect(
+      client
+        .getQueryData<ReviewComment[]>(reviewCommentsQueryKey(sessionId, "semla", "b.ts"))
+        ?.map((c) => c.id),
+    ).toEqual(["c2"]);
+    expect(
+      client
+        .getQueryData<ReviewComment[]>(reviewCommentsQueryKey(sessionId, "other", "a.ts"))
+        ?.map((c) => c.id),
+    ).toEqual(["c3"]);
+  });
+
+  it("appends the same batch to the session-wide sequence, ungrouped and in order", () => {
+    const client = new QueryClient();
+    const comment = (id: string, filePath: string): ReviewComment => ({
+      body: { kind: "text", text: id },
+      createdAt: "2026-01-01T00:00:00Z",
+      endLine: 1,
+      filePath,
+      id,
+      projectPath: "semla",
+      startLine: 1,
+    });
+
+    client.setQueryData<ReviewComment[]>(allReviewCommentsQueryKey(sessionId), [
+      comment("earlier", "z.ts"),
+    ]);
+
+    dispatch(client, [
+      {
+        comments: [comment("c1", "a.ts"), comment("c2", "b.ts"), comment("c3", "a.ts")],
+        type: "cache-review-comments",
+      },
+    ]);
+
+    // Arrival order, not grouped by file: this list is the order a comment
+    // card's next/previous arrows walk, which is the order the agent wrote
+    // the comments in.
+    expect(
+      client
+        .getQueryData<ReviewComment[]>(allReviewCommentsQueryKey(sessionId))
+        ?.map((c) => c.id),
+    ).toEqual(["earlier", "c1", "c2", "c3"]);
   });
 
   it("writes isRunning to both the single-session cache and the list cache", () => {

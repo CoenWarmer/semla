@@ -13,6 +13,7 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 import { readCodeMapResult } from "@/lib/code-map/tool-result";
 import { readOpenReviewResult } from "@/lib/pi/review/open-review-result";
+import { readPlaceReviewCommentsResult } from "@/lib/pi/review/place-review-comments-result";
 import { retainBackgroundSession } from "@/lib/pi/background/background-sessions";
 import { candidateProjects, isMutatingTool } from "@/lib/pi/artifacts/artifact-attribution";
 import { captureAndRecord } from "@/lib/pi/artifacts/artifact-record";
@@ -460,6 +461,16 @@ export const createTurnEventRouter = ({
           type: "open-review",
         });
       }
+    }
+
+    // place_review_comments is Semla's own tool too, so its created comments
+    // survive in the result rather than having been flattened to text — same
+    // reasoning as open_review just above. Emitted even when empty (every
+    // entry failed), the same "real, distinct outcome" tolerance the reader
+    // itself documents; the client-side fold is a no-op for an empty array.
+    if (event.toolName === "place_review_comments") {
+      const comments = readPlaceReviewCommentsResult(event.result);
+      if (comments) emit({ comments, type: "place-review-comments" });
     }
 
     if (event.toolName === "workflow") {

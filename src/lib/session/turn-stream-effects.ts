@@ -24,6 +24,8 @@ import type {
 } from "@/hooks/use-session-messages";
 import type { RecordedSpan } from "@/lib/pi/telemetry/span-sink";
 import type { FileAccess } from "@/lib/pi/file-access/access-types";
+import type { ReviewComment } from "@/lib/review/review-comment-types";
+import { allReviewCommentsQueryKey, reviewCommentsQueryKey } from "@/hooks/use-review";
 import { mergeSpans, sessionSpansKey } from "@/lib/trace/session-spans";
 import { applyLiveToolEvent } from "@/lib/session/live-tool-calls";
 import {
@@ -215,6 +217,37 @@ export function applyTurnEffects(
           ],
         );
         break;
+
+      // Grouped by (project, path) before writing: a batch from
+      // place_review_comments can span several files, and each file's own
+      // query key holds only that file's list — the same list
+      // useReviewComments reads and open-review's own single-comment write in
+      // client-session-component.tsx appends to.
+      case "cache-review-comments": {
+        const byFile = new Map<string, ReviewComment[]>();
+        for (const comment of effect.comments) {
+          const key = `${comment.projectPath}\u0000${comment.filePath}`;
+          const list = byFile.get(key);
+          if (list) list.push(comment);
+          else byFile.set(key, [comment]);
+        }
+        for (const [key, comments] of byFile) {
+          const [projectPath, filePath] = key.split("\u0000");
+          queryClient.setQueryData<ReviewComment[]>(
+            reviewCommentsQueryKey(sessionId, projectPath ?? null, filePath ?? null),
+            (previous) => [...(previous ?? []), ...comments],
+          );
+        }
+        // The session-wide sequence the comment cards' arrows step through,
+        // appended ungrouped and in arrival order: that order *is* the
+        // navigation order (see allReviewCommentsQueryKey), so regrouping it
+        // by file here would reorder the walkthrough.
+        queryClient.setQueryData<ReviewComment[]>(
+          allReviewCommentsQueryKey(sessionId),
+          (previous) => [...(previous ?? []), ...effect.comments],
+        );
+        break;
+      }
 
       // Keep the cache the header badges and the sidebar read in step with
       // the same push, so a component that only reads `sessionStatusKey`
