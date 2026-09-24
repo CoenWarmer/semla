@@ -67,9 +67,27 @@
  * so this class's `set()` is invoked again whenever `path` changes (see its
  * effect's dependency array) — a zone lost on switch is simply redrawn
  * against the model just attached, not a leak.
+ *
+ * A comment optionally carries a "Stage this hunk"/"Unstage this hunk"
+ * control in its header, next to the dismiss `×` — present only when the
+ * comment's own line range names exactly one hunk (`matchCommentHunk` in
+ * `review-hunk-match.ts`, the same range-equality domain `matchHunkAction`
+ * already uses for the gutter's hunk-bracket button). A comment about a
+ * range that is not a hunk at all, or that only partially overlaps one, gets
+ * no button — same reasoning `matchHunkAction`'s own docblock gives for
+ * refusing a partial match rather than guessing. Clicking it calls straight
+ * through to the same `onStageHunk` plumbing `HunkBracketWidgets` uses, so
+ * the two controls behave identically and share the one `stagingBusy` flag
+ * that disables both while a stage request is in flight.
  */
 
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MinusIcon,
+  PlusIcon,
+  XIcon,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -77,6 +95,8 @@ import { Button } from "@/components/ui/button";
 
 import { monaco } from "./monaco-setup";
 import { ReviewCommentBodyView } from "./review-comment-body";
+import { matchCommentHunk, type HunkAction } from "./review-hunk-match";
+import type { FileDiff, Hunk } from "@/lib/review/review-types";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
 
 /**
@@ -119,11 +139,18 @@ function ReviewCommentCard({
   navigation,
   onDismiss,
   onHeightChange,
+  onStage,
+  stageAction,
+  stageBusy,
 }: {
   comment: ReviewComment;
   navigation: CommentNavigation | null;
   onDismiss: () => void;
   onHeightChange: (height: number) => void;
+  /** Present only when this comment's range names exactly one hunk. */
+  stageAction: HunkAction | null;
+  onStage: () => void;
+  stageBusy: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -162,23 +189,53 @@ function ReviewCommentCard({
     <div className="semla-review-comment" ref={cardRef}>
       <div className="semla-review-comment-header">
         <span className="semla-review-comment-kicker">Agent · {range}</span>
-        <Button
-          aria-label="Dismiss comment"
-          className="semla-review-comment-dismiss pointer-events-auto"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDismiss();
-          }}
-          onMouseDown={(event) => {
-            event.stopPropagation();
-          }}
-          size="icon-xs"
-          title="Dismiss"
-          type="button"
-          variant="ghost"
-        >
-          <XIcon />
-        </Button>
+        <div className="flex items-center gap-1">
+          {stageAction ? (
+            <Button
+              aria-label={
+                stageAction.direction === "stage"
+                  ? "Stage this hunk"
+                  : "Unstage this hunk"
+              }
+              className="semla-review-comment-stage pointer-events-auto"
+              disabled={stageBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                onStage();
+              }}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+              size="icon-xs"
+              title={
+                stageAction.direction === "stage"
+                  ? "Stage this hunk"
+                  : "Unstage this hunk"
+              }
+              type="button"
+              variant="ghost"
+            >
+              {stageAction.direction === "stage" ? <PlusIcon /> : <MinusIcon />}
+            </Button>
+          ) : null}
+          <Button
+            aria-label="Dismiss comment"
+            className="semla-review-comment-dismiss pointer-events-auto"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDismiss();
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            size="icon-xs"
+            title="Dismiss"
+            type="button"
+            variant="ghost"
+          >
+            <XIcon />
+          </Button>
+        </div>
       </div>
       <ReviewCommentBodyView body={comment.body} />
       {navigation && navigation.total > 1 ? (
@@ -281,7 +338,20 @@ export class ReviewCommentWidgets {
   private readonly editor: monaco.editor.IStandaloneCodeEditor;
   private states = new Map<string, CommentState>();
   private onDismiss: (id: string) => void;
+  private onStage: (index: number, direction: HunkAction["direction"]) => void;
   private sequence: CommentSequence | null = null;
+  /**
+   * What is and is not staged, and the full diff's own hunks — everything
+   * `matchCommentHunk` needs to decide whether a comment's range names one
+   * hunk. Set on every `set()` call, same lifetime as `comments` itself:
+   * staging state changes on its own schedule (a click elsewhere in this
+   * same file, a refetch) and `set()` is the one place already rebuilding
+   * every card, so there is nowhere cheaper to react to it.
+   */
+  private hunks: readonly Hunk[] = [];
+  private staging: { staged: FileDiff | null; unstaged: FileDiff | null } | null =
+    null;
+  private stagingBusy = false;
   /**
    * Comments currently shrinking toward removal, by id. Consulted at the
    * top of `set()` so a rebuild triggered by something unrelated — the
@@ -316,9 +386,11 @@ export class ReviewCommentWidgets {
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
     onDismiss: (id: string) => void,
+    onStage: (index: number, direction: HunkAction["direction"]) => void,
   ) {
     this.editor = editor;
     this.onDismiss = onDismiss;
+    this.onStage = onStage;
     this.layoutSubscription = this.editor.onDidLayoutChange(() => {
       this.applyMaxWidth();
     });
@@ -425,8 +497,14 @@ export class ReviewCommentWidgets {
     comments: readonly ReviewComment[],
     lineCount: number,
     sequence: CommentSequence | null = null,
+    hunks: readonly Hunk[] = [],
+    staging: { staged: FileDiff | null; unstaged: FileDiff | null } | null = null,
+    stagingBusy = false,
   ) {
     this.sequence = sequence;
+    this.hunks = hunks;
+    this.staging = staging;
+    this.stagingBusy = stagingBusy;
     this.clear();
 
     const clamp = (line: number) => Math.min(Math.max(1, line), Math.max(1, lineCount));
@@ -460,13 +538,38 @@ export class ReviewCommentWidgets {
         };
         const zoneId = accessor.addZone(zone);
 
+        const stageAction = this.staging
+          ? matchCommentHunk(resolvedComment, this.hunks, this.staging)
+          : null;
+
         const root = createRoot(domNode);
         root.render(
           <ReviewCommentCard
             comment={resolvedComment}
             navigation={this.navigationFor(comment)}
             onDismiss={() => this.animateDismiss(comment.id)}
+            onStage={() => {
+              if (stageAction) this.onStage(stageAction.index, stageAction.direction);
+            }}
+            stageAction={stageAction}
+            stageBusy={this.stagingBusy}
             onHeightChange={(measured) => {
+              // Monaco's own view-zone renderer sets this zone's outer
+              // `domNode` to `display: none` whenever the zone scrolls out
+              // of the viewport (viewZones.js's `render()`) — the reserved
+              // space stays intact in the whitespace model regardless, only
+              // the DOM node is hidden. But the `ResizeObserver` above
+              // watches the *card*, a descendant of that `domNode`, and an
+              // ancestor going `display: none` collapses the card's own
+              // `offsetHeight` to 0, firing this callback with a spurious
+              // measurement. Writing that 0 into `zone.heightInPx` shrinks
+              // the real reserved space, not just the hidden DOM node — the
+              // comment then reads as having disappeared on scroll. A
+              // rendered card (header + body) never legitimately measures 0
+              // through this path; that height only ever reaches 0 via
+              // `animateDismiss`, which mutates `zone.heightInPx` directly
+              // and never through this callback.
+              if (measured <= 0) return;
               if (Math.abs(measured - zone.heightInPx!) < 1) return;
               zone.heightInPx = measured;
               this.editor.changeViewZones((innerAccessor) => {

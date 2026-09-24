@@ -436,9 +436,16 @@ export default function CodeEditor({
     currentHunkRef.current = editor.createDecorationsCollection([]);
     accessRef.current = editor.createDecorationsCollection([]);
     accessLabelsRef.current = new AccessLabelWidgets(editor);
-    commentWidgetsRef.current = new ReviewCommentWidgets(editor, (id) => {
-      onDismissCommentRef.current?.(id);
-    });
+    commentWidgetsRef.current = new ReviewCommentWidgets(
+      editor,
+      (id) => {
+        onDismissCommentRef.current?.(id);
+      },
+      (index, direction) => {
+        if (stagingBusyRef.current) return;
+        onStageHunkRef.current?.([index], direction);
+      },
+    );
     hunkGlyphsRef.current = new HunkBracketWidgets(
       editor,
       (index, direction) => {
@@ -913,8 +920,15 @@ export default function CodeEditor({
     const model = editor?.getModel();
     if (!editor || !widgets || !model) return;
 
-    widgets.set(comments, model.getLineCount(), commentNavigation);
-  }, [commentNavigation, comments, path]);
+    widgets.set(
+      comments,
+      model.getLineCount(),
+      commentNavigation,
+      hunks,
+      staging,
+      stagingBusy,
+    );
+  }, [commentNavigation, comments, hunks, path, staging, stagingBusy]);
 
   // A button in the gutter of every hunk this diff can stage or unstage on
   // its own — see review-hunk-bracket-widgets.ts for why this is a real

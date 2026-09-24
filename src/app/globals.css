@@ -611,6 +611,21 @@ div.react-sigma {
 }
 
 /*
+ * The optional stage/unstage control, present only when this comment's own
+ * line range names exactly one hunk (`matchCommentHunk`). Colour follows
+ * `.semla-hunk-bracket-button`'s convention for the same action — emerald
+ * for staging, destructive-red for unstaging — so the same gesture reads
+ * the same way whether it is reached from the gutter or from a comment.
+ */
+.semla-review-comment-stage {
+  color: var(--muted-foreground);
+}
+
+.semla-review-comment-stage:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+/*
  * The card's own next/previous footer.
  *
  * A top border rather than a margin: the row is a separate register from the

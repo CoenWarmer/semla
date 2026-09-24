@@ -19,6 +19,8 @@
 
 import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
+import { hunkChangedLineRange } from "./review-decorations";
+
 export type StageDirection = "stage" | "unstage";
 
 export interface HunkAction {
@@ -89,4 +91,27 @@ export function matchFullHunk(
   full: readonly Hunk[] | null | undefined,
 ): Hunk | null {
   return full?.find((candidate) => sameRange(hunk, candidate)) ?? null;
+}
+
+/**
+ * Which hunk, if any, a comment's own line range names, and what staging it
+ * would do — for the "Stage hunk" control `ReviewCommentWidgets` offers on
+ * a comment that is about a hunk rather than free-standing prose.
+ *
+ * Exact equality against `hunkChangedLineRange`, not overlap: the same
+ * reasoning `matchHunkAction`'s docblock gives for a partial match at the
+ * staged/unstaged boundary applies here too. A comment that only overlaps
+ * part of a hunk does not name a single hunk to stage as a unit, so it gets
+ * no button rather than a guess at which one.
+ */
+export function matchCommentHunk(
+  comment: { startLine: number; endLine: number },
+  hunks: readonly Hunk[],
+  diffs: { staged: FileDiff | null; unstaged: FileDiff | null },
+): HunkAction | null {
+  const hunk = hunks.find((candidate) => {
+    const range = hunkChangedLineRange(candidate);
+    return range.start === comment.startLine && range.end === comment.endLine;
+  });
+  return hunk ? matchHunkAction(hunk, diffs) : null;
 }

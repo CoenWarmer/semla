@@ -5,6 +5,7 @@ import type { FileDiff } from "@/lib/review/review-types";
 
 import {
   hunkRangeKey,
+  matchCommentHunk,
   matchFullHunk,
   matchHunkAction,
 } from "./review-hunk-match.ts";
@@ -92,6 +93,46 @@ describe("matchHunkAction", () => {
   it("finds no action when the range matches neither diff", () => {
     const fullHunk = UNSTAGED_ONE_HUNK.hunks[0];
     const action = matchHunkAction(fullHunk, { staged: null, unstaged: null });
+    expect(action).toBeNull();
+  });
+});
+
+describe("matchCommentHunk", () => {
+  it("offers to stage a comment whose range names exactly one unstaged hunk", () => {
+    const action = matchCommentHunk(
+      { endLine: 2, startLine: 2 },
+      UNSTAGED_ONE_HUNK.hunks,
+      { staged: null, unstaged: UNSTAGED_ONE_HUNK },
+    );
+    expect(action).toEqual({ direction: "stage", index: 0 });
+  });
+
+  it("offers to unstage a comment whose range names exactly one staged hunk", () => {
+    const action = matchCommentHunk(
+      { endLine: 2, startLine: 2 },
+      STAGED_ONE_HUNK.hunks,
+      { staged: STAGED_ONE_HUNK, unstaged: null },
+    );
+    expect(action).toEqual({ direction: "unstage", index: 0 });
+  });
+
+  it("is null when the comment's range does not match any hunk's changed-line span", () => {
+    const action = matchCommentHunk(
+      { endLine: 1, startLine: 1 },
+      UNSTAGED_ONE_HUNK.hunks,
+      { staged: null, unstaged: UNSTAGED_ONE_HUNK },
+    );
+    expect(action).toBeNull();
+  });
+
+  it("is null when the comment only overlaps part of a hunk's span rather than matching exactly", () => {
+    // The hunk's changed-line span is line 2 only; a comment over lines 1-2
+    // overlaps it but does not name it exactly.
+    const action = matchCommentHunk(
+      { endLine: 2, startLine: 1 },
+      UNSTAGED_ONE_HUNK.hunks,
+      { staged: null, unstaged: UNSTAGED_ONE_HUNK },
+    );
     expect(action).toBeNull();
   });
 });
