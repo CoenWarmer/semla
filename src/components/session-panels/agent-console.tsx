@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 
-import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useSessionMessagesReader } from "@/hooks/use-session-messages";
 import {
   agentConsoleFromToolCalls,
   mergeAgentConsole,
@@ -45,7 +45,7 @@ export function AgentConsole() {
   const sessionId = id ?? "";
 
   const liveQuery = useSessionAgentConsole(sessionId);
-  const messagesQuery = useSessionMessages(sessionId);
+  const messagesQuery = useSessionMessagesReader(sessionId);
 
   const entries = useMemo(
     () =>

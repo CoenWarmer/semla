@@ -136,3 +136,29 @@ export const useSessionMessages = (
     initialData: leafId ? undefined : initialData,
     queryFn: () => fetchSessionMessages(sessionId, leafId),
   });
+
+/**
+ * Options for a component that only reads the transcript — cost, summary,
+ * agent panels — and does not know whether a turn is streaming.
+ *
+ * TanStack refetches a query on focus when *any* of its observers allows it,
+ * so a reader mounted with the defaults undoes the session view's mid-turn
+ * pause: the bottom bar lives in the root layout and is always mounted beside
+ * it. Readers therefore never trigger focus or reconnect refetches; they still
+ * refetch on mount and on every invalidate.
+ */
+export const sessionMessagesReaderQueryOptions = (
+  sessionId: string,
+  leafId?: string | null,
+) => ({
+  queryKey: sessionMessagesQueryKey(sessionId, leafId),
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+});
+
+export const useSessionMessagesReader = (sessionId: string, leafId?: string | null) =>
+  useQuery({
+    ...sessionMessagesReaderQueryOptions(sessionId, leafId),
+    enabled: !!sessionId,
+    queryFn: () => fetchSessionMessages(sessionId, leafId),
+  });

@@ -14,6 +14,7 @@ import { QueryClient, QueryObserver, focusManager } from "@tanstack/query-core";
 
 import {
   sessionMessagesQueryOptions,
+  sessionMessagesReaderQueryOptions,
   type SessionMessagesResult,
 } from "./use-session-messages.ts";
 
@@ -91,6 +92,24 @@ test("outside a turn, a refocus still refetches the transcript", async () => {
 
   // The server list wins, which is what keeps a finished session current.
   assert.deepEqual(texts(), ["earlier"]);
+  unsubscribe();
+});
+
+test("a reader mounted beside the session view does not reopen the focus refetch", async () => {
+  // The bottom bar is in the root layout, so on a session page it observes the
+  // same query. TanStack refetches on focus if any observer allows it, so one
+  // reader with the defaults was enough to drop the prompt again.
+  const { client, options, unsubscribe, texts } = mount(true);
+  const reader = new QueryObserver<SessionMessagesResult>(client, {
+    ...options,
+    ...sessionMessagesReaderQueryOptions("s1"),
+  });
+  const unsubscribeReader = reader.subscribe(() => {});
+
+  await refocus();
+
+  assert.deepEqual(texts(), ["earlier", "the new prompt"]);
+  unsubscribeReader();
   unsubscribe();
 });
 

@@ -11,7 +11,7 @@ import {
   useSessionLiveToolCalls,
   useSessionWorkflowComputedSnapshot,
 } from "@/lib/session/session-live-state";
-import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useSessionMessagesReader } from "@/hooks/use-session-messages";
 import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
 import { sessionSpansKey, fetchSessionSpans } from "@/lib/trace/session-spans";
 import { mergeToolCalls } from "@/lib/session/live-tool-calls";
@@ -54,7 +54,7 @@ export function SessionAgentsPanel() {
   const snapshotQuery = useSessionWorkflowComputedSnapshot(sessionId ?? "");
   const workflowRunsQuery = useWorkflowRuns(sessionId ?? "");
   const liveToolCallsQuery = useSessionLiveToolCalls(sessionId ?? "");
-  const messagesQuery = useSessionMessages(sessionId ?? "");
+  const messagesQuery = useSessionMessagesReader(sessionId ?? "");
   const spansQuery = useQuery({
     enabled: !!sessionId,
     queryKey: sessionSpansKey(sessionId ?? ""),

@@ -26,7 +26,7 @@ import { useMemo } from "react";
 
 import { useReview } from "@/hooks/use-review";
 import { useSessionCost } from "@/hooks/use-session-cost";
-import { useSessionMessages } from "@/hooks/use-session-messages";
+import { useSessionMessagesReader } from "@/hooks/use-session-messages";
 import { useWorkflowRuns } from "@/hooks/use-workflow-runs";
 import { dirtyFilesFromReview } from "@/lib/artifacts/artifact-dirty";
 import {
@@ -57,7 +57,7 @@ export function useSessionSummary({
   title: string | null;
 }): SessionSummary {
   const usage = useSessionCost(sessionId);
-  const messagesQuery = useSessionMessages(sessionId);
+  const messagesQuery = useSessionMessagesReader(sessionId);
   const runsQuery = useWorkflowRuns(sessionId, snapshot?.runId);
   const reviewQuery = useReview(sessionId);
   const statusQuery = useQuery({

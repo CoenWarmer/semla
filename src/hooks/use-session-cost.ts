@@ -1,13 +1,13 @@
 import { addUsage, type SessionUsage } from "@/lib/session/session-usage";
 
-import { useSessionMessages } from "./use-session-messages";
+import { useSessionMessagesReader } from "./use-session-messages";
 import { useWorkflowRuns } from "./use-workflow-runs";
 
 export type SessionCost = SessionUsage;
 
 export function useSessionCost(sessionId: string): SessionCost {
   const runsQuery = useWorkflowRuns(sessionId);
-  const messagesQuery = useSessionMessages(sessionId);
+  const messagesQuery = useSessionMessagesReader(sessionId);
 
   const allRuns = runsQuery.data ?? [];
   const messages = messagesQuery.data?.messages ?? [];
