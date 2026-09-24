@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
-import { groupConversation, summariseSteps } from "./session-steps.ts";
+import { appendConversation, groupConversation, summariseSteps } from "./session-steps.ts";
 
 const message = (
   id: string,
@@ -349,5 +349,61 @@ describe("summariseSteps", () => {
     const steps = items[0].kind === "steps" ? items[0].items : [];
 
     expect(summariseSteps(steps)).toBe("1 thought");
+  });
+});
+
+/**
+ * The session view groups the persisted transcript once and folds the live
+ * tail onto it per streamed update. That is only safe if doing it in two
+ * steps is indistinguishable from grouping everything at once — including at
+ * the boundary, where the tail's first silent turn joins the strip the
+ * persisted part ended with.
+ */
+describe("appendConversation", () => {
+  const persisted = [
+    message("u", "user", "question"),
+    message("s1", "assistant", "", "thinking one"),
+    message("s2", "assistant", "", "thinking two"),
+  ];
+  const persistedCalls = [call("c1", "s1", "bash"), call("c2", "s2", "read")];
+
+  it("matches grouping the whole transcript when the tail extends a strip", () => {
+    const tail = [message("live:1", "assistant", ""), message("live:2", "assistant", "answer")];
+    const calls = [...persistedCalls, call("c3", "live:1", "bash")];
+
+    const base = groupConversation(persisted, persistedCalls);
+
+    expect(appendConversation(base, tail, calls)).toEqual(
+      groupConversation([...persisted, ...tail], calls),
+    );
+  });
+
+  it("matches grouping the whole transcript when the tail starts after text", () => {
+    const withAnswer = [...persisted, message("a", "assistant", "answer")];
+    const tail = [message("live:1", "assistant", "", "more thinking")];
+
+    const base = groupConversation(withAnswer, persistedCalls);
+
+    expect(appendConversation(base, tail, persistedCalls)).toEqual(
+      groupConversation([...withAnswer, ...tail], persistedCalls),
+    );
+  });
+
+  it("leaves the base untouched, so it can be extended again next update", () => {
+    const base = groupConversation(persisted, persistedCalls);
+    const snapshot = structuredClone(base);
+    const tail = [message("live:1", "assistant", "")];
+    const calls = [...persistedCalls, call("c3", "live:1", "bash")];
+
+    appendConversation(base, tail, calls);
+    appendConversation(base, tail, calls);
+
+    expect(base).toEqual(snapshot);
+  });
+
+  it("is groupConversation when the base is empty", () => {
+    expect(appendConversation([], persisted, persistedCalls)).toEqual(
+      groupConversation(persisted, persistedCalls),
+    );
   });
 });

@@ -154,6 +154,25 @@ export function groupConversation(
   messages: readonly SessionMessage[],
   toolCalls: readonly SessionToolCall[] = [],
 ): ConversationItem[] {
+  return appendConversation([], messages, toolCalls);
+}
+
+/**
+ * Continue a grouping with more messages, as if `groupConversation` had been
+ * given all of them at once.
+ *
+ * The fold only ever looks back one item — a silent turn joins the strip the
+ * previous one left — so the persisted transcript can be grouped once and the
+ * live tail folded onto it on every streamed update, instead of regrouping the
+ * whole session per token. `base` is never mutated: a strip it ends with is
+ * copied before the tail merges into it, because `base` is a memoised value
+ * the next update will extend again.
+ */
+export function appendConversation(
+  base: readonly ConversationItem[],
+  messages: readonly SessionMessage[],
+  toolCalls: readonly SessionToolCall[] = [],
+): ConversationItem[] {
   const callsByMessage = new Map<string, SessionToolCall[]>();
   for (const call of toolCalls) {
     const group = callsByMessage.get(call.messageId);
@@ -161,7 +180,8 @@ export function groupConversation(
     else callsByMessage.set(call.messageId, [call]);
   }
 
-  const items: ConversationItem[] = [];
+  const items: ConversationItem[] = [...base];
+  const borrowed = base.at(-1);
 
   for (const message of messages) {
     const calls = callsByMessage.get(message.id) ?? [];
@@ -236,7 +256,11 @@ export function groupConversation(
     // A silent turn with no reasoning and no calls has genuinely nothing in it.
     // Drop it rather than drawing a dot that opens onto nothing.
     if (steps.length > 0) {
-      const previous = items.at(-1);
+      let previous = items.at(-1);
+      if (previous?.kind === "steps" && previous === borrowed) {
+        previous = { ...previous, items: [...previous.items] };
+        items[items.length - 1] = previous;
+      }
       if (previous?.kind === "steps") previous.items.push(...steps);
       else items.push({ id: `steps:${message.id}`, items: steps, kind: "steps" });
     }
