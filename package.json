@@ -84,16 +84,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "fallow": "^3.26.0",
+    "jsdom": "30.0.1",
     "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
     "shadcn": "^4.18.0",
     "tailwindcss": "^4",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "5.0.1"
   },
   "allowScripts": {
     "node-pty@1.1.0": true
