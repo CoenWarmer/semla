@@ -121,7 +121,7 @@ function FileBadge({
   return (
     <button
       className={cn(
-        "flex min-w-0 shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs transition-colors",
+        "flex min-w-0 shrink-0 items-center gap-1.5 rounded-full px-10 font-mono text-[11px] transition-colors",
         // The active badge is the *lightest* thing in the bar rather than the
         // darkest: `accent` is near-black here, and a black chip on green
         // reads as a hole punched in the pill.
@@ -233,10 +233,7 @@ export function ReviewScrubber({
   if (calls.length === 0) return null;
 
   return (
-    // `m-2` rather than a full-width bar: a pill with square ends touching
-    // the panel's edges is not a pill. The margin is what makes the shape
-    // legible, and `rounded-full` is what makes it one.
-    <div className="m-2 flex shrink-0 items-center gap-2 rounded-full bg-semla-following px-3 py-1.5 text-semla-following-foreground">
+    <div className="flex shrink-0 items-center gap-2 rounded-full bg-semla-following px-2 text-semla-following-foreground">
       <div className="flex items-center gap-0.5">
         <Button
           aria-label="Previous step"
@@ -260,7 +257,7 @@ export function ReviewScrubber({
         </Button>
       </div>
 
-      <span className="text-xs tabular-nums text-semla-following-foreground/80">
+      <span className="shrink-0 text-xs tabular-nums text-semla-following-foreground/80">
         {stops.length === 0 ? 0 : index + 1} / {stops.length}
       </span>
 
@@ -374,7 +371,7 @@ export function ReviewScrubber({
                   if (following) setCursor(index);
                   onFollowingChange(!following);
                 }}
-                size="icon"
+                size="icon-xs"
                 variant="ghost"
               />
             }

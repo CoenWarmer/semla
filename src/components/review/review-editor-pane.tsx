@@ -75,6 +75,7 @@ export function ReviewEditorPane({
   commentNavigation = null,
   currentHunk = null,
   draft,
+  onClose,
   onDraftChange,
   onExplain,
   onOpenWorkspacePath,
@@ -141,6 +142,8 @@ export function ReviewEditorPane({
    * second caller, not a second implementation.
    */
   onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  /** Allow closing of the panel */
+  onClose: () => void;
   /**
    * Go to Definition landed in another file. The panel owns which file is
    * open, so this hands the workspace-relative path up rather than switching
@@ -155,7 +158,11 @@ export function ReviewEditorPane({
     sessionId,
     workspacePath(selection.project, selection.path),
   );
-  const comments = useReviewComments(sessionId, selection.project, selection.path);
+  const comments = useReviewComments(
+    sessionId,
+    selection.project,
+    selection.path,
+  );
   const dismissComment = useDismissReviewComment(
     sessionId,
     selection.project,
@@ -233,7 +240,13 @@ export function ReviewEditorPane({
       }) => fetchDefinition(sessionId, request),
       toWorkspacePath: workspacePath,
     }),
-    [onOpenWorkspacePath, readFile, selection.path, selection.project, sessionId],
+    [
+      onOpenWorkspacePath,
+      readFile,
+      selection.path,
+      selection.project,
+      sessionId,
+    ],
   );
 
   /**
@@ -283,7 +296,8 @@ export function ReviewEditorPane({
       }) => fetchLspRename(sessionId, request),
       subscribeDiagnostics: (
         onDiagnostics: (path: string, diagnostics: LspDiagnostic[]) => void,
-      ) => subscribeToLspDiagnostics(sessionId, selection.project, onDiagnostics),
+      ) =>
+        subscribeToLspDiagnostics(sessionId, selection.project, onDiagnostics),
       toWorkspacePath: workspacePath,
     }),
     [readFile, selection.path, selection.project, sessionId],
@@ -347,7 +361,9 @@ export function ReviewEditorPane({
     if (!currentHunk || !hunks.data) return null;
     const diff =
       currentHunk.group === "staged" ? hunks.data.staged : hunks.data.unstaged;
-    const hunk = diff?.hunks.find((candidate) => candidate.index === currentHunk.index);
+    const hunk = diff?.hunks.find(
+      (candidate) => candidate.index === currentHunk.index,
+    );
     if (!hunk) return null;
     return matchFullHunk(hunk, hunks.data.full?.hunks);
   }, [currentHunk, hunks.data]);
@@ -397,7 +413,8 @@ export function ReviewEditorPane({
       codeMapAt.mutate(
         { line, path: selection.path, project: selection.project },
         {
-          onError: () => setNotice("Unable to build a call graph for that line."),
+          onError: () =>
+            setNotice("Unable to build a call graph for that line."),
           onSuccess: (result) => {
             // An error with no map is a fact about the file, not a failure to
             // report as one: show it inline rather than opening an empty panel.
@@ -477,15 +494,23 @@ export function ReviewEditorPane({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
+      <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1">
         <span className="text-xs">{selection.path}</span>
+        <div className="flex ml-auto">
+          <Button
+            aria-label="Close review"
+            onClick={onClose}
+            size="xs"
+            variant="ghost"
+          >
+            <XIcon className="size-3" />
+          </Button>
+        </div>
       </div>
 
       {dirty ? (
         <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1">
-          <span className="text-xs text-muted-foreground">
-            Unsaved edits
-          </span>
+          <span className="text-xs text-muted-foreground">Unsaved edits</span>
           <Button
             className="ml-auto h-6 px-2 text-[11px]"
             disabled={busy}

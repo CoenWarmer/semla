@@ -33,9 +33,9 @@ export function ReviewCommitNav({
   const oldestFirst = [...commits].reverse();
 
   return (
-    <div className="flex items-center flex-col">
+    <div className="flex items-center flex-col w-full">
       <div className="flex items-center gap-1 mb-1">
-        {oldestFirst.map((commit) => (
+        {oldestFirst.map((commit, index) => (
           <button
             aria-label={commit.subject}
             aria-pressed={commit.sha === selectedSha}
@@ -44,6 +44,7 @@ export function ReviewCommitNav({
               commit.sha === selectedSha
                 ? "bg-foreground"
                 : "bg-muted-foreground/40 hover:bg-muted-foreground/70",
+              index > 0 ? "ml-1.5" : "",
             )}
             key={commit.sha}
             onClick={() =>
@@ -60,7 +61,7 @@ export function ReviewCommitNav({
           aria-label="Uncommitted changes"
           aria-pressed={selectedSha === null}
           className={cn(
-            "size-2 rounded-full border transition-colors ml-1",
+            "size-2 p-1 rounded-full border transition-colors ml-1.5",
             selectedSha === null
               ? "border-foreground bg-foreground/30"
               : "border-muted-foreground/40 hover:border-muted-foreground/70",
@@ -72,7 +73,7 @@ export function ReviewCommitNav({
       </div>
 
       {selected ? (
-        <div className="flex items-center min-w-max">
+        <div className="flex items-center mt-1">
           <span className="flex text-xs gap-1">
             <span className="font-mono text-muted-foreground">
               #{selected.shortSha}

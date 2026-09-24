@@ -574,6 +574,14 @@ export function ClientSessionComponent({
         reviewCommentsQueryKey(sessionId, target.project, target.path),
         (previous) => [...(previous ?? []), comment],
       );
+      // And the session-wide sequence the comment cards' arrows step
+      // through, for the same reason the batch path appends to it: a
+      // comment the arrows cannot reach is one the operator can only find
+      // by opening its file by hand.
+      queryClient.setQueryData<ReviewComment[]>(
+        allReviewCommentsQueryKey(sessionId),
+        (previous) => [...(previous ?? []), comment],
+      );
     }
 
     if (target === null || target === undefined) {
