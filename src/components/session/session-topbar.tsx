@@ -21,6 +21,15 @@ import { SidebarTrigger } from "../ui/sidebar";
 import { ProjectsCombobox } from "../sidebar/projects-combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import Link from "next/link";
+import { SessionsCombobox } from "../sessions-combobox";
+
+/**
+ * Kept beside the resizable panels' own sizes, in the same per-user store
+ * (see panel-layout-store.ts) — whether this bar stays pinned open is the
+ * same shape of preference: local to this screen, not worth a Postgres
+ * round-trip, and lost costs nothing but re-toggling.
+ */
+const TOPBAR_PINNED_KEY = "topbar-pinned";
 
 interface SessionTopbarProps {
   /** Toggle the review panel. Absent when the session cannot be reviewed. */

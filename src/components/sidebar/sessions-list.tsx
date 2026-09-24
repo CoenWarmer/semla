@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/api/api-helpers";
 import { PI_WORKSPACE_ROOT } from "@/lib/pi/runtime/runtime-config";
 import { sessionUsageTotals } from "@/lib/pi/session/session-usage-totals";
-import { listSessionMeta } from "@/lib/pi/session/session-meta";
+import { listSessionsForUser } from "@/lib/pi/session/session-list";
 import { formatSessionDate } from "@/lib/session/session-date";
 import { SessionsListClient } from "./sessions-list-client";
 
@@ -12,27 +12,7 @@ export async function SessionsList() {
   // and in Postgres. Every other route already reads the user this way.
   const { supabase, user } = await requireUser();
 
-  // Disk records answer first, so the list survives a database outage. Rows
-  // that only Postgres knows about — sessions created before the records
-  // existed — are folded in behind them.
-  const onDisk = listSessionMeta().filter((meta) => meta.userId === user.id);
-  const seen = new Set(onDisk.map((meta) => meta.id));
-
-  const { data: dbRows, error } = await supabase
-    .from("sessions")
-    .select("id, created_at, title, is_running")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  const sessions = [
-    ...onDisk.map((meta) => ({
-      created_at: meta.createdAt,
-      id: meta.id,
-      is_running: meta.isRunning,
-      title: meta.title,
-    })),
-    ...(dbRows ?? []).filter((row) => !seen.has(row.id)),
-  ].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+  const { sessions, error } = await listSessionsForUser(supabase, user.id);
 
   if (error && sessions.length === 0) {
     console.error("[sessions-list] Failed to load sessions:", error);
@@ -52,11 +32,11 @@ export async function SessionsList() {
     sessions.map((s) => s.id),
   );
 
-  const rows = sessions.map(({ id, created_at, title, is_running }) => ({
+  const rows = sessions.map(({ id, createdAt, title, isRunning }) => ({
     id,
-    createdAt: created_at,
-    date: formatSessionDate(created_at),
-    isRunning: is_running ?? false,
+    createdAt,
+    date: formatSessionDate(createdAt),
+    isRunning,
     title,
     usage: usageBySession.get(id),
   }));
