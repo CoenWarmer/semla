@@ -1,9 +1,25 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 
 import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../ui/resizable";
+
+// No-op subscription: this store never changes after mount, so nothing ever
+// calls back. useSyncExternalStore still gives the right hydration behavior
+// for free — getServerSnapshot's value is what both the server render and
+// React's hydration-checking client render use, and getSnapshot's value is
+// what every client render after that uses — without the "setState from an
+// effect" pattern that reintroduces the very flip-after-first-paint this
+// guards against.
+const subscribeNever = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+function useHydrated(): boolean {
+  return useSyncExternalStore(subscribeNever, getHydratedSnapshot, getServerSnapshot);
+}
 
 /**
  * The session page's resizable splits: review beside (or above) the
@@ -37,7 +53,16 @@ export function SessionLayout({
 }) {
   const panelLayoutsQuery = usePanelLayouts();
   const panelLayouts = panelLayoutsQuery.data;
-  const settled = panelLayoutsQuery.isPending ? "pending" : "ready";
+
+  // Hydration guard: the server always renders with the query pending, so
+  // the first client render must match that regardless of whether the query
+  // has already resolved (e.g. from a warm cache). Flipping to "ready" is
+  // deferred until after hydration commits, so the two groups' `key` below
+  // cannot differ between server and client on the same render — the
+  // mismatch that used to unmount and rebuild this whole subtree, including
+  // PromptEditor's PromptInputProvider, on first paint.
+  const hydrated = useHydrated();
+  const settled = hydrated && !panelLayoutsQuery.isPending ? "ready" : "pending";
 
   // Keyed by orientation so a horizontal drag does not leak into the vertical
   // layout's percentages.
