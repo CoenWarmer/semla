@@ -304,6 +304,31 @@ export default function CodeEditor({
    */
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
   /**
+   * The cursor position and scroll offset of every model this editor has
+   * shown, keyed the same way `modelsRef` is.
+   *
+   * `saveViewState`/`restoreViewState` are Monaco's own mechanism for this —
+   * cursor line and column, selection, and scroll position, all in one
+   * serializable object — rather than tracking a line number ourselves. It
+   * is what makes navigating back to a file land exactly where the operator
+   * left it, not just at the top or at the last hunk.
+   *
+   * A ref, not state: nothing here renders from it, this only ever runs
+   * inside the model-swap effect below, and writing state from an effect
+   * that already runs on every `path` change would double the renders for
+   * no visible benefit.
+   */
+  const viewStatesRef = useRef(
+    new Map<string, monaco.editor.ICodeEditorViewState>(),
+  );
+  /**
+   * The workspace path the editor is currently showing, so the model-swap
+   * effect can save the outgoing file's view state before moving away from
+   * it — `editor.getModel()` after `setModel` already answers the *new*
+   * model, so the outgoing one has to be remembered rather than read fresh.
+   */
+  const currentWorkspacePathRef = useRef<string | null>(null);
+  /**
    * Every `{ path, project }` the LSP bridge has been told is open, keyed the
    * same way `modelsRef` is, so the unmount cleanup can send `didClose` for
    * each rather than just whichever file happens to be on screen last.
@@ -655,7 +680,38 @@ export default function CodeEditor({
       models.set(workspacePath, model);
     }
 
+    // Remember where the operator was in the file being left, before the
+    // model swap below moves the editor off it. Skipped on first mount
+    // (`currentWorkspacePathRef.current` still null) and when re-running
+    // for the *same* file (a `value` change from staging), since neither is
+    // actually leaving anywhere.
+    const previousPath = currentWorkspacePathRef.current;
+    if (previousPath && previousPath !== workspacePath) {
+      const state = editor.saveViewState();
+      if (state) viewStatesRef.current.set(previousPath, state);
+    }
+
     editor.setModel(model);
+    currentWorkspacePathRef.current = workspacePath;
+
+    // Put the cursor and scroll position back where the operator left them
+    // last time this file was open. Only on an actual file switch, for the
+    // same reason as the save above — restoring on every `value` change
+    // would fight the reveal effect below and the hunk auto-scroll whenever
+    // staging refetches the same file's hunks.
+    if (previousPath !== workspacePath) {
+      const saved = viewStatesRef.current.get(workspacePath);
+      if (saved) {
+        editor.restoreViewState(saved);
+        // Tell the "open on first change" effect below that this path has
+        // already been placed — it runs after this one and would otherwise
+        // jump the just-restored cursor to the first hunk regardless, since
+        // `shouldAutoScroll` only ever compares against the *previous*
+        // path, and a return visit is a path change like any other. Keyed
+        // on `path`, not `workspacePath`, to match that effect's own key.
+        autoScrollRef.current.scrolledPath = path;
+      }
+    }
 
     // Tell the language server what is open, and show whatever it has
     // already said about this file — both idempotent, so re-running this on

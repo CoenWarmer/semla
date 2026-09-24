@@ -50,7 +50,7 @@ import { matchFullHunk } from "./review-hunk-match";
 import { ReviewEditor } from "./review-editor";
 import type { AccessHighlight } from "./review-panel-request";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
-import { XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowRightIcon, XIcon } from "@phosphor-icons/react";
 
 /**
  * Stable identity for "no comments yet", matching `NO_PROJECTS` in
@@ -72,12 +72,16 @@ function Notice({ children }: { children: React.ReactNode }) {
 export function ReviewEditorPane({
   access,
   busy,
+  canGoBack,
+  canGoForward,
   commentNavigation = null,
   currentHunk = null,
   draft,
   onClose,
   onDraftChange,
   onExplain,
+  onGoBack,
+  onGoForward,
   onOpenWorkspacePath,
   onSave,
   onStage,
@@ -85,6 +89,14 @@ export function ReviewEditorPane({
   selection,
   sessionId,
 }: {
+  /** Whether a previously opened file is available to step back to. */
+  canGoBack: boolean;
+  /** Whether a file stepped back from is available to step forward to. */
+  canGoForward: boolean;
+  /** Step to the previously opened file — see `usePanelTarget.goBack`. */
+  onGoBack: () => void;
+  /** Step to the next opened file — see `usePanelTarget.goForward`. */
+  onGoForward: () => void;
   /**
    * The lines the agent read or wrote in this file, from the scrubber.
    *
@@ -495,7 +507,31 @@ export function ReviewEditorPane({
       ) : null}
 
       <div className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-2 py-1">
-        <span className="text-xs">{selection.path}</span>
+        <div className="flex gap-0">
+          <Button
+            aria-label="Previous file"
+            className="m-0"
+            disabled={!canGoBack}
+            onClick={onGoBack}
+            size="xs"
+            variant="ghost"
+          >
+            <ArrowLeftIcon className="size-3" />
+          </Button>
+          <Button
+            aria-label="Next file"
+            className="m-0"
+            disabled={!canGoForward}
+            onClick={onGoForward}
+            size="xs"
+            variant="ghost"
+          >
+            <ArrowRightIcon className="size-3" />
+          </Button>
+        </div>
+        <div className="flex flex-grow justify-center">
+          <span className="text-xs">{selection.path}</span>
+        </div>
         <div className="flex ml-auto">
           <Button
             aria-label="Close review"

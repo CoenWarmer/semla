@@ -40,6 +40,16 @@ import { activeCommitSha, BLANK_COMMIT_SELECTION } from "./review-artifact-commi
 import type { FileSelection } from "./review-changed-files";
 import { selectionForWorkspacePath } from "./review-definition-target";
 import {
+  canGoBack,
+  canGoForward,
+  currentFileHistoryEntry,
+  goBack as stepHistoryBack,
+  goForward as stepHistoryForward,
+  INITIAL_FILE_HISTORY,
+  pushFileHistory,
+  type FileHistoryState,
+} from "./review-file-history";
+import {
   activeRequest,
   baseRequestFor,
   nextReveal,
@@ -111,6 +121,20 @@ export interface PanelTargetState {
   following: boolean;
   /** Turn following on or off — a saved preference, not a per-step unpin. */
   changeFollowing: (next: boolean) => void;
+  /**
+   * Back/forward through the files the operator explicitly opened —
+   * `selectFile`, `selectFileFromSidebar`, `openWorkspacePath`, `openStep`,
+   * `openComment`. Agent-follow-mode switches are not history entries, so
+   * these never step through a file the operator did not themselves visit.
+   *
+   * `canGoBack`/`canGoForward` say whether the corresponding step is
+   * possible; `goBack`/`goForward` are no-ops when it is not, so a caller
+   * that forgets to check first still cannot misbehave.
+   */
+  canGoBack: boolean;
+  canGoForward: boolean;
+  goBack: () => void;
+  goForward: () => void;
 }
 
 /**
@@ -139,6 +163,24 @@ export function usePanelTarget(
   const chosenRequest = useMemo(
     () => activeRequest(ownRequest, target),
     [ownRequest, target],
+  );
+
+  /**
+   * Back/forward history of explicitly opened files.
+   *
+   * Only the operator's own deliberate opens ever reach `recordHistory` —
+   * see the call sites below. Agent-follow mode derives `followRequest`
+   * straight from live accesses without going through `revise` at all, so
+   * it never grows this stack; a fast-moving agent turn would otherwise
+   * fill it with files the operator never chose to visit.
+   */
+  const [history, setHistory] = useState<FileHistoryState>(
+    INITIAL_FILE_HISTORY,
+  );
+  const recordHistory = useCallback(
+    (next: FileSelection | null) =>
+      setHistory((previous) => pushFileHistory(previous, next)),
+    [],
   );
 
   /**
@@ -188,18 +230,21 @@ export function usePanelTarget(
   // scrubber was on, and leaving it behind would mark lines of a file the
   // agent may never have opened.
   const selectFile = useCallback(
-    (next: FileSelection | null) =>
+    (next: FileSelection | null) => {
+      recordHistory(next);
       revise(() => ({
         expanded: next,
         highlight: null,
         precision: null,
         selection: next,
-      })),
-    [revise],
+      }));
+    },
+    [recordHistory, revise],
   );
 
   const selectFileFromSidebar = useCallback(
-    (next: FileSelection) =>
+    (next: FileSelection) => {
+      recordHistory(next);
       revise((base) => ({
         expanded:
           base.expanded?.project === next.project && base.expanded.path === next.path
@@ -208,8 +253,9 @@ export function usePanelTarget(
         highlight: null,
         precision: null,
         selection: next,
-      })),
-    [revise],
+      }));
+    },
+    [recordHistory, revise],
   );
 
   /**
@@ -238,6 +284,7 @@ export function usePanelTarget(
         };
       }
 
+      recordHistory(next);
       revise((base) => ({
         highlight: null,
         precision: null,
@@ -246,7 +293,7 @@ export function usePanelTarget(
       }));
       return null;
     },
-    [review.data?.projects, revise],
+    [recordHistory, review.data?.projects, revise],
   );
 
   /**
@@ -292,6 +339,7 @@ export function usePanelTarget(
       // narrows into the closure below) exists for the type, not the run.
       if (project === null) return;
 
+      recordHistory({ path: access.path, project });
       revise((base) => {
         const line = revealLineFor(stop);
         return {
@@ -309,7 +357,7 @@ export function usePanelTarget(
         };
       });
     },
-    [revise],
+    [recordHistory, revise],
   );
 
   /**
@@ -327,14 +375,16 @@ export function usePanelTarget(
    * expanding an empty hunk list reads as the sidebar losing its open row.
    */
   const openComment = useCallback(
-    (comment: ReviewComment) =>
+    (comment: ReviewComment) => {
+      recordHistory({ path: comment.filePath, project: comment.projectPath });
       revise((base) => ({
         highlight: null,
         precision: null,
         reveal: nextReveal(base, comment.startLine),
         selection: { path: comment.filePath, project: comment.projectPath },
-      })),
-    [revise],
+      }));
+    },
+    [recordHistory, revise],
   );
 
   const liveAccesses = useSessionLiveAccesses(sessionId).data;
@@ -420,6 +470,40 @@ export function usePanelTarget(
     [followRequest, revise, updateFollowMode],
   );
 
+  /**
+   * Step to the previous/next file the operator explicitly opened.
+   *
+   * Unlike `selectFile`, these do not call `recordHistory` — stepping
+   * through history is not itself a new entry, or the stack would only
+   * ever grow forward and "back" would never reach the same file twice.
+   * Silently does nothing at either end; the arrow buttons disable
+   * themselves using `canGoBack`/`canGoForward` below, so a click here
+   * should not happen, but this stays a no-op rather than throwing if one
+   * ever does.
+   */
+  const goToHistory = useCallback(
+    (next: FileHistoryState) => {
+      const entry = currentFileHistoryEntry(next);
+      if (!entry) return;
+      setHistory(next);
+      revise(() => ({
+        expanded: entry,
+        highlight: null,
+        precision: null,
+        selection: entry,
+      }));
+    },
+    [revise],
+  );
+  const goBack = useCallback(
+    () => goToHistory(stepHistoryBack(history)),
+    [goToHistory, history],
+  );
+  const goForward = useCallback(
+    () => goToHistory(stepHistoryForward(history)),
+    [goToHistory, history],
+  );
+
   // Following outranks the panel's own history — it is a mode the operator
   // switched on, and while it is on the panel's job is to be wherever the
   // agent is — but it does NOT outrank a fresh external target, which used
@@ -454,9 +538,13 @@ export function usePanelTarget(
   const selection = request.selection ?? baseSelection;
 
   return {
+    canGoBack: canGoBack(history),
+    canGoForward: canGoForward(history),
     changeFollowing,
     expanded,
     following,
+    goBack,
+    goForward,
     highlight,
     openComment,
     openStep,

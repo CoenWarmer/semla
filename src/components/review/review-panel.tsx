@@ -95,9 +95,13 @@ export function ReviewPanel({
   const fileAccess = useFileAccess(sessionId, leafId ?? null);
 
   const {
+    canGoBack,
+    canGoForward,
     changeFollowing,
     expanded,
     following,
+    goBack,
+    goForward,
     highlight,
     openComment,
     openStep,
@@ -499,6 +503,10 @@ export function ReviewPanel({
               <main className="min-w-0 flex-1 h-full">
                 {selection ? (
                   <ReviewEditorPane
+                    canGoBack={canGoBack}
+                    canGoForward={canGoForward}
+                    onGoBack={goBack}
+                    onGoForward={goForward}
                     access={
                       // Only while the highlight describes the file on screen: the
                       // operator can move off a scrubber stop with the sidebar, and
