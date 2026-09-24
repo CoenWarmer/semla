@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ThemeColorOverrides } from "@/lib/stores/user-settings-store";
+import type { ThemeColorOverrides } from "@/lib/theme-colors";
 
 export type UserSettings = {
   default_model_id: string | null;

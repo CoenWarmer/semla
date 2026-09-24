@@ -22,7 +22,7 @@ import {
   type ThemeColorOverrides,
   type ThemeColorVariable,
   type ThemeColorVariables,
-} from "@/lib/stores/user-settings-store";
+} from "@/lib/theme-colors";
 import { useState } from "react";
 
 const MODES = ["light", "dark"] as const;

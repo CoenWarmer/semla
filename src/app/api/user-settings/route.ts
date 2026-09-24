@@ -2,9 +2,9 @@ import { handleRouteError, requireUser } from "@/lib/api/api-helpers";
 import {
   readUserSettings,
   writeUserSettings,
-  type ThemeColorOverrides,
   type UserSettings,
 } from "@/lib/stores/user-settings-store";
+import type { ThemeColorOverrides } from "@/lib/theme-colors";
 import type { Json } from "@/types/database.types";
 
 /**

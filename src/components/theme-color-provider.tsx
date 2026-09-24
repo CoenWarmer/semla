@@ -14,7 +14,7 @@
  */
 
 import { useUserSettings } from "@/hooks/use-user-settings";
-import { THEME_COLOR_VARIABLES } from "@/lib/stores/user-settings-store";
+import { THEME_COLOR_VARIABLES } from "@/lib/theme-colors";
 import { useEffect } from "react";
 
 export function ThemeColorProvider() {

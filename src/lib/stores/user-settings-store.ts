@@ -15,6 +15,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { ThemeColorOverrides } from "../theme-colors";
+
 export const SEMLA_STATE_DIR =
   process.env.SEMLA_STATE_DIR?.trim() || join(process.cwd(), ".semla-state");
 
@@ -43,35 +45,6 @@ export interface UserSettings {
    */
   themeColors: ThemeColorOverrides | null;
 }
-
-export type ThemeColorVariables = Partial<Record<ThemeColorVariable, string>>;
-
-export interface ThemeColorOverrides {
-  light: ThemeColorVariables;
-  dark: ThemeColorVariables;
-}
-
-/**
- * The core theme variables exposed for user configuration. A deliberately
- * curated subset of globals.css's full variable list — sidebar, chart-*, and
- * semla-following are internal presentation details rather than "the app's
- * colors" a user would expect to tune.
- */
-export const THEME_COLOR_VARIABLES = [
-  "background",
-  "foreground",
-  "card",
-  "card-foreground",
-  "primary",
-  "primary-foreground",
-  "secondary",
-  "secondary-foreground",
-  "accent",
-  "accent-foreground",
-  "border",
-] as const;
-
-export type ThemeColorVariable = (typeof THEME_COLOR_VARIABLES)[number];
 
 const EMPTY: UserSettings = {
   defaultModelId: null,
