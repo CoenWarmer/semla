@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ProjectsCombobox } from "@/components/sidebar/projects-combobox";
 import { QueryProvider } from "@/components/query-provider";
 import { PendingPromptProvider } from "@/components/pending-prompt-provider";
-import { HeaderActions } from "@/components/session/header-actions";
 import { BottomBar } from "@/components/bottom-bar";
 import { BottomPanelProvider } from "@/components/bottom-panel";
 import { ElementTargetProvider } from "@/components/element-target-provider";

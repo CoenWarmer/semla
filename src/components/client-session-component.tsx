@@ -57,7 +57,7 @@ const WikiMiniGraph = dynamic(
 import { isSessionMissing } from "@/lib/prompt-failure";
 
 import type { PromptEditorModel } from "./conversation/prompt-editor";
-import { latestInputTokens } from "@/lib/context-composition";
+import { latestInputTokens, sessionComposition } from "@/lib/context-composition";
 import { SessionTopbar } from "./session/session-topbar";
 import { SessionSummaryPanel } from "./session/session-summary-panel";
 import {
@@ -859,6 +859,7 @@ export function ClientSessionComponent({
   const conversationPane = (
     <SessionConversation
       activeTool={activeTool}
+      composition={composition}
       conversation={conversation}
       costPerTurn={costPerTurn}
       defaultTools={defaultTools}
@@ -969,16 +970,9 @@ export function ClientSessionComponent({
         onReviewLayoutChange={setReviewLayout}
         title={shownTitle}
         codeMap={codeMap}
-        contextWindow={messagesQuery.data?.contextWindow ?? null}
-        cacheReadRatePerMToken={messagesQuery.data?.cacheReadRatePerMToken}
-        systemPromptChars={messagesQuery.data?.systemPromptChars}
         sessionId={sessionId}
         goal={goal}
         onGoalSave={handleGoalSave}
-        messages={messages}
-        sessionRunning={isActive}
-        onCompactClick={handleCompact}
-        toolCalls={toolCalls}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-0 pb-1">
         <AgentTranscriptDrawer

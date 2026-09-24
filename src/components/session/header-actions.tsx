@@ -9,7 +9,6 @@ import {
 } from "@/lib/session/session-status";
 import { useParams } from "next/navigation";
 import { GitStatusBadge } from "../git-status-badge";
-import { SessionProjectPicker } from "../session-project-picker";
 import { TokenUsage } from "../token-usage";
 
 /**
@@ -60,10 +59,6 @@ export function SessionProjectBadges({ sessionId }: { sessionId: string }) {
           )}
         </span>
       ))}
-      <SessionProjectPicker
-        linkedPaths={new Set(projects.map((project) => project.path))}
-        sessionId={sessionId}
-      />
     </>
   );
 }
