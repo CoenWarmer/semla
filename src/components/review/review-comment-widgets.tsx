@@ -200,6 +200,28 @@ export class ReviewCommentWidgets {
    * through to the real `onDismiss`.
    */
   private shrinking = new Set<string>();
+  /**
+   * Keeps every open host's `max-width` equal to the editor's own visible
+   * content width.
+   *
+   * Monaco's `viewZones.js` sets a zone's outer node to `width: 100%`
+   * unconditionally (`_addZone`), and that percentage resolves against
+   * `.view-zones`'s own width — which Monaco sizes to the *content* width of
+   * the widest line in the file (`viewLayout`'s `getScrollWidth()`), not the
+   * editor's visible viewport. A file with one long line therefore makes
+   * every comment host — and the card inside it — as wide as that line,
+   * however far that reaches past the editor's own right edge; this was the
+   * cause of the operator's report that a comment overflowed out of the
+   * editor. `getLayoutInfo().contentWidth` is the viewport width Monaco
+   * actually renders and scrolls, the same quantity `HunkBracketWidgets`
+   * reads from `onDidLayoutChange` to track viewport-relative geometry, so
+   * it is applied here as a `max-width` clamp rather than a fixed `width`:
+   * a narrower file must still let the host shrink to `100%` as it always
+   * has, only a wider one needs clamping.
+   */
+  private readonly layoutSubscription: ReturnType<
+    monaco.editor.IStandaloneCodeEditor["onDidLayoutChange"]
+  >;
 
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
@@ -207,6 +229,16 @@ export class ReviewCommentWidgets {
   ) {
     this.editor = editor;
     this.onDismiss = onDismiss;
+    this.layoutSubscription = this.editor.onDidLayoutChange(() => {
+      this.applyMaxWidth();
+    });
+  }
+
+  private applyMaxWidth() {
+    const contentWidth = this.editor.getLayoutInfo().contentWidth;
+    for (const state of this.states.values()) {
+      state.domNode.style.maxWidth = `${contentWidth}px`;
+    }
   }
 
   /**
@@ -288,6 +320,11 @@ export class ReviewCommentWidgets {
 
         const domNode = document.createElement("div");
         domNode.className = "semla-review-comment-host";
+        // Set at creation, not only from the `onDidLayoutChange` subscription:
+        // a comment can be `set()` on a file already open, with no layout
+        // event about to fire, and the very first paint must not be the wide
+        // one this exists to prevent.
+        domNode.style.maxWidth = `${this.editor.getLayoutInfo().contentWidth}px`;
 
         const startLine = clamp(comment.startLine);
         const endLine = Math.max(startLine, clamp(comment.endLine));
@@ -357,5 +394,6 @@ export class ReviewCommentWidgets {
     // `changeViewZones` on an editor about to be disposed.
     this.shrinking.clear();
     this.clear();
+    this.layoutSubscription.dispose();
   }
 }
