@@ -51,6 +51,7 @@ export function ClientSessionComponent({
   isRunning,
   sessionId,
   title,
+  turnStartedAt: initialTurnStartedAt,
 }: {
   defaultTools: string[];
   goal?: string | null;
@@ -64,6 +65,13 @@ export function ClientSessionComponent({
   isRunning?: boolean;
   sessionId: string;
   title: string | null;
+  /**
+   * When the turn `isRunning` refers to started, from the session's own
+   * record on disk. Anchors the activity line's elapsed-time counter so a
+   * page refresh mid-turn keeps counting from the turn's real start instead
+   * of restarting from zero.
+   */
+  turnStartedAt?: string | null;
 }) {
   /**
    * The branch this page is showing, from `?leaf=` — null for the default,
@@ -90,11 +98,17 @@ export function ClientSessionComponent({
     pendingQuestion,
     serverIsRunning,
     serverTitle,
+    serverTurnStartedAt,
     sessionExists,
     streamError,
     wikiActive,
     workflowSnapshot,
-  } = usePromptMutation(sessionId, isRunning, viewingLeafId);
+  } = usePromptMutation(
+    sessionId,
+    isRunning,
+    viewingLeafId,
+    initialTurnStartedAt,
+  );
 
   /**
    * `useMutation` (TanStack Query) returns a fresh result object on every
@@ -314,6 +328,7 @@ export function ClientSessionComponent({
               hasMessages={messages.length > 0}
               isActive={isActive}
               liveTextLength={liveTextLength}
+              turnStartedAt={serverTurnStartedAt}
               onCancelFork={handleCancelFork}
               onCompactClick={handleCompact}
               onEditPrompt={handleEditPrompt}

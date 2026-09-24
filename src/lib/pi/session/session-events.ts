@@ -133,7 +133,16 @@ export type PiSessionEvent =
    * as an initial read, but no longer needs to be asked on a timer to learn
    * whether a turn ended.
    */
-  | { type: "session-status"; isRunning: boolean }
+  | {
+      type: "session-status";
+      isRunning: boolean;
+      /**
+       * ISO turn-start stamp, present only when `isRunning` is true. Lets a
+       * client anchor its elapsed-time counter to the turn's real start
+       * rather than to when its own component happened to mount.
+       */
+      turnStartedAt: string | null;
+    }
   | { type: "complete" };
 
 /** Publishes an event to both the SSE stream and the caller's handler. */

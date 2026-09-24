@@ -370,8 +370,19 @@ export const finalizeBackgroundRun = async (
 export const setSessionRunning = async (
   semlaSessionId: string,
   running: boolean,
+  /**
+   * When the turn being marked running actually started, ISO-stamped.
+   *
+   * Only meaningful when `running` is true; `false` always clears the field
+   * to `null` regardless of what is passed, so a caller cannot leave a stale
+   * start time behind for the next turn to inherit.
+   */
+  turnStartedAt?: string,
 ): Promise<void> => {
-  writeSessionMeta(semlaSessionId, { isRunning: running });
+  writeSessionMeta(semlaSessionId, {
+    isRunning: running,
+    turnStartedAt: running ? turnStartedAt ?? null : null,
+  });
 
   const admin = createAdminClient();
   const { error } = await admin

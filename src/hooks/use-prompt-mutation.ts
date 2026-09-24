@@ -216,6 +216,14 @@ export const usePromptMutation = (
    * on scoping rules to avoid.
    */
   viewingLeafId?: string | null,
+  /**
+   * When the turn `initialIsRunning` refers to started, per the session's
+   * own record on disk. Anchors the elapsed-time counter to the turn's real
+   * start on first render, so a page load mid-turn does not start it from
+   * zero. `undefined`/`null` when nothing was running, or for a record
+   * written before this field existed.
+   */
+  initialTurnStartedAt?: string | null,
 ) => {
   // Memoised: this array is a dependency of several callbacks below, and a
   // fresh one on every render would defeat their own memoisation — the tuple
@@ -287,7 +295,10 @@ export const usePromptMutation = (
    * old `serverIsRunningRef` was a one-field special case of.
    */
   const stateRef = useRef(
-    initialStreamState({ serverIsRunning: initialIsRunning ?? false }),
+    initialStreamState({
+      serverIsRunning: initialIsRunning ?? false,
+      serverTurnStartedAt: initialTurnStartedAt ?? null,
+    }),
   );
   const [state, setState] = useState(stateRef.current);
 
@@ -415,7 +426,11 @@ export const usePromptMutation = (
           // fresh event (a real `session-status` push, or a new mount's
           // `initialIsRunning`) says so, so setting it false here does not
           // provoke another reattach on its own.
-          dispatchStream({ isRunning: false, type: "session-status" });
+          dispatchStream({
+            isRunning: false,
+            turnStartedAt: null,
+            type: "session-status",
+          });
 
           // No invalidateQueries here: this branch's `return` still runs the
           // `finally` below, whose handOffToTranscript() already invalidates
@@ -750,6 +765,7 @@ export const usePromptMutation = (
     codeMap: state.codeMap,
     isReconnecting,
     serverIsRunning: state.serverIsRunning,
+    serverTurnStartedAt: state.serverTurnStartedAt,
     /**
      * This turn's assistant round trips so far, in order — not one flattened
      * string. See live-rounds.ts for why: a turn that says something, calls a

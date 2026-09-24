@@ -70,6 +70,7 @@ export function SessionConversation({
   pendingQuestion,
   sessionId,
   sessionMissing,
+  turnStartedAt,
   viewingLeafId,
   workflowRunSnapshots,
   workflowSnapshot,
@@ -86,6 +87,13 @@ export function SessionConversation({
   hasMessages: boolean;
   isActive: boolean;
   liveTextLength: number;
+  /**
+   * When the in-flight turn started, per the server's own record. Anchors
+   * the activity line's elapsed-time counter so a page refresh mid-turn
+   * keeps counting from the turn's real start instead of restarting from
+   * zero.
+   */
+  turnStartedAt: string | null;
   onCancelFork: () => void;
   onCompactClick: () => void;
   onEditPrompt: (entryId: string, text: string) => void;
@@ -219,6 +227,7 @@ export function SessionConversation({
             active={isActive}
             activeTool={activeTool}
             liveTextLength={liveTextLength}
+            turnStartedAt={turnStartedAt}
           />
           {errorMessage && (
             <p className="text-destructive text-sm">{errorMessage}</p>

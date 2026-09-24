@@ -33,6 +33,10 @@ export default async function Page({
     ? { goal: meta.goal, is_running: meta.isRunning, title: meta.title }
     : sessionResult.data;
   const reviewManuallyOpened = meta?.reviewManuallyOpened ?? false;
+  // Only the disk record carries this — the Supabase row selected above does
+  // not — so a session with no meta file yet (never on disk) has no turn
+  // start to report.
+  const turnStartedAt = meta?.isRunning ? meta.turnStartedAt ?? null : null;
 
   if (!meta && sessionResult.error) {
     console.error(`[sessions/${id}] Failed to fetch session:`, sessionResult.error);
@@ -68,6 +72,7 @@ export default async function Page({
         isRunning={session?.is_running ?? false}
         sessionId={id}
         title={session?.title ?? null}
+        turnStartedAt={turnStartedAt}
       />
     </div>
   );

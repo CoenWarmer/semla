@@ -23,6 +23,7 @@ export function SessionActivityLine({
   active,
   activeTool,
   liveTextLength,
+  turnStartedAt,
 }: {
   /** A turn is in flight. The same value the prompt bar gets as `isRunning`. */
   active: boolean;
@@ -30,6 +31,13 @@ export function SessionActivityLine({
   activeTool?: string;
   /** Characters of prose streamed so far this turn, across every round trip. */
   liveTextLength: number;
+  /**
+   * When the current turn actually started, from the server's own record.
+   * `null` when the server has not said (an old record, or a race with the
+   * first `session-status` push) — `ElapsedTime` falls back to its own mount
+   * time only in that case.
+   */
+  turnStartedAt: string | null;
 }) {
   if (!active) return null;
 
@@ -37,28 +45,39 @@ export function SessionActivityLine({
     <div className="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner />
       <span>{activityLabel(activeTool, liveTextLength > 0)}</span>
-      <ElapsedTime />
+      <ElapsedTime turnStartedAt={turnStartedAt} />
       <TokenUsage approximate tokens={estimateOutputTokens(liveTextLength)} />
     </div>
   );
 }
 
 /**
- * Time since this line appeared, i.e. since the turn started.
+ * Time since the turn actually started — not since this line happened to
+ * mount.
+ *
+ * `turnStartedAt` comes from the server's own record (see SessionMeta's
+ * `turnStartedAt`), so a page refresh mid-turn re-mounts this component but
+ * keeps counting from the same start: the effect re-derives elapsed time from
+ * that fixed instant on every tick rather than measuring from its own mount.
+ * Only a turn whose start the server has not reported — an old record
+ * written before this field existed, or a brief race before the first
+ * `session-status` push — falls back to counting from mount, and only for
+ * that one turn.
  *
  * A leaf of its own because it ticks twice a second: held any higher, every
  * tick re-rendered the whole session page — transcript, prompt bar, review
- * panel — to change one number. Mounting is the start signal, so there is no
- * reset to perform when the turn ends; the line unmounts instead.
+ * panel — to change one number.
  */
-function ElapsedTime() {
-  const [elapsedMs, setElapsedMs] = useState(0);
+function ElapsedTime({ turnStartedAt }: { turnStartedAt: string | null }) {
+  const [mountedAt] = useState(() => Date.now());
+  const start = turnStartedAt ? new Date(turnStartedAt).getTime() : mountedAt;
+
+  const [elapsedMs, setElapsedMs] = useState(() => Date.now() - start);
 
   useEffect(() => {
-    const start = Date.now();
     const id = setInterval(() => setElapsedMs(Date.now() - start), 500);
     return () => clearInterval(id);
-  }, []);
+  }, [start]);
 
   if (elapsedMs < 1000) return null;
   return <span className="tabular-nums">{(elapsedMs / 1000).toFixed(1)}s</span>;

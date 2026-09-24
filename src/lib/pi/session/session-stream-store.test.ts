@@ -83,7 +83,7 @@ describe("publishToSessionStream / subscribeToSessionStream", () => {
     subscribeToSessionStream(id, (event) => received.push(event));
 
     expect(received).toEqual([
-      { isRunning: true, type: "session-status" },
+      { isRunning: true, turnStartedAt: null, type: "session-status" },
       { runId: "run-1", type: "workflow-started" },
     ]);
 
@@ -113,7 +113,7 @@ describe("publishToSessionStream / subscribeToSessionStream", () => {
 
     expect(received).toEqual([
       { snapshot: { agentCount: 1, doneCount: 1 }, type: "workflow-snapshot" },
-      { isRunning: false, type: "session-status" },
+      { isRunning: false, turnStartedAt: null, type: "session-status" },
     ]);
 
     closeSessionStream(id);

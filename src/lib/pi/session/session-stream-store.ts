@@ -115,8 +115,14 @@ export const isSessionStreamActive = (sessionId: string): boolean =>
 export const publishSessionRunning = (
   sessionId: string,
   isRunning: boolean,
+  /** ISO turn-start stamp, present only alongside `isRunning: true`. */
+  turnStartedAt?: string,
 ): void => {
-  publishToSessionStream(sessionId, { isRunning, type: "session-status" });
+  publishToSessionStream(sessionId, {
+    isRunning,
+    turnStartedAt: isRunning ? turnStartedAt ?? null : null,
+    type: "session-status",
+  });
 };
 
 export const closeSessionStream = (sessionId: string): void => {

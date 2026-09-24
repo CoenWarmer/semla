@@ -256,7 +256,14 @@ export function applyTurnEffects(
       case "cache-session-status":
         queryClient.setQueryData<SingleSessionStatus>(
           sessionStatusKey(sessionId),
-          (prev) => (prev ? { ...prev, isRunning: effect.isRunning } : prev),
+          (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  isRunning: effect.isRunning,
+                  turnStartedAt: effect.turnStartedAt,
+                }
+              : prev,
         );
         setListRunning(queryClient, sessionId, effect.isRunning);
         break;

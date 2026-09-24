@@ -229,11 +229,19 @@ describe("applyStreamEvent", () => {
   it("emits a cache-write effect on session-status", () => {
     const { effects, state } = applyStreamEvent(initialStreamState(), {
       isRunning: true,
+      turnStartedAt: "2026-01-01T00:00:00.000Z",
       type: "session-status",
     });
 
     expect(state.serverIsRunning).toBe(true);
-    expect(effects).toEqual([{ isRunning: true, type: "cache-session-status" }]);
+    expect(state.serverTurnStartedAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(effects).toEqual([
+      {
+        isRunning: true,
+        turnStartedAt: "2026-01-01T00:00:00.000Z",
+        type: "cache-session-status",
+      },
+    ]);
   });
 
   it("records the message on error", () => {

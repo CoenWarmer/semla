@@ -112,6 +112,12 @@ export type SingleSessionStatus = {
    */
   exists?: boolean;
   isRunning: boolean;
+  /**
+   * When the running turn started, ISO-stamped, or `null` when nothing is
+   * running. Anchors the elapsed-time counter to the turn's real start so a
+   * page refresh mid-turn does not reset it to zero.
+   */
+  turnStartedAt: string | null;
   projects: SessionProject[];
   /** Same shape as SessionStatus.artifacts — the shared-shape rule this file states. */
   artifacts: ArtifactSummary;

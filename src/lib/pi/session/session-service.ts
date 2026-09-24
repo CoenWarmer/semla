@@ -337,10 +337,15 @@ export const runPiPrompt = async ({
   // Captured before any tool runs so the stamp sweep can tell the pages this
   // turn wrote from the ones an earlier orient left behind.
   const turnStartedAt = Date.now();
+  const turnStartedAtIso = new Date(turnStartedAt).toISOString();
 
   openSessionStream(semlaSessionId);
-  detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
-  publishSessionRunning(semlaSessionId, true);
+  detach(
+    semlaSessionId,
+    "set running",
+    setSessionRunning(semlaSessionId, true, turnStartedAtIso),
+  );
+  publishSessionRunning(semlaSessionId, true, turnStartedAtIso);
 
   // Accumulates this turn's tightly-scoped registrations (the event
   // subscription, both rendezvous notifiers, the live-session handle, the
@@ -971,8 +976,13 @@ export const runPiPrompt = async ({
         sessionLog(semlaSessionId, "re-arming continuation for an earlier run", {
           run: decision.runId,
         });
-        detach(semlaSessionId, "set running", setSessionRunning(semlaSessionId, true));
-        publishSessionRunning(semlaSessionId, true);
+        const rearmStartedAt = new Date().toISOString();
+        detach(
+          semlaSessionId,
+          "set running",
+          setSessionRunning(semlaSessionId, true, rearmStartedAt),
+        );
+        publishSessionRunning(semlaSessionId, true, rearmStartedAt);
       }
 
       // Ownership of this session's file passes to the continuation, which

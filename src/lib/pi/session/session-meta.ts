@@ -51,6 +51,19 @@ export interface SessionMeta {
   /** Every project this session relates to, primary first. */
   projects: ProjectLink[];
   isRunning: boolean;
+  /**
+   * When the turn `isRunning` refers to actually started, ISO-stamped.
+   *
+   * Exists so a client's elapsed-time counter can anchor to the turn's real
+   * start rather than to whenever its own component happened to mount — a
+   * page refresh mid-turn used to make the counter restart from zero, because
+   * mounting was the only start signal it had. `null` once the turn ends, so
+   * a stale value from a previous turn can never be read as the current one's
+   * start. Absent for a session written before this field existed, which the
+   * counter treats the same as `null`: unable to say when the turn began, so
+   * it falls back to its own mount time for that one turn only.
+   */
+  turnStartedAt?: string | null;
   createdAt: string;
   /** Who the session belongs to. Authorisation still consults Postgres. */
   userId: string | null;

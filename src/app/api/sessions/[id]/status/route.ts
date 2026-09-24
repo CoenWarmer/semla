@@ -4,6 +4,7 @@ import {
   sessionArtifacts,
   sessionIsRunning,
   sessionProjects,
+  sessionTurnStartedAt,
 } from "@/lib/pi/session/session-status-view";
 import { requireSessionOwner } from "@/lib/auth/session-auth";
 
@@ -49,6 +50,7 @@ export async function GET(
       return Response.json({
         exists: false,
         isRunning: false,
+        turnStartedAt: null,
         projects: [],
         artifacts: { chips: [], commits: 0, diffs: 0, prs: 0 },
       });
@@ -57,6 +59,7 @@ export async function GET(
     return Response.json({
       exists: true,
       isRunning: sessionIsRunning(meta),
+      turnStartedAt: sessionTurnStartedAt(meta),
       projects: sessionProjects(meta.projects, meta.id),
       artifacts: sessionArtifacts(meta.id),
     });

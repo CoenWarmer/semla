@@ -61,7 +61,7 @@ export type PiStreamEvent =
   | { payload: AskUserPayload; type: "ask-user-question" }
   | { type: "feature-spec-request" }
   | { title: string; type: "title-updated" }
-  | { type: "session-status"; isRunning: boolean }
+  | { type: "session-status"; isRunning: boolean; turnStartedAt: string | null }
   | { type: "complete" };
 
 /** Everything a turn's stream renders, in one place. */
@@ -84,6 +84,8 @@ export type TurnStreamState = {
   pendingFeatureSpec: boolean;
   pendingQuestion: AskUserPayload | null;
   serverIsRunning: boolean;
+  /** When the current turn started, per the last `session-status` push. */
+  serverTurnStartedAt: string | null;
   serverTitle: string | null;
   spansById: ReadonlyMap<string, RecordedSpan>;
   streamError: string | undefined;
@@ -98,6 +100,7 @@ export type TurnStreamState = {
  */
 export function initialStreamState(options?: {
   serverIsRunning?: boolean;
+  serverTurnStartedAt?: string | null;
 }): TurnStreamState {
   return {
     activeTool: undefined,
@@ -108,6 +111,7 @@ export function initialStreamState(options?: {
     pendingFeatureSpec: false,
     pendingQuestion: null,
     serverIsRunning: options?.serverIsRunning ?? false,
+    serverTurnStartedAt: options?.serverTurnStartedAt ?? null,
     serverTitle: null,
     spansById: new Map(),
     streamError: undefined,
@@ -174,7 +178,11 @@ export type TurnStreamEffect =
    * Neither is an invalidation — the handler always wrote the reading it
    * already had rather than asking the server to refetch it.
    */
-  | { isRunning: boolean; type: "cache-session-status" }
+  | {
+      isRunning: boolean;
+      turnStartedAt: string | null;
+      type: "cache-session-status";
+    }
   | { title: string; type: "invalidate-title" };
 
 export type TurnStreamResult = {
@@ -355,8 +363,18 @@ export function applyStreamEvent(
 
     case "session-status":
       return {
-        effects: [{ isRunning: event.isRunning, type: "cache-session-status" }],
-        state: { ...state, serverIsRunning: event.isRunning },
+        effects: [
+          {
+            isRunning: event.isRunning,
+            turnStartedAt: event.turnStartedAt,
+            type: "cache-session-status",
+          },
+        ],
+        state: {
+          ...state,
+          serverIsRunning: event.isRunning,
+          serverTurnStartedAt: event.turnStartedAt,
+        },
       };
 
     case "error":

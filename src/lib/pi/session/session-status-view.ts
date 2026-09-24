@@ -31,6 +31,13 @@ export const sessionIsRunning = (meta: SessionMeta): boolean =>
   meta.isRunning && isSessionActive(meta.id);
 
 /**
+ * When the running turn started, or `null` when none is (including when the
+ * on-disk flag is stale and `sessionIsRunning` has already discounted it).
+ */
+export const sessionTurnStartedAt = (meta: SessionMeta): string | null =>
+  sessionIsRunning(meta) ? meta.turnStartedAt ?? null : null;
+
+/**
  * Anchor first, workspace-relative path only.
  *
  * `isPrimary` is not sent: nothing reads it from this payload — the projects
@@ -79,6 +86,7 @@ export const toSessionStatus = (
   title: meta.title,
   createdAt: meta.createdAt,
   isRunning: sessionIsRunning(meta),
+  turnStartedAt: sessionTurnStartedAt(meta),
   // "Ran and finished" rather than "exists": a session that was created and
   // never used has nothing to report as complete.
   hasRun: hasTranscript(meta.id),

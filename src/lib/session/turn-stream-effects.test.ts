@@ -292,7 +292,9 @@ describe("applyTurnEffects", () => {
       { hasRun: true, id: sessionId, isRunning: false } as SessionStatus,
     ]);
 
-    dispatch(client, [{ isRunning: true, type: "cache-session-status" }]);
+    dispatch(client, [
+      { isRunning: true, turnStartedAt: null, type: "cache-session-status" },
+    ]);
 
     expect(
       client.getQueryData<SingleSessionStatus>(sessionStatusKey(sessionId))
