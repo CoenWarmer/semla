@@ -8,6 +8,9 @@ export const inspectionsQueryKey = (sessionId: string) =>
 
 export function useContextInspections(sessionId: string) {
   return useQuery<StoredInspection[]>({
+    // No session yet — the New Session screen renders this dot against an
+    // empty id — so there is nothing to look up and no request to make.
+    enabled: !!sessionId,
     queryKey: inspectionsQueryKey(sessionId),
     queryFn: async () => {
       const response = await fetch(`/api/sessions/${sessionId}/context-check`);
