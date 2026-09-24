@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { GoalEditor } from "./goal-editor";
+import { SessionTitleEditor } from "./session-title-editor";
 import { CodeMapPanel } from "../conversation/code-map-panel";
 import { InspectorPanel } from "../session-panels/inspector-panel";
 import { GlobalCostBadge, SessionProjectBadges } from "./header-actions";
@@ -54,6 +55,12 @@ interface SessionTopbarProps {
   reviewLayout?: "horizontal" | "vertical";
   onReviewLayoutChange?: (layout: "horizontal" | "vertical") => void;
   title: string | null;
+  /**
+   * Renames the session. Absent hides the click-to-rename affordance and
+   * falls back to a plain, unclickable heading — mirrors `onGoalSave`'s
+   * optionality above.
+   */
+  onTitleSave?: (title: string) => Promise<void>;
   /** Latest map the code_map tool drew in this session, if any. */
   codeMap?: CodeMap;
   sessionId: string;
@@ -91,6 +98,7 @@ function ContextQualityDot({ sessionId }: { sessionId: string }) {
 
 export function SessionTopbar({
   title,
+  onTitleSave,
   codeMap,
   sessionId,
   goal,
@@ -174,9 +182,13 @@ export function SessionTopbar({
 
           {/* Center: session title */}
           <div className="flex min-w-0 flex-1 justify-center">
-            <h1 className="max-w-300 truncate text-xs font-medium text-foreground">
-              {title ?? "Untitled session"}
-            </h1>
+            {onTitleSave ? (
+              <SessionTitleEditor onSave={onTitleSave} title={title} />
+            ) : (
+              <h1 className="max-w-300 truncate text-xs font-medium text-foreground">
+                {title ?? "Untitled session"}
+              </h1>
+            )}
           </div>
 
           {/* Right: controls */}

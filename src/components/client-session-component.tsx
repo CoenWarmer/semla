@@ -147,7 +147,8 @@ export function ClientSessionComponent({
    * a `router.refresh()` after the turn: a full root-layout re-render, measured
    * at ~4s, to propagate one string.
    */
-  const shownTitle = serverTitle ?? title;
+  const [titleOverride, setTitleOverride] = useState<string | null>(null);
+  const shownTitle = titleOverride ?? serverTitle ?? title;
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
 
   const handleStop = useCallback(() => {
@@ -173,6 +174,23 @@ export function ClientSessionComponent({
       setGoal(next);
       await fetch(`/api/sessions/${sessionId}`, {
         body: JSON.stringify({ goal: next ?? "" }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+    },
+    [sessionId],
+  );
+
+  /**
+   * The PATCH route ignores a blank title (see route.ts), so there is no
+   * `null` case here the way there is for `handleGoalSave` — a title is
+   * either replaced with a non-empty string or left alone.
+   */
+  const handleTitleSave = useCallback(
+    async (next: string) => {
+      setTitleOverride(next);
+      await fetch(`/api/sessions/${sessionId}`, {
+        body: JSON.stringify({ title: next }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
@@ -969,6 +987,7 @@ export function ClientSessionComponent({
         reviewLayout={reviewLayout}
         onReviewLayoutChange={setReviewLayout}
         title={shownTitle}
+        onTitleSave={handleTitleSave}
         codeMap={codeMap}
         sessionId={sessionId}
         goal={goal}
