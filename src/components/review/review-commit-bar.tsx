@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type { ProjectReview } from "@/lib/review/review-types";
+import { UploadIcon } from "@phosphor-icons/react";
 
 /** Files the index would carry into a commit right now. */
 export const stagedCount = (project: ProjectReview | undefined): number =>
@@ -37,10 +38,11 @@ export function ReviewCommitBar({
   const canCommit = staged > 0 && message.trim().length > 0 && !busy;
 
   return staged > 0 ? (
-    <footer className="flex shrink-0 items-center gap-3 border-t px-3 py-2">
+    <footer className="flex shrink-0 items-center gap-2 border-t px-2 py-2 animate-slide-up">
       <Input
         aria-label="Commit message"
-        className="h-8 flex-1 font-mono text-xxs"
+        className="h-6 flex-1"
+        style={{ fontSize: "12px" }}
         onChange={(event) => onMessageChange(event.target.value)}
         onKeyDown={(event) => {
           // Enter commits, which is what a single-line message field in a
