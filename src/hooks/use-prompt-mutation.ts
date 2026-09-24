@@ -115,6 +115,38 @@ export const reconnectIfStillRunning = (
 };
 
 /**
+ * Whether a mutation's `onError`/`onSettled` callback belongs to the call
+ * that is still current, and so may touch the shared message cache and
+ * `stateRef`.
+ *
+ * The bug this closes: an `ask_user` turn a newer prompt supersedes does not
+ * have its `mutationFn` cancelled on the client — the server-side abort
+ * (`session-turn-lock.ts`) runs underneath it, but the superseded turn's
+ * SSE stream stays open server-side until the prompt route's own `finally`
+ * chain (residual capture, artifact drain) finishes, which can be *after*
+ * the newer turn has already completed and rendered its own reply. When
+ * that superseded stream finally closes, its `mutationFn` throws (the abort
+ * surfaces as a `{type:"error"}` SSE event) and its `onError` restored a
+ * `previousMessages` snapshot taken before it ever ran — overwriting the
+ * newer, already-correct transcript with no further refetch to fix it, so
+ * the operator's new prompt disappeared from the conversation until a
+ * manual reload re-fetched from disk.
+ *
+ * `context` is undefined only when the mutation failed before `onMutate`
+ * ever returned (e.g. `queryClient.cancelQueries` itself throwing) — there
+ * is no epoch to compare in that case, and no snapshot was captured either,
+ * so the call is treated as current by default rather than silently
+ * dropping a real failure.
+ *
+ * Exported standalone, same reason as `reconnectIfStillRunning` above: pinned
+ * by a test with no DOM, independent of the hook's own React lifecycle.
+ */
+export const isCurrentMutation = (
+  context: { epoch: number } | undefined,
+  currentEpoch: number,
+): boolean => !context || context.epoch === currentEpoch;
+
+/**
  * Decode the turn's SSE body into `PiStreamEvent`s, handing each to `onEvent`
  * as it arrives.
  *
@@ -218,6 +250,27 @@ export const usePromptMutation = (
   // Non-zero while a submit is in flight; >1 means overlapping submits, which
   // would leave isPending true off the newest one after the first settles.
   const inFlightRef = useRef(0);
+  /**
+   * Bumped by every `onMutate`, so `onError`/`onSettled` can tell whether the
+   * call they belong to is still the latest one before touching shared state
+   * (the message cache, `stateRef`).
+   *
+   * A prompt that supersedes a turn still waiting on `ask_user` does not
+   * cancel that turn's own `mutationFn` on the client: the server-side abort
+   * (`session-turn-lock.ts`) runs underneath it, but the superseded turn's
+   * HTTP stream stays open server-side until its `finally` chain (residual
+   * capture, artifact drain in the prompt route) finishes — which can be
+   * after the newer turn has already completed. When that superseded stream
+   * finally closes, its `mutationFn` throws (the abort surfaces as a
+   * `{type:"error"}` SSE event) and its `onError` restored
+   * `context.previousMessages` — a snapshot taken *before this call ever
+   * ran* — over whatever the newer, already-finished turn had written. That
+   * is the bug: the operator's new prompt renders, then vanishes, because a
+   * stale mutation's error recovery overwrote it, and nothing re-fetches
+   * until a manual reload. Guarding on this counter makes a superseded
+   * call's `onError`/`onSettled` a no-op once a newer one has started.
+   */
+  const mutationEpochRef = useRef(0);
   // Identifies this hook instance, so a trace line can be attributed to the
   // component that is actually rendering the spinner.
   const [inst] = useState(() => Math.random().toString(36).slice(2, 7));
@@ -432,7 +485,7 @@ export const usePromptMutation = (
     void,
     Error,
     PromptInput,
-    { previousMessages: SessionMessage[] }
+    { epoch: number; previousMessages: SessionMessage[] }
   >({
     mutationFn: async ({ create, editEntryId, leafId, model, text, tools }) => {
       const id = ++traceSeq;
@@ -467,6 +520,18 @@ export const usePromptMutation = (
       trace("mutationFn:resolved", { id });
     },
     onError: (mutationError, _variables, context) => {
+      // A superseded call's error arrives after a newer one has already
+      // started (see mutationEpochRef's docblock) — restoring its
+      // `previousMessages` snapshot, or surfacing its error, would overwrite
+      // whatever the newer, still-current call has since written. Nothing
+      // to reconcile: the newer call owns the cache and the error banner now.
+      if (!isCurrentMutation(context, mutationEpochRef.current)) {
+        trace("onError:stale, ignored", {
+          epoch: context?.epoch,
+          current: mutationEpochRef.current,
+        });
+        return;
+      }
       if (context?.previousMessages) {
         queryClient.setQueryData<SessionMessagesResult>(
           messagesKey,
@@ -492,6 +557,12 @@ export const usePromptMutation = (
       reconnectAbortRef.current?.abort();
       reconnectAbortRef.current = null;
       setIsReconnecting(false);
+
+      // This call is now the one `onError`/`onSettled` should trust. A call
+      // still in flight when this runs (e.g. one waiting on `ask_user`) keeps
+      // its own, now-stale epoch closed over in the context it already
+      // returned, so its callbacks can tell they've been superseded.
+      const epoch = ++mutationEpochRef.current;
 
       inFlightRef.current += 1;
       trace(
@@ -548,10 +619,29 @@ export const usePromptMutation = (
       setListRunning(true);
 
       trace("onMutate:end");
-      return { previousMessages };
+      return { epoch, previousMessages };
     },
-    onSettled: async () => {
+    onSettled: async (_data, _error, _variables, context) => {
       trace("onSettled:start");
+
+      // Guard for the same reason onError does: a call superseded by a newer
+      // prompt (its stream kept open server-side by the residual-capture
+      // `finally` chain in the prompt route) can settle after the newer call
+      // already finished. Running the state resets and invalidations below
+      // would then clobber the newer, still-current turn's result — which is
+      // the bug this counter exists to close. `inFlightRef` still decrements
+      // unconditionally: it is bookkeeping for the overlap trace, not state a
+      // stale call is allowed to mutate.
+      if (!isCurrentMutation(context, mutationEpochRef.current)) {
+        trace("onSettled:stale, skipping cache effects", {
+          epoch: context?.epoch,
+          current: mutationEpochRef.current,
+        });
+        inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+        trace("onSettled:end", { inFlight: inFlightRef.current });
+        return;
+      }
+
       stateRef.current = {
         ...stateRef.current,
         activeTool: undefined,
