@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 
 import { resolveFileRoot, resolveInsideRoot } from "@/lib/pi/workspace/file-browser";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id, { allowMissing: true });
+  if (denied) return denied;
   const relPath = new URL(request.url).searchParams.get("path");
 
   if (!relPath) {
@@ -68,6 +71,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
 
   const relPath = typeof body?.path === "string" ? body.path : null;

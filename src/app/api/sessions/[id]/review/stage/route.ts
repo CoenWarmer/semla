@@ -10,6 +10,7 @@ import { readFileDiff } from "@/lib/pi/review/review-diff";
 import { buildPatch } from "@/lib/pi/review/review-patch";
 import { messageFailure, withReviewFile } from "@/lib/pi/review/review-service";
 import { readChangedFiles } from "@/lib/pi/review/review-status";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
 
   const relPath = typeof body?.path === "string" ? body.path : null;

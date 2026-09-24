@@ -11,6 +11,7 @@ import {
 } from "@/lib/pi/workspace/file-browser";
 import { IGNORED_DIRECTORIES } from "@/lib/pi/workspace/file-walk";
 import { listProjectFiles, mapWithConcurrency } from "@/lib/pi/workspace/project-files";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,6 +90,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id, { allowMissing: true });
+  if (denied) return denied;
   const searchParams = new URL(request.url).searchParams;
   const query = (searchParams.get("q") ?? "").trim();
   const scope = parseScope(searchParams.get("scope"));

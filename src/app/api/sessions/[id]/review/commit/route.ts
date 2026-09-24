@@ -5,6 +5,7 @@ import { putSnapshot } from "@/lib/pi/artifacts/artifact-snapshot-cache";
 import { readProjectSnapshot } from "@/lib/pi/artifacts/artifact-snapshot";
 import { commitStaged } from "@/lib/pi/review/review-apply";
 import { messageFailure, withReviewTarget } from "@/lib/pi/review/review-service";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
   const message = typeof body?.message === "string" ? body.message : "";
 

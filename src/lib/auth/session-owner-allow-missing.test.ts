@@ -126,11 +126,25 @@ describe("which handlers may allow a missing session", () => {
       // creates exists. A pure read of one session's own transcript, scoped
       // by the same missing id: nothing to leak, nothing to act on.
       "GET src/app/api/sessions/[id]/file-access/route.ts",
+      // The file tree, git badge and review panel read these on mount. They
+      // used to check nothing at all; tolerating a missing session keeps
+      // their answer for a pending one exactly what it was.
+      "GET src/app/api/sessions/[id]/files/content/route.ts",
+      "GET src/app/api/sessions/[id]/files/route.ts",
+      "GET src/app/api/sessions/[id]/files/search/route.ts",
+      "GET src/app/api/sessions/[id]/git/route.ts",
       // Both added in 801cec3, disk-first session creation: a session
       // created by its own first prompt is polled by its page before that
       // prompt has finished creating it, so these must answer emptily
       // rather than 404 during that window, same as /status and /spans.
       "GET src/app/api/sessions/[id]/messages/route.ts",
+      "GET src/app/api/sessions/[id]/review/comments/all/route.ts",
+      "GET src/app/api/sessions/[id]/review/comments/route.ts",
+      "GET src/app/api/sessions/[id]/review/grep/route.ts",
+      "GET src/app/api/sessions/[id]/review/hunks/route.ts",
+      "GET src/app/api/sessions/[id]/review/lsp/diagnostics/route.ts",
+      "GET src/app/api/sessions/[id]/review/route.ts",
+      "GET src/app/api/sessions/[id]/review/uncommit/route.ts",
       // The trace the panel loads on mount, for the same reason as /status:
       // a session created by its own first prompt is read before it exists.
       "GET src/app/api/sessions/[id]/spans/route.ts",
@@ -139,6 +153,9 @@ describe("which handlers may allow a missing session", () => {
       // reason: the turn graph panel loads on mount before the session
       // that its first prompt creates exists.
       "GET src/app/api/sessions/[id]/turn-graph/route.ts",
+      "GET src/app/api/sessions/[id]/workflows/route.ts",
+      // The prompt editor's skill list, polled on mount like /tools.
+      "GET src/app/api/skills/route.ts",
       "GET src/app/api/tools/route.ts",
     ]);
   });
@@ -147,5 +164,23 @@ describe("which handlers may allow a missing session", () => {
     for (const entry of tolerant) {
       expect(entry.startsWith("GET ")).toBe(true);
     }
+  });
+});
+
+/**
+ * The middleware only proves somebody is signed in. Nineteen routes under
+ * `sessions/[id]` — file writes, git checkout, commit — checked nothing past
+ * that, so any user could act on any session whose id they knew.
+ */
+describe("every session-scoped handler", () => {
+  it("checks that the caller owns the session", () => {
+    const unchecked = routeFiles("src/app/api/sessions/[id]").flatMap((file) => {
+      const handlers = read(file).split(/^(?=export async function )/m).slice(1);
+      return handlers
+        .filter((body) => !/requireSessionOwner\(|sessionAccessDenied\(/.test(body))
+        .map((body) => `${/export async function (\w+)/.exec(body)![1]} ${file}`);
+    });
+
+    expect(unchecked).toEqual([]);
   });
 });

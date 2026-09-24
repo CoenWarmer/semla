@@ -1,3 +1,4 @@
+import { handleRouteError } from "@/lib/api/api-helpers";
 import { AUTH_REQUIRED, localUser } from "@/lib/auth/auth-mode";
 import { hasTranscript, readSessionMeta } from "@/lib/pi/session/session-meta";
 import { createClient } from "@/lib/supabase/server";
@@ -65,5 +66,34 @@ export const requireSessionOwner = async (
     throw new Response("Session not found.", { status: 404 });
   }
 
+  // No row for this user is also what another user's session looks like, and
+  // the tolerant reads load their answer from disk by id. So a session that is
+  // on disk is only tolerated when disk says it is this user's own — the window
+  // between its meta being written and its row being mirrored.
+  if (!session) {
+    const meta = readSessionMeta(sessionId);
+    const onDisk = meta !== null || hasTranscript(sessionId);
+    if (onDisk && meta?.userId !== user.id) {
+      throw new Response("Session not found.", { status: 404 });
+    }
+  }
+
   return { session: session ?? { id: sessionId }, user };
+};
+
+/**
+ * `requireSessionOwner` for a handler that returns early responses rather than
+ * running inside one `try`: the refusal comes back as a Response to return,
+ * `null` when the caller may proceed.
+ */
+export const sessionAccessDenied = async (
+  sessionId: string,
+  options?: SessionOwnerOptions,
+): Promise<Response | null> => {
+  try {
+    await requireSessionOwner(sessionId, undefined, options);
+    return null;
+  } catch (error) {
+    return handleRouteError(error, "Unable to authorize session.");
+  }
 };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { dismissReviewComment } from "@/lib/pi/review/review-comment-store";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; commentId: string }> },
 ) {
   const { id, commentId } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
 
   try {
     await dismissReviewComment(id, commentId);

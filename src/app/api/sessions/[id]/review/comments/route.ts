@@ -10,6 +10,7 @@ import {
   listReviewComments,
 } from "@/lib/pi/review/review-comment-store";
 import { isReviewCommentBody } from "@/lib/review/review-comment-types";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id, { allowMissing: true });
+  if (denied) return denied;
   const url = new URL(request.url);
   const project = url.searchParams.get("project");
   const path = url.searchParams.get("path");
@@ -67,6 +70,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
 
   const path = typeof body?.path === "string" ? body.path : null;

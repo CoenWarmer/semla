@@ -6,6 +6,7 @@ import {
   openOrChangeDocument,
 } from "@/lib/pi/browser-lsp/lsp-host";
 import { resolveLspFile } from "@/lib/pi/browser-lsp/lsp-request";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
 
   const relPath = typeof body?.path === "string" ? body.path : null;

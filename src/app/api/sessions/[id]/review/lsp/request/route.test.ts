@@ -27,6 +27,11 @@ vi.mock("@/lib/pi/workspace/file-browser", () => ({
   resolveFileRoot: async () => ({ root: "/repo" }),
 }));
 
+// Ownership is session-auth.ts's concern, tested there; these cover the handler.
+vi.mock("@/lib/auth/session-auth", () => ({
+  sessionAccessDenied: vi.fn().mockResolvedValue(null),
+}));
+
 import { POST } from "./route";
 
 const params = () => Promise.resolve({ id: "session-1" });

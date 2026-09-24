@@ -6,6 +6,11 @@ vi.mock("@/lib/pi/review/review-comment-store", () => ({
   dismissReviewComment: (...args: unknown[]) => dismissReviewComment(...args),
 }));
 
+// Ownership is session-auth.ts's concern, tested there; these cover the handler.
+vi.mock("@/lib/auth/session-auth", () => ({
+  sessionAccessDenied: vi.fn().mockResolvedValue(null),
+}));
+
 import { PATCH } from "./route";
 
 describe("PATCH /api/sessions/[id]/review/comments/[commentId]", () => {

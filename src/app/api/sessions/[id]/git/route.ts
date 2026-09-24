@@ -5,6 +5,7 @@ import { checkoutBranch, mergeIntoCurrent } from "@/lib/pi/git/git-actions";
 import type { GitStatus } from "@/lib/git-status-display";
 import { fetchCanonical, readGitStatus } from "@/lib/pi/git/git-status";
 import { projectAbsolutePath, sessionProjects } from "@/lib/pi/session/session-project";
+import { sessionAccessDenied } from "@/lib/auth/session-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id, { allowMissing: true });
+  if (denied) return denied;
   const links = await sessionProjects(id);
 
   // Ordered primary first by sessionProjects, and JS preserves insertion order
@@ -73,6 +76,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const denied = await sessionAccessDenied(id);
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
   const action = body?.action;
 
