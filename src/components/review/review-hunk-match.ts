@@ -7,14 +7,18 @@
  * against index, and index against HEAD) with their own, independently
  * numbered hunks. A `full` hunk's index means nothing to either of them.
  *
- * Matching is by range rather than by index: a `full` hunk that touches
- * exactly the same lines as one `unstaged` hunk is that hunk, not staged yet.
- * One that matches a `staged` hunk instead is already staged in full. Either
- * way the range has to match exactly on both sides of the diff — old and new
- * — because a partial match means the hunk straddles the boundary between
- * what is staged and what is not, and there is no single hunk on either side
- * to act on. That case is reported honestly as "no action", rather than
- * guessed at.
+ * Matching is by range, but not by all four range fields at once — `full`,
+ * `staged` and `unstaged` do not all share one coordinate system. `full`'s
+ * new side and `unstaged`'s new side both describe the worktree, so an
+ * `unstaged` match compares the new side only. `full`'s old side and
+ * `staged`'s old side both describe HEAD, so a `staged` match compares the
+ * old side only. The remaining side of each pair is relative to the index —
+ * and staging any *other* hunk earlier in the file changes the index's own
+ * line numbers, shifting that side with no change to this hunk's own content.
+ * Requiring all four fields to agree (as this used to) demanded that shifted,
+ * incidental side match too: in a file with more than one hunk, staging the
+ * first one shifted the index side of every hunk after it, so none of them
+ * matched anything any more and their "Stage hunk" gutter buttons vanished.
  */
 
 import type { FileDiff, Hunk } from "@/lib/review/review-types";
@@ -29,11 +33,13 @@ export interface HunkAction {
   index: number;
 }
 
-const sameRange = (a: Hunk, b: Hunk): boolean =>
-  a.oldStart === b.oldStart &&
-  a.oldLines === b.oldLines &&
-  a.newStart === b.newStart &&
-  a.newLines === b.newLines;
+/** `full` and `unstaged` share the worktree as their new side. */
+const sameNewRange = (a: Hunk, b: Hunk): boolean =>
+  a.newStart === b.newStart && a.newLines === b.newLines;
+
+/** `full` and `staged` share HEAD as their old side. */
+const sameOldRange = (a: Hunk, b: Hunk): boolean =>
+  a.oldStart === b.oldStart && a.oldLines === b.oldLines;
 
 /**
  * A hunk's identity across the staged/unstaged boundary, for animating a row
@@ -64,12 +70,12 @@ export function matchHunkAction(
   diffs: { staged: FileDiff | null; unstaged: FileDiff | null },
 ): HunkAction | null {
   const unstagedMatch = diffs.unstaged?.hunks.find((candidate) =>
-    sameRange(hunk, candidate),
+    sameNewRange(hunk, candidate),
   );
   if (unstagedMatch) return { direction: "stage", index: unstagedMatch.index };
 
   const stagedMatch = diffs.staged?.hunks.find((candidate) =>
-    sameRange(hunk, candidate),
+    sameOldRange(hunk, candidate),
   );
   if (stagedMatch) return { direction: "unstage", index: stagedMatch.index };
 
@@ -82,15 +88,19 @@ export function matchHunkAction(
  *
  * Needed for the keyboard cursor's editor highlight: the cursor addresses a
  * hunk group-relative, into `staged` or `unstaged` (see review-hunk-cursor.ts),
- * but the lines Monaco has open belong to `full`'s numbering. Same range
- * equality either direction, since a hunk's move between diffs preserves its
- * span — the reasoning `hunkRangeKey` above already relies on.
+ * but the lines Monaco has open belong to `full`'s numbering. `group` says
+ * which side of the range is shared with `full` — the same asymmetry
+ * `matchHunkAction` above corrects for, and for the same reason: the other
+ * side is relative to the index and shifts as sibling hunks are staged, with
+ * no change to this hunk's own content.
  */
 export function matchFullHunk(
   hunk: Hunk,
+  group: "staged" | "unstaged",
   full: readonly Hunk[] | null | undefined,
 ): Hunk | null {
-  return full?.find((candidate) => sameRange(hunk, candidate)) ?? null;
+  const sameSide = group === "unstaged" ? sameNewRange : sameOldRange;
+  return full?.find((candidate) => sameSide(hunk, candidate)) ?? null;
 }
 
 /**

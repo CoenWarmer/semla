@@ -95,6 +95,43 @@ describe("matchHunkAction", () => {
     const action = matchHunkAction(fullHunk, { staged: null, unstaged: null });
     expect(action).toBeNull();
   });
+
+  it("still matches a later hunk after staging an earlier one shifts its old-side line numbers", () => {
+    // Regression: staging a hunk earlier in the file moves the index, which
+    // shifts every later hunk's old side (relative to the index) even though
+    // its own content never changed. A full/unstaged match that required the
+    // old side to agree too lost every hunk after the staged one.
+    const fullTwoHunks = diffOf(`diff --git a/f.ts b/f.ts
+index 1111111..2222222 100644
+--- a/f.ts
++++ b/f.ts
+@@ -1 +1,2 @@
+-a
++A1
++A2
+@@ -10 +11 @@ i
+-j
++J
+`);
+    // The unstaged diff after the first hunk has been staged: the second
+    // hunk's new side (worktree) is unchanged, but its old side (now the
+    // index, one line longer) has shifted from line 10 to line 11.
+    const unstagedAfterFirstStaged = diffOf(`diff --git a/f.ts b/f.ts
+index 3333333..2222222 100644
+--- a/f.ts
++++ b/f.ts
+@@ -11 +11 @@ i
+-j
++J
+`);
+
+    const secondFullHunk = fullTwoHunks.hunks[1];
+    const action = matchHunkAction(secondFullHunk, {
+      staged: null,
+      unstaged: unstagedAfterFirstStaged,
+    });
+    expect(action).toEqual({ direction: "stage", index: 0 });
+  });
 });
 
 describe("matchCommentHunk", () => {
@@ -171,22 +208,53 @@ index 1111111..2222222 100644
 describe("matchFullHunk", () => {
   it("finds the full-diff hunk with the same range as a staged or unstaged one", () => {
     const staged = STAGED_ONE_HUNK.hunks[0];
-    expect(matchFullHunk(staged, FULL_ONE_HUNK.hunks)).toEqual(
+    expect(matchFullHunk(staged, "staged", FULL_ONE_HUNK.hunks)).toEqual(
       FULL_ONE_HUNK.hunks[0],
     );
 
     const unstaged = UNSTAGED_ONE_HUNK.hunks[0];
-    expect(matchFullHunk(unstaged, FULL_ONE_HUNK.hunks)).toEqual(
+    expect(matchFullHunk(unstaged, "unstaged", FULL_ONE_HUNK.hunks)).toEqual(
       FULL_ONE_HUNK.hunks[0],
     );
   });
 
   it("is null when full has not loaded, or has no matching range", () => {
     const hunk = UNSTAGED_ONE_HUNK.hunks[0];
-    expect(matchFullHunk(hunk, null)).toBeNull();
-    expect(matchFullHunk(hunk, undefined)).toBeNull();
+    expect(matchFullHunk(hunk, "unstaged", null)).toBeNull();
+    expect(matchFullHunk(hunk, "unstaged", undefined)).toBeNull();
 
     const unrelated = UNSTAGED_TWO_HUNKS.hunks[1];
-    expect(matchFullHunk(unrelated, FULL_ONE_HUNK.hunks)).toBeNull();
+    expect(matchFullHunk(unrelated, "unstaged", FULL_ONE_HUNK.hunks)).toBeNull();
+  });
+
+  it("matches on the index-relative side shifted by an earlier hunk's own stage", () => {
+    // Mirrors matchHunkAction's own regression test below: staging an
+    // earlier hunk shifts every later hunk's index-relative side, and
+    // matchFullHunk must not require that shifted side to agree either.
+    const full = diffOf(`diff --git a/f.ts b/f.ts
+index 1111111..2222222 100644
+--- a/f.ts
++++ b/f.ts
+@@ -1 +1,2 @@
+-a
++A1
++A2
+@@ -10 +11 @@ i
+-j
++J
+`);
+    const unstagedAfterFirstStaged = diffOf(`diff --git a/f.ts b/f.ts
+index 3333333..2222222 100644
+--- a/f.ts
++++ b/f.ts
+@@ -11 +11 @@ i
+-j
++J
+`);
+
+    const shiftedHunk = unstagedAfterFirstStaged.hunks[0];
+    expect(matchFullHunk(shiftedHunk, "unstaged", full.hunks)).toEqual(
+      full.hunks[1],
+    );
   });
 });

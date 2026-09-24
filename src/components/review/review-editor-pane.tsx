@@ -377,7 +377,7 @@ export function ReviewEditorPane({
       (candidate) => candidate.index === currentHunk.index,
     );
     if (!hunk) return null;
-    return matchFullHunk(hunk, hunks.data.full?.hunks);
+    return matchFullHunk(hunk, currentHunk.group, hunks.data.full?.hunks);
   }, [currentHunk, hunks.data]);
 
   /**
