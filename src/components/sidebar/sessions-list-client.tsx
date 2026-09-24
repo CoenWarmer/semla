@@ -7,6 +7,7 @@ import { useElementTarget } from "@/components/element-target-provider";
 import { artifactTargetFor } from "@/components/sidebar/session-artifact-click";
 import { ItemGroup } from "@/components/ui/item";
 import { SessionItem } from "@/components/sidebar/session-item";
+import { useDeleteSession } from "@/hooks/use-session-mutations";
 import { formatSessionDate } from "@/lib/session/session-date";
 import type { ArtifactChip } from "@/lib/artifacts/artifact-summary";
 import {
@@ -87,6 +88,7 @@ export function SessionsListClient({
   const elementTarget = useElementTarget();
 
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set());
+  const deleteSession = useDeleteSession();
 
   const [optimistic, removeOptimistically] = useOptimistic(
     sessions,
@@ -153,13 +155,7 @@ export function SessionsListClient({
 
       let deletedOnServer = true;
       try {
-        const response = await fetch(`/api/sessions/${id}`, {
-          method: "DELETE",
-        });
-        deletedOnServer = response.ok;
-        if (!response.ok) {
-          console.error(`[sessions] delete failed: ${response.status}`);
-        }
+        await deleteSession.mutateAsync({ id });
       } catch (error) {
         deletedOnServer = false;
         console.error("[sessions] delete failed:", error);

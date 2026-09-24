@@ -1,10 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { WorkspaceProject } from "@/lib/pi/workspace/workspace";
+import { useWorkspaceProjects } from "@/hooks/use-workspace-projects";
 import {
   readLastSelectedProject,
   writeLastSelectedProject,
@@ -38,15 +38,7 @@ export function ProjectsCombobox({ small }: { small?: boolean }) {
   // a request on the critical path of every page load for data nobody had asked
   // to see. React Query also dedupes it — the previous raw fetch in an effect
   // ran twice per mount under StrictMode.
-  const { data: projects } = useQuery<WorkspaceProject[]>({
-    enabled: open,
-    queryFn: async () => {
-      const response = await fetch("/api/projects");
-      if (!response.ok) throw new Error("Unable to load projects.");
-      return response.json() as Promise<WorkspaceProject[]>;
-    },
-    queryKey: ["workspace-projects"],
-  });
+  const { data: projects } = useWorkspaceProjects(open);
 
   /**
    * The same destination the home page's project cards use: a session that does

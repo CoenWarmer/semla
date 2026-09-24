@@ -2,6 +2,7 @@
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
+import { useSessionControls } from "@/hooks/use-session-controls";
 import {
   allReviewCommentsQueryKey,
   reviewCommentsQueryKey,
@@ -152,23 +153,17 @@ export function ClientSessionComponent({
   const shownTitle = titleOverride ?? serverTitle ?? title;
   const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
 
+  const { compact, stop } = useSessionControls(sessionId);
+
   const handleStop = useCallback(() => {
     // Fire and forget: the turn ends through the stream closing, and a failed
     // stop should not leave the button wedged. Errors surface in the log.
-    void fetch(`/api/sessions/${sessionId}/stop`, { method: "POST" }).catch(
-      (error: unknown) => {
-        console.warn("[session] stop failed:", error);
-      },
-    );
-  }, [sessionId]);
+    stop();
+  }, [stop]);
 
   const handleCompact = useCallback(() => {
-    void fetch(`/api/sessions/${sessionId}/compact`, { method: "POST" }).catch(
-      (error: unknown) => {
-        console.warn("[session] compact failed:", error);
-      },
-    );
-  }, [sessionId]);
+    compact();
+  }, [compact]);
 
   const handleGoalSave = useCallback(
     async (next: string | null) => {

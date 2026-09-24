@@ -10,6 +10,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { GitStatusBadge } from "@/components/git-status-badge";
+import { useRenameSession } from "@/hooks/use-session-mutations";
 import { SessionArtifactChips } from "@/components/sidebar/session-artifacts";
 import {
   Item,
@@ -71,6 +72,7 @@ export function SessionItem({
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
+  const renameSession = useRenameSession();
 
   const startRename = () => {
     setDraft(title ?? "");
@@ -86,11 +88,7 @@ export function SessionItem({
       return;
     }
     setRenaming(false);
-    await fetch(`/api/sessions/${id}`, {
-      body: JSON.stringify({ title: trimmed }),
-      headers: { "Content-Type": "application/json" },
-      method: "PATCH",
-    });
+    await renameSession.mutateAsync({ id, title: trimmed });
     router.refresh();
   };
 

@@ -22,6 +22,7 @@ import { useParams } from "next/navigation";
 import { BottomBarButton } from "@/components/bottom-bar-panel";
 import { Spinner } from "@/components/ui/spinner";
 import { useElementTarget } from "@/components/element-target-provider";
+import { useSetElementTarget } from "@/hooks/use-set-element-target";
 import { locateElement } from "@/lib/element-locator";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,7 @@ export function ElementPicker() {
   const [error, setError] = useState<string | null>(null);
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const elementTarget = useElementTarget();
+  const setElementTarget = useSetElementTarget(sessionId);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const stop = useCallback(() => {
@@ -102,17 +104,15 @@ export function ElementPicker() {
             return;
           }
 
-          const res = await fetch(
-            `/api/sessions/${sessionId}/element-target`,
-            {
-              body: JSON.stringify({ path: located.file }),
-              headers: { "Content-Type": "application/json" },
-              method: "POST",
-            },
-          );
-          const body = await res.json().catch(() => null);
-          if (!res.ok) {
-            setError(body?.error ?? "Unable to open that element's source.");
+          let body: { path: string; project: string };
+          try {
+            body = await setElementTarget.mutateAsync({ path: located.file });
+          } catch (mutationError) {
+            setError(
+              mutationError instanceof Error
+                ? mutationError.message
+                : "Unable to open that element's source.",
+            );
             return;
           }
 
@@ -142,7 +142,7 @@ export function ElementPicker() {
       document.removeEventListener("keydown", onKeyDown);
       document.body.classList.remove("cursor-crosshair");
     };
-  }, [elementTarget, picking, sessionId, stop]);
+  }, [elementTarget, picking, sessionId, setElementTarget, stop]);
 
   if (!AVAILABLE || !sessionId) return null;
 

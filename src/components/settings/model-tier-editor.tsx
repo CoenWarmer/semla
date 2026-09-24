@@ -17,13 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModelTiers, useUpdateModelTiers } from "@/hooks/use-model-tiers";
+import { useModels } from "@/hooks/use-models";
 import {
   formatModelSpecWithThinking,
   splitModelSpecThinking,
   THINKING_LEVELS,
   type ModelThinkingLevel,
 } from "@/lib/pi/extensions/dynamic-workflows/src/model-spec.ts";
-import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 
 type ModelOption = {
@@ -34,30 +34,19 @@ type ModelOption = {
 const TIER_NAMES = ["small", "medium", "big"] as const;
 type TierName = (typeof TIER_NAMES)[number];
 
-const fetchModels = async (): Promise<ModelOption[]> => {
-  const response = await fetch("/api/models");
-  if (!response.ok) {
-    throw new Error("Unable to load models.");
-  }
-  const { models } = (await response.json()) as {
-    models: Array<{ modelId: string; name: string; provider: string }>;
-  };
-
-  return models.map((model) => ({
-    spec: `${model.provider}/${model.modelId}`,
-    label: `${model.provider}/${model.modelId}${model.name ? ` — ${model.name}` : ""}`,
-  }));
-};
-
 export function ModelTierEditor() {
   const { data: tiersData, isPending: isLoadingTiers } = useModelTiers();
-  const { data: modelsData, isPending: isLoadingModels } = useQuery({
-    queryKey: ["models"],
-    queryFn: fetchModels,
-  });
+  const { data: modelsData, isPending: isLoadingModels } = useModels();
   const updateMutation = useUpdateModelTiers();
 
-  const models = useMemo(() => modelsData ?? [], [modelsData]);
+  const models = useMemo<ModelOption[]>(
+    () =>
+      (modelsData ?? []).map((model) => ({
+        spec: `${model.provider}/${model.modelId}`,
+        label: `${model.provider}/${model.modelId}${model.name ? ` — ${model.name}` : ""}`,
+      })),
+    [modelsData],
+  );
   const knownSpecs = useMemo(() => models.map((m) => m.spec), [models]);
 
   // Decompose stored tiers from the server into model + thinking pairs.

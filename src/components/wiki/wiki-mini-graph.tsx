@@ -2,31 +2,13 @@
 
 import { useMemo } from "react";
 import { SigmaContainer } from "@react-sigma/core";
-import { useQuery } from "@tanstack/react-query";
 import { buildLaidOutGraph, buildRepoColorMap } from "./wiki-graph";
-import type { WikiLink, WikiPageMeta } from "@/lib/wiki/wiki-types";
-
-// ─── API response type ────────────────────────────────────────────────────────
-
-interface WikiApiResponse {
-  initialized: boolean;
-  registry: { pages: Record<string, WikiPageMeta> } | null;
-  links: WikiLink[];
-}
+import { useWikiGraph } from "@/hooks/use-wiki-graph";
 
 // ─── Public component ─────────────────────────────────────────────────────────
 
 export function WikiMiniGraph() {
-  const query = useQuery<WikiApiResponse>({
-    queryKey: ["wiki"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki");
-      if (!res.ok) throw new Error(`wiki ${res.status}`);
-      return res.json() as Promise<WikiApiResponse>;
-    },
-    refetchInterval: 4000,
-    staleTime: 0,
-  });
+  const query = useWikiGraph();
 
   const nodeCount = Object.keys(query.data?.registry?.pages ?? {}).length;
 
