@@ -14,6 +14,13 @@ export type AskUserOption = {
   value: string;
   label: string;
   description?: string;
+  /**
+   * Marks this option as an "other, please specify" slot — see the
+   * matching field in ask-user.ts's OptionSchema. The dialog renders a
+   * nested text input for it and, once the user types into it, the typed
+   * text is the answer rather than this option's value.
+   */
+  allowFreeText?: boolean;
 };
 
 export type AskUserQuestion = {

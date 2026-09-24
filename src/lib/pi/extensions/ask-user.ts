@@ -6,6 +6,14 @@ const OptionSchema = Type.Object({
   value: Type.String(),
   label: Type.String(),
   description: Type.Optional(Type.String()),
+  allowFreeText: Type.Optional(
+    Type.Boolean({
+      description:
+        "Marks this option as an 'other, please specify' slot: selecting it reveals a text " +
+        "input, and the typed text becomes the answer instead of this option's label. " +
+        "At most one option per question should set this.",
+    }),
+  ),
 });
 
 const QuestionSchema = Type.Object({
@@ -48,6 +56,7 @@ export default function askUserExtension(api: ExtensionAPI) {
       "Ask at most 4 questions per call; batch related decisions into one call.",
       "Do not ask questions whose answers are already implied by the conversation.",
       "For single/multiple choice, supply 2–6 meaningful options; avoid catch-all 'other' unless necessary.",
+      "To let the user type a custom answer alongside fixed choices, set allowFreeText on one option instead of adding a separate text question.",
     ],
     parameters: AskUserSchema,
     executionMode: "sequential",

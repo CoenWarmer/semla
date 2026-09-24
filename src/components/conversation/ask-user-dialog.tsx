@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AskUserPayload } from "@/lib/pi/bridge/ask-user-bridge";
+import { Input } from "@/components/ui/input";
 import {
   Questionnaire,
   QuestionnaireActions,
@@ -28,10 +29,30 @@ export function AskUserDialog({ payload, sessionId, onDismiss }: AskUserDialogPr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The free-text value typed into an `allowFreeText` option's nested input,
+  // keyed by question id. Read on submit only for the option that is both
+  // flagged and currently checked — see handleSubmit.
+  const [freeText, setFreeText] = useState<Record<string, string>>({});
+
+  // Which option value is checked right now, per question. Drives whether
+  // the nested free-text input is shown — formData alone only tells us that
+  // on submit, but the input has to appear/disappear as the user clicks.
+  const [checkedValue, setCheckedValue] = useState<Record<string, string | string[]>>({});
+
   const items = payload.questions.map((q) => ({
     name: q.id,
     required: q.type !== "text",
   }));
+
+  const freeTextOptionValue = (q: AskUserPayload["questions"][number]): string | undefined =>
+    q.options?.find((opt) => opt.allowFreeText)?.value;
+
+  const isFreeTextChecked = (q: AskUserPayload["questions"][number]): boolean => {
+    const freeValue = freeTextOptionValue(q);
+    if (freeValue === undefined) return false;
+    const current = checkedValue[q.id];
+    return q.type === "multiple" ? (current ?? []).includes(freeValue) : current === freeValue;
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -42,11 +63,16 @@ export function AskUserDialog({ payload, sessionId, onDismiss }: AskUserDialogPr
     const answers: Record<string, string> = {};
 
     for (const q of payload.questions) {
+      const freeValue = freeTextOptionValue(q);
+      const typed = (freeText[q.id] ?? "").trim();
+
       if (q.type === "multiple") {
         const values = formData.getAll(q.id) as string[];
-        answers[q.id] = values.join(", ");
+        const resolved = values.map((value) => (value === freeValue ? typed : value));
+        answers[q.id] = resolved.join(", ");
       } else {
-        answers[q.id] = (formData.get(q.id) as string | null) ?? "";
+        const value = (formData.get(q.id) as string | null) ?? "";
+        answers[q.id] = value === freeValue ? typed : value;
       }
     }
 
@@ -93,12 +119,41 @@ export function AskUserDialog({ payload, sessionId, onDismiss }: AskUserDialogPr
             ) : (
               <QuestionnaireChoices className="gap-1.5">
                 {(q.options ?? []).map((opt) => (
-                  <QuestionnaireChoice key={opt.value} className="min-h-0 px-3 py-2 text-xs rounded-lg" value={opt.value}>
+                  <QuestionnaireChoice
+                    key={opt.value}
+                    className="min-h-0 px-3 py-2 text-xs rounded-lg"
+                    value={opt.value}
+                    onChange={(e) => {
+                      setCheckedValue((prev) => {
+                        if (q.type === "multiple") {
+                          const current = (prev[q.id] as string[] | undefined) ?? [];
+                          const next = e.target.checked
+                            ? [...current, opt.value]
+                            : current.filter((value) => value !== opt.value);
+                          return { ...prev, [q.id]: next };
+                        }
+                        return { ...prev, [q.id]: opt.value };
+                      });
+                    }}
+                  >
                     {opt.label}
                     {opt.description && (
                       <QuestionnaireChoiceDescription className="text-xs">
                         {opt.description}
                       </QuestionnaireChoiceDescription>
+                    )}
+                    {opt.allowFreeText && isFreeTextChecked(q) && (
+                      // z-20 lifts the input above the choice's own absolutely
+                      // positioned ChoiceInput overlay (z-10, see
+                      // questionnaire.tsx), and stopPropagation on the input
+                      // itself keeps a click here from re-toggling that radio.
+                      <Input
+                        className="relative z-20 h-7 mt-1 text-xs"
+                        placeholder="Type your answer…"
+                        value={freeText[q.id] ?? ""}
+                        onChange={(e) => setFreeText((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                        onClick={(e) => e.stopPropagation()}
+                      />
                     )}
                   </QuestionnaireChoice>
                 ))}
