@@ -141,7 +141,7 @@ describe("groupConversation", () => {
     ]);
   });
 
-  it("lifts an ask_user call out of the strip as its own item", () => {
+  it("lifts an ask_user call out of the strip as its own item, dot kept too", () => {
     const items = groupConversation(
       [message("u", "user", "question"), message("a", "assistant", "")],
       [
@@ -152,39 +152,46 @@ describe("groupConversation", () => {
       ],
     );
 
-    expect(items.map((item) => item.kind)).toEqual(["message", "ask"]);
-    expect(items[1].kind === "ask" && items[1].pairs).toEqual([
+    expect(items.map((item) => item.kind)).toEqual(["message", "steps", "ask"]);
+    expect(items[2].kind === "ask" && items[2].pairs).toEqual([
       { answer: "card", question: "How prominent?" },
     ]);
   });
 
-  it("renders nothing for an ask still waiting on an answer", () => {
+  it("renders a pending dot, not a card, for an ask still waiting on an answer", () => {
     // Mid-turn, between the question arriving and the reader answering it. The
     // answer dialog is already showing these questions, so a card here would
-    // ask them twice with nothing under them.
+    // ask them twice with nothing under them — but the strip still gets a
+    // dot, which is the only record in the timeline that a question is open.
     const items = groupConversation(
       [message("live-round-message:live-round-1", "assistant", "")],
       [call("c1", "live-round-message:live-round-1", "ask_user")],
     );
 
-    expect(items).toEqual([]);
+    expect(items.map((item) => item.kind)).toEqual(["steps"]);
+    const step = items[0].kind === "steps" ? items[0].items[0] : undefined;
+    expect(step?.kind === "tool" && step.pending).toBe(true);
   });
 
-  it("keeps a pending ask out of the strip as well as out of the asks", () => {
-    // Otherwise the fold catches what the ask path declined, and it comes back
-    // as an unlabelled dot for the duration of the question.
+  it("keeps a pending ask in the strip, marked pending, alongside other calls", () => {
     const items = groupConversation(
       [message("a", "assistant", "")],
       [call("c1", "a", "bash"), call("c2", "a", "ask_user")],
     );
 
     expect(items.map((item) => item.kind)).toEqual(["steps"]);
-    expect(items[0].kind === "steps" && items[0].items).toHaveLength(1);
+    const steps = items[0].kind === "steps" ? items[0].items : [];
+    expect(steps).toHaveLength(2);
+    expect(steps.map((step) => step.kind === "tool" && step.pending)).toEqual([
+      undefined,
+      true,
+    ]);
   });
 
-  it("renders the card as soon as a live tool-end carries the answers", () => {
+  it("renders the card as soon as a live tool-end carries the answers, dot still in place", () => {
     // applyLiveToolEvent sets resultAt on tool-end, which is what tells this
     // apart from the pending row above — mid-turn, before any persisted row.
+    // The dot from before the answer landed is not removed once it does.
     const items = groupConversation(
       [message("live-round-message:live-round-1", "assistant", "")],
       [
@@ -196,8 +203,10 @@ describe("groupConversation", () => {
       ],
     );
 
-    expect(items.map((item) => item.kind)).toEqual(["ask"]);
-    expect(items[0].kind === "ask" && items[0].pairs).toEqual([
+    expect(items.map((item) => item.kind)).toEqual(["steps", "ask"]);
+    const step = items[0].kind === "steps" ? items[0].items[0] : undefined;
+    expect(step?.kind === "tool" && step.pending).toBeUndefined();
+    expect(items[1].kind === "ask" && items[1].pairs).toEqual([
       { answer: "yes", question: "Live?" },
     ]);
   });
@@ -216,7 +225,7 @@ describe("groupConversation", () => {
     ]);
   });
 
-  it("keeps the other calls of the same turn in the strip, before the ask", () => {
+  it("keeps the other calls of the same turn in the strip, before the ask, plus the ask's own dot", () => {
     const items = groupConversation(
       [message("u", "user", "q"), message("a", "assistant", "", "thought")],
       [
@@ -229,12 +238,15 @@ describe("groupConversation", () => {
     expect(items[1].kind === "steps" && items[1].items.map((i) => i.kind)).toEqual([
       "thinking",
       "tool",
+      "tool",
     ]);
   });
 
   it("ends the run, so a later silent turn starts a new strip", () => {
     // Otherwise the strip after the question absorbs into the one before it and
-    // renders above the answers that caused it.
+    // renders above the answers that caused it. The ask's own dot forms its
+    // own single-item strip ahead of its card, and the later bash call starts
+    // a fresh one rather than reaching back across the ask.
     const items = groupConversation(
       [message("a1", "assistant", ""), message("a2", "assistant", "")],
       [
@@ -243,7 +255,7 @@ describe("groupConversation", () => {
       ],
     );
 
-    expect(items.map((item) => item.kind)).toEqual(["ask", "steps"]);
+    expect(items.map((item) => item.kind)).toEqual(["steps", "ask", "steps"]);
   });
 
   it("marks a cancelled ask and keeps its error text verbatim", () => {
@@ -260,15 +272,18 @@ describe("groupConversation", () => {
       ],
     );
 
-    expect(items).toHaveLength(1);
-    expect(items[0].kind === "ask" && items[0].cancelled).toBe(true);
-    expect(items[0].kind === "ask" && items[0].pairs).toEqual([]);
-    expect(items[0].kind === "ask" && items[0].raw).toBe(
+    // Its dot is still in the strip, cancelled the same as any failed call.
+    expect(items.map((item) => item.kind)).toEqual(["steps", "ask"]);
+    const step = items[0].kind === "steps" ? items[0].items[0] : undefined;
+    expect(step?.kind === "tool" && step.call.isError).toBe(true);
+    expect(items[1].kind === "ask" && items[1].cancelled).toBe(true);
+    expect(items[1].kind === "ask" && items[1].pairs).toEqual([]);
+    expect(items[1].kind === "ask" && items[1].raw).toBe(
       "ask_user was cancelled: aborted",
     );
   });
 
-  it("does not count an ask_user call in the strip summary", () => {
+  it("counts an ask_user call in the strip summary now that it has a dot", () => {
     const items = groupConversation(
       [message("a", "assistant", "")],
       [
@@ -278,7 +293,7 @@ describe("groupConversation", () => {
     );
 
     const steps = items[0].kind === "steps" ? items[0].items : [];
-    expect(summariseSteps(steps)).toBe("bash");
+    expect(summariseSteps(steps)).toBe("ask_user · bash");
   });
 
   it("annotates every step of a turn with that turn's usage and call count", () => {

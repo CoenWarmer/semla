@@ -14,7 +14,7 @@
  * steps are available, not advertised.
  */
 
-import { BrainIcon, WrenchIcon, XIcon } from "lucide-react";
+import { BrainIcon, Loader2Icon, WrenchIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -57,8 +57,13 @@ function StepDetail({ item }: { item: StepItem }) {
           call.isError ? "text-destructive" : "text-muted-foreground",
         )}
       >
-        <WrenchIcon className="size-3.5 shrink-0" />
+        {item.pending ? (
+          <Loader2Icon className="size-3.5 shrink-0 animate-spin" />
+        ) : (
+          <WrenchIcon className="size-3.5 shrink-0" />
+        )}
         <span className="font-medium">{call.name}</span>
+        {item.pending && <span className="text-[11px]">waiting on you…</span>}
         {call.summary && (
           <span className="truncate font-mono text-[11px]">{call.summary}</span>
         )}
@@ -108,6 +113,7 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
       <div className="flex items-center gap-1 py-1 flex-wrap">
         {items.map((item) => {
           const failed = item.kind === "tool" && item.call.isError;
+          const pending = item.kind === "tool" && item.pending === true;
           const name = item.kind === "thinking" ? "Thinking" : item.call.name;
           const summary = item.kind === "tool" ? item.call.summary : undefined;
           const label = summary ? `${name} — ${summary}` : name;
@@ -116,17 +122,21 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
           return (
             <Tooltip key={item.id}>
               <TooltipTrigger
-                aria-label={label}
+                aria-label={pending ? `${label} — waiting on you` : label}
                 className={cn(
                   "flex size-5 items-center justify-center rounded-full border transition-colors",
                   failed
                     ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                    : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    : pending
+                      ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                      : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
                 onClick={() => setOpenAt(item.id)}
                 type="button"
               >
-                {item.kind === "thinking" ? (
+                {pending ? (
+                  <Loader2Icon className="size-3 animate-spin" />
+                ) : item.kind === "thinking" ? (
                   <BrainIcon className="size-3" />
                 ) : (
                   <WrenchIcon className="size-3" />
@@ -148,6 +158,7 @@ export function SessionStepsStrip({ items }: { items: StepItem[] }) {
                 {usage && (
                   <span className="tabular-nums text-[11px] opacity-80">{usage}</span>
                 )}
+                {pending && <span className="text-[11px]">waiting on you…</span>}
                 {failed && <span className="text-[11px]">failed</span>}
               </TooltipContent>
             </Tooltip>

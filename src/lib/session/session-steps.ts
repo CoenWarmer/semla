@@ -17,13 +17,23 @@
  *
  * Turns that do have text are left exactly as they were.
  *
- * Two tools are exempt from the fold. An `ask_user` call is not the agent's
- * own work — it is a question the reader answered, and the answers are part
- * of the conversation in the way a message is. `capture_feature_spec` is the
- * same shape: a form the reader filled in, not agent work. Burying either
- * behind an unlabelled dot loses the record of what was actually agreed, so
- * both are lifted out of the run as their own items and rendered beside the
- * messages. See ask-user-record.ts and feature-spec-record.ts.
+ * Two tools are exempt from the fold, in one respect. An `ask_user` call is
+ * not the agent's own work — it is a question the reader answered, and the
+ * answers are part of the conversation in the way a message is.
+ * `capture_feature_spec` is the same shape: a form the reader filled in, not
+ * agent work. Burying either behind an unlabelled dot loses the record of
+ * what was actually agreed, so both are *also* lifted out of the run as their
+ * own items, rendered beside the messages, once they resolve. See
+ * ask-user-record.ts and feature-spec-record.ts.
+ *
+ * They still get a dot in the strip, though, unlike other agent work — before
+ * they resolve, that dot is the only sign anywhere in the timeline that a
+ * question was asked, since AskUserDialog only shows what is answering *right
+ * now*, not history. The dot is pending (see StepItem's `pending`) for the
+ * whole window between the question appearing and the reader answering it,
+ * then settles once the answer/cancellation lands — and stays, so the strip
+ * keeps a record of exactly when in the run the question was asked, next to
+ * the card that shows what was asked and answered.
  */
 
 import type { SessionMessage, SessionToolCall } from "@/hooks/use-session-messages";
@@ -53,6 +63,12 @@ export type StepItem =
       messageId: string;
       call: SessionToolCall;
       usage?: StepTurnUsage;
+      /**
+       * Set only for an `ask_user`/`capture_feature_spec` call still waiting
+       * on the reader — see isPending. Absent (not `false`) for ordinary
+       * agent work, which has no such state to report.
+       */
+      pending?: boolean;
     };
 
 export type ConversationItem =
@@ -170,15 +186,16 @@ export function groupConversation(
     }
 
     const steps: StepItem[] = [];
-    // The calls this turn contributes to the strip. Counted before the steps
-    // are built because every step of the turn is annotated with it, and it is
-    // what tells the reader that two dots share one figure.
-    const stepCalls = calls.filter(
+    // The calls whose cost the turn's usage figure is shared across. An
+    // ask/feature-spec call is the reader's time, not tokens the agent spent,
+    // so it does not count toward the figure the other dots in this turn
+    // share — counted separately from `calls` below for exactly that reason.
+    const agentCalls = calls.filter(
       (call) => call.name !== ASK_USER_TOOL && call.name !== FEATURE_SPEC_TOOL,
     );
     const usage: StepTurnUsage | undefined = message.tokenUsage
       ? {
-          callsInTurn: stepCalls.length,
+          callsInTurn: agentCalls.length,
           cost: message.tokenUsage.cost,
           tokens: message.tokenUsage.total,
         }
@@ -194,13 +211,25 @@ export function groupConversation(
         ...(usage ? { usage } : {}),
       });
     }
-    for (const call of stepCalls) {
+    // Every call gets a dot, including ask_user/capture_feature_spec — see
+    // the module doc for why those keep one even once they also have their
+    // own card below.
+    //
+    // `pending` is deliberately only ever set for those two. An ordinary call
+    // is equally result-less between `tool-start` and `tool-end` (see
+    // applyLiveToolEvent), but it is waiting on the *agent*, which
+    // SessionActivityLine already reports as the live activity line, and it
+    // resolves on its own in seconds. These two wait on the reader, for as
+    // long as the reader takes, and nothing else in the timeline says so.
+    for (const call of calls) {
+      const isAskOrSpec = call.name === ASK_USER_TOOL || call.name === FEATURE_SPEC_TOOL;
       steps.push({
         call,
         id: `${message.id}:${call.id}`,
         kind: "tool",
         messageId: message.id,
         ...(usage ? { usage } : {}),
+        ...(isAskOrSpec && isPending(call) ? { pending: true } : {}),
       });
     }
 
