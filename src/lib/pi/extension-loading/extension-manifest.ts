@@ -100,6 +100,18 @@ export type ExtensionSpec = {
   source: ExtensionSource;
   /** Extensions that must be loaded before this one. */
   requires: readonly ExtensionId[];
+  /**
+   * Extensions that must load before this one *when they are loaded at all*.
+   * Ordering only: an absent one is skipped rather than refused, which is what
+   * makes it safe to name an extension the operator can switch off.
+   */
+  after?: readonly ExtensionId[];
+  /**
+   * The operator can drop this extension from a session through a setting
+   * (architecture-awareness-settings.json). Nothing may `require` it, because
+   * the load order would then refuse every turn the setting is off.
+   */
+  operatorDisableable?: boolean;
   /** Tool names this extension must have registered once bound. */
   providesTools: readonly string[];
   /**
@@ -324,10 +336,12 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     // Loads last among the tool-affecting extensions on purpose: it narrows
     // the active set by calling setActiveTools, and what it may narrow is
     // whatever the other extensions have registered by then. Ordered by
-    // `requires` rather than by position so the sort enforces it, and
-    // `placement-tools` is included because its edit/write are candidates the
-    // gate must be able to see.
-    requires: ["workflow", "wiki", "mcp", "placement-tools"],
+    // `requires` rather than by position so the sort enforces it.
+    // `placement-tools` is `after`, not `requires`: its edit/write are
+    // candidates the gate must be able to see, but the operator can switch it
+    // off, and the gate still has to load when they do.
+    requires: ["workflow", "wiki", "mcp"],
+    after: ["placement-tools"],
     // Contributes no tools; it only ever removes them.
     providesTools: [],
     optionalTools: [],
@@ -376,6 +390,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     // Injects PLACEMENT.md into the system prompt via before_agent_start;
     // depends on nothing else in the session.
     requires: [],
+    operatorDisableable: true,
     providesTools: [],
     optionalTools: [],
     providesSlots: [],
@@ -388,6 +403,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     // Appends to and injects SPEC.md via before_agent_start; independent of
     // placement-prompt even though both hook the same event.
     requires: [],
+    operatorDisableable: true,
     providesTools: [],
     optionalTools: [],
     providesSlots: [],
@@ -401,6 +417,7 @@ export const EXTENSION_MANIFEST: readonly ExtensionSpec[] = [
     // same loader placement-prompt.ts exports, but does not need that
     // extension loaded first — it calls the loader function directly.
     requires: [],
+    operatorDisableable: true,
     // Deliberately claims the built-in tool names `edit`/`write` — see the
     // named exception in assertManifestIsCoherent's collision check, and
     // session-service.ts's excludeTools wiring that keeps Pi's own
@@ -484,6 +501,9 @@ export function resolveExtensionLoadOrder(
     visiting.add(id);
     for (const dependency of spec.requires) {
       visit(dependency, [...trail, id]);
+    }
+    for (const predecessor of spec.after ?? []) {
+      if (byId.has(predecessor)) visit(predecessor, [...trail, id]);
     }
     visiting.delete(id);
     done.add(id);
@@ -630,7 +650,7 @@ export function assertManifestIsCoherent(
   const byId = new Map(specs.map((spec) => [spec.id, spec]));
   for (const spec of specs) {
     if (spec.source.kind !== "path") continue;
-    for (const dependency of spec.requires) {
+    for (const dependency of [...spec.requires, ...(spec.after ?? [])]) {
       if (byId.get(dependency)?.source.kind === "factory") {
         problems.push(
           `"${spec.id}" is loaded from a path but requires "${dependency}", ` +
@@ -653,6 +673,18 @@ export function assertManifestIsCoherent(
           `"${spec.id}" requires "${dependency}", which is only loaded for a ` +
             `session anchored on a project — so "${spec.id}" must be gated the ` +
             "same way, or must not require it",
+        );
+      }
+    }
+  }
+
+  for (const spec of specs) {
+    for (const dependency of spec.requires) {
+      if (byId.get(dependency)?.operatorDisableable) {
+        problems.push(
+          `"${spec.id}" requires "${dependency}", which the operator can switch ` +
+            `off — so every turn with it off would be refused. Use \`after\` ` +
+            "if only the order matters",
         );
       }
     }

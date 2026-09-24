@@ -130,6 +130,22 @@ describe("load order", () => {
     ];
     expect(() => resolveExtensionLoadOrder(dangling)).toThrow(/unknown extension/);
   });
+
+  it("orders by `after` when the predecessor is present", () => {
+    const order = resolveExtensionLoadOrder();
+    expect(indexOf(order, "jev-gate")).toBeGreaterThan(indexOf(order, "placement-tools"));
+  });
+
+  it("still resolves with every operator-disableable extension dropped", () => {
+    // session-service drops these when their architecture-awareness setting is
+    // off. jev-gate used to `require` placement-tools, so turning placement
+    // tools off refused every turn with "requires unknown extension".
+    for (const dropped of EXTENSION_MANIFEST.filter((s) => s.operatorDisableable)) {
+      const remaining = EXTENSION_MANIFEST.filter((s) => s.id !== dropped.id);
+      expect(() => resolveExtensionLoadOrder(remaining)).not.toThrow();
+      expect(resolveExtensionLoadOrder(remaining)).toHaveLength(remaining.length);
+    }
+  });
 });
 
 describe("manifest coherence", () => {
@@ -148,6 +164,14 @@ describe("manifest coherence", () => {
   it("rejects an extension shadowing a built-in tool name", () => {
     const shadowing = [spec({ id: "wiki" as const, providesTools: ["bash"] })];
     expect(() => assertManifestIsCoherent(shadowing)).toThrow(/built-in/);
+  });
+
+  it("rejects a hard dependency on an extension the operator can switch off", () => {
+    const fragile = [
+      spec({ id: "placement-tools" as const, operatorDisableable: true }),
+      spec({ id: "jev-gate" as const, requires: ["placement-tools" as const] }),
+    ];
+    expect(() => assertManifestIsCoherent(fragile)).toThrow(/can switch off/);
   });
 });
 
