@@ -5,6 +5,36 @@ import {
   createSession,
   readSessionCreateRequest,
 } from "@/lib/pi/session/session-create";
+import { listSessionsForUser } from "@/lib/pi/session/session-list";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * List the current user's sessions, newest first.
+ *
+ * Bare rows only — id, title, createdAt, isRunning — with no usage totals.
+ * The sidebar's server component (sessions-list.tsx) needs those and pays for
+ * them; a switcher does not, and adding them here would mean a Supabase round
+ * trip per session on every popover open for a page nobody reads.
+ */
+export async function GET() {
+  try {
+    const { supabase, user } = await requireUser();
+    const { sessions, error } = await listSessionsForUser(supabase, user.id);
+
+    if (error && sessions.length === 0) {
+      return NextResponse.json(
+        { error: "Failed to load sessions." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ sessions });
+  } catch (error) {
+    return handleRouteError(error, "Unable to load sessions.");
+  }
+}
 
 /**
  * Create a session explicitly.
