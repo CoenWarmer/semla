@@ -1,77 +1,47 @@
 "use client";
 
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useForkedSubmit } from "@/hooks/use-forked-submit";
+import { usePendingPromptHandoff } from "@/hooks/use-pending-prompt-handoff";
+import { usePeriodicContextCheck } from "@/hooks/use-periodic-context-check";
 import { usePromptMutation } from "@/hooks/use-prompt-mutation";
+import { useReviewPanelState } from "@/hooks/use-review-panel-state";
 import { useSessionControls } from "@/hooks/use-session-controls";
+import { useSessionComposition } from "@/hooks/use-session-composition";
+import { useSessionHeader } from "@/hooks/use-session-header";
 import {
-  allReviewCommentsQueryKey,
-  reviewCommentsQueryKey,
-  useDismissReview,
-  useReview,
-} from "@/hooks/use-review";
-import type { ReviewComment } from "@/lib/review/review-comment-types";
-import {
-  SessionMessagesResult,
+  type SessionMessagesResult,
   useSessionMessages,
 } from "@/hooks/use-session-messages";
-import { mergeToolCalls } from "@/lib/session/live-tool-calls";
+import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
+import { useSessionWorkflowSnapshots } from "@/hooks/use-session-workflow-snapshots";
+import { isSessionMissing } from "@/lib/prompt-failure";
 import { liveRoundMessages } from "@/lib/session/live-rounds";
-import {
-  openingWrite,
-  shouldFollowOpen,
-  shouldOpenReview,
-} from "@/lib/review/review-open";
-import { followModeEnabled, useUserSettings } from "@/hooks/use-user-settings";
-import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
-import { useTriggerContextCheck } from "@/hooks/use-context-check";
-import {
-  useWorkflowRuns,
-  workflowRunsQueryKey,
-} from "@/hooks/use-workflow-runs";
+import { mergeToolCalls } from "@/lib/session/live-tool-calls";
+import { truncateAtMessage } from "@/lib/session/session-fork";
 import {
   sessionAgentSelectionKey,
   sessionPendingScrollKey,
-  sessionWorkflowComputedSnapshotKey,
   useSessionAgentSelection,
-  useSessionLiveAccesses,
   useSessionPendingScroll,
 } from "@/lib/session/session-live-state";
-import type { WorkflowSnapshot } from "@/types/workflow";
-import { AgentTranscriptDrawer } from "./session/agent-transcript-drawer";
-import { useElementTarget } from "./element-target-provider";
-import { ReviewPanel } from "./review/review-panel";
+import { appendConversation, groupConversation } from "@/lib/session/session-steps";
+
 import { SessionConversation } from "./conversation/session-conversation";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "./ui/resizable";
-import { truncateAtMessage } from "@/lib/session/session-fork";
-import { groupConversation } from "@/lib/session/session-steps";
-import dynamic from "next/dynamic";
+import { ReviewPanel } from "./review/review-panel";
+import { AgentTranscriptDrawer } from "./session/agent-transcript-drawer";
+import { SessionLayout } from "./session/session-layout";
+import { SessionSummaryPanel } from "./session/session-summary-panel";
+import { SessionTopbar } from "./session/session-topbar";
 
 const WikiMiniGraph = dynamic(
   () => import("./wiki/wiki-mini-graph").then((m) => m.WikiMiniGraph),
   { ssr: false },
 );
-
-import { isSessionMissing } from "@/lib/prompt-failure";
-
-import type { PromptEditorModel } from "./conversation/prompt-editor";
-import { sessionComposition } from "@/lib/context-composition";
-import { SessionTopbar } from "./session/session-topbar";
-import { SessionSummaryPanel } from "./session/session-summary-panel";
-import {
-  usePendingPrompt,
-  type PendingPrompt,
-} from "@/components/pending-prompt-provider";
-import { useQueryClient } from "@tanstack/react-query";
-
-import { SESSION_STATUS_KEY } from "@/lib/session/session-status";
-import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSessionComposition } from "@/hooks/use-session-composition";
 
 export function ClientSessionComponent({
   defaultTools,
@@ -106,6 +76,7 @@ export function ClientSessionComponent({
    */
   const searchParams = useSearchParams();
   const viewingLeafId = searchParams.get("leaf");
+  const queryClient = useQueryClient();
 
   const {
     activeTool,
@@ -127,31 +98,20 @@ export function ClientSessionComponent({
 
   /**
    * `useMutation` (TanStack Query) returns a fresh result object on every
-   * render — it is read off `useSyncExternalStore` — so `promptMutation`
-   * above is never the same object twice even when nothing about the
-   * mutation changed. `mutateAsync` itself is bound once by the underlying
-   * `MutationObserver` and stays stable for the mutation's lifetime, so
-   * callbacks that only need to *call* the mutation depend on this instead
-   * of on `promptMutation`, which otherwise gives every callback that closes
-   * over it (and every prop built from one of those callbacks, e.g.
-   * `ReviewPanel`'s `onExplain`) a new identity on every render.
+   * render, so `promptMutation` is never the same object twice. `mutateAsync`
+   * is bound once by the underlying `MutationObserver` and stays stable, so
+   * everything that only needs to *call* the mutation takes this instead —
+   * otherwise every callback closing over it, and every prop built from one
+   * (e.g. `ReviewPanel`'s `onExplain`), would get a new identity every render.
    */
   const promptMutateAsync = promptMutation.mutateAsync;
 
-  const { consume: consumePendingPrompt } = usePendingPrompt();
-
-  /**
-   * The session's title.
-   *
-   * `title` is the server's render, which for a session created by its own
-   * first prompt is null — the title is derived from that prompt while the turn
-   * runs, and arrives over the stream. Rendering it from here is what replaced
-   * a `router.refresh()` after the turn: a full root-layout re-render, measured
-   * at ~4s, to propagate one string.
-   */
-  const [titleOverride, setTitleOverride] = useState<string | null>(null);
-  const shownTitle = titleOverride ?? serverTitle ?? title;
-  const [goal, setGoal] = useState<string | null>(initialGoal ?? null);
+  const { goal, saveGoal, saveTitle, shownTitle } = useSessionHeader({
+    initialGoal,
+    serverTitle,
+    sessionId,
+    title,
+  });
 
   const { compact, stop } = useSessionControls(sessionId);
 
@@ -165,47 +125,42 @@ export function ClientSessionComponent({
     compact();
   }, [compact]);
 
-  const handleGoalSave = useCallback(
-    async (next: string | null) => {
-      setGoal(next);
-      await fetch(`/api/sessions/${sessionId}`, {
-        body: JSON.stringify({ goal: next ?? "" }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-    },
-    [sessionId],
-  );
-
-  /**
-   * The PATCH route ignores a blank title (see route.ts), so there is no
-   * `null` case here the way there is for `handleGoalSave` — a title is
-   * either replaced with a non-empty string or left alone.
-   */
-  const handleTitleSave = useCallback(
-    async (next: string) => {
-      setTitleOverride(next);
-      await fetch(`/api/sessions/${sessionId}`, {
-        body: JSON.stringify({ title: next }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-    },
-    [sessionId],
-  );
-
-  const queryClient = useQueryClient();
   // The server's view counts too: a turn continues in the background after the
   // stream closes, and a dropped stream leaves this page with no local sign of
   // work that is still going.
-  const isActive =
-    promptMutation.isPending || isReconnecting || serverIsRunning;
+  const isActive = promptMutation.isPending || isReconnecting || serverIsRunning;
 
   // Plays question.mp3 / done.mp3 when this session is not the tab in focus.
   useSessionSoundCue({
     hasPendingQuestion: pendingQuestion !== null || pendingFeatureSpec,
     isActive,
   });
+
+  const review = useReviewPanelState({
+    initialManuallyOpened: initialReviewManuallyOpened,
+    isActive,
+    openReviewRequest,
+    sessionId,
+  });
+
+  const {
+    forkedAt,
+    handleCancelFork,
+    handleEditPrompt,
+    handleExplain,
+    handleFork,
+    handleSelectionChange,
+    handleSubmit,
+  } = useForkedSubmit({
+    isActive,
+    promptMutateAsync,
+    reviewOpen: review.open,
+    setReviewManuallyOpened: review.setManuallyOpened,
+    viewingLeafId,
+  });
+
+  usePendingPromptHandoff({ promptMutateAsync, saveGoal, sessionId });
+
   // Paused mid-turn: the server has no rows for a turn until it ends, so an
   // unbidden refetch would replace the optimistic prompt with a list without it.
   const messagesQuery = useSessionMessages(
@@ -214,22 +169,6 @@ export function ClientSessionComponent({
     isActive,
     viewingLeafId,
   );
-  const workflowRunsQuery = useWorkflowRuns(sessionId, workflowSnapshot?.runId);
-  /**
-   * The message a fork is currently positioned at, or null when the view is
-   * the live tip. See docs/plans/branching-sessions.md §3: forking does not
-   * itself create a branch, it repositions where the next prompt will land
-   * — so until that prompt is sent, the only visible effect is that the
-   * conversation is shown truncated to this point.
-   *
-   * Cleared whenever the transcript query resolves to a *different* set of
-   * messages than the one the fork was taken against: a real branch only
-   * exists once a second child is appended, and once it does, the newly
-   * fetched conversation already ends at the right place on its own —
-   * continuing to truncate on the client would then cut off the very reply
-   * the fork produced.
-   */
-  const [forkedAt, setForkedAt] = useState<string | null>(null);
   // Memoised, not just defaulted: `?? []` hands out a fresh array on every
   // render while the query is empty, which defeats every memo and effect
   // downstream that depends on it.
@@ -255,349 +194,53 @@ export function ClientSessionComponent({
   // this component already has, so asking a route for it would mean the
   // server re-reading and re-parsing the whole session for numbers the
   // browser was holding all along.
-  const composition = useSessionComposition({
-    messagesQuery,
-    messages,
-    toolCalls,
-  });
-  // One pseudo-message per assistant round trip this turn has made so far,
-  // appended after the persisted ones. A live tool call's messageId points at
-  // one of these — see live-rounds.ts — so groupConversation interleaves live
-  // text and live tool calls in the order the round trips actually happened,
-  // the same way it already interleaves the persisted rows they become once
-  // the turn ends. No separate live renderer and no placement hack: this and
-  // `messages` are simply concatenated and handed to the one function that
-  // already gets this right.
-  const liveMessages = useMemo(
-    () => liveRoundMessages(liveRounds),
-    [liveRounds],
-  );
-  const messagesWithLiveRounds = useMemo(
-    () => [...messages, ...liveMessages],
-    [messages, liveMessages],
-  );
+  const composition = useSessionComposition({ messages, messagesQuery, toolCalls });
+
   // Turns that only called tools carry no text and used to render as empty
   // bubbles. Folded into strips of steps instead — see session-steps.ts.
+  //
+  // Grouped in two parts so a streamed token regroups only the live tail. The
+  // persisted part is grouped against the persisted calls alone, sorted the
+  // way `mergeToolCalls` sorts them: a live call always points at a live
+  // round's pseudo-message (see live-rounds.ts), never at a persisted one, so
+  // the persisted part's grouping cannot depend on the live calls.
+  const persistedConversation = useMemo(
+    () => groupConversation(messages, mergeToolCalls(persistedToolCalls ?? [], [])),
+    [messages, persistedToolCalls],
+  );
+  // One pseudo-message per assistant round trip this turn has made so far,
+  // folded on after the persisted ones — so live text and live tool calls
+  // interleave in the order the round trips actually happened, the same way
+  // the persisted rows they become already do.
   const conversation = useMemo(
-    () => groupConversation(messagesWithLiveRounds, toolCalls),
-    [messagesWithLiveRounds, toolCalls],
+    () => appendConversation(persistedConversation, liveRoundMessages(liveRounds), toolCalls),
+    [persistedConversation, liveRounds, toolCalls],
   );
-
-  const contextCheckTrigger = useTriggerContextCheck(sessionId);
-
-  // Trigger an immediate re-fetch of workflow runs when a background workflow
-  // is started. The initial poll may have returned empty because the DB entry
-  // is created a few seconds after the "workflow-started" SSE event fires.
-  const workflowRunId = workflowSnapshot?.runId;
-  useEffect(() => {
-    if (workflowRunId) {
-      void queryClient.invalidateQueries({
-        queryKey: workflowRunsQueryKey(sessionId),
-      });
-    }
-  }, [workflowRunId, sessionId, queryClient]);
-
-  // Use the most recent run's snapshot if it has detail; fall back to a
-  // minimal placeholder so the panel is visible for background workflows
-  // whose snapshot hasn't been populated yet.
-  const mostRecentRun = workflowRunsQuery.data?.[0];
-  const persistedWorkflowSnapshot = mostRecentRun
-    ? typeof mostRecentRun.snapshot?.name === "string" &&
-      Array.isArray(mostRecentRun.snapshot?.agents)
-      ? mostRecentRun.snapshot
-      : {
-          agentCount: 0,
-          agents: [],
-          doneCount: 0,
-          errorCount: 0,
-          name: `Workflow (${mostRecentRun.status})`,
-          phases: [],
-          runId: mostRecentRun.run_id,
-          runningCount: mostRecentRun.status === "running" ? 1 : 0,
-        }
-    : undefined;
-
-  // Synthetic snapshot for non-workflow sessions: shows the main agent as a
-  // single node so the panel always has something to display.
-  const sessionAgentSnapshot = useMemo((): WorkflowSnapshot => {
-    const hasMessages = messages.length > 0;
-    return {
-      agentCount: 1,
-      agents: [
-        {
-          id: 0,
-          label: activeTool ? `${activeTool}…` : "Session agent",
-          status: isActive ? "running" : hasMessages ? "done" : "queued",
-        },
-      ],
-      doneCount: isActive ? 0 : hasMessages ? 1 : 0,
-      errorCount: 0,
-      name: "Session",
-      phases: [],
-      runningCount: isActive ? 1 : 0,
-    };
-  }, [isActive, messages.length, activeTool]);
-
-  /**
-   * Every run's snapshot for the conversation's phase bar, newest first.
-   *
-   * Distinct from `snapshot` below on purpose. That one collapses to a single
-   * run and falls back to `sessionAgentSnapshot` so the workflow PANEL always
-   * has a node to draw; the phase bar must not receive that synthetic value,
-   * or a session that ran no workflow would grow a bar describing its own main
-   * agent. Here a session with no runs yields an empty list, and the bar
-   * renders nothing.
-   */
-  const workflowRunSnapshots = useMemo(
-    () => (workflowRunsQuery.data ?? []).map((run) => run.snapshot),
-    [workflowRunsQuery.data],
-  );
-
-  const snapshot =
-    workflowSnapshot &&
-    persistedWorkflowSnapshot &&
-    workflowSnapshot.runId === persistedWorkflowSnapshot.runId &&
-    persistedWorkflowSnapshot.agents.length >= workflowSnapshot.agents.length
-      ? persistedWorkflowSnapshot
-      : (workflowSnapshot ?? persistedWorkflowSnapshot ?? sessionAgentSnapshot);
-
-  useEffect(() => {
-    queryClient.setQueryData(
-      sessionWorkflowComputedSnapshotKey(sessionId),
-      snapshot,
-    );
-  }, [queryClient, sessionId, snapshot]);
-
-  // After every 10th user prompt, trigger a background context-quality check.
-  const prevPendingRef = useRef(false);
-  useEffect(() => {
-    const wasJustPending = prevPendingRef.current && !isActive;
-    prevPendingRef.current = isActive;
-    if (!wasJustPending) return;
-    const userMsgCount = messages.filter((m) => m.role === "user").length;
-    if (userMsgCount > 0 && userMsgCount % 10 === 0) {
-      contextCheckTrigger.mutate();
-    }
-  }, [isActive, messages, contextCheckTrigger]);
-
-  // Track elapsed time while a prompt is in-flight.
-  const startTimeRef = useRef<number | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  useEffect(() => {
-    if (isActive) {
-      if (!startTimeRef.current) startTimeRef.current = Date.now();
-      const id = setInterval(
-        () => setElapsedMs(Date.now() - (startTimeRef.current ?? Date.now())),
-        500,
-      );
-      return () => clearInterval(id);
-    }
-    startTimeRef.current = null;
-    // oxlint-disable-next-line react/set-state-in-effect
-    setElapsedMs(0);
-  }, [isActive]);
-
-  const elapsedLabel =
-    elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : null;
-  // Rough estimate: ~4 chars per token for output only, across every round
-  // trip this turn has made so far. No cost yet — the real usage (and its
-  // price) only arrives with the finished message.
   const liveTextLength = useMemo(
     () => liveRounds.reduce((sum, round) => sum + round.text.length, 0),
     [liveRounds],
   );
-  const estimatedTokens =
-    liveTextLength > 0 ? Math.round(liveTextLength / 4) : null;
 
-  const [reviewManuallyOpened, setReviewManuallyOpenedState] = useState(
-    initialReviewManuallyOpened,
-  );
-  // Persisted to the session's own record on disk, not to per-user panel
-  // layout: this is "was review open in *this* session", which belongs beside
-  // the session's other saved view state (leafId) rather than beside a
-  // pixel size that would be the same for every session.
-  const setReviewManuallyOpened = useCallback(
-    (next: boolean) => {
-      setReviewManuallyOpenedState(next);
-      void fetch(`/api/sessions/${sessionId}`, {
-        body: JSON.stringify({ reviewManuallyOpened: next }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-    },
-    [sessionId],
-  );
-  // Which way the review panel splits from the conversation when both are
-  // open. "vertical" stacks them (review on top); "horizontal" sits them
-  // side by side. Session-local rather than persisted: the choice matters
-  // for exactly as long as this review is open.
-  const [reviewLayout, setReviewLayout] = useState<"horizontal" | "vertical">(
-    "horizontal",
-  );
-  // The dragged split between the review pane and the conversation,
-  // restored on reload. Keyed by orientation so a horizontal drag does not
-  // leak into the vertical layout's percentages.
-  const panelLayoutsQuery = usePanelLayouts();
-  const panelLayouts = panelLayoutsQuery.data;
-  const reviewSplitKey = `review-split-${reviewLayout}`;
-  const reviewSplitLayout = panelLayouts?.[reviewSplitKey] as
-    | Record<string, number>
-    | undefined;
-  const saveReviewSplit = usePanelLayoutSaver(reviewSplitKey);
-  /**
-   * The split between the conversation and the summary card.
-   *
-   * One key, with no orientation suffix: this split has a single axis (side
-   * by side), so unlike `review-split-*` there is no second preference that
-   * a drag could leak into.
-   */
-  const summarySplitLayout = panelLayouts?.["session-summary-split"] as
-    | Record<string, number>
-    | undefined;
-  const saveSummarySplit = usePanelLayoutSaver("session-summary-split");
+  usePeriodicContextCheck({ isActive, messages, sessionId });
+
+  const workflowRunSnapshots = useSessionWorkflowSnapshots({
+    activeTool,
+    hasMessages: messages.length > 0,
+    isActive,
+    sessionId,
+    workflowSnapshot,
+  });
+
   /**
    * Whether the summary card is showing.
    *
-   * Session-local rather than persisted, matching `reviewLayout` above: the
+   * Session-local rather than persisted, matching the review layout: the
    * card is a thing you glance at and dismiss, and a closed panel that stays
    * closed across reloads is harder to rediscover than one that comes back.
    */
   const [summaryOpen, setSummaryOpen] = useState(false);
-  // The badge is worth a request even with the panel shut: it is how the
-  // operator learns there is something to review without being interrupted.
-  const reviewQuery = useReview(sessionId);
-  const dismissReview = useDismissReview(sessionId);
-  const reviewChangedCount = (reviewQuery.data?.projects ?? []).reduce(
-    (sum, project) => sum + project.changedFiles.length,
-    0,
-  );
 
-  /**
-   * A source location the element picker resolved, waiting to be opened.
-   *
-   * Read from context rather than a prop: the picker lives in `HeaderActions`,
-   * a sibling of this component under the root layout rather than an ancestor,
-   * so nothing here can receive it as one. See element-target-provider.tsx.
-   */
-  const elementTarget = useElementTarget();
-
-  /**
-   * The live write that may put the panel on screen, and the one already
-   * dismissed.
-   *
-   * Held here rather than in the panel because the panel does not exist while
-   * it is closed, which is precisely the state this decides.
-   */
-  const userSettings = useUserSettings();
-  const liveAccesses = useSessionLiveAccesses(sessionId).data;
-  const [dismissedWriteId, setDismissedWriteId] = useState<string | null>(null);
-  const followWrite = useMemo(
-    () => openingWrite(liveAccesses ?? []),
-    [liveAccesses],
-  );
-
-  // Derived, never set from an effect. `react/set-state-in-effect` is an
-  // error in this repository, and the panel is genuinely open *because of* the
-  // state rather than because something once happened to it. A picked element
-  // opens the panel exactly like the manual button does, just from a
-  // different origin for the "the operator asked for this" signal.
-  const reviewOpen =
-    shouldOpenReview({
-      manuallyOpened: reviewManuallyOpened,
-      review: reviewQuery.data,
-      sessionRunning: isActive,
-    }) ||
-    elementTarget.target !== null ||
-    shouldFollowOpen({
-      dismissedId: dismissedWriteId,
-      followMode: followModeEnabled(userSettings.data),
-      write: followWrite,
-    });
-
-  // Closing is also dismissing. Without recording the state as seen, the next
-  // refetch would find it unreviewed and open the panel straight back up.
-  //
-  // Depends on `dismissReview.mutate` rather than the `dismissReview` object
-  // itself: `useMutation` returns a fresh result object on every render (it
-  // is read off `useSyncExternalStore`), but the `mutate` function bound to
-  // it is stable for the mutation's whole lifetime — the MutationObserver
-  // binds it once in its constructor. Depending on the object would give
-  // this callback a new identity every render regardless of `useCallback`,
-  // which in turn gave `ReviewPanel`'s `onClose` prop a new identity every
-  // render — the exact case `React.memo` cannot help with.
-  const dismissReviewMutate = dismissReview.mutate;
-  const closeReview = useCallback(() => {
-    setReviewManuallyOpened(false);
-    elementTarget.clear();
-    // Closing a follow-opened panel mid-turn has to stick, or the agent's next
-    // edit reopens it and the close button is useless. Recording the write
-    // rather than a flag is what still lets a *later* edit open it again.
-    setDismissedWriteId(followWrite?.id ?? null);
-    const seen = reviewQuery.data?.fingerprint;
-    if (seen) dismissReviewMutate(seen);
-  }, [
-    dismissReviewMutate,
-    elementTarget,
-    followWrite?.id,
-    reviewQuery.data?.fingerprint,
-    setReviewManuallyOpened,
-  ]);
-  // The `open_review` tool asks the panel to open the same way a picked
-  // element or an artifact chip does — through `elementTarget.request()` —
-  // but the request arrives over the stream rather than from a DOM click, so
-  // there is no event handler to call it from. The nonce is what makes a
-  // *repeated* request (e.g. two "just open, nothing selected" calls in a
-  // row) still take effect: without it, a second identical request would be
-  // the same object as the last one this effect already acted on.
-  //
-  // Calling `elementTarget.request` here is not itself the state this effect
-  // reacts to — it sets ElementTargetProvider's state, not this component's —
-  // so it is not the pattern `react/set-state-in-effect` exists to catch.
-  const openReviewRequestNonce = openReviewRequest?.nonce;
-  useEffect(() => {
-    if (openReviewRequestNonce === undefined) return;
-    const target = openReviewRequest?.target;
-
-    // A comment this same call created is already durable (open-review.ts
-    // inserted it before returning), so it only needs to reach the editor
-    // pane's query cache — not a re-fetch of the route it will read from on
-    // the next mount, which is what a comment from a *previous* turn relies
-    // on instead. Prepended, matching `listReviewComments`' oldest-first
-    // order: this comment was created after everything already cached.
-    const comment = openReviewRequest?.comment;
-    if (comment && target) {
-      queryClient.setQueryData<ReviewComment[]>(
-        reviewCommentsQueryKey(sessionId, target.project, target.path),
-        (previous) => [...(previous ?? []), comment],
-      );
-      // And the session-wide sequence the comment cards' arrows step
-      // through, for the same reason the batch path appends to it: a
-      // comment the arrows cannot reach is one the operator can only find
-      // by opening its file by hand.
-      queryClient.setQueryData<ReviewComment[]>(
-        allReviewCommentsQueryKey(sessionId),
-        (previous) => [...(previous ?? []), comment],
-      );
-    }
-
-    if (target === null || target === undefined) {
-      // No path to open at — just bring the panel on screen, the same way
-      // the header's Review button does.
-      setReviewManuallyOpened(true);
-      return;
-    }
-    elementTarget.request({
-      commitSha: target.commitSha ?? null,
-      line: target.line ?? undefined,
-      path: target.path,
-      precision: "exact",
-      project: target.project,
-    });
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [openReviewRequestNonce]);
-
-  const agentSelection = useSessionAgentSelection(sessionId);
-  const selectedAgent = agentSelection.data;
+  const selectedAgent = useSessionAgentSelection(sessionId).data;
 
   const pendingScrollQuery = useSessionPendingScroll(sessionId);
   /**
@@ -631,441 +274,92 @@ export function ClientSessionComponent({
   const errorMessage = sessionMissing
     ? undefined
     : (streamError ??
-      (messagesQuery.error instanceof Error
-        ? messagesQuery.error.message
-        : undefined));
-
-  const handleSubmit = useCallback(
-    async (
-      message: PromptInputMessage,
-      model: PromptEditorModel,
-      tools: string[],
-    ) => {
-      if (!message.text.trim()) {
-        return;
-      }
-
-      // The branch this prompt continues from, when it is not the live tip.
-      // A fork position (set by the fork button, within whatever branch is
-      // currently open) takes priority over just viewing a branch through
-      // ?leaf= — forking is the more specific of the two. Either way this is
-      // self-healing if the named entry is stale by the time the turn lands:
-      // resolveLeafOverride (session-leaf.ts) walks it forward to the current
-      // tip of its branch rather than pinning the exact entry.
-      //
-      // Cleared regardless of outcome: on success the fetched conversation
-      // already ends at the right place, and on failure there is nothing to
-      // stay forked at — the prompt never landed. viewingLeafId is left alone
-      // either way — it is the URL's concern, not this submission's.
-      const leafId = forkedAt ?? viewingLeafId ?? undefined;
-      setForkedAt(null);
-      // Submitting a prompt while the review panel is on screen must not close
-      // it. `shouldOpenReview`'s `sessionRunning` guard exists to stop the
-      // panel *appearing* over a turn in progress, but this turn is about to
-      // start with the panel already open — and an operator who is reading a
-      // review while asking a question has not finished reading it.
-      //
-      // Recorded here, in the event handler, rather than derived: the flag is
-      // the "the operator asked for this" signal, and submitting while open is
-      // exactly that. Promoting it makes an auto-opened panel as durable as a
-      // button-opened one, which is the only difference the operator could not
-      // have predicted. Closing still dismisses (see `closeReview`), so this
-      // cannot strand the panel open.
-      if (reviewOpen) setReviewManuallyOpened(true);
-      await promptMutateAsync({
-        leafId,
-        model,
-        text: message.text,
-        tools,
-      });
-    },
-    [
-      forkedAt,
-      promptMutateAsync,
-      reviewOpen,
-      setReviewManuallyOpened,
-      viewingLeafId,
-    ],
-  );
-
-  /**
-   * Fork the conversation at this message.
-   *
-   * Sets the position; nothing is sent yet, and nothing branches yet — see
-   * docs/plans/branching-sessions.md §3. The next prompt (from the bar, an
-   * edit, or "Explain") is what actually continues from here.
-   */
-  const handleFork = useCallback((entryId: string) => {
-    setForkedAt(entryId);
-  }, []);
-
-  const handleCancelFork = useCallback(() => {
-    setForkedAt(null);
-  }, []);
-
-  // Navigating to a different branch (§4) supersedes any in-progress fork
-  // (§3) the operator had set up on whatever branch they were looking at
-  // before — a fork position named against the old view has no meaning
-  // against the new one. This mirrors an external value the URL controls,
-  // not something the component could derive without an effect.
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect
-    setForkedAt(null);
-  }, [viewingLeafId]);
-
-  // The model and tools the prompt bar would submit with. An edit runs a turn
-  // from a message rather than from the bar, and should use the same selection.
-  const selectionRef = useRef<{
-    model: PromptEditorModel;
-    tools: string[];
-  } | null>(null);
-  const handleSelectionChange = useCallback(
-    (selection: { model: PromptEditorModel; tools: string[] } | null) => {
-      selectionRef.current = selection;
-    },
-    [],
-  );
-
-  /**
-   * Answer a question asked from the review panel.
-   *
-   * The panel is collapsed rather than dismissed: the answer arrives in the
-   * conversation, which the review panel no longer shares the layout with once
-   * collapsed, but the operator has not said they are finished reviewing — so
-   * no fingerprint is recorded and the Review button still carries its count.
-   *
-   * Uses the prompt bar's own model and tool selection, exactly as an edited
-   * message does.
-   */
-  const handleExplain = useCallback(
-    (prompt: string) => {
-      const selection = selectionRef.current;
-      if (!selection) return;
-
-      setReviewManuallyOpened(false);
-      // A distinct turn from wherever the operator was forked to — explaining
-      // an element is asked of the conversation as it stands, not of a fork
-      // position that was set up but never sent.
-      setForkedAt(null);
-      // But NOT distinct from whatever branch is actually open: if the page is
-      // showing an earlier branch (viewingLeafId, §4), that is the
-      // conversation this prompt is asked of. Omitting it here would send the
-      // turn to the session's live tip while this view stays keyed to the
-      // branch it is showing (see usePromptMutation's messagesKey) — the
-      // reply would land somewhere this screen never refetches, which reads
-      // as "nothing happened" rather than as an answer that went missing.
-      promptMutateAsync({
-        leafId: viewingLeafId ?? undefined,
-        model: selection.model,
-        text: prompt,
-        tools: selection.tools,
-      }).catch(() => {});
-    },
-    [promptMutateAsync, setReviewManuallyOpened, viewingLeafId],
-  );
-
-  const handleEditPrompt = useCallback(
-    (entryId: string, text: string) => {
-      const selection = selectionRef.current;
-      // No model resolved yet, or a turn is already running — branching the leaf
-      // under a live turn would interleave two paths in one session.
-      if (!selection) return;
-
-      // An edit names its own, more specific target (the edited entry's
-      // parent) and takes priority over any fork position on the server — see
-      // runPiPrompt. Clearing here keeps the client's display in step with
-      // that: the truncation this fork was showing no longer applies once a
-      // different leaf move has been made.
-      setForkedAt(null);
-
-      // Rejections surface through the mutation's onError as streamError.
-      promptMutateAsync({
-        editEntryId: entryId,
-        model: selection.model,
-        text,
-        tools: selection.tools,
-      }).catch(() => {});
-    },
-    [promptMutateAsync],
-  );
-
-  const pendingPromptRef = useRef<{
-    prompt: PendingPrompt | null;
-    sessionId: string;
-  } | null>(null);
-  const submittedForRef = useRef<string | null>(null);
-
-  // Submit the first prompt of a session, handed over by /sessions/new.
-  //
-  // The mutation is started from a timeout rather than inline. useMutation
-  // attaches its observer to the mutation inside mutate() — that is the only
-  // place it ever attaches — while React detaches it on unsubscribe and never
-  // re-attaches. Starting the mutation during this commit means StrictMode's
-  // teardown detaches the observer permanently: the mutation runs, dispatches
-  // "success", and reaches nobody, so isPending stays true forever even though
-  // the turn finished. Deferring past the commit leaves the subscription stable
-  // by the time mutate() runs. The handoff is cleared when read, so it is
-  // cached here for StrictMode's second effect pass.
-  useEffect(() => {
-    if (submittedForRef.current === sessionId) return;
-
-    if (pendingPromptRef.current?.sessionId !== sessionId) {
-      pendingPromptRef.current = {
-        prompt: consumePendingPrompt(sessionId),
-        sessionId,
-      };
-    }
-
-    const pending = pendingPromptRef.current.prompt;
-    if (!pending?.text.trim()) return;
-
-    const timer = setTimeout(() => {
-      submittedForRef.current = sessionId;
-
-      if (pending.goal) {
-        setGoal(pending.goal);
-        void handleGoalSave(pending.goal);
-      }
-
-      // `pending.create` rides along in the request: the session may not exist
-      // yet, and the prompt route creates it before running the turn. Creating
-      // it from here first would put a second round trip between arriving on
-      // this page and the agent starting.
-      //
-      // Rejections surface through the mutation's onError as streamError.
-      promptMutation.mutateAsync(pending).catch(() => {});
-
-      if (pending.create) {
-        // The sidebar polls; nudge it so the new session appears now rather
-        // than whenever the next poll lands.
-        void queryClient.invalidateQueries({ queryKey: SESSION_STATUS_KEY });
-      }
-    }, 0);
-
-    return () => clearTimeout(timer);
-    // promptMutation and handleGoalSave are deliberately omitted: they change
-    // identity every render, and rescheduling the timer on each one could
-    // starve it. Both are only read inside the timeout.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [consumePendingPrompt, sessionId]);
-
-  // Shared between the plain and review-split layouts below: the review
-  // panel's resizable group is one of two places this can render, not two
-  // different conversations.
-  const conversationPane = (
-    <SessionConversation
-      activeTool={activeTool}
-      composition={composition}
-      conversation={conversation}
-      defaultTools={defaultTools}
-      elapsedLabel={elapsedLabel}
-      errorMessage={errorMessage}
-      estimatedTokens={estimatedTokens}
-      forkedAt={forkedAt}
-      goal={goal}
-      hasMessages={messages.length > 0}
-      isActive={isActive}
-      liveTextLength={liveTextLength}
-      onCancelFork={handleCancelFork}
-      onCompactClick={handleCompact}
-      onEditPrompt={handleEditPrompt}
-      onFork={handleFork}
-      onGoalSave={handleGoalSave}
-      onSelectionChange={handleSelectionChange}
-      onStop={handleStop}
-      onSubmit={handleSubmit}
-      pendingFeatureSpec={pendingFeatureSpec}
-      pendingQuestion={pendingQuestion}
-      sessionId={sessionId}
-      sessionMissing={sessionMissing}
-      viewingLeafId={viewingLeafId}
-      workflowRunSnapshots={workflowRunSnapshots}
-      workflowSnapshot={workflowSnapshot}
-    />
-  );
-
-  /**
-   * The conversation and the session summary card, side by side.
-   *
-   * A group of its own nested inside the review split rather than a third
-   * panel of that split: the summary belongs to the conversation, so it must
-   * travel with it when the review panel flips orientation. Made a third
-   * sibling instead, a vertical review layout would stack the card under the
-   * transcript and a horizontal one would squeeze three columns into the
-   * width of two.
-   *
-   * Orientation is fixed `horizontal` — side by side, which is what the
-   * operator asked for and the same sense `reviewLayout` uses. The saved key
-   * therefore needs no orientation suffix, unlike `review-split-*`, because
-   * there is only ever one axis to remember.
-   *
-   * The remount key is the same trick, and the same necessity, as the review
-   * group below: react-resizable-panels reads `defaultLayout` once in its
-   * mount effect and never re-reads it, so a group mounted before
-   * usePanelLayouts() resolves would keep the fallback layout for the life of
-   * the page and the operator's drag would appear not to persist.
-   */
-  const conversationColumn = summaryOpen ? (
-    <ResizablePanelGroup
-      className="min-h-0 flex-1"
-      defaultLayout={summarySplitLayout}
-      key={`summary-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
-      onLayoutChanged={(layout, meta) => {
-        if (meta.isUserInteraction) saveSummarySplit(layout);
-      }}
-      orientation="horizontal"
-    >
-      <ResizablePanel
-        className="flex min-h-0 flex-col overflow-hidden"
-        defaultSize={65}
-        id="conversation"
-        minSize={25}
-        // react-resizable-panels sets `overflow: auto` inline on a panel,
-        // which beats a class. SessionConversation manages its own scroll
-        // region, so without this the transcript gets a second scrollbar.
-        style={{ overflow: "hidden" }}
-      >
-        {conversationPane}
-      </ResizablePanel>
-      <ResizableHandle withHandle />
-      <ResizablePanel
-        className="flex min-h-0 flex-col overflow-hidden"
-        defaultSize={35}
-        id="summary"
-        minSize={15}
-        // The card scrolls itself (it is a column of sections that can exceed
-        // the viewport), so the same override applies for the same reason.
-        style={{ overflow: "hidden" }}
-      >
-        <SessionSummaryPanel
-          goal={goal}
-          model={messagesQuery.data?.model ?? null}
-          onClose={() => setSummaryOpen(false)}
-          sessionId={sessionId}
-          snapshot={workflowSnapshot}
-          title={shownTitle}
-        />
-      </ResizablePanel>
-    </ResizablePanelGroup>
-  ) : (
-    conversationPane
-  );
+      (messagesQuery.error instanceof Error ? messagesQuery.error.message : undefined));
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SessionTopbar
-        onReviewClick={() =>
-          reviewOpen ? closeReview() : setReviewManuallyOpened(true)
-        }
-        onSummaryClick={() => setSummaryOpen((open) => !open)}
-        summaryOpen={summaryOpen}
-        reviewCount={reviewChangedCount}
-        reviewOpen={reviewOpen}
-        reviewLayout={reviewLayout}
-        onReviewLayoutChange={setReviewLayout}
-        title={shownTitle}
-        onTitleSave={handleTitleSave}
         codeMap={codeMap}
-        sessionId={sessionId}
         goal={goal}
-        onGoalSave={handleGoalSave}
+        onGoalSave={saveGoal}
+        onReviewClick={() => (review.open ? review.close() : review.setManuallyOpened(true))}
+        onReviewLayoutChange={review.setLayout}
+        onSummaryClick={() => setSummaryOpen((open) => !open)}
+        onTitleSave={saveTitle}
+        reviewCount={review.changedCount}
+        reviewLayout={review.layout}
+        reviewOpen={review.open}
+        sessionId={sessionId}
+        summaryOpen={summaryOpen}
+        title={shownTitle}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-0 pb-1">
         <AgentTranscriptDrawer
           agentId={selectedAgent?.agentId ?? null}
-          onClose={() =>
-            queryClient.setQueryData(sessionAgentSelectionKey(sessionId), null)
-          }
+          onClose={() => queryClient.setQueryData(sessionAgentSelectionKey(sessionId), null)}
           open={selectedAgent !== undefined}
           runId={selectedAgent?.runId ?? null}
           sessionId={sessionId}
         />
-        {/*
-          Always mounted, review side or not — unlike the ternary this
-          replaced, which switched the wrapper element itself (this group vs.
-          `conversationColumn` bare) at this same JSX slot. React matches
-          children by type/position at a slot, not by what a deeper key says,
-          so that swap tore down and rebuilt everything underneath on every
-          reviewOpen toggle, including PromptEditor's PromptInputProvider —
-          which silently discarded whatever the operator had typed but not
-          sent. Keeping this group permanently mounted, and giving the
-          conversation panel a stable `key` so the review panel's own
-          presence doesn't shift it, keeps PromptEditor mounted continuously
-          across the toggle instead.
-        */}
-        <ResizablePanelGroup
-          // Remounted on layout flip: react-resizable-panels otherwise
-          // keeps the user's dragged percentages across orientations, so
-          // an 80%-wide review pane would become an 80%-tall one instead
-          // of resetting to a sane split for the new axis. The saved layout
-          // is keyed by orientation for the same reason: a horizontal split
-          // and a vertical one are unrelated preferences.
-          //
-          // Also keyed on the panel-layout fetch settling: react-resizable-
-          // panels reads `defaultLayout` once, in the effect that runs on
-          // mount, and never re-reads it once the query resolves. Without
-          // this the group mounts with `defaultLayout={undefined}` on every
-          // cold reload (usePanelLayouts() has not fetched yet) and keeps
-          // that default layout for the rest of the page's life even after
-          // the real saved split arrives — the drag never visibly "failed
-          // to persist", it just rendered before its own answer came back.
-          // Remounting once, when the fetch settles, gives it the real
-          // value the one time it reads it.
-          //
-          // Not keyed on reviewOpen: that is exactly the remount this
-          // group must not do (see the comment above).
-          className="min-h-0 flex-1"
-          defaultLayout={reviewOpen ? reviewSplitLayout : undefined}
-          key={`${reviewLayout}-${panelLayoutsQuery.isPending ? "pending" : "ready"}`}
-          onLayoutChanged={(layout, meta) => {
-            if (meta.isUserInteraction) saveReviewSplit(layout);
-          }}
-          orientation={reviewLayout}
-        >
-          {reviewOpen && (
-            <ResizablePanel
-              className="flex min-h-0 flex-col overflow-hidden border"
-              defaultSize={45}
-              id="review"
-              key="review"
-              minSize={20}
-              // react-resizable-panels hardcodes `overflow: auto` inline on
-              // this element (see Panel's own style object in its source) —
-              // an inline style, which beats the `overflow-hidden` class
-              // above regardless of source order. Without this override the
-              // panel grows a scrollbar of its own on top of the ones
-              // ReviewPanel's inner file-tree and editor panes already
-              // manage themselves.
-              style={{ overflow: "hidden" }}
-            >
-              {/* No remount key: the panel is controlled, and remounting it
-                  for each new pick would discard unsaved drafts, the hunk
-                  accordion and the commit message — which the scrubber, which
-                  retargets several times a second, would do constantly. */}
+        <SessionLayout
+          conversation={
+            <SessionConversation
+              activeTool={activeTool}
+              composition={composition}
+              conversation={conversation}
+              defaultTools={defaultTools}
+              errorMessage={errorMessage}
+              forkedAt={forkedAt}
+              goal={goal}
+              hasMessages={messages.length > 0}
+              isActive={isActive}
+              liveTextLength={liveTextLength}
+              onCancelFork={handleCancelFork}
+              onCompactClick={handleCompact}
+              onEditPrompt={handleEditPrompt}
+              onFork={handleFork}
+              onGoalSave={saveGoal}
+              onSelectionChange={handleSelectionChange}
+              onStop={handleStop}
+              onSubmit={handleSubmit}
+              pendingFeatureSpec={pendingFeatureSpec}
+              pendingQuestion={pendingQuestion}
+              sessionId={sessionId}
+              sessionMissing={sessionMissing}
+              viewingLeafId={viewingLeafId}
+              workflowRunSnapshots={workflowRunSnapshots}
+              workflowSnapshot={workflowSnapshot}
+            />
+          }
+          review={
+            review.open ? (
+              // No remount key: the panel is controlled, and remounting it for
+              // each new pick would discard unsaved drafts, the hunk accordion
+              // and the commit message — which the scrubber, which retargets
+              // several times a second, would do constantly.
               <ReviewPanel
                 leafId={viewingLeafId}
-                onClose={closeReview}
+                onClose={review.close}
                 onExplain={handleExplain}
                 sessionId={sessionId}
-                target={elementTarget.target}
+                target={review.elementTarget}
               />
-            </ResizablePanel>
-          )}
-          {reviewOpen && <ResizableHandle key="review-handle" withHandle />}
-          <ResizablePanel
-            className="flex min-h-0 flex-col overflow-hidden"
-            defaultSize={reviewOpen ? 55 : 100}
-            id="conversation"
-            key="conversation"
-            minSize={20}
-            // Same override as the review panel above, and for the same
-            // reason: SessionConversation manages its own scroll region
-            // internally, so this outer panel must not grow a second one.
-            style={{ overflow: "hidden" }}
-          >
-            {conversationColumn}
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            ) : null
+          }
+          reviewLayout={review.layout}
+          summary={
+            summaryOpen ? (
+              <SessionSummaryPanel
+                goal={goal}
+                model={messagesQuery.data?.model ?? null}
+                onClose={() => setSummaryOpen(false)}
+                sessionId={sessionId}
+                snapshot={workflowSnapshot}
+                title={shownTitle}
+              />
+            ) : null
+          }
+        />
       </div>
 
       {wikiActive && <WikiMiniGraph />}

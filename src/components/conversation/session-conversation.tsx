@@ -52,9 +52,7 @@ export function SessionConversation({
   composition,
   conversation,
   defaultTools,
-  elapsedLabel,
   errorMessage,
-  estimatedTokens,
   forkedAt,
   goal,
   hasMessages,
@@ -81,9 +79,7 @@ export function SessionConversation({
   composition: CompositionBreakdown | null;
   conversation: ConversationItem[];
   defaultTools: string[];
-  elapsedLabel: string | null;
   errorMessage: string | undefined;
-  estimatedTokens: number | null;
   forkedAt: string | null;
   goal: string | null;
   /** Whether the transcript has any messages, for the empty-state check. */
@@ -112,7 +108,7 @@ export function SessionConversation({
   /**
    * Every workflow run this session has, newest first, so the phase bar can
    * stack them. Never the synthetic session-agent snapshot — see
-   * `workflowRunSnapshots` in client-session-component.tsx.
+   * `useSessionWorkflowSnapshots`.
    */
   workflowRunSnapshots?:
     | readonly (WorkflowSnapshot | null | undefined)[]
@@ -222,9 +218,7 @@ export function SessionConversation({
           <SessionActivityLine
             active={isActive}
             activeTool={activeTool}
-            elapsedLabel={elapsedLabel}
-            estimatedTokens={estimatedTokens}
-            streaming={liveTextLength > 0}
+            liveTextLength={liveTextLength}
           />
           {errorMessage && (
             <p className="text-destructive text-sm">{errorMessage}</p>

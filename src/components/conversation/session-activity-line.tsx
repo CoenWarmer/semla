@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { TokenUsage } from "@/components/token-usage";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -20,31 +22,54 @@ import { Spinner } from "@/components/ui/spinner";
 export function SessionActivityLine({
   active,
   activeTool,
-  elapsedLabel,
-  estimatedTokens,
-  streaming,
+  liveTextLength,
 }: {
   /** A turn is in flight. The same value the prompt bar gets as `isRunning`. */
   active: boolean;
   /** The tool being run, when the turn is in a tool call. */
   activeTool?: string;
-  /** Time since the turn started, once it is worth showing. */
-  elapsedLabel: string | null;
-  /** Rough output tokens so far, or null before anything has streamed. */
-  estimatedTokens: number | null;
-  /** Text is arriving from the model right now. */
-  streaming: boolean;
+  /** Characters of prose streamed so far this turn, across every round trip. */
+  liveTextLength: number;
 }) {
   if (!active) return null;
 
   return (
     <div className="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner />
-      <span>{activityLabel(activeTool, streaming)}</span>
-      {elapsedLabel && <span className="tabular-nums">{elapsedLabel}</span>}
-      <TokenUsage approximate tokens={estimatedTokens} />
+      <span>{activityLabel(activeTool, liveTextLength > 0)}</span>
+      <ElapsedTime />
+      <TokenUsage approximate tokens={estimateOutputTokens(liveTextLength)} />
     </div>
   );
+}
+
+/**
+ * Time since this line appeared, i.e. since the turn started.
+ *
+ * A leaf of its own because it ticks twice a second: held any higher, every
+ * tick re-rendered the whole session page — transcript, prompt bar, review
+ * panel — to change one number. Mounting is the start signal, so there is no
+ * reset to perform when the turn ends; the line unmounts instead.
+ */
+function ElapsedTime() {
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setElapsedMs(Date.now() - start), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (elapsedMs < 1000) return null;
+  return <span className="tabular-nums">{(elapsedMs / 1000).toFixed(1)}s</span>;
+}
+
+/**
+ * Rough output tokens: ~4 characters each. No cost — the real usage, and its
+ * price, only arrive with the finished message.
+ */
+function estimateOutputTokens(liveTextLength: number): number | null {
+  return liveTextLength > 0 ? Math.round(liveTextLength / 4) : null;
 }
 
 /**
