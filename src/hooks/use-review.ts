@@ -542,6 +542,46 @@ export type LspDiagnostic = {
 
 export type LspTextEdit = { range: LspRange; newText: string };
 export type LspRenameFile = { path: string; edits: LspTextEdit[] };
+
+/**
+ * A completion item, as the language server hands it over.
+ *
+ * `data` is deliberately `unknown` and deliberately carried: the server
+ * requires the item back verbatim on `completionItem/resolve` to find the
+ * completion again, and it is the resolve step — not this one — that produces
+ * the `additionalTextEdits` holding a new import line. Nothing in the browser
+ * reads it.
+ *
+ * `insertText` is not the same as `label` and the difference matters for the
+ * JSX case: an optional prop is labelled `size?` and inserts `size`.
+ */
+export type LspCompletionItem = {
+  label: string;
+  /** LSP's own numbering (Text 1 … TypeParameter 25), not Monaco's. */
+  kind?: number;
+  detail?: string;
+  documentation?: string | { kind: "markdown" | "plaintext"; value: string };
+  labelDetails?: { detail?: string; description?: string };
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  /** 1 is plain text, 2 is a snippet. */
+  insertTextFormat?: 1 | 2;
+  textEdit?: LspTextEdit;
+  /** The import line, once resolved. Absent until then. */
+  additionalTextEdits?: LspTextEdit[];
+  data?: unknown;
+};
+
+/**
+ * `isIncomplete` is the server asking to be re-queried as the operator types
+ * instead of having its list filtered client-side — Monaco's suggest model
+ * honours it directly.
+ */
+export type LspCompletionList = {
+  isIncomplete: boolean;
+  items: LspCompletionItem[];
+};
 export type LspReferenceLocation = { path: string; range: LspRange };
 export type LspPrepareRenameAnswer =
   | LspRange
@@ -557,8 +597,20 @@ export type LspRequestBody = {
 
 async function fetchLspRequest<T>(
   sessionId: string,
-  method: "hover" | "references" | "prepareRename" | "rename",
-  body: LspRequestBody & { newName?: string },
+  method:
+    | "hover"
+    | "references"
+    | "prepareRename"
+    | "rename"
+    | "completion"
+    | "completionResolve",
+  body: Partial<LspRequestBody> & {
+    project: string;
+    path: string;
+    newName?: string;
+    triggerCharacter?: string;
+    item?: LspCompletionItem;
+  },
 ): Promise<T | null> {
   try {
     const res = await fetch(`/api/sessions/${sessionId}/review/lsp/request`, {
@@ -590,6 +642,23 @@ export const fetchLspRename = (
   sessionId: string,
   body: LspRequestBody & { newName: string },
 ) => fetchLspRequest<{ files: LspRenameFile[] }>(sessionId, "rename", body);
+
+export const fetchLspCompletion = (
+  sessionId: string,
+  body: LspRequestBody & { triggerCharacter?: string },
+) => fetchLspRequest<LspCompletionList>(sessionId, "completion", body);
+
+/**
+ * Resolve one item, which is what produces its `additionalTextEdits`.
+ *
+ * No line or character: the item's own `data` names the position it came
+ * from. `path` is still needed to pick the project's language server — see
+ * the resolve branch in `review/lsp/request/route.ts`.
+ */
+export const fetchLspCompletionResolve = (
+  sessionId: string,
+  body: { project: string; path: string; item: LspCompletionItem },
+) => fetchLspRequest<LspCompletionItem>(sessionId, "completionResolve", body);
 
 /**
  * Buffer sync and close, fire-and-forget.

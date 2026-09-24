@@ -37,6 +37,28 @@ export type LspTextEdit = { range: LspRange; newText: string };
 export type LspRenameFile = { path: string; edits: LspTextEdit[] };
 export type LspReferenceLocation = { path: string; range: LspRange };
 
+export type LspCompletionItem = {
+  label: string;
+  /** LSP's own numbering (Text 1 … TypeParameter 25), not Monaco's. */
+  kind?: number;
+  detail?: string;
+  documentation?: string | LspMarkupContent;
+  labelDetails?: { detail?: string; description?: string };
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  /** 1 is plain text, 2 is a snippet. */
+  insertTextFormat?: 1 | 2;
+  textEdit?: LspTextEdit;
+  additionalTextEdits?: LspTextEdit[];
+  data?: unknown;
+};
+
+export type LspCompletionList = {
+  isIncomplete: boolean;
+  items: LspCompletionItem[];
+};
+
 /** A Monaco `IRange`'s fields, without importing `monaco-editor` for the type. */
 export type MonacoRangeShape = {
   startLineNumber: number;
@@ -84,6 +106,125 @@ export function diagnosticToMarker(diagnostic: LspDiagnostic): MonacoMarkerShape
     message: diagnostic.message,
     severity: toMarkerSeverity(diagnostic.severity),
     source: diagnostic.source,
+  };
+}
+
+/**
+ * LSP's `CompletionItemKind` to Monaco's, which are two different numberings
+ * of the same list and not off-by-one variants of each other.
+ *
+ * LSP starts at `Text = 1` and ends at `TypeParameter = 25`; Monaco starts at
+ * `Method = 0`, orders the middle differently, and carries four kinds LSP has
+ * no name for. Getting this wrong is not a crash — it is the wrong icon
+ * beside every suggestion, which is exactly the sort of thing that reads as
+ * the feature being broken rather than as a lookup table being off.
+ *
+ * Monaco's numbering is taken from its own `CompletionItemKind` enum
+ * (`editor.api.d.ts`) and restated here rather than imported, for the reason
+ * this whole module exists: `monaco-editor` reaches for `document` on import,
+ * and these conversions are meant to be testable without a DOM.
+ */
+const MONACO_KIND_FOR_LSP_KIND: Record<number, number> = {
+  1: 18, // Text
+  2: 0, // Method
+  3: 1, // Function
+  4: 2, // Constructor
+  5: 3, // Field
+  6: 4, // Variable
+  7: 5, // Class
+  8: 7, // Interface
+  9: 8, // Module
+  10: 9, // Property
+  11: 12, // Unit
+  12: 13, // Value
+  13: 15, // Enum
+  14: 17, // Keyword
+  15: 28, // Snippet
+  16: 19, // Color
+  17: 20, // File
+  18: 21, // Reference
+  19: 23, // Folder
+  20: 16, // EnumMember
+  21: 14, // Constant
+  22: 6, // Struct
+  23: 10, // Event
+  24: 11, // Operator
+  25: 24, // TypeParameter
+};
+
+/** Monaco's `Property` (9), the least misleading icon for an unknown kind. */
+const MONACO_KIND_FALLBACK = 9;
+
+export function toMonacoCompletionKind(kind: number | undefined): number {
+  if (kind === undefined) return MONACO_KIND_FALLBACK;
+  return MONACO_KIND_FOR_LSP_KIND[kind] ?? MONACO_KIND_FALLBACK;
+}
+
+/**
+ * The text a completion actually inserts.
+ *
+ * `label` is for reading and `insertText` is for typing, and TS 7 relies on
+ * the distinction in the JSX case this feature was asked for: an optional prop
+ * is labelled `size?` and inserts `size`. Inserting the label there would put
+ * a stray `?` into the source.
+ */
+export function completionInsertText(item: LspCompletionItem): string {
+  return item.insertText ?? item.textEdit?.newText ?? item.label;
+}
+
+/**
+ * What the suggestion list shows to the right of the label.
+ *
+ * `labelDetails.description` is where TS 7 puts the module an auto-import
+ * would come from, and before resolve it is the *only* sign that accepting a
+ * suggestion will also add an import line: `detail` arrives as
+ * `Add import from "./x"` but only on the resolved item, which is one round
+ * trip too late to render the list. Showing the specifier is what makes the
+ * two kinds of suggestion distinguishable at a glance.
+ */
+export function completionDetail(item: LspCompletionItem): string | undefined {
+  return item.labelDetails?.description ?? item.detail;
+}
+
+/**
+ * Whether accepting this item would also add an import line.
+ *
+ * `labelDetails.description` is the module specifier, which TS 7 sets on
+ * exactly the items that carry an auto-import — and only on those. It is the
+ * same field `completionDetail` renders.
+ */
+export function isAutoImportItem(item: LspCompletionItem): boolean {
+  return item.labelDetails?.description !== undefined;
+}
+
+/**
+ * The list to show, and whether Monaco should come back for more.
+ *
+ * **With no prefix typed, auto-import candidates are dead weight — and they
+ * are 69/70ths of the payload.** At `cost={` TS 7 answers with everything
+ * nameable: 31,082 items and 11.77 MB of JSON on this repository, of which
+ * 30,010 are auto-imports from every module in the dependency graph. Dropping
+ * those leaves 1,072 items and 0.17 MB, and loses nothing the operator could
+ * be choosing — an auto-import is a name they have not typed, and they cannot
+ * pick it out of a list they have not filtered. What remains is what is
+ * genuinely in scope: locals, parameters, this file's imports, and globals
+ * like `window` and `console`.
+ *
+ * **`incomplete` is what makes that narrowing temporary.** `SuggestModel`
+ * re-triggers a provider whose last list was incomplete as soon as the cursor
+ * moves right onto a word, so the full list — auto-imports included — arrives
+ * on the first keystroke. Without the flag, opening with `{` would leave the
+ * in-scope-only list in place for the whole session, with Monaco filtering
+ * that stale copy instead of asking again.
+ */
+export function narrowCompletions(answer: LspCompletionList, hasPrefix: boolean) {
+  if (hasPrefix) {
+    return { incomplete: answer.isIncomplete, items: answer.items };
+  }
+
+  return {
+    incomplete: true,
+    items: answer.items.filter((item) => !isAutoImportItem(item)),
   };
 }
 

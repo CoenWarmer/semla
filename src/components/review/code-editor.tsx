@@ -39,6 +39,10 @@ import {
   type LspProviderHandle,
 } from "./lsp-provider";
 import {
+  registerCompletionProvider,
+  type CompletionProviderConfig,
+} from "./completion-provider";
+import {
   buildDecorations,
   firstChangedLine,
   hunkChangedLineRange,
@@ -178,6 +182,15 @@ export interface CodeEditorProps {
    */
   lsp?: LspProviderConfig | null;
   /**
+   * Autocomplete, or omitted to leave the suggestion widget with nothing to
+   * show. Same shape and same lifetime as `definition` and `lsp` above.
+   *
+   * Monaco's own suggest widget renders this — see `completion-provider.ts`
+   * for why that turned out to be available after all, and `monaco-setup.ts`
+   * for the contribution imports it needs.
+   */
+  completion?: CompletionProviderConfig | null;
+  /**
    * The lines the agent read or wrote here, to mark in the gutter.
    *
    * Distinct from `hunks`, which say what *changed*: the point of the scrubber
@@ -207,6 +220,7 @@ export default function CodeEditor({
   access = null,
   commentNavigation = null,
   comments = EMPTY_COMMENTS,
+  completion = null,
   currentHunk = null,
   definition = null,
   hunks,
@@ -311,6 +325,7 @@ export default function CodeEditor({
   const onStageHunkRef = useRef(onStageHunk);
   const definitionRef = useRef(definition);
   const lspRef = useRef(lsp);
+  const completionRef = useRef(completion);
   useEffect(() => {
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
@@ -319,7 +334,9 @@ export default function CodeEditor({
     onStageHunkRef.current = onStageHunk;
     definitionRef.current = definition;
     lspRef.current = lsp;
+    completionRef.current = completion;
   }, [
+    completion,
     definition,
     lsp,
     onChange,
@@ -354,16 +371,38 @@ export default function CodeEditor({
       // is not a place anyone clicks a URL out of.
       links: false,
       minimap: { enabled: false },
-      // Nothing here is a suggestion source worth interrupting a read for —
-      // and word-based suggestions are computed in the editor worker, which
-      // this panel deliberately runs without. See monaco-setup.ts.
       occurrencesHighlight: "off",
-      quickSuggestions: false,
+      /*
+       * On, for identifiers only. This is what makes the widget appear as a
+       * component name is typed rather than only on an explicit ctrl+space;
+       * `completion-provider.ts` answers it from the language server.
+       *
+       * `other: false` keeps it out of comments and strings, where TS 7 has
+       * nothing useful to say and the list would only be in the way.
+       */
+      quickSuggestions: { comments: false, other: true, strings: false },
       renderLineHighlight: "line",
       renderWhitespace: "selection",
       scrollBeyondLastLine: false,
       smoothScrolling: true,
+      /*
+       * Left off explicitly, and not merely unset.
+       *
+       * `localityBonus` is the one `suggest` option that reaches for the
+       * editor worker service in a way that starts a real worker
+       * (`WordDistance.create`), which `monaco-setup.ts`'s `getWorker` guard
+       * would then throw on. It defaults to false; saying so here is what
+       * keeps a future "improve the ordering" change from turning it on
+       * without meeting that guard first.
+       */
+      suggest: { localityBonus: false },
       tabSize: 2,
+      /*
+       * Still off. Word-based suggestions are computed in the editor worker
+       * this panel runs without, and with a real language server answering
+       * completions they would only add every string in the file as a
+       * suggestion alongside the typed ones.
+       */
       wordBasedSuggestions: "off",
     });
 
@@ -514,6 +553,31 @@ export default function CodeEditor({
       : null;
     lspHandleRef.current = lspRegistration;
 
+    /**
+     * Autocomplete, on the same terms as the two registrations above: once,
+     * for the editor's lifetime, delegating through a ref. `null` leaves the
+     * suggest widget with no provider, which is what a surface with no
+     * session context should do.
+     */
+    const completionRegistration = completionRef.current
+      ? registerCompletionProvider(
+          {
+            current: () => completionRef.current?.current() ?? null,
+            languages: completionRef.current.languages,
+            requestCompletion: async (request) =>
+              (await completionRef.current?.requestCompletion(request)) ?? null,
+            resolveCompletion: async (request) =>
+              (await completionRef.current?.resolveCompletion(request)) ?? null,
+            toWorkspacePath: (projectPath, filePath) =>
+              completionRef.current?.toWorkspacePath(projectPath, filePath) ??
+              `${projectPath}/${filePath}`,
+          },
+          // For the blank-line JSX trigger, which Monaco's own suggest
+          // model will not fire — see `registerBlankLineTrigger`.
+          editor,
+        )
+      : null;
+
     return () => {
       changeSubscription.dispose();
       explain.dispose();
@@ -530,6 +594,7 @@ export default function CodeEditor({
       lspOpened.clear();
       lspRegistration?.dispose();
       lspHandleRef.current = null;
+      completionRegistration?.dispose();
       accessLabelsRef.current?.dispose();
       commentWidgetsRef.current?.dispose();
       hunkGlyphsRef.current?.dispose();

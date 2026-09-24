@@ -97,14 +97,38 @@ import "monaco-editor/editor/contrib/peekView/browser/peekView.js";
  * why that is a second server rather than the one supi already runs for the
  * agent) rather than Monaco's own bundled TypeScript worker.
  *
- * `suggest` is the one still out. Its `SuggestModel` is the sole contrib among
- * this repository's candidates with a hard constructor dependency on
- * `IEditorWorkerService` — a real one, not a language server, so bridging
- * hover and rename here does not touch the question a completion widget
- * would raise.
+ * `suggest` used to be described here as the one contrib that could not
+ * follow, on the grounds that its `SuggestModel` has a hard constructor
+ * dependency on `IEditorWorkerService`. The dependency is real and the
+ * conclusion was wrong — see `completion-provider.ts` for the correction in
+ * full. In short: `IEditorWorkerService` is registered unconditionally by
+ * `codeEditorWidget.js`'s own first import, so it was already satisfiable
+ * here before completion existed; and registering it starts no worker,
+ * because `WorkerManager` creates its client lazily and `SuggestModel`'s only
+ * use of the service (`WordDistance.create`) returns early while
+ * `suggest.localityBonus` is off, which is its default.
+ *
+ * The `getWorker` guard below is unchanged and still load-bearing. It is what
+ * makes "somebody turned `localityBonus` on" a message that names its cause
+ * rather than a silent request to a CDN.
  */
 import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js";
 import "monaco-editor/editor/contrib/rename/browser/rename.js";
+/*
+ * Autocomplete, in two halves like `gotoSymbol` above.
+ *
+ * `suggest` carries the model, the widget and the keybindings — arrow keys to
+ * move, Enter/Tab to accept, Escape to dismiss — and `snippetController2` is
+ * what applies an accepted item that arrives as a snippet. The controller
+ * imports the snippet module regardless, so this only makes the dependency
+ * visible in the import list rather than adding one.
+ *
+ * What the widget needs in order to have anything to show is a
+ * `CompletionItemProvider`, and `completion-provider.ts` registers one backed
+ * by the same `tsc --lsp` process hover and rename use.
+ */
+import "monaco-editor/editor/contrib/suggest/browser/suggestController.js";
+import "monaco-editor/editor/contrib/snippet/browser/snippetController2.js";
 // The codicon font and its styles, as a module rather than as the raw .css
 // editor.main.js imports: the package's `exports` map rewrites every subpath
 // to a `.js` file, so a stylesheet cannot be reached through the package name
@@ -113,16 +137,15 @@ import "monaco-editor/features/codicon/register.js";
 
 /*
  * Left out deliberately, each because it needs something this panel does not
- * have: suggest wants the editor worker service (see above); parameterHints,
- * inlayHints, codeAction, codelens, colorPicker, linkedEditing and
- * stickyScroll want a language service beyond what `lsp-provider.ts` asks
- * for; unicodeHighlighter and wordHighlighter want the editor web worker.
- * Adding one of those means answering monaco-setup's worker question first —
- * `getWorker` below throws a message saying so.
+ * have: parameterHints, inlayHints, codeAction, codelens, colorPicker,
+ * linkedEditing and stickyScroll want a language service beyond what
+ * `lsp-provider.ts` asks for; unicodeHighlighter and wordHighlighter want the
+ * editor web worker. Adding one of those means answering monaco-setup's
+ * worker question first — `getWorker` below throws a message saying so.
  *
- * `gotoSymbol`, hover and rename used to be on this list. Each is in, above,
- * because what it needs turned out to be answerable from the server and
- * needs no worker of its own.
+ * `gotoSymbol`, hover, rename and suggest used to be on this list. Each is
+ * in, above, because what it needs turned out to be answerable from the
+ * server and needs no worker of its own.
  */
 
 // The languages this repository and its neighbours are written in. Each is a

@@ -355,6 +355,36 @@ export async function spawnLspConnection(root: string): Promise<LspConnection> {
     await connection.sendRequest(InitializeRequest.method, {
       capabilities: {
         textDocument: {
+          /*
+           * Two fields here are load-bearing rather than declarative.
+           *
+           * `labelDetails` is how TS 7 reports the module an auto-import would
+           * come from (`labelDetails.description`) on the *unresolved* item.
+           * Without it the suggestion list has no way to show that accepting
+           * an item will also add an import, because the resolved `detail`
+           * that says so in words is one round trip later.
+           *
+           * `resolveSupport` names the properties this client is prepared to
+           * receive from `completionItem/resolve`, and `additionalTextEdits`
+           * is the import line itself. A server is entitled to withhold what
+           * the client has not asked for.
+           *
+           * `snippetSupport` stays false: Monaco can apply a snippet (see
+           * `snippetController2` in `monaco-setup.ts`) but nothing this
+           * feature covers needs one, and a plain-text answer is one less
+           * shape for `completionInsertText` to get wrong.
+           */
+          completion: {
+            completionItem: {
+              labelDetailsSupport: true,
+              resolveSupport: {
+                properties: ["additionalTextEdits", "detail", "documentation"],
+              },
+              snippetSupport: false,
+            },
+            contextSupport: true,
+            dynamicRegistration: false,
+          },
           definition: { dynamicRegistration: false },
           hover: { contentFormat: ["markdown", "plaintext"], dynamicRegistration: false },
           publishDiagnostics: { relatedInformation: true },

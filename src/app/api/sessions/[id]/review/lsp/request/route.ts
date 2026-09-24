@@ -22,6 +22,8 @@ export const dynamic = "force-dynamic";
  * Definition's sibling route, and does the same here in `lsp-provider.ts`.
  */
 const METHODS = {
+  completion: "textDocument/completion",
+  completionResolve: "completionItem/resolve",
   definition: "textDocument/definition",
   hover: "textDocument/hover",
   prepareRename: "textDocument/prepareRename",
@@ -35,7 +37,76 @@ function isMethod(value: unknown): value is Method {
   return typeof value === "string" && value in METHODS;
 }
 
+/**
+ * `completionItem/resolve` is the one method here that addresses an *item*
+ * rather than a position, so it is the one exempt from the line/character
+ * check below — see the resolve branch in `POST`.
+ */
+const RESOLVE_METHOD: Method = "completionResolve";
+
+/**
+ * The trigger characters TS 7 advertises, and the only ones it will accept.
+ *
+ * Sending it anything else is not ignored and not an empty answer — it is a
+ * panic inside the server:
+ *
+ * ```
+ * InternalError: panic handling request textDocument/completion:
+ * Unknown trigger character: {
+ * ```
+ *
+ * …which this route would surface as a 502 and, worse, leaves the operator's
+ * language server having taken a panic mid-session. So an unrecognised
+ * character is downgraded to an explicit invoke rather than forwarded: the
+ * answer for the position is still correct, because `triggerKind` only tells
+ * the server *why* it was asked.
+ *
+ * Taken from the `completionProvider.triggerCharacters` in TS 7's own
+ * `initialize` response. Restated rather than read from the handshake because
+ * the client is what decides to send one, and a stale copy here fails safe —
+ * it downgrades a character that would in fact have worked, rather than
+ * forwarding one that panics.
+ */
+const SERVER_TRIGGER_CHARACTERS = new Set([
+  ".",
+  '"',
+  "'",
+  "`",
+  "/",
+  "@",
+  "<",
+  "#",
+  " ",
+  "*",
+]);
+
 type RawLocation = { uri: string; range: unknown };
+
+/**
+ * A completion list, normalised to its items.
+ *
+ * LSP lets a server answer `textDocument/completion` with either a bare
+ * `CompletionItem[]` or a `CompletionList` wrapper, and TS 7 answers with the
+ * wrapper. Flattening here rather than in the browser keeps the two shapes
+ * from reaching the client at all.
+ *
+ * `isIncomplete` is carried through because it is the server saying "re-ask me
+ * as the operator types rather than filtering this list yourself" — Monaco's
+ * suggest model reads it off the returned list and does exactly that.
+ *
+ * Items are passed through *whole*, unshaped. Each carries an opaque `data`
+ * field that `completionItem/resolve` requires back verbatim to find the
+ * completion again (for TS 7 it holds the file name, a byte offset and the
+ * auto-import specifier), so narrowing the item here would break resolve —
+ * which is the half that produces the import line this feature exists for.
+ */
+function shapeCompletion(result: unknown) {
+  if (Array.isArray(result)) return { isIncomplete: false, items: result };
+  if (!result) return { isIncomplete: false, items: [] };
+
+  const list = result as { isIncomplete?: boolean; items?: unknown[] };
+  return { isIncomplete: list.isIncomplete === true, items: list.items ?? [] };
+}
 
 /**
  * `references` re-based onto the workspace, one entry per location the server
@@ -111,9 +182,61 @@ export async function POST(
     ? (body.character as number)
     : null;
 
-  if (!relPath || !method || line === null || line < 1 || character === null || character < 1) {
+  if (!relPath || !method) {
     return NextResponse.json(
-      { error: "A path, a method, and a one-based line and character are required." },
+      { error: "A path and a method are required." },
+      { status: 400 },
+    );
+  }
+
+  /*
+   * Resolve, handled before the position check and before the document is
+   * opened.
+   *
+   * It has no position of its own: the item's `data` already names the file
+   * and offset the completion came from. `path` is still required, because a
+   * session can have several projects attached and the *host* is chosen by
+   * project root — the item says where in a file it came from, not which
+   * language server is holding it.
+   */
+  if (method === RESOLVE_METHOD) {
+    if (!body?.item || typeof body.item !== "object") {
+      return NextResponse.json(
+        { error: "Resolving a completion requires the item to resolve." },
+        { status: 400 },
+      );
+    }
+
+    const file = await resolveLspFile(id, body?.project ?? null, relPath);
+    if (!file) {
+      return NextResponse.json(
+        { error: "Not a file in one of this session's projects." },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const result = await file.host.connection.sendRequest(
+        METHODS[RESOLVE_METHOD],
+        body.item,
+      );
+      return NextResponse.json({ result });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to reach the language server.",
+        },
+        { status: 502 },
+      );
+    }
+  }
+
+  if (line === null || line < 1 || character === null || character < 1) {
+    return NextResponse.json(
+      { error: "A one-based line and character are required." },
       { status: 400 },
     );
   }
@@ -144,9 +267,31 @@ export async function POST(
         ? { context: { includeDeclaration: true }, position, textDocument }
         : method === "rename"
           ? { newName: body.newName as string, position, textDocument }
-          : { position, textDocument };
+          : method === "completion"
+            ? {
+                /*
+                 * `triggerKind` 1 is `TriggerCharacter`, 2 is `Invoked`. Monaco
+                 * tells us which it was and the distinction is not cosmetic:
+                 * TS 7 returns a *different* list for a trigger character than
+                 * for an explicit invoke at the same position, because `.` and
+                 * `<` are asking about member access and a JSX tag rather than
+                 * about every name in scope.
+                 */
+                context:
+                  typeof body?.triggerCharacter === "string" &&
+                  SERVER_TRIGGER_CHARACTERS.has(body.triggerCharacter)
+                    ? { triggerCharacter: body.triggerCharacter as string, triggerKind: 1 }
+                    : { triggerKind: 2 },
+                position,
+                textDocument,
+              }
+            : { position, textDocument };
 
     const result = await file.host.connection.sendRequest(METHODS[method], params);
+
+    if (method === "completion") {
+      return NextResponse.json({ result: shapeCompletion(result) });
+    }
 
     if (method === "references" || method === "rename") {
       const { root: workspaceRoot } = await resolveFileRoot(id);

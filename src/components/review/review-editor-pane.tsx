@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   fetchDefinition,
+  fetchLspCompletion,
+  fetchLspCompletionResolve,
   fetchLspHover,
   fetchLspPrepareRename,
   fetchLspReferences,
@@ -32,6 +34,7 @@ import {
   useSymbolAtLine,
   workspacePath,
   type CodeMapAtLine,
+  type LspCompletionItem,
   type LspDiagnostic,
 } from "@/hooks/use-review";
 import { explainFunctionPrompt } from "@/lib/review/review-prompts";
@@ -286,6 +289,36 @@ export function ReviewEditorPane({
     [readFile, selection.path, selection.project, sessionId],
   );
 
+  /**
+   * Autocomplete. Same shape and same reason as `definition` and `lsp`:
+   * registered once by `CodeEditor`, read through a ref after that.
+   *
+   * No `onNotice`. A position with nothing to suggest is the ordinary case
+   * rather than a failure to report — unlike a definition that resolves
+   * outside the workspace, there is nothing for the operator to do about it,
+   * and a notice bar appearing while they type would be actively in the way.
+   */
+  const completion = useMemo(
+    () => ({
+      current: () => ({ path: selection.path, project: selection.project }),
+      languages: ["typescript", "javascript"] as const,
+      requestCompletion: (request: {
+        project: string;
+        path: string;
+        line: number;
+        character: number;
+        triggerCharacter?: string;
+      }) => fetchLspCompletion(sessionId, request),
+      resolveCompletion: (request: {
+        project: string;
+        path: string;
+        item: LspCompletionItem;
+      }) => fetchLspCompletionResolve(sessionId, request),
+      toWorkspacePath: workspacePath,
+    }),
+    [selection.path, selection.project, sessionId],
+  );
+
   const status = hunks.data?.file.status;
   const unchanged = hunks.data === null;
 
@@ -480,6 +513,7 @@ export function ReviewEditorPane({
           access={access}
           commentNavigation={commentNavigation}
           comments={comments.data ?? EMPTY_COMMENTS}
+          completion={completion}
           currentHunk={currentFullHunk}
           definition={definition}
           lsp={lsp}
