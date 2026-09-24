@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useSessions } from "@/hooks/use-sessions";
 import { formatSessionDate } from "@/lib/session/session-date";
 import {
@@ -62,6 +63,9 @@ export function SessionsCombobox({ small }: { small?: boolean }) {
                   value={session.id}
                   keywords={session.title ? [session.title] : undefined}
                 >
+                  {session.isRunning && (
+                    <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
                   <span className="truncate">
                     {session.title ?? "Untitled session"}
                   </span>
