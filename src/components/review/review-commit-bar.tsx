@@ -66,9 +66,8 @@ export function ReviewCommitBar({
         </span>
       ) : null}
 
-      <Button disabled={!canCommit} onClick={onCommit} size="sm">
-        {busy ? <Spinner className="size-3.5" /> : null}
-        Commit
+      <Button disabled={!canCommit} onClick={onCommit} size="xs">
+        {busy ? <Spinner className="size-3.5" /> : <UploadIcon />}
       </Button>
     </footer>
   ) : null;
