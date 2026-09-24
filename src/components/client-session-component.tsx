@@ -57,7 +57,7 @@ const WikiMiniGraph = dynamic(
 import { isSessionMissing } from "@/lib/prompt-failure";
 
 import type { PromptEditorModel } from "./conversation/prompt-editor";
-import { latestInputTokens, sessionComposition } from "@/lib/context-composition";
+import { sessionComposition } from "@/lib/context-composition";
 import { SessionTopbar } from "./session/session-topbar";
 import { SessionSummaryPanel } from "./session/session-summary-panel";
 import {
@@ -70,6 +70,7 @@ import { SESSION_STATUS_KEY } from "@/lib/session/session-status";
 import { useSessionSoundCue } from "@/hooks/use-session-sound-cue";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSessionComposition } from "@/hooks/use-session-composition";
 
 export function ClientSessionComponent({
   defaultTools,
@@ -245,13 +246,6 @@ export function ClientSessionComponent({
     () => truncateAtMessage(allMessages, forkedAt),
     [allMessages, forkedAt],
   );
-  const costPerTurn = useMemo(() => {
-    const rate = messagesQuery.data?.cacheReadRatePerMToken;
-    if (rate == null) return null;
-    const tokens = latestInputTokens(messages);
-    if (tokens == null) return null;
-    return (tokens * rate) / 1_000_000;
-  }, [messages, messagesQuery.data?.cacheReadRatePerMToken]);
   // Persisted rows arrive only when the turn's entries are written, so fold in
   // the ones seen on the stream. Both are keyed by pi's tool call id, so a live
   // row becomes the persisted row rather than a second marker.
@@ -260,28 +254,17 @@ export function ClientSessionComponent({
     () => mergeToolCalls(persistedToolCalls ?? [], liveToolCalls),
     [persistedToolCalls, liveToolCalls],
   );
+
   // What the context window holds, for the strip above the prompt bar.
   // Computed here rather than fetched: it is arithmetic over the transcript
   // this component already has, so asking a route for it would mean the
   // server re-reading and re-parsing the whole session for numbers the
   // browser was holding all along.
-  const composition = useMemo(
-    () =>
-      sessionComposition({
-        cacheReadRatePerMToken: messagesQuery.data?.cacheReadRatePerMToken,
-        contextWindow: messagesQuery.data?.contextWindow ?? null,
-        messages,
-        systemPromptChars: messagesQuery.data?.systemPromptChars ?? 0,
-        toolCalls,
-      }),
-    [
-      messages,
-      messagesQuery.data?.cacheReadRatePerMToken,
-      messagesQuery.data?.contextWindow,
-      messagesQuery.data?.systemPromptChars,
-      toolCalls,
-    ],
-  );
+  const composition = useSessionComposition({
+    messagesQuery,
+    messages,
+    toolCalls,
+  });
   // One pseudo-message per assistant round trip this turn has made so far,
   // appended after the persisted ones. A live tool call's messageId points at
   // one of these — see live-rounds.ts — so groupConversation interleaves live
@@ -879,7 +862,6 @@ export function ClientSessionComponent({
       activeTool={activeTool}
       composition={composition}
       conversation={conversation}
-      costPerTurn={costPerTurn}
       defaultTools={defaultTools}
       elapsedLabel={elapsedLabel}
       errorMessage={errorMessage}

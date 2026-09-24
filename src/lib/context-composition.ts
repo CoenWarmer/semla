@@ -31,8 +31,8 @@ export interface CompositionBreakdown {
    * than measured from a real token count.
    */
   contextWindowEstimated: boolean;
-  /** Estimated cost of one additional turn at the current context size, in USD. Null if unknown. */
-  costPerTurn: number | null;
+  /** Median cost of this session's recent prompts, in USD. Null before any prompt has reported one. */
+  costPerPrompt: number | null;
   summary: string;
 }
 
@@ -43,7 +43,7 @@ export const EMPTY_COMPOSITION: CompositionBreakdown = {
   toolResultFraction: 0,
   contextWindowFraction: null,
   contextWindowEstimated: false,
-  costPerTurn: null,
+  costPerPrompt: null,
   summary: "No messages yet.",
 };
 
@@ -52,6 +52,7 @@ export type CompositionMessage = {
   role: "assistant" | "user";
   text: string;
   inputTokens?: number;
+  tokenUsage?: { cost: number };
 };
 
 /** The part of a tool call this arithmetic reads. */
@@ -154,6 +155,52 @@ export function latestInputTokens(
   );
 }
 
+/** How many of the most recent prompts `recentPromptCost` takes the median of. */
+const RECENT_PROMPTS = 5;
+
+/**
+ * What a prompt in this session has actually cost lately: the median of the
+ * last few prompts' summed per-call cost, as the provider billed it.
+ *
+ * "Prompt", not "turn": in pi a turn is one model call and the tool results
+ * that follow it, and a prompt is every turn from one user message to the next
+ * — what pi calls an agent run. Per-turn would be the smaller number by the
+ * number of tool round trips, so the word matters.
+ *
+ * Observed rather than modelled. A prompt is as many model calls as the agent
+ * makes tool round trips, each re-reading a context that grows as it goes,
+ * plus cache writes for everything new, output, and a full re-write whenever
+ * the cache has expired. A formula over the current context size left all of
+ * that out and came in at a median 1/27th of the real figure.
+ *
+ * The median, because the last prompt may still be in flight and so only
+ * partly counted, and because one long agentic run should not set the figure
+ * for every prompt after it. A message steered in mid-run is a user message
+ * too, so it starts a new prompt here.
+ */
+export function recentPromptCost(
+  messages: readonly CompositionMessage[],
+): number | null {
+  const promptCosts: number[] = [];
+  let current: number | null = null;
+  for (const message of messages) {
+    if (message.role === "user") {
+      if (current != null) promptCosts.push(current);
+      current = null;
+    } else if (message.tokenUsage) {
+      current = (current ?? 0) + message.tokenUsage.cost;
+    }
+  }
+  if (current != null) promptCosts.push(current);
+
+  const recent = promptCosts.slice(-RECENT_PROMPTS).sort((a, b) => a - b);
+  if (recent.length === 0) return null;
+  const mid = Math.floor(recent.length / 2);
+  return recent.length % 2 === 1
+    ? recent[mid]
+    : (recent[mid - 1] + recent[mid]) / 2;
+}
+
 /**
  * The whole breakdown for one session, from what a transcript response holds.
  *
@@ -164,14 +211,11 @@ export function latestInputTokens(
  */
 export function sessionComposition({
   contextWindow,
-  cacheReadRatePerMToken,
   messages,
   systemPromptChars,
   toolCalls,
 }: {
   contextWindow: number | null;
-  /** Cache-read cost rate in $/M tokens; used to estimate cost per additional turn. */
-  cacheReadRatePerMToken?: number | null;
   messages: readonly CompositionMessage[];
   systemPromptChars: number;
   toolCalls: readonly CompositionToolCall[];
@@ -183,18 +227,13 @@ export function sessionComposition({
   const metrics = computeComposition(messages, toolCalls, systemPromptChars);
   const inputTokens = latestInputTokens(messages);
 
-  const costPerTurn =
-    inputTokens != null && cacheReadRatePerMToken != null
-      ? (inputTokens * cacheReadRatePerMToken) / 1_000_000
-      : null;
-
   return {
     assistantFraction: metrics.assistantFraction,
     summary: metrics.summary,
     systemPromptFraction: metrics.systemPromptFraction,
     toolResultFraction: metrics.toolResultFraction,
     userFraction: metrics.userFraction,
-    costPerTurn,
+    costPerPrompt: recentPromptCost(messages),
     ...contextWindowUsage(inputTokens, metrics.totalChars, contextWindow),
   };
 }

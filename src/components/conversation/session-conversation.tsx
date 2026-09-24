@@ -51,7 +51,6 @@ export function SessionConversation({
   activeTool,
   composition,
   conversation,
-  costPerTurn,
   defaultTools,
   elapsedLabel,
   errorMessage,
@@ -81,7 +80,6 @@ export function SessionConversation({
   /** What the context window holds, for the strip above the prompt bar's input box. */
   composition: CompositionBreakdown | null;
   conversation: ConversationItem[];
-  costPerTurn: number | null;
   defaultTools: string[];
   elapsedLabel: string | null;
   errorMessage: string | undefined;
@@ -317,7 +315,6 @@ export function SessionConversation({
           compactToolbar={compactToolbar}
           composition={composition}
           defaultTools={defaultTools}
-          costPerTurn={costPerTurn}
           onCompactClick={onCompactClick}
           goalEditor={
             <GoalEditor

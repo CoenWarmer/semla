@@ -416,7 +416,9 @@ const SkillPickerButton = ({
         tooltip={compactToolbar ? `${skillCount} skills` : undefined}
       >
         <BookOpenIcon size={16} />
-        {!compactToolbar && <span className="text-xs">{skillCount} skills</span>}
+        {!compactToolbar && (
+          <span className="text-xs">{skillCount} skills</span>
+        )}
       </PromptInputButton>
       {open && (
         <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-md border bg-popover p-1 shadow-lg">
@@ -485,8 +487,6 @@ interface PromptEditorProps {
    * of the window.
    */
   compactToolbar?: boolean;
-  /** Estimated cost of one additional turn given the current context size, in USD. */
-  costPerTurn?: number | null;
   /** Trigger manual context compaction. Absent when unavailable (e.g. no live session). */
   onCompactClick?: () => void;
   /** What the context window holds, for the strip rendered above the input box. */
@@ -523,7 +523,6 @@ export function PromptEditor({
   composition,
   defaultTools,
   goalEditor,
-  costPerTurn,
   onCompactClick,
   isRunning,
   onSelectionChange,
@@ -740,188 +739,163 @@ export function PromptEditor({
         from.
       */}
       <PromptInputProvider>
-      <PromptInputTools>
-        {/*
+        <PromptInputTools>
+          {/*
           Bounded and truncating rather than `flex-1`: a long goal would
           otherwise push the attachment, search and tool buttons across
           the row, and their position should not depend on how much
           someone typed.
         */}
-        {goalEditor && (
-          <div className="flex grow min-w-0 gap-4">
-            {goalEditor}
-            <div className="flex self-end">
-              {costPerTurn != null && (
-                <span
-                  className={cn(
-                    "shrink-0 text-[10px] tabular-nums",
-                    costPerTurn < 0.01
-                      ? "text-muted-foreground/60"
-                      : costPerTurn < 0.05
-                        ? "text-muted-foreground"
-                        : costPerTurn < 0.15
-                          ? "text-amber-500"
-                          : "text-red-500",
-                  )}
-                  title="Estimated cache-read cost per additional turn at the current context size"
-                >
-                  ≈
-                  {costPerTurn < 0.01
-                    ? "<$0.01"
-                    : `$${costPerTurn.toFixed(costPerTurn >= 1 ? 2 : 3)}`}{" "}
-                  / turn
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-        <div
-          className={cn(
-            "flex items-center transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",
-            // Held visible while either menu is open: they hang off these
-            // buttons, so fading the buttons out from under an open menu
-            // would take the menu with them.
-            toolPickerOpen || modelSelectorOpen ? "opacity-80" : "opacity-0",
+          {goalEditor && (
+            <div className="flex grow min-w-0 gap-4">{goalEditor}</div>
           )}
-        >
-          {onCompactClick && !isRunning && (
-            <PromptInputButton
-              aria-label={
-                compactToolbar
-                  ? "Summarise conversation history to free up context window space"
-                  : undefined
-              }
-              onClick={onCompactClick}
-              title={compactToolbar ? undefined : "Summarise conversation history to free up context window space"}
-              tooltip={
-                compactToolbar
-                  ? "Summarise conversation history to free up context window space"
-                  : undefined
-              }
-            >
-              <FoldVerticalIcon size={12} />
-              {!compactToolbar && <span className="text-xs">Compact</span>}
-            </PromptInputButton>
-          )}
-          <PromptInputButton
-            aria-label={
-              compactToolbar
-                ? readRouterEnabled
-                  ? "Disable read-router tool-result compression"
-                  : "Enable read-router tool-result compression"
-                : undefined
-            }
-            aria-pressed={readRouterEnabled}
+          <div
             className={cn(
-              readRouterEnabled && "bg-muted text-foreground",
+              "flex items-center transition-opacity group-focus-within:opacity-80 group-hover:opacity-80",
+              // Held visible while either menu is open: they hang off these
+              // buttons, so fading the buttons out from under an open menu
+              // would take the menu with them.
+              toolPickerOpen || modelSelectorOpen ? "opacity-80" : "opacity-0",
             )}
-            disabled={
-              readRouter.isPending ||
-              readRouter.isError ||
-              updateReadRouter.isPending
-            }
-            onClick={() => updateReadRouter.mutate(!readRouterEnabled)}
-            title={
-              compactToolbar
-                ? undefined
-                : readRouter.isError
-                  ? readRouter.error.message
-                  : readRouterEnabled
-                    ? "Disable read-router tool-result compression"
-                    : "Enable read-router tool-result compression"
-            }
-            tooltip={
-              compactToolbar
-                ? readRouter.isError
-                  ? readRouter.error.message
-                  : readRouterEnabled
-                    ? "Disable read-router tool-result compression"
-                    : "Enable read-router tool-result compression"
-                : undefined
-            }
           >
-            <RouteIcon size={16} />
-            {!compactToolbar && (
-              <span className="text-xs">
-                Read router {readRouterEnabled ? "on" : "off"}
-              </span>
+            {onCompactClick && !isRunning && (
+              <PromptInputButton
+                aria-label={
+                  compactToolbar
+                    ? "Summarise conversation history to free up context window space"
+                    : undefined
+                }
+                onClick={onCompactClick}
+                title={
+                  compactToolbar
+                    ? undefined
+                    : "Summarise conversation history to free up context window space"
+                }
+                tooltip={
+                  compactToolbar
+                    ? "Summarise conversation history to free up context window space"
+                    : undefined
+                }
+              >
+                <FoldVerticalIcon size={12} />
+                {!compactToolbar && <span className="text-xs">Compact</span>}
+              </PromptInputButton>
             )}
-          </PromptInputButton>
-          <PromptInputButton
-            aria-label={
-              compactToolbar
-                ? jevGateEnabled
-                  ? "Disable Jev gate tool/skill filtering"
-                  : "Enable Jev gate tool/skill filtering"
-                : undefined
-            }
-            aria-pressed={jevGateEnabled}
-            className={cn(jevGateEnabled && "bg-muted text-foreground")}
-            disabled={
-              jevGate.isPending ||
-              jevGate.isError ||
-              updateJevGate.isPending
-            }
-            onClick={() => updateJevGate.mutate(!jevGateEnabled)}
-            title={
-              compactToolbar
-                ? undefined
-                : jevGate.isError
-                  ? jevGate.error.message
-                  : jevGateEnabled
-                    ? "Disable Jev gate tool/skill filtering"
-                    : "Enable Jev gate tool/skill filtering"
-            }
-            tooltip={
-              compactToolbar
-                ? jevGate.isError
-                  ? jevGate.error.message
-                  : jevGateEnabled
-                    ? "Disable Jev gate tool/skill filtering"
-                    : "Enable Jev gate tool/skill filtering"
-                : undefined
-            }
-          >
-            <FilterIcon size={16} />
-            {!compactToolbar && (
-              <span className="text-xs">
-                Jev gate {jevGateEnabled ? "on" : "off"}
-              </span>
-            )}
-          </PromptInputButton>
-          <div className="relative" ref={toolPickerRef}>
             <PromptInputButton
-              aria-expanded={toolPickerOpen}
-              aria-haspopup="listbox"
               aria-label={
                 compactToolbar
-                  ? `${tools.length + extensionTools.length} tools`
+                  ? readRouterEnabled
+                    ? "Disable read-router tool-result compression"
+                    : "Enable read-router tool-result compression"
                   : undefined
               }
-              onClick={() => setToolPickerOpen((open) => !open)}
+              aria-pressed={readRouterEnabled}
+              className={cn(readRouterEnabled && "bg-muted text-foreground")}
+              disabled={
+                readRouter.isPending ||
+                readRouter.isError ||
+                updateReadRouter.isPending
+              }
+              onClick={() => updateReadRouter.mutate(!readRouterEnabled)}
+              title={
+                compactToolbar
+                  ? undefined
+                  : readRouter.isError
+                    ? readRouter.error.message
+                    : readRouterEnabled
+                      ? "Disable read-router tool-result compression"
+                      : "Enable read-router tool-result compression"
+              }
               tooltip={
                 compactToolbar
-                  ? `${tools.length + extensionTools.length} tools`
+                  ? readRouter.isError
+                    ? readRouter.error.message
+                    : readRouterEnabled
+                      ? "Disable read-router tool-result compression"
+                      : "Enable read-router tool-result compression"
                   : undefined
               }
             >
-              <WrenchIcon size={16} />
+              <RouteIcon size={16} />
               {!compactToolbar && (
                 <span className="text-xs">
-                  {tools.length + extensionTools.length} tools
+                  Read router {readRouterEnabled ? "on" : "off"}
                 </span>
               )}
             </PromptInputButton>
-            {toolPickerOpen && (
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
-                <input
-                  aria-label="Search tools"
-                  className="mb-1 h-8 w-full rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
-                  onChange={(event) => setToolQuery(event.target.value)}
-                  placeholder="Search tools..."
-                  value={toolQuery}
-                />
-                {/*
+            <PromptInputButton
+              aria-label={
+                compactToolbar
+                  ? jevGateEnabled
+                    ? "Disable Jev gate tool/skill filtering"
+                    : "Enable Jev gate tool/skill filtering"
+                  : undefined
+              }
+              aria-pressed={jevGateEnabled}
+              className={cn(jevGateEnabled && "bg-muted text-foreground")}
+              disabled={
+                jevGate.isPending || jevGate.isError || updateJevGate.isPending
+              }
+              onClick={() => updateJevGate.mutate(!jevGateEnabled)}
+              title={
+                compactToolbar
+                  ? undefined
+                  : jevGate.isError
+                    ? jevGate.error.message
+                    : jevGateEnabled
+                      ? "Disable Jev gate tool/skill filtering"
+                      : "Enable Jev gate tool/skill filtering"
+              }
+              tooltip={
+                compactToolbar
+                  ? jevGate.isError
+                    ? jevGate.error.message
+                    : jevGateEnabled
+                      ? "Disable Jev gate tool/skill filtering"
+                      : "Enable Jev gate tool/skill filtering"
+                  : undefined
+              }
+            >
+              <FilterIcon size={16} />
+              {!compactToolbar && (
+                <span className="text-xs">
+                  Jev gate {jevGateEnabled ? "on" : "off"}
+                </span>
+              )}
+            </PromptInputButton>
+            <div className="relative" ref={toolPickerRef}>
+              <PromptInputButton
+                aria-expanded={toolPickerOpen}
+                aria-haspopup="listbox"
+                aria-label={
+                  compactToolbar
+                    ? `${tools.length + extensionTools.length} tools`
+                    : undefined
+                }
+                onClick={() => setToolPickerOpen((open) => !open)}
+                tooltip={
+                  compactToolbar
+                    ? `${tools.length + extensionTools.length} tools`
+                    : undefined
+                }
+              >
+                <WrenchIcon size={16} />
+                {!compactToolbar && (
+                  <span className="text-xs">
+                    {tools.length + extensionTools.length} tools
+                  </span>
+                )}
+              </PromptInputButton>
+              {toolPickerOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-md border bg-popover p-1 shadow-lg">
+                  <input
+                    aria-label="Search tools"
+                    className="mb-1 h-8 w-full rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
+                    onChange={(event) => setToolQuery(event.target.value)}
+                    placeholder="Search tools..."
+                    value={toolQuery}
+                  />
+                  {/*
                   A real `<select>`/`<datalist>` cannot render this: each row
                   needs a checkmark slot beside its label reflecting
                   independent toggle state, not a single chosen value, and
@@ -929,72 +903,72 @@ export function PromptEditor({
                   the browser's own type-ahead. `listbox`/`option` are the
                   ARIA pattern built for exactly this custom widget.
                 */}
-                {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-                <div className="max-h-56 overflow-y-auto" role="listbox">
-                  {matchingToggleableTools.map((tool) => {
-                    const selected = tools.includes(tool);
+                  {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+                  <div className="max-h-56 overflow-y-auto" role="listbox">
+                    {matchingToggleableTools.map((tool) => {
+                      const selected = tools.includes(tool);
 
-                    return (
-                      <button
-                        aria-selected={selected}
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                        key={tool}
-                        onClick={() => toggleTool(tool)}
-                        // Real `<option>` cannot hold this markup (a
-                        // checkmark plus label) or the click handling below
-                        // — see the `listbox` comment above it.
-                        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-                        role="option"
-                        type="button"
-                      >
-                        <span className="flex size-4 items-center justify-center">
-                          {selected && <CheckIcon className="size-4" />}
-                        </span>
-                        {tool}
-                      </button>
-                    );
-                  })}
-                  {matchingExtensionTools.length > 0 && (
-                    <>
-                      <p className="mt-1 px-2 py-1 text-xs font-medium text-muted-foreground">
-                        Extensions (always active)
-                      </p>
-                      {matchingExtensionTools.map((tool) => (
-                        <div
-                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm opacity-60"
+                      return (
+                        <button
+                          aria-selected={selected}
+                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
                           key={tool}
+                          onClick={() => toggleTool(tool)}
+                          // Real `<option>` cannot hold this markup (a
+                          // checkmark plus label) or the click handling below
+                          // — see the `listbox` comment above it.
+                          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                          role="option"
+                          type="button"
                         >
                           <span className="flex size-4 items-center justify-center">
-                            <CheckIcon className="size-4" />
+                            {selected && <CheckIcon className="size-4" />}
                           </span>
                           {tool}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {matchingToggleableTools.length === 0 &&
-                    matchingExtensionTools.length === 0 && (
-                      <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                        No tools found.
-                      </p>
+                        </button>
+                      );
+                    })}
+                    {matchingExtensionTools.length > 0 && (
+                      <>
+                        <p className="mt-1 px-2 py-1 text-xs font-medium text-muted-foreground">
+                          Extensions (always active)
+                        </p>
+                        {matchingExtensionTools.map((tool) => (
+                          <div
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm opacity-60"
+                            key={tool}
+                          >
+                            <span className="flex size-4 items-center justify-center">
+                              <CheckIcon className="size-4" />
+                            </span>
+                            {tool}
+                          </div>
+                        ))}
+                      </>
                     )}
+                    {matchingToggleableTools.length === 0 &&
+                      matchingExtensionTools.length === 0 && (
+                        <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                          No tools found.
+                        </p>
+                      )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-          <SkillPickerButton
-            compactToolbar={compactToolbar}
-            matchingSkills={matchingSkills}
-            open={skillPickerOpen}
-            pickerRef={skillPickerRef}
-            query={skillQuery}
-            setOpen={setSkillPickerOpen}
-            setQuery={setSkillQuery}
-            skillCount={skills.length}
-          />
-          {mcpEnabled && (
-            <Tooltip>
-              {/*
+              )}
+            </div>
+            <SkillPickerButton
+              compactToolbar={compactToolbar}
+              matchingSkills={matchingSkills}
+              open={skillPickerOpen}
+              pickerRef={skillPickerRef}
+              query={skillQuery}
+              setOpen={setSkillPickerOpen}
+              setQuery={setSkillQuery}
+              skillCount={skills.length}
+            />
+            {mcpEnabled && (
+              <Tooltip>
+                {/*
               `render` rather than nesting PromptInputButton as children:
               TooltipTrigger renders its own <button> by default, and
               PromptInputButton renders one too — nested as children that is
@@ -1002,95 +976,95 @@ export function PromptEditor({
               inconsistently. `render` swaps TooltipTrigger's own host element
               for this one instead of wrapping it.
             */}
-              <TooltipTrigger
+                <TooltipTrigger
+                  render={
+                    <PromptInputButton
+                      aria-label={
+                        compactToolbar
+                          ? `${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"}`
+                          : undefined
+                      }
+                    >
+                      <ServerIcon size={16} />
+                      {!compactToolbar && (
+                        <span className="text-xs">
+                          {mcpServerCount} MCP server
+                          {mcpServerCount === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </PromptInputButton>
+                  }
+                />
+                <TooltipContent side="top">
+                  {mcpStatus?.error ? (
+                    <span>mcp.json does not parse: {mcpStatus.error}</span>
+                  ) : mcpStatus?.hint ? (
+                    <span>{mcpStatus.hint}</span>
+                  ) : mcpServerCount > 0 ? (
+                    <span>{mcpStatus?.enabledServers.join(", ")}</span>
+                  ) : (
+                    <span>
+                      No MCP servers configured. Edit{" "}
+                      {mcpStatus?.configPath ?? "mcp.json"}.
+                    </span>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <ModelSelector
+              onOpenChange={setModelSelectorOpen}
+              open={modelSelectorOpen}
+            >
+              <ModelSelectorTrigger
                 render={
                   <PromptInputButton
                     aria-label={
                       compactToolbar
-                        ? `${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"}`
+                        ? (selectedModelData?.name ?? "Select model")
                         : undefined
                     }
-                  >
-                    <ServerIcon size={16} />
-                    {!compactToolbar && (
-                      <span className="text-xs">
-                        {mcpServerCount} MCP server
-                        {mcpServerCount === 1 ? "" : "s"}
-                      </span>
-                    )}
-                  </PromptInputButton>
+                    tooltip={
+                      compactToolbar
+                        ? (selectedModelData?.name ?? "Select model")
+                        : undefined
+                    }
+                  />
                 }
-              />
-              <TooltipContent side="top">
-                {mcpStatus?.error ? (
-                  <span>mcp.json does not parse: {mcpStatus.error}</span>
-                ) : mcpStatus?.hint ? (
-                  <span>{mcpStatus.hint}</span>
-                ) : mcpServerCount > 0 ? (
-                  <span>{mcpStatus?.enabledServers.join(", ")}</span>
-                ) : (
-                  <span>
-                    No MCP servers configured. Edit{" "}
-                    {mcpStatus?.configPath ?? "mcp.json"}.
-                  </span>
+              >
+                {selectedModelData && (
+                  <ModelSelectorLogo provider={selectedModelData.provider} />
                 )}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <ModelSelector
-            onOpenChange={setModelSelectorOpen}
-            open={modelSelectorOpen}
-          >
-            <ModelSelectorTrigger
-              render={
-                <PromptInputButton
-                  aria-label={
-                    compactToolbar
-                      ? selectedModelData?.name ?? "Select model"
-                      : undefined
-                  }
-                  tooltip={
-                    compactToolbar
-                      ? selectedModelData?.name ?? "Select model"
-                      : undefined
-                  }
-                />
-              }
-            >
-              {selectedModelData && (
-                <ModelSelectorLogo provider={selectedModelData.provider} />
-              )}
-              {!compactToolbar && (
-                <ModelSelectorName className="text-xs">
-                  {selectedModelData?.name ?? "Select model"}
-                </ModelSelectorName>
-              )}
-            </ModelSelectorTrigger>
-            <ModelSelectorContent>
-              <ModelSelectorInput placeholder="Search models..." />
-              <ModelSelectorList>
-                <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                {[
-                  ...new Set(models.map((candidate) => candidate.provider)),
-                ].map((provider) => (
-                  <ModelSelectorGroup heading={provider} key={provider}>
-                    {models
-                      .filter((candidate) => candidate.provider === provider)
-                      .map((m) => (
-                        <ModelItem
-                          key={`${m.provider}:${m.modelId}`}
-                          m={m}
-                          onSelect={handleModelSelect}
-                          selectedModel={selectedModelKey}
-                        />
-                      ))}
-                  </ModelSelectorGroup>
-                ))}
-              </ModelSelectorList>
-            </ModelSelectorContent>
-          </ModelSelector>
-        </div>
-      </PromptInputTools>
+                {!compactToolbar && (
+                  <ModelSelectorName className="text-xs">
+                    {selectedModelData?.name ?? "Select model"}
+                  </ModelSelectorName>
+                )}
+              </ModelSelectorTrigger>
+              <ModelSelectorContent>
+                <ModelSelectorInput placeholder="Search models..." />
+                <ModelSelectorList>
+                  <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                  {[
+                    ...new Set(models.map((candidate) => candidate.provider)),
+                  ].map((provider) => (
+                    <ModelSelectorGroup heading={provider} key={provider}>
+                      {models
+                        .filter((candidate) => candidate.provider === provider)
+                        .map((m) => (
+                          <ModelItem
+                            key={`${m.provider}:${m.modelId}`}
+                            m={m}
+                            onSelect={handleModelSelect}
+                            selectedModel={selectedModelKey}
+                          />
+                        ))}
+                    </ModelSelectorGroup>
+                  ))}
+                </ModelSelectorList>
+              </ModelSelectorContent>
+            </ModelSelector>
+          </div>
+        </PromptInputTools>
 
         <SessionContextWindowBar
           composition={composition}

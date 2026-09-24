@@ -13,10 +13,12 @@ import { SessionAgentsPanel } from "@/components/session-panels/session-agents-p
 import { SessionBranchesPanel } from "@/components/session-panels/session-branches-panel";
 import { ElementPicker } from "@/components/session-panels/element-picker";
 import { SessionToolStatusLine } from "@/components/session-panels/session-tool-status-line";
-import { cn } from "@/lib/utils";
+import { TokenUsage } from "./token-usage";
+import { PromptCost } from "./conversation/prompt-cost";
 import { useSessionCost } from "@/hooks/use-session-cost";
 import { useParams } from "next/navigation";
-import { TokenUsage } from "./token-usage";
+import { useSessionPromptCost } from "@/hooks/use-prompt-cost";
+import { cn } from "@/lib/utils";
 
 /**
  * The strip along the foot of the app.
@@ -33,10 +35,12 @@ import { TokenUsage } from "./token-usage";
  * components render, so mount order here is what fixes button order there.
  */
 export function BottomBar() {
-  const { id } = useParams();
+  const params = useParams<{ id?: string }>();
+  const id = typeof params?.id === "string" ? params.id : "";
   const { height, open, resize, setBarSlot, setPanelSlot, toggleExpanded } =
     useBottomPanelHost();
-  const { cost, tokens } = useSessionCost(String(id));
+  const { cost, tokens } = useSessionCost(id);
+  const promptCost = useSessionPromptCost(id);
   /**
    * Where the drag started, so a move can be measured against it.
    *
@@ -116,7 +120,8 @@ export function BottomBar() {
 
         <SessionToolStatusLine />
 
-        <div className="flex ml-auto">
+        <div className="flex ml-auto gap-2 px-2 center items-center center-items">
+          <PromptCost costPerPrompt={promptCost} />
           <TokenUsage tokens={tokens} cost={cost} />
           {/*
           One control for whichever panel is open, because the height is

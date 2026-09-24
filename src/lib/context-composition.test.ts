@@ -5,6 +5,7 @@ import {
   contextWindowUsage,
   EMPTY_COMPOSITION,
   latestInputTokens,
+  recentPromptCost,
   sessionComposition,
 } from "./context-composition";
 import type {
@@ -102,6 +103,37 @@ describe("latestInputTokens", () => {
   it("returns null before the first reply", () => {
     expect(latestInputTokens([message("user", "hello")])).toBeNull();
     expect(latestInputTokens([])).toBeNull();
+  });
+});
+
+const user = () => message("user", "prompt");
+const call = (cost: number): SessionTranscriptEntry =>
+  ({ role: "assistant", text: "", tokenUsage: { cost, total: 1 } }) as unknown as SessionTranscriptEntry;
+
+describe("recentPromptCost", () => {
+  it("sums every model call a prompt made, not just the last", () => {
+    // A prompt is as many calls as the agent makes tool round trips; pricing
+    // only one of them is what made the old estimate a 27th of the real cost.
+    expect(recentPromptCost([user(), call(0.1), call(0.2), call(0.3)])).toBeCloseTo(0.6);
+  });
+
+  it("takes the median across prompts, so one long run does not set the figure", () => {
+    const prompts = [0.1, 0.2, 5, 0.3].flatMap((cost) => [user(), call(cost)]);
+    expect(recentPromptCost(prompts)).toBeCloseTo(0.25);
+  });
+
+  it("only looks at the most recent prompts", () => {
+    const prompts = [9, 9, 9, 1, 1, 1, 1, 1].flatMap((cost) => [user(), call(cost)]);
+    expect(recentPromptCost(prompts)).toBe(1);
+  });
+
+  it("skips prompts with no reported cost rather than counting them as free", () => {
+    expect(recentPromptCost([user(), message("assistant", "no usage"), user(), call(0.4)])).toBeCloseTo(0.4);
+  });
+
+  it("returns null before any prompt has reported a cost", () => {
+    expect(recentPromptCost([])).toBeNull();
+    expect(recentPromptCost([user(), message("assistant", "no usage")])).toBeNull();
   });
 });
 

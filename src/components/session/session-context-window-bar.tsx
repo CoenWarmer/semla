@@ -36,7 +36,7 @@ export function SessionContextWindowBar({
     assistantFraction,
     contextWindowEstimated,
     contextWindowFraction,
-    costPerTurn,
+    costPerPrompt,
     systemPromptFraction,
     toolResultFraction,
     userFraction,
@@ -187,12 +187,12 @@ export function SessionContextWindowBar({
               proportions only — context window size unknown
             </span>
           )}
-          {costPerTurn != null && (
+          {costPerPrompt != null && (
             <span
               className="ml-auto text-muted-foreground/60"
-              title="Estimated cache-read cost per additional turn at the current context size"
+              title="Median cost of this session's recent prompts, across every model call each one made"
             >
-              ≈{formatCost(costPerTurn)} per turn
+              ≈{formatCost(costPerPrompt)} per prompt
             </span>
           )}
         </div>
