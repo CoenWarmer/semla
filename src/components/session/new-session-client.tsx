@@ -10,6 +10,7 @@ import {
   PromptEditor,
   type PromptEditorModel,
 } from "@/components/conversation/prompt-editor";
+import { SessionTopbar } from "./session-topbar";
 
 export function NewSessionClient({
   defaultTools,
@@ -81,6 +82,7 @@ export function NewSessionClient({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      <SessionTopbar alwaysVisible title="" sessionId="" />
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-20 py-4">
         <div className="flex w-full max-w-2xl flex-col gap-2">
           <PromptEditor

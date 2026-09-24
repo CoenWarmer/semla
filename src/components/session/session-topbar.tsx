@@ -2,13 +2,17 @@
 
 import { Button } from "@/components/ui/button";
 import { useContextInspections } from "@/hooks/use-context-check";
+import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
 import type { CodeMap } from "@/lib/code-map/types";
+import { cn } from "@/lib/utils";
 import {
   ClipboardListIcon,
   GitCompareIcon,
   LayoutPanelLeftIcon,
   LayoutPanelTopIcon,
   NetworkIcon,
+  PinIcon,
+  PinOffIcon,
   ScanSearchIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -55,6 +59,12 @@ interface SessionTopbarProps {
   sessionId: string;
   goal?: string | null;
   onGoalSave?: (goal: string | null) => Promise<void>;
+  /**
+   * Force the bar to stay open and drop the pin toggle. The new-session
+   * screen has no session to key a preference against yet, so there is
+   * nothing for the toggle to control — the bar simply stays out.
+   */
+  alwaysVisible?: boolean;
 }
 
 /** The panels the title bar still owns. "agents" and "branches" moved to the bottom bar. */
@@ -92,6 +102,7 @@ export function SessionTopbar({
   reviewOpen = false,
   reviewLayout,
   onReviewLayoutChange,
+  alwaysVisible = false,
 }: SessionTopbarProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
 
@@ -99,20 +110,55 @@ export function SessionTopbar({
     setPanelMode((prev) => (prev === mode ? null : mode));
   }
 
+  /**
+   * `pinnedOverride` mirrors the review file tree's `showHiddenOverride`
+   * pattern: the saver is debounced, and a click should flip the bar
+   * immediately rather than waiting out that debounce. `null` means "not
+   * touched this mount", so the saved value (once it has loaded) is what
+   * renders first.
+   */
+  const savedPinned = usePanelLayouts().data?.[TOPBAR_PINNED_KEY] as
+    | boolean
+    | undefined;
+  const [pinnedOverride, setPinnedOverride] = useState<boolean | null>(null);
+  const pinned = alwaysVisible || (pinnedOverride ?? savedPinned ?? false);
+  const savePinned = usePanelLayoutSaver(TOPBAR_PINNED_KEY);
+
+  function togglePinned() {
+    const next = !pinned;
+    setPinnedOverride(next);
+    savePinned(next);
+  }
+
   return (
     <>
-      {/* Title bar. Parked above the viewport until the pointer reaches the
-          top edge: a fully translated bar has no hit target of its own, so
-          the short strip stays in place and the bar slides down over it.
-          The leave delay covers the moment the pointer moves from that strip
-          onto the bar while it is still traveling. */}
-      <div className="group/topbar relative z-40 h-1 w-full shrink-0">
+      {/* Title bar. Unpinned, it is parked above the viewport until the
+          pointer reaches the top edge: a fully translated bar has no hit
+          target of its own, so the short strip stays in place and the bar
+          slides down over it. The leave delay covers the moment the pointer
+          moves from that strip onto the bar while it is still traveling.
+          Pinned, it instead claims its own row in the flow, same as any
+          other header. */}
+      <div
+        className={cn(
+          "group/topbar relative z-40 w-full shrink-0",
+          pinned ? "h-8" : "h-1",
+        )}
+      >
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-border/70"
         />
-        <div className="inset-x-0 top-0 flex h-8 items-center gap-2 border-b border-border/40 bg-background px-2 shadow-sm transition-transform duration-200 ease-out -translate-y-full delay-300 group-hover/topbar:translate-y-0 group-hover/topbar:delay-0 group-focus-within/topbar:translate-y-0 group-focus-within/topbar:delay-0 group-has-data-popup-open/topbar:translate-y-0 group-has-data-popup-open/topbar:delay-0">
+        <div
+          className={cn(
+            "inset-x-0 top-0 flex h-8 items-center gap-2 border-b border-border/40 bg-background px-2 shadow-sm transition-transform duration-200 ease-out",
+            pinned
+              ? "translate-y-0"
+              : "-translate-y-full delay-300 group-hover/topbar:translate-y-0 group-hover/topbar:delay-0 group-focus-within/topbar:translate-y-0 group-focus-within/topbar:delay-0 group-has-data-popup-open/topbar:translate-y-0 group-has-data-popup-open/topbar:delay-0",
+          )}
+        >
           <SidebarTrigger />
+          <SessionsCombobox small />
           <ProjectsCombobox small />
           {sessionId && <SessionProjectBadges sessionId={sessionId} />}
           {/* Left: goal */}
@@ -181,15 +227,17 @@ export function SessionTopbar({
             )}
 
             {/* Inspect — opens context inspector panel */}
-            <Button
-              size="xs"
-              variant={panelMode === "inspector" ? "secondary" : "ghost"}
-              onClick={() => togglePanel("inspector")}
-            >
-              <ContextQualityDot sessionId={sessionId} />
-              <ScanSearchIcon />
-              Inspect
-            </Button>
+            {sessionId ? (
+              <Button
+                size="xs"
+                variant={panelMode === "inspector" ? "secondary" : "ghost"}
+                onClick={() => togglePanel("inspector")}
+              >
+                <ContextQualityDot sessionId={sessionId} />
+                <ScanSearchIcon />
+                Inspect
+              </Button>
+            ) : null}
 
             {/* Only meaningful while the review panel is actually split against
               the conversation. */}
@@ -216,13 +264,40 @@ export function SessionTopbar({
               </Button>
             )}
 
+            {/* Pin — whether this bar stays open or hides until hovered.
+              Absent on screens with no session to key the preference
+              against (see `alwaysVisible`). */}
+            {!alwaysVisible && (
+              <Button
+                onClick={togglePinned}
+                size="icon"
+                title={
+                  pinned
+                    ? "Always shown — click to hide until the pointer reaches the top edge"
+                    : "Hidden until hovered — click to keep this bar always shown"
+                }
+                variant={pinned ? "secondary" : "ghost"}
+              >
+                {pinned ? <PinIcon size={16} /> : <PinOffIcon size={16} />}
+              </Button>
+            )}
+
             <div className="flex items-center gap-3 text-xs text-foreground">
               <Popover>
                 <PopoverTrigger
                   closeDelay={0}
                   delay={0}
                   openOnHover
-                  render={<div className={`flex p-2`} />}
+                  render={
+                    // A real <button>, not a styled div: Base UI's trigger
+                    // acts as a button and warns when its rendered element
+                    // isn't one (see git-status-badge.tsx for the same fix).
+                    <button
+                      aria-label="Settings"
+                      className="flex p-2"
+                      type="button"
+                    />
+                  }
                 >
                   <SettingsIcon size={16} />
                 </PopoverTrigger>
