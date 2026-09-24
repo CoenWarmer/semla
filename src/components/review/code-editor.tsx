@@ -329,6 +329,13 @@ export default function CodeEditor({
    */
   const currentWorkspacePathRef = useRef<string | null>(null);
   /**
+   * The on-disk content each model was last brought in line with, keyed the
+   * same way `modelsRef` is. A model that still holds exactly this has no
+   * unsaved edits, so a newer `value` — the agent rewrote the file — can be
+   * taken without overwriting anything the operator typed.
+   */
+  const syncedValuesRef = useRef(new Map<string, string>());
+  /**
    * Every `{ path, project }` the LSP bridge has been told is open, keyed the
    * same way `modelsRef` is, so the unmount cleanup can send `didClose` for
    * each rather than just whichever file happens to be on screen last.
@@ -656,9 +663,11 @@ export default function CodeEditor({
 
   /*
    * Swap the model when the file changes. `value` seeds a path the first time
-   * it is seen and is not written back over an existing model: by then the
-   * model may hold edits the operator has not saved, and the panel remounts
-   * this component when it genuinely wants to reload from disk.
+   * it is seen. A later `value` — the file changed on disk, typically because
+   * the agent edited it — is written into the model only while the model still
+   * matches what was last synced, so edits the operator has not saved are
+   * never overwritten. It goes in as an edit rather than `setValue`, which
+   * would drop the undo stack and the cursor.
    *
    * **Models carry a Uri, and that is load-bearing rather than cosmetic.**
    * Monaco resolves a definition's `Location` through its own model registry,
@@ -676,6 +685,7 @@ export default function CodeEditor({
     if (!editor) return;
 
     const models = modelsRef.current;
+    const synced = syncedValuesRef.current;
     const workspacePath = `${project}/${path}`;
     let model = models.get(workspacePath);
 
@@ -685,7 +695,24 @@ export default function CodeEditor({
         monaco.editor.getModel(uri) ??
         monaco.editor.createModel(value, languageForPath(path), uri);
       models.set(workspacePath, model);
+      // An adopted model was built by `ensureModel` from its own read, which
+      // may be older than `value`; recording what it holds lets the check
+      // below bring it up to date.
+      synced.set(workspacePath, model.getValue());
     }
+
+    const lastSynced = synced.get(workspacePath);
+    if (value !== lastSynced && model.getValue() === lastSynced) {
+      const isShown = currentWorkspacePathRef.current === workspacePath;
+      const viewState = isShown ? editor.saveViewState() : null;
+      model.pushEditOperations(
+        [],
+        [{ range: model.getFullModelRange(), text: value }],
+        () => null,
+      );
+      if (viewState) editor.restoreViewState(viewState);
+    }
+    synced.set(workspacePath, value);
 
     // Remember where the operator was in the file being left, before the
     // model swap below moves the editor off it. Skipped on first mount
