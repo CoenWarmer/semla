@@ -49,6 +49,10 @@ const CONFIG_CANDIDATES = {
   ],
   lint: [".oxlintrc.json", "eslint.config.ts", "eslint.config.js", "eslint.config.mjs"],
   typecheck: ["tsconfig.json"],
+  // fallow's own project detection (fallow_project_info) is what actually decides
+  // whether it can analyze this tree; no separate config file marks that here.
+  // Only the script names below decide the signal, same as unit-test/lint.
+  "static-analysis": [],
   "dev-server": ["next.config.ts", "next.config.mjs", "next.config.js", "vite.config.ts"],
 } as const;
 
@@ -68,6 +72,12 @@ const SCRIPT_CANDIDATES = {
   "e2e-test": ["test:e2e"],
   lint: ["lint"],
   typecheck: ["tsc", "typecheck"],
+  // Only the gate scripts: fallow:audit and fallow:dupes exit non-zero on a real
+  // finding. fallow:health, fallow:deadcode and fallow:fix are advisory reports
+  // (fallow:fix runs --dry-run) and deliberately excluded — see AGENTS.md's
+  // "Validate your changes" section for why those stay a human/agent judgement
+  // call rather than a pass/fail signal.
+  "static-analysis": ["fallow:audit", "fallow:dupes"],
   "dev-server": ["dev"],
 } as const;
 
@@ -193,6 +203,7 @@ export async function discoverVerificationSignals(
     "lint",
     "typecheck",
     "dev-server",
+    "static-analysis",
   ] as const) {
     const script = findScript(manifest, SCRIPT_CANDIDATES[category]);
     const configs = configsFound.get(category) ?? [];
@@ -204,6 +215,9 @@ export async function discoverVerificationSignals(
         // A dev server is never `available`, however plainly its script
         // exists: "available" claims usable-as-verification, and nothing here
         // has checked whether a server is actually up. §4.4.
+        // static-analysis has two independent scripts (fallow:audit,
+        // fallow:dupes); findScript returns the first present, so a repo with
+        // only one of the two is still reported available off that one.
         state: category === "dev-server" ? "configured-not-verified" : "available",
         evidence: script.evidence,
         ...(detail === undefined ? {} : { detail }),

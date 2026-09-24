@@ -13,6 +13,7 @@ export type SignalCategory =
   | "lint"
   | "typecheck"
   | "dev-server"
+  | "static-analysis"
   | "mcp";
 
 /**

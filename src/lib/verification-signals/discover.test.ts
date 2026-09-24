@@ -95,6 +95,31 @@ describe("script-derived signals", () => {
     const distinct = await discoverVerificationSignals({ root });
     expect(signal(distinct.signals, "integration-test")?.state).toBe("available");
   });
+
+  it("reports static-analysis available off either fallow gate script", async () => {
+    writePackage({ scripts: { "fallow:audit": "fallow audit" } });
+    const viaAudit = await discoverVerificationSignals({ root });
+    expect(signal(viaAudit.signals, "static-analysis")).toEqual({
+      category: "static-analysis",
+      evidence: 'package.json scripts.fallow:audit = "fallow audit"',
+      state: "available",
+    });
+
+    writePackage({ scripts: { "fallow:dupes": "fallow dupes" } });
+    const viaDupes = await discoverVerificationSignals({ root });
+    expect(signal(viaDupes.signals, "static-analysis")?.state).toBe("available");
+    expect(signal(viaDupes.signals, "static-analysis")?.evidence).toContain("scripts.fallow:dupes");
+  });
+
+  it("emits no static-analysis signal when neither fallow gate script is present", async () => {
+    // fallow:health, fallow:deadcode and fallow:fix are advisory reports, not
+    // gates, so their presence alone must not produce a static-analysis signal.
+    writePackage({ scripts: { "fallow:health": "fallow health", "fallow:deadcode": "fallow dead-code" } });
+
+    const { signals } = await discoverVerificationSignals({ root });
+
+    expect(signal(signals, "static-analysis")).toBeUndefined();
+  });
 });
 
 describe("config-derived signals", () => {

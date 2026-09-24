@@ -354,6 +354,42 @@ not declared there is a tree `npm audit` silently does not see. That is not
 hypothetical: it is how two high-severity advisories sat in `.pi/npm` while the
 root reported none. `pi-dir-removed.test.ts` is the other half.
 
+## fallow: run the gate scripts, read the report scripts
+
+Five `fallow:*` scripts exist in `package.json`, and they split into two kinds
+that must not be treated the same way.
+
+**Gates** — run these as part of validating a change, alongside tsc/lint/test:
+
+- `npm run fallow:audit` — fails on a real finding.
+- `npm run fallow:dupes` — code duplication across the project.
+
+Both are declared in `src/lib/verification-signals/discover.ts`'s
+`SCRIPT_CANDIDATES."static-analysis"`, so `orient_status` reports them as an
+`available` verification signal the same way it reports `lint` and `typecheck` —
+see that file's `static-analysis` category for why the other three scripts are
+deliberately excluded from it.
+
+**Reports** — advisory, never a pass/fail gate, read with judgement rather than
+run to a green result:
+
+- `npm run fallow:health` — cyclomatic/cognitive complexity and CRAP score per
+  function. Consult it before touching a large or hook-heavy component; a
+  `critical` severity with `coverage_tier: none` (no test reaches the function
+  at all) is the pattern worth acting on, not the raw complexity number alone.
+- `npm run fallow:deadcode` — unused exports and class members. Confirm a
+  finding with `fallow_trace_export`/`fallow_symbol_impact` (the MCP tools)
+  before deleting anything; a symbol unused inside this tree can still be a
+  public export another package expects.
+- `npm run fallow:fix` — runs with `--dry-run`; it previews a fix, it does not
+  apply one. Review its JSON output before ever dropping `--dry-run` yourself.
+
+The MCP server (`fallow`, connected via `mcp({ connect: "fallow" })`) exposes
+the same analyses interactively — `fallow_check_health`, `fallow_find_dupes`,
+`fallow_decision_surface`, `fallow_trace_symbol`, and more — which is the
+faster way to drill into one specific finding than re-running the whole-repo
+script.
+
 ## Do not reach for `git stash` to get a clean tree
 
 **Decision.** Run `npm run tsc`, `npm run lint` and `npm test` against the tree
