@@ -60,7 +60,7 @@
     "monaco-editor": "0.56.0",
     "motion": "^13.1.0",
     "nanoid": "^6.0.1",
-    "next": "16.3.1",
+    "next": "16.3.5",
     "node-pty": "^1.1.0",
     "pi-mcp-adapter": "2.29.0",
     "react": "19.2.8",
