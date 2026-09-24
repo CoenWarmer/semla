@@ -12,7 +12,11 @@ import { ObservabilityPanel } from "@/components/session-panels/observability-pa
 import { SessionAgentsPanel } from "@/components/session-panels/session-agents-panel";
 import { SessionBranchesPanel } from "@/components/session-panels/session-branches-panel";
 import { ElementPicker } from "@/components/session-panels/element-picker";
+import { SessionToolStatusLine } from "@/components/session-panels/session-tool-status-line";
 import { cn } from "@/lib/utils";
+import { useSessionCost } from "@/hooks/use-session-cost";
+import { useParams } from "next/navigation";
+import { TokenUsage } from "./token-usage";
 
 /**
  * The strip along the foot of the app.
@@ -29,9 +33,10 @@ import { cn } from "@/lib/utils";
  * components render, so mount order here is what fixes button order there.
  */
 export function BottomBar() {
+  const { id } = useParams();
   const { height, open, resize, setBarSlot, setPanelSlot, toggleExpanded } =
     useBottomPanelHost();
-
+  const { cost, tokens } = useSessionCost(String(id));
   /**
    * Where the drag started, so a move can be measured against it.
    *
@@ -109,21 +114,26 @@ export function BottomBar() {
         {/* Where the panels above portal their buttons. */}
         <div className="flex items-center gap-2" ref={setBarSlot} />
 
-        {/*
+        <SessionToolStatusLine />
+
+        <div className="flex ml-auto">
+          <TokenUsage tokens={tokens} cost={cost} />
+          {/*
           One control for whichever panel is open, because the height is
           shared. Pushed right so it does not sit between the panel buttons.
         */}
-        {open && (
-          <button
-            className="ml-auto flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
-            onClick={toggleExpanded}
-            title="Expand the panel, or return it to its usual height"
-            type="button"
-          >
-            <ChevronsUpDownIcon className="size-3" />
-            Expand
-          </button>
-        )}
+          {open && (
+            <button
+              className="flex items-center gap-1.5 rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
+              onClick={toggleExpanded}
+              title="Expand the panel, or return it to its usual height"
+              type="button"
+            >
+              <ChevronsUpDownIcon className="size-3" />
+              Expand
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
