@@ -82,7 +82,7 @@ export function GoalEditor({
           />
         ) : (
           <button
-            className="min-w-0 truncate text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="min-w-0 truncate text-xs text-muted-foreground hover:text-foreground transition-colors"
             onClick={startEdit}
             type="button"
           >
