@@ -83,7 +83,7 @@ export function SessionContextWindowBar({
         delay={0}
         openOnHover
         render={
-          <div
+          <button
             className={`flex h-1 w-full shrink-0 cursor-default overflow-hidden border-b border-border/40 bg-muted${
               windowKnown ? "" : " opacity-40"
             }`}
