@@ -59,7 +59,8 @@ export function SessionsCombobox({ small }: { small?: boolean }) {
                 <CommandItem
                   key={session.id}
                   onSelect={() => handleSelect(session.id)}
-                  value={session.title ?? session.id}
+                  value={session.id}
+                  keywords={session.title ? [session.title] : undefined}
                 >
                   <span className="truncate">
                     {session.title ?? "Untitled session"}
