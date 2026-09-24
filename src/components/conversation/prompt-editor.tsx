@@ -1066,12 +1066,6 @@ export function PromptEditor({
           </div>
         </PromptInputTools>
 
-        <SessionContextWindowBar
-          composition={composition}
-          onCompactClick={onCompactClick}
-          sessionRunning={isRunning}
-        />
-
         <PromptInput
           globalDrop
           multiple
@@ -1104,6 +1098,13 @@ export function PromptEditor({
             />
           </div>
         </PromptInput>
+        <div className="px-2">
+          <SessionContextWindowBar
+            composition={composition}
+            onCompactClick={onCompactClick}
+            sessionRunning={isRunning}
+          />
+        </div>
       </PromptInputProvider>
     </div>
   );
