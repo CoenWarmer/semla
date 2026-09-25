@@ -4,7 +4,8 @@
 
 Every agent run should be inspectable, repeatable and correct. Semla does not trade auditability for autonomy: it records what the agent does, shows timing and token cost as it happens, and keeps the full transcript of every subagent in every workflow.
 
-![A Semla session: the Review panel follows the files the agent reads, next to the conversation](docs/screenshots/session-review.png)
+<img width="2209" height="1518" alt="semla-session" src="https://github.com/user-attachments/assets/dea6482b-eba1-461f-952c-0ca03e9d04fe" />
+
 
 ---
 
@@ -34,8 +35,7 @@ The **Review panel** puts a full code editor next to the conversation. It follow
 
 Workflows let the agent split a task into parallel subagents. Semla draws the whole session as an OpenTelemetry-style trace waterfall, with conversation, prompts, tool calls, workflow phases and agents on one time axis. Clicking a conversation marker scrolls the chat to that message, and any subagent's full transcript is one click away.
 
-<img width="2209" height="1518" alt="semla-session" src="https://github.com/user-attachments/assets/7a769629-8204-4e2b-a40b-126e7804c33d" />
-
+![Session trace: conversation, tool calls and workflow agents on a shared time axis](docs/screenshots/session-trace.png)
 
 ### Know what it cost and where it failed
 
