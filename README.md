@@ -34,7 +34,8 @@ The **Review panel** puts a full code editor next to the conversation. It follow
 
 Workflows let the agent split a task into parallel subagents. Semla draws the whole session as an OpenTelemetry-style trace waterfall, with conversation, prompts, tool calls, workflow phases and agents on one time axis. Clicking a conversation marker scrolls the chat to that message, and any subagent's full transcript is one click away.
 
-![Session trace: conversation, tool calls and workflow agents on a shared time axis](docs/screenshots/session-trace.png)
+<img width="2209" height="1518" alt="semla-session" src="https://github.com/user-attachments/assets/7a769629-8204-4e2b-a40b-126e7804c33d" />
+
 
 ### Know what it cost and where it failed
 
