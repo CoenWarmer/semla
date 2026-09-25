@@ -38,6 +38,9 @@ import {
   type LspDiagnostic,
 } from "@/hooks/use-review";
 import { explainFunctionPrompt } from "@/lib/review/review-prompts";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
+
+import { useHunkSplits } from "./review-hunk-splits";
 
 import { isReadOnlyPath } from "./review-definition-target";
 
@@ -153,7 +156,7 @@ export function ReviewEditorPane({
    * callback the changed-files sidebar's inline hunk list uses; this is a
    * second caller, not a second implementation.
    */
-  onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStage: (hunks: HunkSelector[], direction: "stage" | "unstage") => void;
   /** Allow closing of the panel */
   onClose: () => void;
   /**
@@ -358,6 +361,20 @@ export function ReviewEditorPane({
         ? { staged: hunks.data.staged, unstaged: hunks.data.unstaged }
         : null,
     [hunks.data],
+  );
+
+  /**
+   * Where the operator has cut each hunk of this file.
+   *
+   * Owned here rather than in the panel: a cut is a view of *this* file's
+   * diff, keyed by a range that is only meaningful within one file (see
+   * `splitKey`). Persisted per repository and path, so it survives a reload
+   * and closing the file, until staging or an edit retires its hunk.
+   */
+  const { addSplit, removeSplit, splits } = useHunkSplits(
+    sessionId,
+    selection.project,
+    selection.path,
   );
 
   /**
@@ -578,10 +595,13 @@ export function ReviewEditorPane({
           currentHunk={currentFullHunk}
           definition={definition}
           lsp={lsp}
+          hunkSplits={splits}
           hunks={hunks.data?.full?.hunks ?? []}
           onChange={(next) => onDraftChange(next, next !== onDisk)}
           onDismissComment={(id) => dismissComment.mutate(id)}
           onExplainLine={explainAt}
+          onMergeHunk={removeSplit}
+          onSplitHunk={addSplit}
           onStageHunk={onStage}
           onVisualizeLine={visualizeAt}
           reveal={reveal}

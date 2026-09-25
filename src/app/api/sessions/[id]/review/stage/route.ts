@@ -7,7 +7,7 @@ import {
   unstageWholeFile,
 } from "@/lib/pi/review/review-apply";
 import { readFileDiff } from "@/lib/pi/review/review-diff";
-import { buildPatch } from "@/lib/pi/review/review-patch";
+import { buildPatch, type HunkSelector } from "@/lib/pi/review/review-patch";
 import { messageFailure, withReviewFile } from "@/lib/pi/review/review-service";
 import { readChangedFiles } from "@/lib/pi/review/review-status";
 import { sessionAccessDenied } from "@/lib/auth/session-auth";
@@ -34,10 +34,40 @@ export const dynamic = "force-dynamic";
  * were for an untracked one — the untracked branch below is what first
  * needed them, not what they are limited to.
  *
+ * `hunks` entries may be a bare hunk index or a `{ index, range }` sub-hunk
+ * selector — a part of a hunk the operator split in the editor's gutter. Both
+ * forms are `HunkSelector` and go to `buildPatch` unchanged; see its docblock
+ * for what a range addresses.
+ *
  * The repository comes from the session's own project links and the path is
  * contained inside it. Neither is the caller's to choose — see
  * `withReviewFile`.
  */
+/**
+ * Whether one entry of the body's `hunks` array is a selector at all.
+ *
+ * A malformed entry is dropped rather than failing the request, which is the
+ * posture the integer filter this replaced already had: the array is a
+ * selection made against a diff read, `buildPatch` skips any entry that no
+ * longer resolves anyway (a stale index, an out-of-range slice), and a 400
+ * for one bad entry would lose the operator's other, valid choices. What is
+ * *not* dropped silently is an empty result, which the route already reports
+ * as "none of those hunks are in the current diff".
+ */
+function isHunkSelector(value: unknown): value is HunkSelector {
+  if (Number.isInteger(value)) return true;
+  if (typeof value !== "object" || value === null) return false;
+
+  const { index, range } = value as { index?: unknown; range?: unknown };
+  if (!Number.isInteger(index)) return false;
+  if (!Array.isArray(range) || range.length !== 2) return false;
+  if (!range.every((bound) => Number.isInteger(bound))) return false;
+
+  // An empty or inverted range names no lines, and `sliceHunk` would render a
+  // `@@` header describing zero of them.
+  return (range[0] as number) < (range[1] as number);
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -50,8 +80,8 @@ export async function POST(
   const relPath = typeof body?.path === "string" ? body.path : null;
   const direction = body?.direction === "unstage" ? "unstage" : "stage";
   const whole = body?.whole === true;
-  const hunks: number[] = Array.isArray(body?.hunks)
-    ? body.hunks.filter((value: unknown) => Number.isInteger(value))
+  const hunks: HunkSelector[] = Array.isArray(body?.hunks)
+    ? body.hunks.filter(isHunkSelector)
     : [];
 
   if (!relPath) {

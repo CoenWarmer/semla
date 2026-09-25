@@ -118,9 +118,31 @@ export function buildDecorations(hunks: readonly Hunk[]): Decoration[] {
 export function hunkAnchorLine(hunk: Hunk): number {
   const anchor = findAnchorLine(hunk);
   if (anchor !== null && anchor.newLine !== null) return anchor.newLine;
-  // A hunk of pure removals has no surviving line to anchor to; the hunk's
-  // own start is still a position worth reporting.
-  return hunk.newStart;
+  return removalAnchorLine(hunk);
+}
+
+/**
+ * Where a hunk of pure removals sits in the new file: the line that now holds
+ * the removed lines' place, which is where `buildDecorations` draws the
+ * removed-marker. `newStart` would be the first line of `-U3`'s leading
+ * context instead — three lines above the change.
+ *
+ * The line after the first removal, else the last surviving line before it
+ * (a removal at the end of the hunk, or a part cut from one), else `newStart`
+ * for a hunk with no surviving line at all.
+ */
+function removalAnchorLine(hunk: Hunk): number {
+  const firstRemoved = hunk.lines.findIndex((line) => line.kind === "removed");
+  if (firstRemoved === -1) return hunk.newStart;
+
+  const after =
+    hunk.lines.slice(firstRemoved).find((line) => line.newLine !== null)?.newLine ?? null;
+  if (after !== null) return after;
+
+  const before =
+    hunk.lines.slice(0, firstRemoved).findLast((line) => line.newLine !== null)?.newLine ??
+    null;
+  return before ?? Math.max(1, hunk.newStart);
 }
 
 /** The line `hunkAnchorLine` reports the number of, shared so callers that

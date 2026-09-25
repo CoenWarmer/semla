@@ -141,6 +141,20 @@ describe("hunkChangedLineRange", () => {
     });
   });
 
+  it("anchors a removal to the line that now holds its place, not the leading context", () => {
+    // "second" and "third" went from between "first" (1) and "fourth" (2).
+    // `newStart` is 1 — the context line above — while the removed-marker
+    // is drawn on 2, and the bracket belongs beside it.
+    expect(hunkChangedLineRange(REMOVED_MIDDLE[0])).toEqual({ end: 2, start: 2 });
+  });
+
+  it("anchors a removal with nothing after it to the last line before it", () => {
+    const tail = REMOVED_MIDDLE[0];
+    // The part a split would cut off before "fourth": context, then removals.
+    const part = { ...tail, lines: tail.lines.slice(0, 3) };
+    expect(hunkChangedLineRange(part)).toEqual({ end: 1, start: 1 });
+  });
+
   it("collapses to the anchor line for a hunk of pure removals", () => {
     // Nothing survives to span; the single anchor line is the whole range.
     expect(hunkChangedLineRange(REMOVED_AT_END[0])).toEqual({

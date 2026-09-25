@@ -522,24 +522,24 @@ div.react-sigma {
 .semla-hunk-bracket-line {
   border-left-width: 1px;
   bottom: 3px;
-  left: 50%;
+  left: 30%;
   position: absolute;
   top: 3px;
 }
 
 .semla-hunk-bracket-cap {
   border-top-width: 1px;
-  left: calc(50% - 3px);
+  left: calc(30% - 5px);
   position: absolute;
-  width: 6px;
+  width: 11px;
 }
 
 .semla-hunk-bracket-cap-top {
-  top: 3px;
+  top: 2px;
 }
 
 .semla-hunk-bracket-cap-bottom {
-  bottom: 3px;
+  bottom: 2px;
 }
 
 .semla-hunk-bracket-button {
@@ -547,6 +547,38 @@ div.react-sigma {
   position: relative;
   z-index: 1;
   background: var(--color-background);
+  margin-left: -6px;
+}
+
+/*
+ * A multi-line bracket's button sits at `--semla-hunk-button-center`, the
+ * middle of the bracket's on-screen part, set on the host by
+ * `HunkBracketWidgets.positionButtons` on every scroll — so a hunk taller
+ * than the viewport keeps its button in view. 50% before the first write.
+ */
+.semla-hunk-bracket-button-spanning {
+  left: 50%;
+  position: absolute;
+  top: var(--semla-hunk-button-center, 50%);
+  transform: translate(-50%, -50%);
+}
+
+.semla-hunk-split-button {
+  margin-left: 30px;
+  opacity: 0;
+}
+
+.semla-hunk-split-button:disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
+.semla-hunk-split-button:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.semla-hunk-merge-button {
+  margin-left: 30px;
 }
 
 /*

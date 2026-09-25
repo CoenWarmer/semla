@@ -19,7 +19,7 @@
  * `_collectWidgetBasedGlyphRenderRequest`/`render`) — and paints the node's
  * top edge at that line's top. It never inspects the node's own height, so
  * the node is sized taller than one line, to the hunk's full changed-line
- * span (`(endLine - startLine + 1) * lineHeight`), and grows downward from
+ * span as measured (`hunkBracketHeight`), and grows downward from
  * that anchor to cover every line the hunk spans. Nothing stops that node
  * from painting over the lines below its anchor; nothing in this file's CSS
  * gives it a click target anywhere but the button itself.
@@ -44,9 +44,17 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 import type { Hunk } from "@/lib/review/review-types";
 
-import { hunkBracketLineCount } from "./review-hunk-bracket-geometry";
+import {
+  hunkBracketHeight,
+  hunkBracketLineCount,
+  hunkBracketSpan,
+  hunkButtonCenter,
+  visibleTopLine,
+  type LineGeometry,
+} from "./review-hunk-bracket-geometry";
 import { monaco } from "./monaco-setup";
 import type { HunkAction } from "./review-hunk-match";
 
@@ -58,12 +66,24 @@ export interface HunkBracketEntry {
   endLine: number;
   hunk: Hunk;
   action: HunkAction;
+  /**
+   * What clicking this button actually stages, in the numbering of the diff
+   * `action.direction` acts on.
+   *
+   * Not simply `action.index`, because an entry can be one *part* of a hunk
+   * the operator split in the gutter (see review-hunk-splits.ts): the parts
+   * of one hunk all share that index and are told apart only by their range.
+   * A whole, unsplit hunk carries the bare index here, which is the request
+   * every other caller sends.
+   */
+  selector: HunkSelector;
 }
 
 /**
  * The bracket-and-button drawn inside one widget's dom node.
  *
- * The node's own height is `lineCount * lineHeight`; the button centers in
+ * The node's own height is the span's measured height (`hunkBracketHeight`,
+ * which counts any view zone between its lines); the button centers in
  * it via flexbox. For a single-line hunk there is nothing to bracket, so the
  * connector and caps are omitted rather than kept and hidden — the research
  * this was built from calls out a hidden one-line-height sliver as a
@@ -107,7 +127,7 @@ function HunkBracket({
       <Button
         aria-label={label}
         className={cn(
-          "semla-hunk-bracket-button pointer-events-auto",
+          "semla-hunk-bracket-button semla-hunk-bracket-button-spanning pointer-events-auto",
           colorClass,
         )}
         disabled={busy}
@@ -137,12 +157,15 @@ function HunkBracket({
 function HunkBracketRoot({
   action,
   busy,
+  height,
   lineCount,
   lineHeight,
   onClick,
 }: {
   action: HunkAction;
   busy: boolean;
+  /** The span's measured height, view zones inside it included. */
+  height: number;
   lineCount: number;
   lineHeight: number;
   onClick: () => void;
@@ -182,22 +205,22 @@ function HunkBracketRoot({
     <HunkBracket
       action={action}
       busy={busy}
-      height={lineCount * lineHeight}
+      height={height}
       onClick={onClick}
     />
   );
 }
 
 interface WidgetState {
+  domNode: HTMLElement;
   widget: monaco.editor.IGlyphMarginWidget;
   root: Root;
   entry: HunkBracketEntry;
 }
 
 /**
- * One glyph-margin widget per staged/unstaged hunk. A hunk whose range
- * matches neither diff (see `matchHunkAction`) gets no widget — there is no
- * single action that would be honest about what clicking it does.
+ * One glyph-margin widget per staged/unstaged hunk, or per part of one the
+ * operator has cut (see `stagingTargets` in review-hunk-targets.ts).
  *
  * Rebuilt wholesale on every `set()` call, same choice `review-hunk-glyphs.ts`
  * made: a hunk's key is its position, not its identity across staging
@@ -208,7 +231,10 @@ interface WidgetState {
 export class HunkBracketWidgets {
   private readonly editor: monaco.editor.IStandaloneCodeEditor;
   private states = new Map<string, WidgetState>();
-  private onStage: (index: number, direction: HunkAction["direction"]) => void;
+  private onStage: (
+    selector: HunkSelector,
+    direction: HunkAction["direction"],
+  ) => void;
   private busy = false;
   /**
    * `onDidScrollChange`/`onDidLayoutChange` fire far more often than a
@@ -226,10 +252,16 @@ export class HunkBracketWidgets {
   private readonly layoutSubscription: ReturnType<
     monaco.editor.IStandaloneCodeEditor["onDidLayoutChange"]
   >;
+  private readonly contentSizeSubscription: ReturnType<
+    monaco.editor.IStandaloneCodeEditor["onDidContentSizeChange"]
+  >;
 
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
-    onStage: (index: number, direction: HunkAction["direction"]) => void,
+    onStage: (
+      selector: HunkSelector,
+      direction: HunkAction["direction"],
+    ) => void,
   ) {
     this.editor = editor;
     this.onStage = onStage;
@@ -248,61 +280,106 @@ export class HunkBracketWidgets {
     this.layoutSubscription = this.editor.onDidLayoutChange(() => {
       this.updateForScroll();
     });
+    // A view zone being added, removed or resized (a comment card measuring
+    // its rendered markdown) changes the content height without scrolling,
+    // and moves every line below it — so every bracket spanning or below it
+    // has to be re-measured even though the top line has not changed.
+    this.contentSizeSubscription = this.editor.onDidContentSizeChange((event) => {
+      if (event.contentHeightChanged) this.renderAll(this.visibleTopLine());
+    });
+  }
+
+  private geometry(): LineGeometry {
+    return {
+      bottom: (line) => this.editor.getBottomForLineNumber(line),
+      lineCount: this.editor.getModel()?.getLineCount() ?? 1,
+      top: (line) => this.editor.getTopForLineNumber(line),
+    };
   }
 
   /**
    * The line Monaco's own culling/clamping (`glyphMargin.js`,
    * `_collectWidgetBasedGlyphRenderRequest`'s `visibleStartLineNumber`,
-   * fed by `ctx.visibleRange`) actually uses, reproduced directly from
-   * `getScrollTop()`/line height rather than `getVisibleRanges()`.
-   * `getVisibleRanges()` (`viewModelImpl.js`'s `getCompletelyVisibleViewRange`)
-   * is a *stricter* range — it drops a top line that is only partially
-   * scrolled into view, which `ctx.visibleRange`
-   * (`viewLinesViewportData.js`'s `ViewportData`, built from the same
-   * *partial* `startLineNumber`/`endLineNumber` `getLinesViewportData`
-   * computes) does not. Whenever the scroll offset is not an exact
-   * multiple of the line height — true for most of a scroll gesture —
-   * `getVisibleRanges()` reports one line later than the line Monaco's
-   * widget is actually clamped/anchored to, which would size the bracket
-   * one line height short. `getLineNumberAtOrAfterVerticalOffset`'s own
-   * binary search reduces, for a uniform line height, to this division.
+   * fed by `ctx.visibleRange`) actually uses, reproduced from
+   * `getScrollTop()` and the real line offsets rather than
+   * `getVisibleRanges()`. `getVisibleRanges()` (`viewModelImpl.js`'s
+   * `getCompletelyVisibleViewRange`) is a *stricter* range — it drops a top
+   * line that is only partially scrolled into view, which `ctx.visibleRange`
+   * (`viewLinesViewportData.js`'s `ViewportData`) does not — so whenever the
+   * scroll offset falls mid-line it reports one line later than the line
+   * Monaco's widget is actually anchored to. See `visibleTopLine` in
+   * review-hunk-bracket-geometry.ts for why this is a search and not a
+   * division by the line height.
    */
   private visibleTopLine(): number {
-    const lineHeight = this.editor.getOption(
-      monaco.editor.EditorOption.lineHeight,
-    );
-    if (lineHeight <= 0) return 1;
-    return Math.floor(this.editor.getScrollTop() / lineHeight) + 1;
+    return visibleTopLine(this.geometry(), this.editor.getScrollTop());
   }
 
   private updateForScroll() {
-    const visibleTopLine = this.visibleTopLine();
-    if (visibleTopLine === this.lastVisibleTopLine) return;
-    this.lastVisibleTopLine = visibleTopLine;
+    const topLine = this.visibleTopLine();
+    if (topLine === this.lastVisibleTopLine) {
+      this.positionButtons(topLine);
+      return;
+    }
+    this.renderAll(topLine);
+  }
 
+  private renderAll(topLine: number) {
+    this.lastVisibleTopLine = topLine;
     const lineHeight = this.editor.getOption(
       monaco.editor.EditorOption.lineHeight,
     );
+    const geometry = this.geometry();
     for (const state of this.states.values()) {
-      this.renderState(state, lineHeight, visibleTopLine);
+      this.renderState(state, lineHeight, topLine, geometry);
+    }
+    this.positionButtons(topLine);
+  }
+
+  /**
+   * Move each bracket's button to the middle of its on-screen part (see
+   * `hunkButtonCenter`).
+   *
+   * Every scroll tick, not only when the top line changes, since the visible
+   * part changes by the pixel — so this writes a CSS variable on the host
+   * rather than re-rendering each React root. Monaco sets the host's
+   * `top`/`left`/`width`/`height` one property at a time and never clears a
+   * custom property, and the variable reaches the button by inheritance.
+   */
+  private positionButtons(topLine: number) {
+    const geometry = this.geometry();
+    const scrollTop = this.editor.getScrollTop();
+    const viewport = { bottom: scrollTop + this.editor.getLayoutInfo().height, top: scrollTop };
+    const halfButton =
+      this.editor.getOption(monaco.editor.EditorOption.lineHeight) / 2;
+
+    for (const { domNode, entry } of this.states.values()) {
+      const center = hunkButtonCenter(
+        hunkBracketSpan(entry, topLine, geometry),
+        viewport,
+        halfButton,
+      );
+      domNode.style.setProperty("--semla-hunk-button-center", `${center}px`);
     }
   }
 
   private renderState(
     state: WidgetState,
     lineHeight: number,
-    visibleTopLine: number,
+    topLine: number,
+    geometry: LineGeometry,
   ) {
     const { entry } = state;
-    const lineCount = hunkBracketLineCount(entry, visibleTopLine);
+    const lineCount = hunkBracketLineCount(entry, topLine);
 
     state.root.render(
       <HunkBracketRoot
         action={entry.action}
         busy={this.busy}
+        height={hunkBracketHeight(entry, topLine, geometry)}
         lineCount={lineCount}
         lineHeight={lineHeight}
-        onClick={() => this.onStage(entry.action.index, entry.action.direction)}
+        onClick={() => this.onStage(entry.selector, entry.action.direction)}
       />,
     );
   }
@@ -312,8 +389,9 @@ export class HunkBracketWidgets {
     const lineHeight = this.editor.getOption(
       monaco.editor.EditorOption.lineHeight,
     );
-    const visibleTopLine = this.visibleTopLine();
-    this.lastVisibleTopLine = visibleTopLine;
+    const topLine = this.visibleTopLine();
+    this.lastVisibleTopLine = topLine;
+    const geometry = this.geometry();
 
     for (const state of this.states.values()) {
       const { root } = state;
@@ -374,17 +452,19 @@ export class HunkBracketWidgets {
       };
 
       const root = createRoot(domNode);
-      const state: WidgetState = { entry, root, widget };
-      this.renderState(state, lineHeight, visibleTopLine);
+      const state: WidgetState = { domNode, entry, root, widget };
+      this.renderState(state, lineHeight, topLine, geometry);
 
       this.editor.addGlyphMarginWidget(widget);
       this.states.set(entry.key, state);
     }
+    this.positionButtons(topLine);
   }
 
   dispose() {
     this.scrollSubscription.dispose();
     this.layoutSubscription.dispose();
+    this.contentSizeSubscription.dispose();
     for (const state of this.states.values()) {
       const { root } = state;
       this.editor.removeGlyphMarginWidget(state.widget);

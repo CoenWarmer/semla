@@ -203,3 +203,200 @@ Binary files a/b.bin and b/b.bin differ
     expect(staged("file.txt")).toContain("line 2 CHANGED");
   });
 });
+
+/**
+ * Sub-hunk selection: staging part of a hunk the operator split in the
+ * gutter.
+ *
+ * The setup throughout is one hunk holding two independent edits. That is not
+ * a contrived shape — it is what `-U3` produces for any two edits within six
+ * lines of each other, and it is the whole reason splitting exists: git offers
+ * the pair as a single unit to stage, and the operator wants one of them.
+ *
+ * Assertions are the same as above's: apply with real `git apply --cached`,
+ * then ask git what is in the index and what is still unstaged. A sub-hunk
+ * patch that applies cleanly at the wrong offset is the failure mode with no
+ * visible symptom, so "the other change is still unstaged" is checked
+ * explicitly every time rather than inferred from the first assertion.
+ */
+describe("buildPatch with sub-hunk selectors", () => {
+  /**
+   * `apply`, plus the `--unidiff-zero` the staging route itself passes
+   * (`applyPatch` in review-apply.ts).
+   *
+   * This is not a convenience, and the flag is not optional for a slice.
+   * `git apply` verifies a hunk's *trailing* context too, and treats a hunk
+   * with fewer than three trailing context lines as a claim that the hunk
+   * runs to the end of the file (`apply.c`'s `match_end`). A slice cut out of
+   * the middle of a hunk has truncated context by construction, so git
+   * searches for "these lines, then EOF", finds the rest of the file instead,
+   * and refuses with "patch does not apply" — while the identical patch with
+   * three trailing context lines applies fine. `--unidiff-zero` is what
+   * switches that check off, and review-apply.ts's docblock already explains
+   * that it passes the flag unconditionally against exactly this kind of
+   * change in context width. The tests above deliberately keep calling bare
+   * `apply`: a whole hunk carries git's own context and must apply without
+   * the flag.
+   */
+  const applyAsRoute = (patch: string, ...flags: string[]) =>
+    apply(patch, "--unidiff-zero", ...flags);
+
+  /**
+   * Two edits six lines apart, which git reports as one hunk of 14 lines:
+   *
+   *   0  context line 1
+   *   1  -line 2      2  +line 2 CHANGED
+   *   3..8 context lines 3-8
+   *   9  -line 9      10 +line 9 CHANGED
+   *   11..13 context lines 10-12
+   */
+  const twoEditsInOneHunk = () =>
+    lines(20)
+      .replace("line 2\n", "line 2 CHANGED\n")
+      .replace("line 9\n", "line 9 CHANGED\n");
+
+  it("stages only the first change of a hunk holding two", async () => {
+    write("file.txt", twoEditsInOneHunk());
+
+    const diff = await readFileDiff(repo, "file.txt");
+    // The premise: one hunk, so a whole-hunk selection could not separate
+    // these two edits at all.
+    expect(diff!.hunks).toHaveLength(1);
+    expect(diff!.hunks[0].lines).toHaveLength(14);
+
+    applyAsRoute(buildPatch(diff!, [{ index: 0, range: [0, 3] }])!);
+
+    const result = staged("file.txt");
+    expect(result).toContain("line 2 CHANGED");
+    expect(result).toContain("line 9\n");
+    expect(result).not.toContain("line 9 CHANGED");
+    // And the second edit is still there to stage, rather than lost.
+    expect(run("diff", "--", "file.txt")).toContain("+line 9 CHANGED");
+  });
+
+  it("stages only the second change, recomputing its post-image start", async () => {
+    // The interesting half: the slice starts partway into the hunk, so both
+    // its `oldStart` and `newStart` have to advance over the skipped lines —
+    // and they advance by different amounts, since the skipped prefix holds
+    // one removal and one addition.
+    write("file.txt", twoEditsInOneHunk());
+
+    const diff = await readFileDiff(repo, "file.txt");
+    applyAsRoute(buildPatch(diff!, [{ index: 0, range: [9, 11] }])!);
+
+    const result = staged("file.txt");
+    expect(result).toContain("line 9 CHANGED");
+    expect(result).not.toContain("line 2 CHANGED");
+    expect(result.trimEnd().split("\n")).toHaveLength(20);
+  });
+
+  it("stages both halves of a split hunk exactly as the whole hunk would", async () => {
+    // Round-trip against the whole-hunk path: two slices covering every line
+    // of the hunk must be indistinguishable from selecting the hunk itself.
+    // This is what catches an off-by-one in the second slice's header, which
+    // a single-slice test cannot see.
+    const edited = twoEditsInOneHunk();
+    write("file.txt", edited);
+
+    const diff = await readFileDiff(repo, "file.txt");
+    applyAsRoute(
+      buildPatch(diff!, [
+        { index: 0, range: [0, 9] },
+        { index: 0, range: [9, 14] },
+      ])!,
+    );
+
+    expect(staged("file.txt")).toBe(edited.trimEnd());
+    expect(run("diff", "--", "file.txt")).toBe("");
+  });
+
+  it("orders slices by file position, not by the order they were listed", async () => {
+    // `offset` only accumulates correctly in ascending file order (see the
+    // module docblock), and a caller has no reason to know that.
+    const edited = twoEditsInOneHunk();
+    write("file.txt", edited);
+
+    const diff = await readFileDiff(repo, "file.txt");
+    applyAsRoute(
+      buildPatch(diff!, [
+        { index: 0, range: [9, 14] },
+        { index: 0, range: [0, 9] },
+      ])!,
+    );
+
+    expect(staged("file.txt")).toBe(edited.trimEnd());
+  });
+
+  it("mixes a whole-hunk selector with a slice of another hunk", async () => {
+    // Two hunks, the first split: the whole-hunk selector must still be
+    // positioned relative to what the slice emitted before it.
+    const edited = lines(30)
+      .replace("line 2\n", "line 2 CHANGED\n")
+      .replace("line 9\n", "line 9 CHANGED\n")
+      .replace("line 25\n", "line 25 CHANGED\n");
+    write("file.txt", edited);
+
+    const diff = await readFileDiff(repo, "file.txt");
+    expect(diff!.hunks).toHaveLength(2);
+
+    applyAsRoute(buildPatch(diff!, [1, { index: 0, range: [0, 3] }])!);
+
+    const result = staged("file.txt");
+    expect(result).toContain("line 2 CHANGED");
+    expect(result).toContain("line 25 CHANGED");
+    expect(result).not.toContain("line 9 CHANGED");
+    expect(result.trimEnd().split("\n")).toHaveLength(30);
+  });
+
+  it("round-trips a slice: staging then reversing restores the index", async () => {
+    const before = staged("file.txt");
+    write("file.txt", twoEditsInOneHunk());
+
+    const diff = await readFileDiff(repo, "file.txt");
+    const patch = buildPatch(diff!, [{ index: 0, range: [0, 3] }])!;
+
+    applyAsRoute(patch);
+    expect(staged("file.txt")).not.toBe(before);
+
+    applyAsRoute(patch, "--reverse");
+    expect(staged("file.txt")).toBe(before);
+  });
+
+  it("ignores a slice whose range is out of bounds for its hunk", async () => {
+    // Same staleness as a selection naming a hunk that no longer exists: the
+    // boundary came from a diff read before the operator edited again. Skip
+    // what cannot be resolved and apply what can.
+    write("file.txt", twoEditsInOneHunk());
+    const diff = await readFileDiff(repo, "file.txt");
+
+    expect(buildPatch(diff!, [{ index: 0, range: [0, 99] }])).toBeNull();
+    expect(buildPatch(diff!, [{ index: 0, range: [5, 5] }])).toBeNull();
+    expect(buildPatch(diff!, [{ index: 0, range: [-1, 3] }])).toBeNull();
+    expect(buildPatch(diff!, [{ index: 9, range: [0, 2] }])).toBeNull();
+
+    applyAsRoute(
+      buildPatch(diff!, [
+        { index: 0, range: [0, 99] },
+        { index: 0, range: [0, 3] },
+      ])!,
+    );
+    expect(staged("file.txt")).toContain("line 2 CHANGED");
+  });
+
+  it("emits one hunk for a selector listed twice", async () => {
+    // git rejects a patch with two overlapping hunks outright, so a
+    // duplicate has to be dropped rather than rendered — the `Set` of
+    // indexes this used to build made that impossible to get wrong.
+    write("file.txt", twoEditsInOneHunk());
+    const diff = await readFileDiff(repo, "file.txt");
+
+    const patch = buildPatch(diff!, [
+      { index: 0, range: [0, 3] },
+      { index: 0, range: [0, 3] },
+    ])!;
+
+    expect(patch.match(/^@@/gm)).toHaveLength(1);
+    applyAsRoute(patch);
+    expect(staged("file.txt")).toContain("line 2 CHANGED");
+  });
+});

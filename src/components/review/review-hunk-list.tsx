@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 import { hunkAnchorLine, hunkAnchorText } from "./review-decorations";
@@ -151,7 +152,7 @@ function Group({
   diff: FileDiff | null;
   direction: "stage" | "unstage";
   onlyShowStaged?: boolean;
-  onApply: (hunks: number[]) => void;
+  onApply: (hunks: HunkSelector[]) => void;
   onReveal: (line: number) => void;
   readOnly?: boolean;
   title: string;
@@ -232,7 +233,7 @@ export function ReviewHunkList({
   currentHunk?: { group: "staged" | "unstaged"; index: number } | null;
   onlyShowStaged?: boolean;
   onReveal: (line: number) => void;
-  onStage: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStage: (hunks: HunkSelector[], direction: "stage" | "unstage") => void;
   /**
    * There is nothing to stage and no later in which there will be — these
    * hunks are a commit's, so it is the *history* being shown, not a working

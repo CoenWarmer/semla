@@ -19,6 +19,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { splitKey } from "@/lib/review/review-split-key";
 import type { FileDiff, Hunk } from "@/lib/review/review-types";
 
 import {
@@ -49,8 +50,15 @@ import {
   type Decoration,
 } from "./review-decorations";
 import { shouldAutoScroll, type AutoScrollState } from "./review-auto-scroll";
-import { matchHunkAction } from "./review-hunk-match";
-import { HunkBracketWidgets } from "./review-hunk-bracket-widgets";
+import type { StageDirection } from "./review-hunk-match";
+import {
+  HunkBracketWidgets,
+  type HunkBracketEntry,
+} from "./review-hunk-bracket-widgets";
+import { HunkSplitWidgets, type HunkSplitEntry } from "./review-hunk-split-widgets";
+import { applySplits, joinBoundaries, splitBoundaries } from "./review-hunk-splits";
+import { stagingTargets } from "./review-hunk-targets";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 import { AccessLabelWidgets } from "./review-access-label-widgets";
 import { buildAccessLabels } from "./review-access-labels";
 import {
@@ -113,6 +121,33 @@ function optionsFor(
   };
 }
 
+/**
+ * One invisible glyph per lane, each with `persistLane`, so every lane is
+ * reserved on every line.
+ *
+ * Monaco packs lanes per line: a lane's horizontal position is its index
+ * among the lanes *occupied on that line* (`GlyphMarginLanesModel.
+ * getLanesAtLine`). The stage/unstage bracket is in `Right`, but on a line
+ * that also has a removed-marker (`Left`) or a split button (`Center`) it is
+ * pushed one or two lanes over — so brackets jumped sideways wherever a line
+ * was removed. `persistLane` is the only way to pin a lane, and it exists
+ * only on decorations, not on glyph-margin widgets; and Monaco only counts a
+ * decoration towards lanes when it has a `glyphMarginClassName`, hence the
+ * class with no styles behind it. Every widget outranks these on `zIndex`, so
+ * they never take a slot anything real wants.
+ */
+const LANE_RESERVATIONS: monaco.editor.IModelDeltaDecoration[] = [
+  monaco.editor.GlyphMarginLane.Left,
+  monaco.editor.GlyphMarginLane.Center,
+  monaco.editor.GlyphMarginLane.Right,
+].map((position) => ({
+  options: {
+    glyphMargin: { persistLane: true, position },
+    glyphMarginClassName: "semla-glyph-lane-reservation",
+  },
+  range: new monaco.Range(1, 1, 1, 1),
+}));
+
 export interface CodeEditorProps {
   /** Project-relative path. Chooses the language and keys the model. */
   path: string;
@@ -145,8 +180,28 @@ export interface CodeEditorProps {
   staging?: { staged: FileDiff | null; unstaged: FileDiff | null } | null;
   /** A stage/unstage request is in flight; every widget's button disables. */
   stagingBusy?: boolean;
+  /**
+   * Where the operator has cut each staging hunk, keyed by `splitKey` — the
+   * record `useHunkSplits` owns (review-hunk-splits.ts). Each hunk is drawn as
+   * its parts rather than as itself, with a stage/unstage button per part.
+   *
+   * The record is threaded through as data and interpreted here, rather than the
+   * pane passing down a `getSplitsFor` function: this component already
+   * imports `hunkChangedLineRange`, `stagingTargets` and the rest of the
+   * hunk vocabulary directly instead of receiving it, and a function prop
+   * would additionally have to be memoised to keep the widget effects below
+   * from rebuilding on every parent render.
+   */
+  hunkSplits?: Readonly<Record<string, readonly number[]>> | null;
   /** A widget's button was clicked. */
-  onStageHunk?: (hunks: number[], direction: "stage" | "unstage") => void;
+  onStageHunk?: (
+    hunks: HunkSelector[],
+    direction: "stage" | "unstage",
+  ) => void;
+  /** A split-point button in the gutter was clicked. */
+  onSplitHunk?: (direction: StageDirection, hunk: Hunk, boundary: number) => void;
+  /** A merge button at an existing cut was clicked. */
+  onMergeHunk?: (direction: StageDirection, hunk: Hunk, boundary: number) => void;
   readOnly?: boolean;
   theme?: "dark" | "light";
   /** Fires on every edit, so the panel can track what is unsaved. */
@@ -223,12 +278,15 @@ export default function CodeEditor({
   completion = null,
   currentHunk = null,
   definition = null,
+  hunkSplits = null,
   hunks,
   lsp = null,
   onChange,
   onDismissComment,
   onExplainLine,
+  onMergeHunk,
   onSave,
+  onSplitHunk,
   onStageHunk,
   onVisualizeLine,
   path,
@@ -267,6 +325,16 @@ export default function CodeEditor({
     null,
   );
   const hunkGlyphsRef = useRef<HunkBracketWidgets | null>(null);
+  /**
+   * The split-point buttons, in an owner of their own beside the brackets.
+   *
+   * Separate because they are a different lane of the glyph margin and a
+   * different question — where a hunk *could* be cut, not what staging it
+   * would do — and because `set()` replaces everything in its owner: a click
+   * that adds a boundary has to redraw both, but the two lists are built from
+   * different things and neither is a subset of the other.
+   */
+  const hunkSplitGlyphsRef = useRef<HunkSplitWidgets | null>(null);
   /**
    * The "read by <tool>" chips floating above each accessed band.
    *
@@ -355,6 +423,8 @@ export default function CodeEditor({
   const onExplainRef = useRef(onExplainLine);
   const onVisualizeRef = useRef(onVisualizeLine);
   const onStageHunkRef = useRef(onStageHunk);
+  const onSplitHunkRef = useRef(onSplitHunk);
+  const onMergeHunkRef = useRef(onMergeHunk);
   const definitionRef = useRef(definition);
   const lspRef = useRef(lsp);
   const completionRef = useRef(completion);
@@ -364,6 +434,8 @@ export default function CodeEditor({
     onExplainRef.current = onExplainLine;
     onVisualizeRef.current = onVisualizeLine;
     onStageHunkRef.current = onStageHunk;
+    onSplitHunkRef.current = onSplitHunk;
+    onMergeHunkRef.current = onMergeHunk;
     definitionRef.current = definition;
     lspRef.current = lsp;
     completionRef.current = completion;
@@ -374,6 +446,8 @@ export default function CodeEditor({
     onChange,
     onExplainLine,
     onSave,
+    onMergeHunk,
+    onSplitHunk,
     onStageHunk,
     onVisualizeLine,
   ]);
@@ -455,9 +529,20 @@ export default function CodeEditor({
     );
     hunkGlyphsRef.current = new HunkBracketWidgets(
       editor,
-      (index, direction) => {
+      (selector, direction) => {
         if (stagingBusyRef.current) return;
-        onStageHunkRef.current?.([index], direction);
+        onStageHunkRef.current?.([selector], direction);
+      },
+    );
+    hunkSplitGlyphsRef.current = new HunkSplitWidgets(
+      editor,
+      (direction, hunk, boundary) => {
+        if (stagingBusyRef.current) return;
+        onSplitHunkRef.current?.(direction, hunk, boundary);
+      },
+      (direction, hunk, boundary) => {
+        if (stagingBusyRef.current) return;
+        onMergeHunkRef.current?.(direction, hunk, boundary);
       },
     );
 
@@ -637,6 +722,7 @@ export default function CodeEditor({
       accessLabelsRef.current?.dispose();
       commentWidgetsRef.current?.dispose();
       hunkGlyphsRef.current?.dispose();
+      hunkSplitGlyphsRef.current?.dispose();
       editor.dispose();
       models.forEach((model) => model.dispose());
       models.clear();
@@ -644,6 +730,7 @@ export default function CodeEditor({
       decorationsRef.current = null;
       accessRef.current = null;
       hunkGlyphsRef.current = null;
+      hunkSplitGlyphsRef.current = null;
       accessLabelsRef.current = null;
       commentWidgetsRef.current = null;
     };
@@ -776,18 +863,20 @@ export default function CodeEditor({
     // shortened. An out-of-range decoration is a thrown error in Monaco.
     const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
 
-    collection.set(
-      buildDecorations(hunks).map((decoration) => ({
-        options: optionsFor(decoration),
-        range: new monaco.Range(
-          clamp(decoration.startLine),
-          decoration.startColumn ?? 1,
-          clamp(decoration.endLine),
-          decoration.endColumn ??
-            model.getLineMaxColumn(clamp(decoration.endLine)),
-        ),
-      })),
-    );
+    const diff = buildDecorations(hunks).map((decoration) => ({
+      options: optionsFor(decoration),
+      range: new monaco.Range(
+        clamp(decoration.startLine),
+        decoration.startColumn ?? 1,
+        clamp(decoration.endLine),
+        decoration.endColumn ??
+          model.getLineMaxColumn(clamp(decoration.endLine)),
+      ),
+    }));
+
+    // Only a file with changes has anything in the glyph margin; reserving
+    // three lanes on one without would widen its gutter for nothing.
+    collection.set(hunks.length > 0 ? [...LANE_RESERVATIONS, ...diff] : diff);
   }, [hunks, path]);
 
   /**
@@ -957,20 +1046,27 @@ export default function CodeEditor({
     );
   }, [commentNavigation, comments, hunks, path, staging, stagingBusy]);
 
-  // A button in the gutter of every hunk this diff can stage or unstage on
-  // its own — see review-hunk-bracket-widgets.ts for why this is a real
-  // glyph-margin widget rather than a CSS glyph decoration, and
-  // review-hunk-match.ts for why the action a hunk offers is not simply its
-  // own index.
+  /**
+   * A button in the gutter of every hunk of the staging diffs, and a cut
+   * point wherever one of them can still be split.
+   *
+   * See review-hunk-bracket-widgets.tsx for why these are real glyph-margin
+   * widgets rather than CSS glyph decorations, review-hunk-targets.ts for why
+   * they are drawn from `staged`/`unstaged` rather than from the `hunks` this
+   * editor colours, and review-hunk-splits.ts for what a boundary is.
+   *
+   * Both owners are driven from here, in one effect, because both are built
+   * from the same derivation: a hunk is drawn as its *parts* once the
+   * operator has cut it, and the parts decide both how many brackets there
+   * are and where a cut is still available. Splitting them into two effects
+   * would mean running `applySplits` twice over the same inputs to produce
+   * two views of one answer.
+   */
   useEffect(() => {
     const editor = editorRef.current;
     const glyphs = hunkGlyphsRef.current;
-    if (!editor || !glyphs) return;
-
-    if (!staging || (!staging.staged && !staging.unstaged)) {
-      glyphs.set([], stagingBusy);
-      return;
-    }
+    const splitGlyphs = hunkSplitGlyphsRef.current;
+    if (!editor || !glyphs || !splitGlyphs) return;
 
     const model = editor.getModel();
     const lineCount = model?.getLineCount() ?? 1;
@@ -978,25 +1074,55 @@ export default function CodeEditor({
     // shortened, same as the decorations effect above.
     const clamp = (line: number) => Math.min(Math.max(1, line), lineCount);
 
-    const entries = hunks.flatMap((hunk) => {
-      const action = matchHunkAction(hunk, staging);
-      if (!action) return [];
+    const brackets: HunkBracketEntry[] = [];
+    const splitPoints: HunkSplitEntry[] = [];
 
-      const range = hunkChangedLineRange(hunk);
+    for (const { direction, display, hunk } of staging ? stagingTargets(staging) : []) {
+      const action = { direction, index: hunk.index };
+      // Cut on `display`, whose lines are `hunk`'s with worktree line
+      // numbers: the offsets are the same in both, the anchors are not.
+      const parts = applySplits(
+        display,
+        hunkSplits?.[splitKey(direction, hunk)] ?? [],
+      );
 
-      return [
-        {
+      const cuts = [
+        ...splitBoundaries(parts).map((cut) => ({ ...cut, kind: "split" as const })),
+        ...joinBoundaries(parts).map((cut) => ({ ...cut, kind: "merge" as const })),
+      ];
+      for (const { boundary, kind, line } of cuts) {
+        splitPoints.push({
+          boundary,
+          direction,
+          hunk,
+          key: `${direction}-${hunk.index}-${boundary}`,
+          kind,
+          line: clamp(line),
+        });
+      }
+
+      let offset = 0;
+      for (const part of parts) {
+        const range = hunkChangedLineRange(part);
+        const selector: HunkSelector =
+          parts.length === 1
+            ? hunk.index
+            : { index: hunk.index, range: [offset, offset + part.lines.length] };
+        brackets.push({
           action,
           endLine: clamp(range.end),
-          hunk,
-          key: `${hunk.oldStart}-${hunk.newStart}`,
+          hunk: part,
+          key: `${direction}-${hunk.index}-${offset}`,
+          selector,
           startLine: clamp(range.start),
-        },
-      ];
-    });
+        });
+        offset += part.lines.length;
+      }
+    }
 
-    glyphs.set(entries, stagingBusy);
-  }, [hunks, staging, stagingBusy]);
+    glyphs.set(brackets, stagingBusy);
+    splitGlyphs.set(splitPoints, stagingBusy);
+  }, [hunkSplits, staging, stagingBusy]);
 
   // Open on the change rather than at the top of the file: a review starts at
   // what moved, and a 900-line file's first hunk is often nowhere near line 1.

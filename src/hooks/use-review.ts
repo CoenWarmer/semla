@@ -6,6 +6,7 @@ import { sessionStatusKey } from "@/lib/session/session-status";
 import type { FileDiff } from "@/lib/review/review-types";
 import type { ChangedFile, SessionReview } from "@/lib/review/review-types";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 
 /**
  * What there is to review, and one file's hunks.
@@ -347,7 +348,13 @@ export function invalidateAfterWrite(
 export interface StageRequest {
   project: string;
   path: string;
-  hunks: number[];
+  /**
+   * Which hunks, or which parts of them. A bare index is a whole hunk; an
+   * object carries a range of the hunk's `lines` — a part the operator cut in
+   * the editor's gutter. See `HunkSelector` in review-patch.ts, and the stage
+   * route for how the body is validated.
+   */
+  hunks: HunkSelector[];
   direction: "stage" | "unstage";
   /**
    * Stage or unstage the whole file, ignoring `hunks` entirely.

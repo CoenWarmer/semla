@@ -24,6 +24,7 @@ import {
   workspacePath,
 } from "@/hooks/use-review";
 import { usePanelLayoutSaver, usePanelLayouts } from "@/hooks/use-panel-layout";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 import { isEmptyReview } from "@/lib/review/review-types";
 import type { ProjectReview } from "@/lib/review/review-types";
 import type { ReviewComment } from "@/lib/review/review-comment-types";
@@ -226,7 +227,7 @@ export function ReviewPanel({
    * was selected.
    */
   const onStageFile = useCallback(
-    (file: FileSelection, hunks: number[], direction: "stage" | "unstage") => {
+    (file: FileSelection, hunks: HunkSelector[], direction: "stage" | "unstage") => {
       stage.mutate(
         { direction, hunks, path: file.path, project: file.project },
         { onSuccess: (data) => setResult(data.ok ? null : data) },
@@ -236,7 +237,7 @@ export function ReviewPanel({
   );
 
   const onStage = useCallback(
-    (hunks: number[], direction: "stage" | "unstage") => {
+    (hunks: HunkSelector[], direction: "stage" | "unstage") => {
       if (!selection) return;
       onStageFile(selection, hunks, direction);
     },

@@ -36,6 +36,7 @@ import type {
   TurnCommit,
 } from "@/lib/review/review-types";
 import { useReviewHunks } from "@/hooks/use-review";
+import type { HunkSelector } from "@/lib/pi/review/review-patch";
 import { Spinner } from "@/components/ui/spinner";
 
 import {
@@ -85,7 +86,7 @@ export const fileRowLayoutId = (
 /** Stage or unstage hunks of a specific file, identified rather than assumed. */
 export type StageFileHunks = (
   file: FileSelection,
-  hunks: number[],
+  hunks: HunkSelector[],
   direction: "stage" | "unstage",
 ) => void;
 
