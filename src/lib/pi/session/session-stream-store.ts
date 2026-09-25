@@ -36,12 +36,22 @@ const streams = new Map<string, SessionStream>();
  * that attaches an hour into a run needs to know what is true *now*
  * (isRunning, the current snapshot), not to replay every intermediate one.
  * Every other event type (deltas, tool markers, spans, ...) is still buffered
- * in full, which is correct for the one prompt turn's worth of them a stream
- * normally carries.
+ * in full, but only until the turn they belong to is persisted — see
+ * `endSessionStreamTurn`.
  */
 const REPLACEABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   "session-status",
   "workflow-snapshot",
+]);
+
+/**
+ * What a subscriber still needs once the turn that produced the rest of the
+ * buffer has been written to the transcript: whether the session is running,
+ * and which workflow it is waiting on.
+ */
+const CROSS_TURN_EVENT_TYPES: ReadonlySet<string> = new Set([
+  ...REPLACEABLE_EVENT_TYPES,
+  "workflow-started",
 ]);
 
 const eventType = (event: StreamEvent): string | undefined => {
@@ -100,6 +110,26 @@ export const subscribeToSessionStream = (
     },
     isActive: true,
   };
+};
+
+/**
+ * Drop a finished turn's events from the buffer, keeping only the
+ * cross-turn state, for a stream that stays open past that turn.
+ *
+ * A late subscriber renders the persisted transcript *and* whatever the buffer
+ * replays, and the client has no way to tell a replayed round from a new one.
+ * Once the turn's entries are on disk, replaying its `user-message`,
+ * `round-start` and `assistant-delta` events draws the same turn a second
+ * time beneath the persisted copy — for as long as a background workflow keeps
+ * the stream open.
+ */
+export const endSessionStreamTurn = (sessionId: string): void => {
+  const stream = streams.get(sessionId);
+  if (!stream) return;
+  stream.buffer = stream.buffer.filter((event) => {
+    const type = eventType(event);
+    return type !== undefined && CROSS_TURN_EVENT_TYPES.has(type);
+  });
 };
 
 export const isSessionStreamActive = (sessionId: string): boolean =>

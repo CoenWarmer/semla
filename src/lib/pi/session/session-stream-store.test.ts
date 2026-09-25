@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   closeSessionStream,
+  endSessionStreamTurn,
   isSessionStreamActive,
   openSessionStream,
   publishSessionRunning,
@@ -142,6 +143,38 @@ describe("publishToSessionStream / subscribeToSessionStream", () => {
       { roundId: "r1", type: "round-start" },
       { delta: "hello", roundId: "r1", type: "assistant-delta" },
       { delta: " world", roundId: "r1", type: "assistant-delta" },
+    ]);
+
+    closeSessionStream(id);
+  });
+
+  it("stops replaying a turn once it is persisted, keeping the cross-turn state", () => {
+    // The watch handoff: a turn has ended and been written to the transcript,
+    // but a background workflow keeps the stream open. A client attaching now
+    // renders that transcript, so replaying the turn again drew it twice.
+    const id = sessionId();
+    openSessionStream(id);
+
+    publishSessionRunning(id, true);
+    publishToSessionStream(id, { text: "Ok, lets go!", type: "user-message" });
+    publishToSessionStream(id, { roundId: "r1", type: "round-start" });
+    publishToSessionStream(id, { delta: "hello", roundId: "r1", type: "assistant-delta" });
+    publishToSessionStream(id, { runId: "run-1", type: "workflow-started" });
+    publishToSessionStream(id, { type: "complete" });
+
+    endSessionStreamTurn(id);
+    publishToSessionStream(id, {
+      snapshot: { agentCount: 1, doneCount: 0 },
+      type: "workflow-snapshot",
+    });
+
+    const received: unknown[] = [];
+    subscribeToSessionStream(id, (event) => received.push(event));
+
+    expect(received).toEqual([
+      { isRunning: true, turnStartedAt: null, type: "session-status" },
+      { runId: "run-1", type: "workflow-started" },
+      { snapshot: { agentCount: 1, doneCount: 0 }, type: "workflow-snapshot" },
     ]);
 
     closeSessionStream(id);

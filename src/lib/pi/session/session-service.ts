@@ -110,6 +110,7 @@ import {
 } from "@/lib/pi/session/session-persistence";
 import {
   closeSessionStream,
+  endSessionStreamTurn,
   isSessionStreamActive,
   openSessionStream,
   publishSessionRunning,
@@ -984,6 +985,10 @@ export const runPiPrompt = async ({
         );
         publishSessionRunning(semlaSessionId, true, rearmStartedAt);
       }
+
+      // This turn's entries are already queued to the transcript above, so a
+      // client attaching during the workflow must not replay them as live.
+      endSessionStreamTurn(semlaSessionId);
 
       // Ownership of this session's file passes to the continuation, which
       // keeps appending to it after this function returns. The turn slot
